@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 // Note: We'll use the client SDK in the backend for simplicity since we're in a controlled environment,
 // but for high security, firebase-admin would be preferred if service account keys were available.
@@ -92,24 +93,105 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
+  let vite: any;
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
+    vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: "custom",
     });
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*all', (req, res, next) => {
-      const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json)$/.test(req.path);
-      if (isAsset) {
-        return next();
-      }
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    app.use(express.static(distPath, { index: false }));
   }
+
+  // Open Graph dynamic injection for product pages
+  app.get('*all', async (req, res, next) => {
+    const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
+    if (isAsset) {
+      return next();
+    }
+
+    if (req.path.startsWith('/api/')) return next();
+
+    let title = "Discreta Boutique | Sensualidade e Elegância";
+    let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
+    let image = "https://discretaboutique.com.br/icon-512.png"; // Default image
+    const ogUrl = `https://discretaboutique.com.br${req.path}`;
+    
+    // Check if it's a product page
+    const productMatch = req.path.match(/^\/produto\/([^/]+)$/);
+    if (productMatch) {
+      const slug = productMatch[1];
+      try {
+        const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
+        const config = JSON.parse(configRaw);
+        
+        const apiUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents:runQuery`;
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            structuredQuery: {
+              from: [{ collectionId: "products" }],
+              where: {
+                fieldFilter: {
+                  field: { fieldPath: "slug" },
+                  op: "EQUAL",
+                  value: { stringValue: slug }
+                }
+              },
+              limit: 1
+            }
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data[0] && data[0].document) {
+             const doc = data[0].document.fields;
+             title = `${doc.name?.stringValue || 'Produto'} | Discreta Boutique`;
+             description = doc.description?.stringValue || description;
+             if (doc.image?.stringValue) {
+               image = doc.image.stringValue;
+             }
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching product metadata", e);
+      }
+    }
+
+    const ogTags = `
+      <meta property="og:title" content="${title}" />
+      <meta property="og:description" content="${description}" />
+      <meta property="og:image" content="${image}" />
+      <meta property="og:url" content="${ogUrl}" />
+      <meta property="og:type" content="website" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="${title}" />
+      <meta name="twitter:description" content="${description}" />
+      <meta name="twitter:image" content="${image}" />
+    `;
+
+    try {
+      let html = '';
+      if (process.env.NODE_ENV !== 'production') {
+        html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
+        html = html.replace('</title>', '</title>\\n' + ogTags);
+        html = await vite.transformIndexHtml(req.url, html);
+      } else {
+        html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
+        html = html.replace('</title>', '</title>\\n' + ogTags);
+      }
+      res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+    } catch(e) {
+      if (vite) vite.ssrFixStacktrace(e);
+      console.error("Error rendering HTML:", e);
+      const errorMessage = e instanceof Error ? e.message : "Erro interno";
+      res.status(500).end(errorMessage);
+    }
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
