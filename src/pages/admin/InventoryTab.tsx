@@ -46,17 +46,80 @@ export function InventoryTab() {
     currentStock?: number;
   }
 
-  const downloadTemplate = () => {
-    // Including all required columns based on request
-    const csvContent = "gtin,sku,brand,name,subtitle,fullDescription,categoryId,costPrice,price,promoPrice,stock,unit,active,featured,controlStock,allowBackorder,hasVariants,condition,imageUrl\n13243435643456,HL773,Hot Flowers,Conjunto Anitta Rendado sem Metal sem Bojo Calcinha String Hot Love,Hot Love,descrição completa,Cosméticos,17.68,119.90,89.90,0,un,true,true,true,false,false,new,https://firebasestorage.googleapis.com/v0/b/...";
-    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' }); // Added BOM for excel compatibility
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "modelo_inventario.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const downloadTemplate = async () => {
+    try {
+      setLoading(true);
+      const products = await productService.listProducts();
+      
+      const rows = products.map((p) => {
+        const imageUrl = p.images && p.images.length > 0 
+           ? p.images.find(img => img.isMain)?.url || p.images[0].url
+           : '';
+
+        return {
+          gtin: p.gtin || '',
+          sku: p.sku || '',
+          brand: p.brand || '',
+          name: p.name || '',
+          subtitle: p.subtitle || '',
+          fullDescription: p.fullDescription || '',
+          categoryId: p.categoryId || '',
+          costPrice: p.costPrice || 0,
+          price: p.price || 0,
+          promoPrice: p.promoPrice || '',
+          stock: p.stock || 0,
+          unit: p.unit || 'un',
+          active: p.active !== false,
+          featured: p.featured === true,
+          controlStock: p.controlStock !== false,
+          allowBackorder: p.allowBackorder === true,
+          hasVariants: p.hasVariants === true,
+          condition: p.seo?.condition || 'new',
+          imageUrl: imageUrl
+        };
+      });
+
+      // Se não houver produtos, colocamos uma linha de exemplo
+      if (rows.length === 0) {
+        rows.push({
+          gtin: '13243435643456',
+          sku: 'HL773',
+          brand: 'Hot Flowers',
+          name: 'Conjunto Anitta Rendado',
+          subtitle: 'Hot Love',
+          fullDescription: 'descrição completa',
+          categoryId: 'Cosméticos',
+          costPrice: 17.68,
+          price: 119.90,
+          promoPrice: 89.90,
+          stock: 0,
+          unit: 'un',
+          active: true,
+          featured: true,
+          controlStock: true,
+          allowBackorder: false,
+          hasVariants: false,
+          condition: 'new',
+          imageUrl: 'https://...'
+        });
+      }
+
+      const csvContent = Papa.unparse(rows);
+      const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' }); // Added BOM for excel compatibility
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "inventario_atual.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast('Inventário atual baixado com sucesso.', 'success');
+    } catch (error) {
+      console.error(error);
+      toast('Erro ao gerar CSV de produtos.', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const parseBool = (val: any, defaultVal = false): boolean => {
@@ -433,8 +496,8 @@ export function InventoryTab() {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-4 mt-2">
-              <Button variant="outline" onClick={downloadTemplate} className="h-12 px-6 rounded-xl font-bold border-green-600 text-green-700 bg-green-50 hover:bg-green-100 hover:text-green-800 w-full sm:w-auto text-xs sm:text-sm whitespace-nowrap">
-                 <Download className="mr-2" size={18} />
+              <Button disabled={loading} variant="outline" onClick={downloadTemplate} className="h-12 px-6 rounded-xl font-bold border-green-600 text-green-700 bg-green-50 hover:bg-green-100 hover:text-green-800 w-full sm:w-auto text-xs sm:text-sm whitespace-nowrap">
+                 {loading ? <RefreshCcw className="mr-2 animate-spin" size={18} /> : <Download className="mr-2" size={18} />}
                  Baixar Modelo CSV
               </Button>
               <Button 
