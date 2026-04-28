@@ -205,22 +205,35 @@ export function AdminLabels() {
       */}
       <div className="hidden print:block print:w-[100mm] print:m-0 print:p-0">
         <div className="print-label-grid">
-           {labelsToPrint.map((prod, index) => (
-             <div key={index} className="print-label flex flex-col items-center justify-between text-center overflow-hidden break-inside-avoid">
-               <div className="w-full flex-1 flex flex-col justify-start">
-                  <div className="font-bold label-title overflow-hidden uppercase leading-none">{prod.name}</div>
-                  {prod.sku && <div className="label-sku text-gray-800">SKU: {prod.sku}</div>}
-               </div>
+           {labelsToPrint.map((prod, index) => {
+              const nameWords = prod.name.trim().split(' ');
+              let title = prod.name;
+              let subtitle = '';
+              
+              if (nameWords.length > 1) {
+                title = nameWords.slice(0, 2).join(' '); // Get first two words as Brand
+                subtitle = nameWords.slice(2).join(' '); // Rest as subtitle
+              }
+              
+              return (
+              <div key={index} className="print-label flex flex-col items-center justify-between text-center overflow-hidden break-inside-avoid">
+                <div className="w-full flex-1 flex flex-col justify-start items-center">
+                   <div className="label-title font-bold text-black leading-none">{title}</div>
+                   {subtitle && <div className="label-subtitle text-black leading-tight mt-1">{subtitle}</div>}
+                   <div className="label-sku text-black leading-none">{prod.sku || 'UN'}</div>
+                </div>
 
-               <div className="w-full my-1 flex flex-col items-center justify-center">
-                 <Barcode value={prod.gtin || prod.sku || String(Math.floor(Math.random() * 1000000000))} />
-               </div>
+                <div className="w-full flex flex-col items-center justify-center -mt-2">
+                  <Barcode value={prod.gtin || prod.sku || String(Math.floor(Math.random() * 1000000000))} />
+                  <div className="label-policy text-black font-semibold">Troca Somente Com Etiqueta</div>
+                </div>
 
-               <div className="w-full pt-1 border-t border-dashed border-gray-400 font-bold label-price">
-                  R$ {(prod.price || 0).toFixed(2).replace('.', ',')}
-               </div>
-             </div>
-           ))}
+                <div className="w-full label-price font-bold text-black leading-none">
+                   {(prod.price || 0).toFixed(2).replace('.', ',')}
+                </div>
+              </div>
+              );
+           })}
         </div>
         <style dangerouslySetInnerHTML={{__html: `
           @media print {
@@ -232,37 +245,60 @@ export function AdminLabels() {
               margin: 0;
               padding: 0;
               background-color: white;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
             .print-label-grid {
               display: grid;
               grid-template-columns: 50mm 50mm;
               width: 100mm;
               margin: 0 auto;
+              gap: 0;
             }
             /* Each label is ~80mm height */
             .print-label {
               width: 50mm;
               height: 80mm;
-              padding: 3mm 2mm;
+              padding: 0 2mm 0 2mm;
               box-sizing: border-box;
               page-break-inside: avoid;
+              background-color: white;
             }
             .label-title {
-              font-family: Arial, sans-serif;
-              font-size: 12px;
-              max-height: 28px;
-              display: -webkit-box;
-              -webkit-line-clamp: 2;
-              -webkit-box-orient: vertical;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 15px;
+              color: #000;
+              margin-top: 5mm;
+            }
+            .label-subtitle {
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 10px;
+              color: #222;
             }
             .label-sku {
-              font-family: Arial, sans-serif;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 32px;
+              font-weight: 500;
+              margin-top: 3mm;
+              margin-bottom: 2mm;
+              color: #000;
+            }
+            .label-policy {
+              font-family: Arial, Helvetica, sans-serif;
               font-size: 9px;
-              margin-top: 2px;
+              margin-top: 2mm;
+              color: #000;
             }
             .label-price {
-              font-family: Arial, sans-serif;
-              font-size: 18px;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 38px;
+              letter-spacing: -1px;
+              color: #000;
+              margin-bottom: 6mm;
+            }
+            svg {
+              max-width: 100%;
+              height: auto;
             }
           }
         `}} />
@@ -287,11 +323,14 @@ function Barcode({ value }: { value: string }) {
         JsBarcode(barcodeRef.current, value, {
           format,
           displayValue: true,
-          width: 1.2,
-          height: 35,
-          fontSize: 10,
+          width: 1.4,
+          height: 50,
+          fontSize: 14,
+          font: "Arial, Helvetica, sans-serif",
+          textMargin: 4,
           margin: 0,
           background: "transparent",
+          lineColor: "#000",
           valid: function (valid: boolean) {
             // EAN13 might be invalid due to checksum, fallback to code128 if so
             if (!valid && format === "EAN13") {
@@ -299,11 +338,14 @@ function Barcode({ value }: { value: string }) {
                 JsBarcode(barcodeRef.current, value, {
                   format: "CODE128",
                   displayValue: true,
-                  width: 1.2,
-                  height: 35,
-                  fontSize: 10,
+                  width: 1.4,
+                  height: 50,
+                  fontSize: 14,
+                  font: "Arial, Helvetica, sans-serif",
+                  textMargin: 4,
                   margin: 0,
-                  background: "transparent"
+                  background: "transparent",
+                  lineColor: "#000",
                 });
               } catch(e) {}
             }
@@ -315,11 +357,14 @@ function Barcode({ value }: { value: string }) {
           JsBarcode(barcodeRef.current, value, {
              format: "CODE128",
              displayValue: true,
-             width: 1.2,
-             height: 35,
-             fontSize: 10,
+             width: 1.4,
+             height: 50,
+             fontSize: 14,
+             font: "Arial, Helvetica, sans-serif",
+             textMargin: 4,
              margin: 0,
-             background: "transparent"
+             background: "transparent",
+             lineColor: "#000",
           });
         } catch (e) {
           console.error("Barcode generation error", e);
