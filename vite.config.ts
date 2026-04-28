@@ -10,10 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       filename: 'sw.js',
       includeAssets: [
-        'favicon.ico', 
-        'favicon.svg', 
-        'apple-touch-icon.png', 
-        'logo.svg'
+        'logo-red.svg', 
+        'logo-white.svg', 
+        'og-image.png'
       ],
       workbox: {
         cleanupOutdatedCaches: true,
@@ -45,21 +44,21 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/icon-192.png',
+            src: '/logo-red.svg',
             sizes: '192x192',
-            type: 'image/png',
+            type: 'image/svg+xml',
             purpose: 'any'
           },
           {
-            src: '/icon-512.png',
+            src: '/logo-red.svg',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/svg+xml',
             purpose: 'any'
           },
           {
-            src: '/maskable-512.png',
+            src: '/logo-white.svg',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/svg+xml',
             purpose: 'maskable'
           }
         ]

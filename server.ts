@@ -116,7 +116,7 @@ async function startServer() {
 
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    let image = "https://discretaboutique.com.br/icon-512.png"; // Default image
+    let image = "https://discretaboutique.com.br/og-image.png"; // Default image
     const ogUrl = `https://discretaboutique.com.br${req.path}`;
     
     // Check if it's a product page
@@ -136,7 +136,7 @@ async function startServer() {
               from: [{ collectionId: "products" }],
               where: {
                 fieldFilter: {
-                  field: { fieldPath: "slug" },
+                  field: { fieldPath: "seo.slug" },
                   op: "EQUAL",
                   value: { stringValue: slug }
                 }
@@ -151,9 +151,17 @@ async function startServer() {
           if (data && data[0] && data[0].document) {
              const doc = data[0].document.fields;
              title = `${doc.name?.stringValue || 'Produto'} | Discreta Boutique`;
-             description = doc.description?.stringValue || description;
-             if (doc.image?.stringValue) {
-               image = doc.image.stringValue;
+             
+             // Extract description
+             description = doc.shortDescription?.stringValue || doc.subtitle?.stringValue || description;
+             
+             // Extract image
+             const imagesArray = doc.images?.arrayValue?.values;
+             if (imagesArray && imagesArray.length > 0) {
+               const mainImage = imagesArray.find((img: any) => img.mapValue?.fields?.isMain?.booleanValue === true) || imagesArray[0];
+               if (mainImage.mapValue?.fields?.url?.stringValue) {
+                 image = mainImage.mapValue.fields.url.stringValue;
+               }
              }
           }
         }

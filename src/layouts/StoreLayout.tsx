@@ -47,7 +47,7 @@ export function StoreLayout() {
 
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-3">
-            <img src="/logo.svg" alt="Discreta Boutique" className="w-10 h-10 object-contain drop-shadow-lg p-1" referrerPolicy="no-referrer" />
+            <img src="/logo-red.svg" alt="Discreta Boutique" className="w-10 h-10 object-contain drop-shadow-lg p-1" referrerPolicy="no-referrer" />
             <span className="text-xl font-black tracking-tighter text-white uppercase italic">DISCRETA</span>
           </Link>
 
@@ -107,7 +107,7 @@ export function StoreLayout() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12">
           <div className="max-w-md">
             <div className="flex items-center gap-3 mb-4">
-               <img src="/logo.svg" alt="Discreta Boutique" className="w-8 h-8 object-contain" referrerPolicy="no-referrer" />
+               <img src="/logo-white.svg" alt="Discreta Boutique" className="w-8 h-8 object-contain" referrerPolicy="no-referrer" />
                <h2 className="text-2xl font-black tracking-tighter italic">DISCRETA BOUTIQUE</h2>
             </div>
             <p className="text-zinc-500 text-sm leading-relaxed">
