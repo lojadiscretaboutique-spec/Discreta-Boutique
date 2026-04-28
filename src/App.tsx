@@ -17,6 +17,7 @@ const CustomerAreaPage = lazy(() => import('./pages/store/CustomerAreaPage').the
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin').then(m => ({ default: m.AdminLogin })));
 const AdminOrders = lazy(() => import('./pages/admin/AdminOrders').then(m => ({ default: m.AdminOrders })));
 const AdminProducts = lazy(() => import('./pages/admin/AdminProducts').then(m => ({ default: m.AdminProducts })));
+const AdminLabels = lazy(() => import('./pages/admin/AdminLabels').then(m => ({ default: m.AdminLabels })));
 const AdminCategories = lazy(() => import('./pages/admin/AdminCategories').then(m => ({ default: m.AdminCategories })));
 const AdminBanners = lazy(() => import('./pages/admin/AdminBanners').then(m => ({ default: m.AdminBanners })));
 const MovEstoque = lazy(() => import('./pages/admin/MovEstoque').then(m => ({ default: m.MovEstoque })));
@@ -123,6 +124,7 @@ export default function App() {
             <Route path="pedidos" element={<AdminOrders />} />
             <Route path="categorias" element={<AdminCategories />} />
             <Route path="produtos" element={<AdminProducts />} />
+            <Route path="etiquetas" element={<AdminLabels />} />
             <Route path="mov_estoque" element={<MovEstoque />} />
             <Route path="usuarios" element={<AdminUsers />} />
             <Route path="perfis" element={<AdminRoles />} />

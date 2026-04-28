@@ -1,5 +1,5 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Package, ShoppingCart, Users, Settings, LogOut, LayoutDashboard, Image as ImageIcon, Layers, ClipboardList, Shield, MapPin, Banknote, DollarSign, Truck, Clock } from 'lucide-react';
+import { Package, ShoppingCart, Users, Settings, LogOut, LayoutDashboard, Image as ImageIcon, Layers, ClipboardList, Shield, MapPin, Banknote, DollarSign, Truck, Clock, Tag } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { auth } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -80,6 +80,7 @@ export function AdminLayout() {
     { name: 'Caixa', path: '/admin/caixa', icon: Banknote, permission: 'caixa' },
     { name: 'Categorias', path: '/admin/categorias', icon: Layers, permission: 'categories' },
     { name: 'Produtos', path: '/admin/produtos', icon: Package, permission: 'produtos' },
+    { name: 'Etiquetas', path: '/admin/etiquetas', icon: Tag, permission: 'produtos' },
     { name: 'Estoque', path: '/admin/mov_estoque', icon: ClipboardList, permission: 'stock' },
     { name: 'Compras', path: '/admin/compras', icon: Truck, permission: 'compras' },
     { name: 'Clientes', path: '/admin/clientes', icon: Users, permission: 'clientes' },

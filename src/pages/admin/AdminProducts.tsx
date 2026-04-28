@@ -4,13 +4,12 @@ import { db } from '../../lib/firebase';
 import { 
   Plus, Edit2, Trash2, X, Upload, Save, ArrowLeft, 
   Info, DollarSign, Layers, Shirt, Droplets, Image as ImageIcon, 
-  Truck, Search, Settings, Check, Printer
+  Truck, Search, Settings, Check
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { formatCurrency, cn } from '../../lib/utils';
 import { productService, Product, ProductVariant } from '../../services/productService';
-import { printProductLabel } from '../../lib/printLabel';
 import { PLACEHOLDER_IMAGE } from '../../lib/utils';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
@@ -911,9 +910,6 @@ export function AdminProducts() {
                      </td>
                      <td className="px-6 py-4">
                         <div className="flex justify-center gap-2">
-                           <button onClick={() => printProductLabel(prod)} title="Imprimir Etiqueta" className="p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 hover:text-green-500 hover:border-green-500 transition-all shadow-sm">
-                             <Printer size={16} />
-                           </button>
                            {canEdit && (
                              <button onClick={() => handleEdit(prod)} className="p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 hover:text-red-600 hover:border-red-600 transition-all shadow-sm">
                                <Edit2 size={16} />

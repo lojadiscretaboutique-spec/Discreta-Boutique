@@ -1,0 +1,332 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Package, Search, Plus, Trash2, Printer, X } from 'lucide-react';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { productService } from '../../services/productService';
+import { Product } from '../../types/catalog';
+import JsBarcode from 'jsbarcode';
+
+interface LabelItem {
+  id: string; // unique ID for the list
+  product: Product;
+  quantity: number;
+}
+
+export function AdminLabels() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [selectedItems, setSelectedItems] = useState<LabelItem[]>([]);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
+
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  const loadProducts = async () => {
+    try {
+      setLoading(true);
+      const data = await productService.listProducts();
+      
+      const mockProduct: Product = {
+        id: 'mock-123',
+        name: 'BLK Biquínis Bermuda Jeans',
+        sku: 'P',
+        gtin: '1234567890128',
+        price: 49.99,
+        active: true,
+        images: [],
+        categoryId: 'mock',
+        costPrice: 20,
+        slug: 'blk-biquinis',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      } as any;
+      
+      setProducts(data.length > 0 ? [...data, mockProduct] : [mockProduct]);
+    } catch (error) {
+      console.error('Error loading products', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredProducts = products.filter(p => 
+    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (p.gtin && p.gtin.includes(searchTerm))
+  ).slice(0, 10); // show only top 10 results for auto-complete feel
+
+  const handleAddProduct = (product: Product) => {
+    if (selectedQuantity < 1) return;
+    const existing = selectedItems.find(item => item.product.id === product.id);
+    if (existing) {
+      setSelectedItems(selectedItems.map(item => 
+        item.product.id === product.id 
+          ? { ...item, quantity: item.quantity + selectedQuantity }
+          : item
+      ));
+    } else {
+      setSelectedItems([...selectedItems, { id: Math.random().toString(), product, quantity: selectedQuantity }]);
+    }
+    // Optional: reset search
+    // setSearchTerm('');
+    // setSelectedQuantity(1);
+  };
+
+  const handleRemoveProduct = (id: string) => {
+    setSelectedItems(selectedItems.filter(item => item.id !== id));
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // Generate the actual items to print by duplicating based on quantity
+  const labelsToPrint = selectedItems.flatMap(item => 
+    Array.from({ length: item.quantity }, () => item.product)
+  );
+
+  return (
+    <>
+      {/* 
+        This is the main UI. 
+        It is hidden when printing via "print:hidden" class. 
+      */}
+      <div className="p-6 space-y-6 max-w-7xl mx-auto print:hidden">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-slate-100">
+              <Package size={24} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Impressão de Etiquetas</h1>
+              <p className="text-sm text-slate-500">Gere e imprima etiquetas térmicas 50x80mm em 2 colunas</p>
+            </div>
+          </div>
+          <Button 
+            onClick={handlePrint}
+            disabled={selectedItems.length === 0}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-12 px-6 rounded-xl"
+          >
+            <Printer className="mr-2" size={20} />
+            Imprimir {labelsToPrint.length > 0 && `(${labelsToPrint.length})`}
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+           {/* Section 1: Selection */}
+           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+             <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Adicionar Etiquetas</h2>
+             
+             <div className="space-y-4">
+                <div>
+                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 block mb-2">Buscar Produto</label>
+                   <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                      <Input
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Nome, SKU ou Código de Barras"
+                        className="pl-10 h-12 bg-slate-50 dark:bg-slate-800 border-none rounded-xl"
+                      />
+                   </div>
+                </div>
+
+                {searchTerm.length > 1 && (
+                  <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-2 max-h-[300px] overflow-y-auto space-y-2">
+                     {filteredProducts.map(product => (
+                        <div key={product.id} className="bg-white dark:bg-slate-900 p-3 flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700">
+                           <div className="overflow-hidden mr-2">
+                             <div className="font-semibold text-slate-900 dark:text-slate-100 truncate text-sm">{product.name}</div>
+                             <div className="text-xs text-slate-500">SKU: {product.sku || 'N/A'} | Preço: R$ {(product.price || 0).toFixed(2).replace('.', ',')}</div>
+                           </div>
+                           <div className="flex items-center gap-2 flex-shrink-0">
+                             <Input 
+                                type="number" 
+                                min="1" 
+                                className="w-16 h-9 text-center" 
+                                value={selectedQuantity}
+                                onChange={(e) => setSelectedQuantity(parseInt(e.target.value) || 1)}
+                             />
+                             <Button size="sm" onClick={() => handleAddProduct(product)} className="h-9 w-9 p-0 bg-slate-900 text-white rounded-lg hover:bg-slate-800">
+                                <Plus size={16} />
+                             </Button>
+                           </div>
+                        </div>
+                     ))}
+                     {filteredProducts.length === 0 && (
+                        <div className="text-center p-4 text-slate-500 text-sm">Nenhum produto encontrado.</div>
+                     )}
+                  </div>
+                )}
+             </div>
+           </div>
+
+           {/* Section 2: Selected List */}
+           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col h-full">
+             <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Etiquetas Selecionadas</h2>
+                {selectedItems.length > 0 && (
+                   <span className="bg-indigo-100 text-indigo-700 font-bold px-2 py-1 rounded-lg text-xs">
+                     Total: {labelsToPrint.length}
+                   </span>
+                )}
+             </div>
+
+             <div className="flex-1 overflow-y-auto space-y-3">
+                {selectedItems.map(item => (
+                   <div key={item.id} className="flex justify-between items-center p-3 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                     <div className="overflow-hidden">
+                       <span className="font-semibold block truncate text-sm text-slate-800 dark:text-slate-200">{item.product.name}</span>
+                       <span className="text-xs text-slate-500">Qtd: {item.quantity} | SKU: {item.product.sku}</span>
+                     </div>
+                     <button onClick={() => handleRemoveProduct(item.id)} className="text-red-500 hover:text-red-700 p-2 flex-shrink-0">
+                        <Trash2 size={18} />
+                     </button>
+                   </div>
+                ))}
+
+                {selectedItems.length === 0 && (
+                  <div className="h-40 flex flex-col items-center justify-center text-slate-400">
+                    <Package size={40} className="mb-2 opacity-20" />
+                    <p className="text-sm">Nenhuma etiqueta na fila</p>
+                  </div>
+                )}
+             </div>
+           </div>
+        </div>
+      </div>
+
+      {/* 
+        This is the print output.
+        It is hidden on screen and only visible during print.
+      */}
+      <div className="hidden print:block print:w-[100mm] print:m-0 print:p-0">
+        <div className="print-label-grid">
+           {labelsToPrint.map((prod, index) => (
+             <div key={index} className="print-label flex flex-col items-center justify-between text-center overflow-hidden break-inside-avoid">
+               <div className="w-full flex-1 flex flex-col justify-start">
+                  <div className="font-bold label-title overflow-hidden uppercase leading-none">{prod.name}</div>
+                  {prod.sku && <div className="label-sku text-gray-800">SKU: {prod.sku}</div>}
+               </div>
+
+               <div className="w-full my-1 flex flex-col items-center justify-center">
+                 <Barcode value={prod.gtin || prod.sku || String(Math.floor(Math.random() * 1000000000))} />
+               </div>
+
+               <div className="w-full pt-1 border-t border-dashed border-gray-400 font-bold label-price">
+                  R$ {(prod.price || 0).toFixed(2).replace('.', ',')}
+               </div>
+             </div>
+           ))}
+        </div>
+        <style dangerouslySetInnerHTML={{__html: `
+          @media print {
+            @page {
+              margin: 0;
+              size: 100mm auto;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              background-color: white;
+            }
+            .print-label-grid {
+              display: grid;
+              grid-template-columns: 50mm 50mm;
+              width: 100mm;
+              margin: 0 auto;
+            }
+            /* Each label is ~80mm height */
+            .print-label {
+              width: 50mm;
+              height: 80mm;
+              padding: 3mm 2mm;
+              box-sizing: border-box;
+              page-break-inside: avoid;
+            }
+            .label-title {
+              font-family: Arial, sans-serif;
+              font-size: 12px;
+              max-height: 28px;
+              display: -webkit-box;
+              -webkit-line-clamp: 2;
+              -webkit-box-orient: vertical;
+            }
+            .label-sku {
+              font-family: Arial, sans-serif;
+              font-size: 9px;
+              margin-top: 2px;
+            }
+            .label-price {
+              font-family: Arial, sans-serif;
+              font-size: 18px;
+            }
+          }
+        `}} />
+      </div>
+    </>
+  );
+}
+
+// A helper component to generate SVG barcode using pure JS within React
+function Barcode({ value }: { value: string }) {
+  const barcodeRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (barcodeRef.current && value) {
+      let format = "CODE128";
+      const onlyNumbers = /^\d+$/.test(value);
+      if (onlyNumbers && (value.length === 12 || value.length === 13)) {
+        format = "EAN13";
+      }
+
+      try {
+        JsBarcode(barcodeRef.current, value, {
+          format,
+          displayValue: true,
+          width: 1.2,
+          height: 35,
+          fontSize: 10,
+          margin: 0,
+          background: "transparent",
+          valid: function (valid: boolean) {
+            // EAN13 might be invalid due to checksum, fallback to code128 if so
+            if (!valid && format === "EAN13") {
+              try {
+                JsBarcode(barcodeRef.current, value, {
+                  format: "CODE128",
+                  displayValue: true,
+                  width: 1.2,
+                  height: 35,
+                  fontSize: 10,
+                  margin: 0,
+                  background: "transparent"
+                });
+              } catch(e) {}
+            }
+          }
+        });
+      } catch (err) {
+        // Fallback to code 128 if EAN13 throws explicitly
+        try {
+          JsBarcode(barcodeRef.current, value, {
+             format: "CODE128",
+             displayValue: true,
+             width: 1.2,
+             height: 35,
+             fontSize: 10,
+             margin: 0,
+             background: "transparent"
+          });
+        } catch (e) {
+          console.error("Barcode generation error", e);
+        }
+      }
+    }
+  }, [value]);
+
+  return <svg ref={barcodeRef} style={{ maxWidth: '100%' }}></svg>;
+}
