@@ -210,25 +210,30 @@ export function AdminLabels() {
               let title = prod.name;
               let subtitle = '';
               
-              if (nameWords.length > 1) {
+              // Simplistic logic for two lines
+              if (nameWords.length > 2) {
                 title = nameWords.slice(0, 2).join(' '); // Get first two words as Brand
                 subtitle = nameWords.slice(2).join(' '); // Rest as subtitle
+              } else if (nameWords.length === 2) {
+                title = nameWords[0];
+                subtitle = nameWords[1];
               }
               
               return (
-              <div key={index} className="print-label flex flex-col items-center justify-between text-center overflow-hidden break-inside-avoid">
-                <div className="w-full flex-1 flex flex-col justify-start items-center">
-                   <div className="label-title font-bold text-black leading-none">{title}</div>
-                   {subtitle && <div className="label-subtitle text-black leading-tight mt-1">{subtitle}</div>}
+              <div key={index} className="print-label flex flex-col items-center justify-start text-center overflow-hidden break-inside-avoid">
+                <div className="w-full flex flex-col justify-start items-center">
+                   <div className="label-title text-black leading-none">{title}</div>
+                   {subtitle && <div className="label-subtitle text-black mt-0.5">{subtitle}</div>}
                    <div className="label-sku text-black leading-none">{prod.sku || 'UN'}</div>
                 </div>
 
-                <div className="w-full flex flex-col items-center justify-center -mt-2">
+                <div className="w-full flex object-contain items-center justify-center -mt-1">
                   <Barcode value={prod.gtin || prod.sku || String(Math.floor(Math.random() * 1000000000))} />
-                  <div className="label-policy text-black font-semibold">Troca Somente Com Etiqueta</div>
                 </div>
+                
+                <div className="label-policy text-black w-full text-center mt-0.5">Troca Somente Com Etiqueta</div>
 
-                <div className="w-full label-price font-bold text-black leading-none">
+                <div className="w-full label-price font-normal text-black leading-none mt-auto mb-2">
                    {(prod.price || 0).toFixed(2).replace('.', ',')}
                 </div>
               </div>
@@ -242,63 +247,68 @@ export function AdminLabels() {
               size: 100mm auto;
             }
             body {
-              margin: 0;
-              padding: 0;
-              background-color: white;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
+              margin: 0 !important;
+              padding: 0 !important;
+              background-color: white !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            * {
+               box-sizing: border-box;
             }
             .print-label-grid {
               display: grid;
               grid-template-columns: 50mm 50mm;
               width: 100mm;
-              margin: 0 auto;
+              margin: 0;
+              padding: 0;
               gap: 0;
             }
-            /* Each label is ~80mm height */
             .print-label {
               width: 50mm;
               height: 80mm;
-              padding: 0 2mm 0 2mm;
-              box-sizing: border-box;
-              page-break-inside: avoid;
+              padding: 4mm 2mm 2mm 2mm;
               background-color: white;
+              page-break-inside: avoid;
+              border: 1px dashed transparent; /* helps with layout edges sometimes, keep transparent */
             }
             .label-title {
               font-family: Arial, Helvetica, sans-serif;
               font-size: 15px;
+              font-weight: 700;
               color: #000;
-              margin-top: 5mm;
             }
             .label-subtitle {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 10px;
-              color: #222;
+              font-size: 11px;
+              font-weight: 400;
+              color: #000;
             }
             .label-sku {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 32px;
-              font-weight: 500;
-              margin-top: 3mm;
-              margin-bottom: 2mm;
+              font-size: 34px;
+              font-weight: 400;
+              margin-top: 2mm;
+              margin-bottom: 0;
               color: #000;
             }
             .label-policy {
               font-family: Arial, Helvetica, sans-serif;
               font-size: 9px;
-              margin-top: 2mm;
+              font-weight: 400;
               color: #000;
             }
             .label-price {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 38px;
+              font-size: 44px;
               letter-spacing: -1px;
+              font-weight: 400;
               color: #000;
-              margin-bottom: 6mm;
             }
             svg {
               max-width: 100%;
               height: auto;
+              display: block;
             }
           }
         `}} />
@@ -323,11 +333,11 @@ function Barcode({ value }: { value: string }) {
         JsBarcode(barcodeRef.current, value, {
           format,
           displayValue: true,
-          width: 1.4,
-          height: 50,
-          fontSize: 14,
+          width: 1.3,
+          height: 38,
+          fontSize: 12,
           font: "Arial, Helvetica, sans-serif",
-          textMargin: 4,
+          textMargin: 3,
           margin: 0,
           background: "transparent",
           lineColor: "#000",
@@ -338,11 +348,11 @@ function Barcode({ value }: { value: string }) {
                 JsBarcode(barcodeRef.current, value, {
                   format: "CODE128",
                   displayValue: true,
-                  width: 1.4,
-                  height: 50,
-                  fontSize: 14,
+                  width: 1.3,
+                  height: 38,
+                  fontSize: 12,
                   font: "Arial, Helvetica, sans-serif",
-                  textMargin: 4,
+                  textMargin: 3,
                   margin: 0,
                   background: "transparent",
                   lineColor: "#000",
@@ -357,11 +367,11 @@ function Barcode({ value }: { value: string }) {
           JsBarcode(barcodeRef.current, value, {
              format: "CODE128",
              displayValue: true,
-             width: 1.4,
-             height: 50,
-             fontSize: 14,
+             width: 1.3,
+             height: 38,
+             fontSize: 12,
              font: "Arial, Helvetica, sans-serif",
-             textMargin: 4,
+             textMargin: 3,
              margin: 0,
              background: "transparent",
              lineColor: "#000",

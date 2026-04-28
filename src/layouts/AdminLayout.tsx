@@ -105,9 +105,9 @@ export function AdminLayout() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col w-full font-sans">
+    <div className="min-h-screen bg-slate-950 flex flex-col w-full font-sans print:bg-white print:min-h-0">
       {/* Top Header */}
-      <header className="h-16 bg-slate-900 border-b flex justify-between items-center px-4 shadow-sm z-30 w-full fixed top-0">
+      <header className="h-16 bg-slate-900 border-b flex justify-between items-center px-4 shadow-sm z-30 w-full fixed top-0 print:hidden">
         <div className="flex items-center gap-4">
           <button 
             className="p-2 -ml-2 text-slate-300 hover:text-red-600 transition-colors rounded-lg hover:bg-slate-800 focus:outline-none" 
@@ -137,19 +137,19 @@ export function AdminLayout() {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col pt-16 w-full">
+      <div className="flex-1 flex flex-col pt-16 w-full print:pt-0">
         
         {/* Overlay */}
         {isMenuOpen && (
             <div 
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 transition-opacity duration-300" 
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 transition-opacity duration-300 print:hidden" 
             onClick={() => setIsMenuOpen(false)} 
             />
         )}
 
         {/* Sidebar Drawer */}
         <aside className={cn(
-            "fixed inset-y-0 left-0 bg-slate-900 border-r border-slate-800 text-slate-300 flex flex-col z-50 transition-all duration-300 ease-in-out shadow-2xl overflow-hidden",
+            "fixed inset-y-0 left-0 bg-slate-900 border-r border-slate-800 text-slate-300 flex flex-col z-50 transition-all duration-300 ease-in-out shadow-2xl overflow-hidden print:hidden",
             isMenuOpen ? "w-[280px] translate-x-0" : "w-[280px] -translate-x-full"
         )}>
             <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800/50 bg-slate-950/50 text-white shrink-0">
@@ -269,8 +269,8 @@ export function AdminLayout() {
 
         {/* Dynamic Page Content */}
         <div className="flex-1 w-full relative">
-          <main className="w-full min-h-full p-3 sm:p-6 lg:p-8 max-w-[100vw]">
-            <div className="w-full mx-auto pb-24">
+          <main className="w-full min-h-full p-3 sm:p-6 lg:p-8 max-w-[100vw] print:p-0 print:m-0">
+            <div className="w-full mx-auto pb-24 print:pb-0">
                 <Outlet />
             </div>
           </main>
