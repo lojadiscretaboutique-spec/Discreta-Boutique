@@ -34,18 +34,18 @@ export function HomePage() {
       // 2. Destaques (Featured)
       const fSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true), where('featured', '==', true), limit(10)));
       const featured = fSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-      setFeaturedProducts(featured.filter(p => !p.controlStock || p.allowBackorder || p.stock > 0));
+      setFeaturedProducts(featured.filter(p => (!p.controlStock || p.allowBackorder || p.stock > 0) && (!p.extras || p.extras.showInCatalog !== false)));
 
       // 3. Lançamentos (New Releases)
       const nSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true), where('newRelease', '==', true), limit(10)));
       const arrivals = nSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-      setNewArrivals(arrivals.filter(p => !p.controlStock || p.allowBackorder || p.stock > 0));
+      setNewArrivals(arrivals.filter(p => (!p.controlStock || p.allowBackorder || p.stock > 0) && (!p.extras || p.extras.showInCatalog !== false)));
 
       // 4. Mais Vendidos (Fallback to recent active products to avoid complex index for now)
-      const sSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true), limit(15)));
+      const sSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true), limit(30)));
       let bestSellersData = sSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-      // Filter out of stock for this specific section on home
-      bestSellersData = bestSellersData.filter(p => !p.controlStock || p.allowBackorder || p.stock > 0);
+      // Filter out of stock and hidden products for this specific section on home
+      bestSellersData = bestSellersData.filter(p => (!p.controlStock || p.allowBackorder || p.stock > 0) && (!p.extras || p.extras.showInCatalog !== false)).slice(0, 15);
       
       // Manual sort by date if index is not ready
       bestSellersData.sort((a, b) => {

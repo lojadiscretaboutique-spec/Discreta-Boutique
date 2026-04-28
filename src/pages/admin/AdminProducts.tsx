@@ -25,6 +25,8 @@ export function AdminProducts() {
   const [activeTab, setActiveTab] = useState<FormSection>('general');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
   const { toast, confirm } = useFeedback();
 
   const canCreate = hasPermission('produtos', 'criar');
@@ -49,7 +51,8 @@ export function AdminProducts() {
     allowBackorder: false,
     hasVariants: false,
     images: [],
-    seo: { slug: '', condition: 'new' }
+    seo: { slug: '', condition: 'new' },
+    extras: { showInCatalog: true }
   };
 
   const [form, setForm] = useState<Omit<Product, 'id'>>(initialProduct);
@@ -102,6 +105,7 @@ export function AdminProducts() {
           fashion: p.fashion || {},
           cosmetics: p.cosmetics || {},
           seo: p.seo || { slug: generateSlug(p.name), condition: 'new' },
+          extras: p.extras || { showInCatalog: true },
         });
         setVariants(detail.variants);
         setEditingId(prod.id!);
@@ -382,6 +386,10 @@ export function AdminProducts() {
                    <div className="flex items-center gap-2 bg-slate-800 p-3 rounded-lg border border-slate-700">
                      <input type="checkbox" id="active" checked={form.active} onChange={e => setForm({...form, active: e.target.checked})} className="w-4 h-4 text-red-600 rounded" />
                      <label htmlFor="active" className="text-sm font-bold">Produto Ativo</label>
+                   </div>
+                   <div className="flex items-center gap-2 bg-slate-800 p-3 rounded-lg border border-slate-700">
+                     <input type="checkbox" id="showInCatalog" checked={form.extras?.showInCatalog !== false} onChange={e => setForm({...form, extras: {...form.extras, showInCatalog: e.target.checked}})} className="w-4 h-4 text-red-600 rounded" />
+                     <label htmlFor="showInCatalog" className="text-sm font-bold whitespace-nowrap">Exibir Catálogo</label>
                    </div>
                    <div className="flex items-center gap-2 bg-slate-800 p-3 rounded-lg border border-slate-700">
                      <input type="checkbox" id="featured" checked={form.featured} onChange={e => setForm({...form, featured: e.target.checked})} className="w-4 h-4 text-red-600 rounded" />
@@ -798,6 +806,9 @@ export function AdminProducts() {
         return nameMatch || skuMatch || gtinMatch;
     });
 
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / itemsPerPage));
+  const currentProducts = filteredProducts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   // LIST VIEW
   return (
     <div className="flex flex-col gap-6">
@@ -823,7 +834,10 @@ export function AdminProducts() {
                 placeholder="Buscar por nome, SKU ou Código..." 
                 className="pl-10 h-10" 
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
               />
            </div>
            <div className="flex items-center gap-4 text-xs font-bold text-slate-400">
@@ -836,6 +850,7 @@ export function AdminProducts() {
           <table className="w-full text-left text-sm min-w-[800px]">
              <thead className="bg-slate-800/80 text-slate-400 font-bold border-b text-[11px] uppercase tracking-widest">
                 <tr>
+                   <th className="px-6 py-4 w-12 text-center">#</th>
                    <th className="px-6 py-4">Produto</th>
                    <th className="px-6 py-4">Estoque</th>
                    <th className="px-6 py-4">Preço</th>
@@ -845,11 +860,14 @@ export function AdminProducts() {
              </thead>
              <tbody className="divide-y">
                 {loading ? (
-                  <tr><td colSpan={5} className="p-12 text-center text-slate-300">Carregando inventário...</td></tr>
-                ) : filteredProducts.length === 0 ? (
-                  <tr><td colSpan={5} className="p-12 text-center text-slate-300">Nenhum produto cadastrado ainda.</td></tr>
-                ) : filteredProducts.map(prod => (
+                  <tr><td colSpan={6} className="p-12 text-center text-slate-300">Carregando inventário...</td></tr>
+                ) : currentProducts.length === 0 ? (
+                  <tr><td colSpan={6} className="p-12 text-center text-slate-300">Nenhum produto encontrado.</td></tr>
+                ) : currentProducts.map((prod, index) => (
                   <tr key={prod.id} className="hover:bg-slate-950 group transition-colors">
+                     <td className="px-6 py-4 text-center font-bold text-slate-500">
+                        {((currentPage - 1) * itemsPerPage) + index + 1}
+                     </td>
                      <td className="px-6 py-4">
                         <div className="flex items-center gap-4">
                            <div className="w-14 h-14 bg-slate-950 rounded-xl overflow-hidden shadow-sm shrink-0 border border-slate-700">
@@ -910,6 +928,61 @@ export function AdminProducts() {
              </tbody>
           </table>
         </div>
+        
+        {totalPages > 1 && (
+          <div className="p-4 border-t bg-slate-800/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+             <div className="text-xs text-slate-400 font-bold">
+               Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredProducts.length)} de {filteredProducts.length} produtos
+             </div>
+             <div className="flex items-center gap-1">
+               <Button 
+                 variant="outline" 
+                 size="sm" 
+                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                 disabled={currentPage === 1}
+                 className="bg-slate-900"
+               >
+                 Anterior
+               </Button>
+               
+               <div className="flex items-center mx-2 gap-1">
+                 {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
+                   // Show few pages around current page to avoid huge pagination
+                   if (totalPages > 7) {
+                     if (page !== 1 && page !== totalPages && Math.abs(currentPage - page) > 2) {
+                       if (page === 2 || page === totalPages - 1) return <span key={page} className="text-slate-500">...</span>;
+                       return null;
+                     }
+                   }
+                   return (
+                     <button
+                       key={page}
+                       onClick={() => setCurrentPage(page)}
+                       className={cn(
+                         "w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold transition-colors",
+                         currentPage === page 
+                           ? "bg-red-600 text-white" 
+                           : "bg-slate-900 text-slate-300 hover:bg-slate-800"
+                       )}
+                     >
+                       {page}
+                     </button>
+                   );
+                 })}
+               </div>
+
+               <Button 
+                 variant="outline" 
+                 size="sm" 
+                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                 disabled={currentPage === totalPages}
+                 className="bg-slate-900"
+               >
+                 Próximo
+               </Button>
+             </div>
+          </div>
+        )}
       </div>
     </div>
   );

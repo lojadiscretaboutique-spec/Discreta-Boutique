@@ -27,6 +27,7 @@ export function CustomerAreaPage() {
 
   const [searchedWhatsapp, setSearchedWhatsapp] = useState('');
   const [loadingSearch, setLoadingSearch] = useState(false);
+  const [isRegisteringNew, setIsRegisteringNew] = useState(false);
   // We consider "customer found" either by auth user acting as customer or our customer auth store presence
   const customerFound = !!currentCustomer;
   const foundCustomerId = currentCustomer?.id || null;
@@ -139,22 +140,18 @@ export function CustomerAreaPage() {
       let customer = await customerService.getCustomerByWhatsapp(searchedWhatsapp);
       
       if (!customer) {
-        // If not found, create a placeholder record immediately to let them sign in/register seamlessly
-        const newCustomerId = await customerService.saveCustomer({
-           nome: 'Novo Cliente',
-           whatsapp: searchedWhatsapp,
-           status: 'ativo',
-           endereco: {
-             estado: '', cidade: '', bairro: '', rua: '', numero: '', referencia: '', complemento: ''
-           }
+        setIsRegisteringNew(true);
+        setData({
+          nome: '',
+          email: '',
+          dataNascimento: '',
+          enderecoObj: { rua: '', numero: '', bairro: '', cidade: '', estado: '', complemento: '', referencia: '' }
         });
-        customer = await customerService.getCustomerById(newCustomerId);
-        toast('Cadastro iniciado. Preencha seus dados abaixo.', 'info');
+        toast('Cadastro não encontrado. Preencha seus dados para criar um novo.', 'info');
       } else {
         toast('Carregamos o seu cadastro.', 'success');
-      }
+        setIsRegisteringNew(false);
 
-      if (customer) {
         const currentEnd = {
           rua: customer.endereco?.rua || '',
           numero: customer.endereco?.numero || '',
@@ -182,6 +179,36 @@ export function CustomerAreaPage() {
   };
 
   const handleSave = async () => {
+    if (!data.nome) {
+      toast('Nome completo é obrigatório.', 'error');
+      return;
+    }
+
+    if (data.enderecoObj.estado || data.enderecoObj.cidade || data.enderecoObj.bairro) {
+      const formEstado = data.enderecoObj.estado || '';
+      const formCidade = data.enderecoObj.cidade || '';
+      const formBairro = data.enderecoObj.bairro || '';
+
+      const isStateValid = allStates.some(s => s.sigla.toLowerCase() === formEstado.toLowerCase());
+      if (!isStateValid) {
+        toast('Estado não atendido pela loja. Selecione um estado válido da lista.', 'error');
+        return;
+      }
+      
+      const currentState = allStates.find(s => s.sigla.toLowerCase() === formEstado.toLowerCase());
+      const isCityValid = allCities.some(c => c.nome.toLowerCase() === formCidade.toLowerCase() && c.stateId === currentState?.id);
+      if (!isCityValid) {
+        toast('Cidade não atendida pela loja. Selecione uma cidade válida da lista.', 'error');
+        return;
+      }
+
+      const isBairroValid = allBairros.some(b => b.bairro.toLowerCase() === formBairro.toLowerCase() && b.cityName.toLowerCase() === formCidade.toLowerCase());
+      if (!isBairroValid) {
+        toast('Bairro não atendido pela loja. Selecione um bairro válido da lista.', 'error');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       if (user) {
@@ -206,6 +233,26 @@ export function CustomerAreaPage() {
           dataNascimento: data.dataNascimento,
           enderecoObj: data.enderecoObj
         });
+      } else if (isRegisteringNew) {
+        // Create new customer
+        const newCustomerId = await customerService.saveCustomer({
+           nome: data.nome,
+           email: data.email,
+           whatsapp: searchedWhatsapp,
+           dataNascimento: data.dataNascimento,
+           status: 'ativo',
+           endereco: data.enderecoObj
+        });
+        
+        setIsRegisteringNew(false);
+        setCustomer({
+           id: newCustomerId,
+           nome: data.nome,
+           email: data.email,
+           whatsapp: searchedWhatsapp,
+           dataNascimento: data.dataNascimento,
+           enderecoObj: data.enderecoObj
+        });
       }
       toast('Seus dados foram atualizados.', 'success');
     } catch (err) {
@@ -218,6 +265,7 @@ export function CustomerAreaPage() {
   const handleLogout = () => {
       clearCustomer();
       setSearchedWhatsapp('');
+      setIsRegisteringNew(false);
       setData({
         nome: '',
         email: '',
@@ -264,7 +312,7 @@ export function CustomerAreaPage() {
           </div>
         </div>
 
-        {!user && !customerFound ? (
+        {!user && !customerFound && !isRegisteringNew ? (
           <div className="max-w-sm mx-auto space-y-6 relative z-10 pb-4">
             <p className="text-sm text-zinc-400 text-center">
               Você não está logado. Para visualizar ou alterar seu cadastro, informe seu número de WhatsApp abaixo.
@@ -420,6 +468,16 @@ export function CustomerAreaPage() {
                       className="flex-1 sm:flex-none border-zinc-800 text-zinc-400 hover:bg-zinc-900 hover:text-white font-bold uppercase tracking-widest text-xs h-12 px-8 rounded-full"
                     >
                       <LogOut size={16} className="mr-2" /> Sair
+                    </Button>
+                )}
+
+                {isRegisteringNew && !customerFound && (
+                    <Button 
+                      onClick={() => setIsRegisteringNew(false)}
+                      variant="outline"
+                      className="flex-1 sm:flex-none border-zinc-800 text-zinc-400 hover:bg-zinc-900 hover:text-white font-bold uppercase tracking-widest text-xs h-12 px-8 rounded-full"
+                    >
+                      Voltar
                     </Button>
                 )}
               </div>

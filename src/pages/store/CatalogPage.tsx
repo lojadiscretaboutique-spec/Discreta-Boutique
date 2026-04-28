@@ -64,8 +64,10 @@ export function CatalogPage() {
           sessionStorage.setItem('catalog_products_time', now.toString());
         }
 
-        setProducts(prods);
-        setFiltered(prods);
+        // Filter out products that have showInCatalog explicitly set to false
+        const visibleProds = prods.filter(p => !p.extras || p.extras.showInCatalog !== false);
+        setProducts(visibleProds);
+        setFiltered(visibleProds);
       } catch (error) {
         console.error("Error loading catalog:", error);
       } finally {
