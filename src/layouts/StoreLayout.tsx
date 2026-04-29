@@ -18,7 +18,6 @@ export function StoreLayout() {
     async function loadCategories() {
       try {
         const cats = await categoryService.listCategories();
-        // optionally filter to only show level 0 or active categories
         setCategories(cats.filter(c => c.isActive && c.level === 0));
       } catch (err) {
         console.error("Failed to load categories for footer", err);
@@ -45,12 +44,10 @@ export function StoreLayout() {
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
 
-          {/* Logo */}
-          <Link to="/" className="flex items-center space-x-3">
-            <img src="/logo-red.svg" alt="Discreta Boutique" className="w-10 h-10 object-contain drop-shadow-lg p-1" referrerPolicy="no-referrer" />
+          {/* Logo Section (Text Only) */}
+          <Link to="/" className="flex items-center">
             <span className="text-xl font-black tracking-tighter text-white uppercase italic">DISCRETA</span>
           </Link>
-
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center space-x-8 text-xs font-bold uppercase tracking-widest">
             <Link to="/" className="hover:text-red-500 transition-colors">Início</Link>
@@ -107,8 +104,7 @@ export function StoreLayout() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12">
           <div className="max-w-md">
             <div className="flex items-center gap-3 mb-4">
-               <img src="/logo-white.svg" alt="Discreta Boutique" className="w-8 h-8 object-contain" referrerPolicy="no-referrer" />
-               <h2 className="text-2xl font-black tracking-tighter italic">DISCRETA BOUTIQUE</h2>
+               <h2 className="text-2xl font-black tracking-tighter italic uppercase">DISCRETA BOUTIQUE</h2>
             </div>
             <p className="text-zinc-500 text-sm leading-relaxed">
               Sua boutique especializada em momentos inesquecíveis. Produtos selecionados com rigor, 

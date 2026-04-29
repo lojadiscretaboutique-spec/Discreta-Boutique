@@ -102,27 +102,41 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distPath, { index: false }));
+    // Serve static files but EXCLUDE manifest and index.html so they can be dynamic
+    app.use(express.static(distPath, { 
+      index: false,
+      setHeaders: (res, path) => {
+        if (path.endsWith('.webmanifest') || path.endsWith('.json') || path.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-store');
+        }
+      }
+    }));
   }
 
-  // Open Graph dynamic injection for product pages
-  app.get('*all', async (req, res, next) => {
+  // Define dynamic metadata handler before possible static asset fallthrough
+  app.use(async (req, res, next) => {
+    // Skip if it's explicitly an API call
     if (req.path.startsWith('/api/')) return next();
+    
+    const isManifest = req.path === '/manifest.webmanifest' || req.path === '/manifest.json';
+    const isHtml = req.accepts('html') && !req.path.includes('.');
+
+    if (!isManifest && !isHtml) {
+      return next();
+    }
 
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
     const protocol = req.get('x-forwarded-proto') || req.protocol;
     const host = req.get('host');
     const origin = `${protocol}://${host}`;
-    let image = `${origin}/og-image.png`; // Default image
+    let image = `${origin}/og-image.png`;
     const ogUrl = `${origin}${req.path}`;
     
     try {
       const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
       const config = JSON.parse(configRaw);
       
-      // 1. Fetch store settings for global defaults (Logo and Name)
-      // Use API Key for authenticated read access to public settings
       const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store?key=${config.apiKey}`;
       const settingsRes = await fetch(settingsUrl);
       if (settingsRes.ok) {
@@ -134,8 +148,7 @@ async function startServer() {
         }
       }
 
-      // 2. Dynamic manifest handler
-      if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
+      if (isManifest) {
         const manifest = {
           name: title.split('|')[0].trim(),
           short_name: title.split('|')[0].trim(),
@@ -168,12 +181,7 @@ async function startServer() {
         return res.setHeader('Content-Type', 'application/manifest+json').json(manifest);
       }
 
-      const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
-      if (isAsset) {
-        return next();
-      }
-
-      // 3. Product metadata override
+      // Handle Product metadata
       const productMatch = req.path.match(/^\/produto\/([^/]+)$/);
       if (productMatch) {
         const slug = productMatch[1];
@@ -215,57 +223,52 @@ async function startServer() {
           }
         }
       }
-    } catch (e) {
-      console.error("Error fetching metadata:", e);
-    }
 
-    const ogTags = `
-      <meta property="og:title" content="${title}" />
-      <meta property="og:description" content="${description}" />
-      <meta property="og:image" content="${image}" />
-      <meta property="og:image:width" content="512" />
-      <meta property="og:image:height" content="512" />
-      <meta property="og:url" content="${ogUrl}" />
-      <meta property="og:type" content="website" />
-      <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content="${title}" />
-      <meta name="twitter:description" content="${description}" />
-      <meta name="twitter:image" content="${image}" />
-      <meta itemprop="name" content="${title}" />
-      <meta itemprop="description" content="${description}" />
-      <meta itemprop="image" content="${image}" />
-    `;
+      const ogTags = `
+        <meta property="og:title" content="${title}" />
+        <meta property="og:description" content="${description}" />
+        <meta property="og:image" content="${image}" />
+        <meta property="og:image:secure_url" content="${image}" />
+        <meta property="og:image:type" content="${image.includes('.svg') ? 'image/svg+xml' : 'image/png'}" />
+        <meta property="og:image:width" content="512" />
+        <meta property="og:image:height" content="512" />
+        <meta property="og:url" content="${ogUrl}" />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Discreta Boutique" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="${title}" />
+        <meta name="twitter:description" content="${description}" />
+        <meta name="twitter:image" content="${image}" />
+        <meta itemprop="name" content="${title}" />
+        <meta itemprop="description" content="${description}" />
+        <meta itemprop="image" content="${image}" />
+      `;
 
-    try {
-      let html = '';
-      const isDefaultImage = image.endsWith('/og-image.png');
+      let htmlContents = '';
+      const isDefaultImage = image.includes('/og-image.png');
       
       if (process.env.NODE_ENV !== 'production') {
-        html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
-        html = html.replace('</title>', '</title>\n' + ogTags);
-        // Replace dynamic logo for icons
-        if (!isDefaultImage) {
-            const iconType = image.includes('.svg') ? 'image/svg+xml' : 'image/png';
-            html = html.replace('type="image/svg+xml" href="/logo-red.svg"', `type="${iconType}" href="${image}"`);
-            html = html.replace('href="/og-image.png"', `href="${image}"`);
-        }
-        html = await vite.transformIndexHtml(req.url, html);
+        htmlContents = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
       } else {
-        html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
-        html = html.replace('</title>', '</title>\n' + ogTags);
-        // Replace dynamic logo for icons
-        if (!isDefaultImage) {
-            const iconType = image.includes('.svg') ? 'image/svg+xml' : 'image/png';
-            html = html.replace('type="image/svg+xml" href="/logo-red.svg"', `type="${iconType}" href="${image}"`);
-            html = html.replace('href="/og-image.png"', `href="${image}"`);
-        }
+        htmlContents = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
       }
-      res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
-    } catch(e) {
-      if (vite) vite.ssrFixStacktrace(e);
-      console.error("Error rendering HTML:", e);
-      const errorMessage = e instanceof Error ? e.message : "Erro interno";
-      res.status(500).end(errorMessage);
+
+      htmlContents = htmlContents.replace('</title>', `</title>\n${ogTags}`);
+      
+      if (!isDefaultImage) {
+        const iconType = image.includes('.svg') ? 'image/svg+xml' : 'image/png';
+        htmlContents = htmlContents.replace(/type="image\/svg\+xml" href="\/logo-red\.svg"/g, `type="${iconType}" href="${image}"`);
+        htmlContents = htmlContents.replace(/href="\/og-image\.png"/g, `href="${image}"`);
+      }
+
+      if (process.env.NODE_ENV !== 'production' && vite) {
+        htmlContents = await vite.transformIndexHtml(req.url, htmlContents);
+      }
+      
+      return res.status(200).set({ 'Content-Type': 'text/html' }).send(htmlContents);
+    } catch(err) {
+      console.error("Renderer error:", err);
+      next();
     }
   });
 

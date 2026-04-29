@@ -45,8 +45,29 @@ export interface OperatingHoursSettings {
   closedDates: ClosedDate[];
 }
 
+export interface StoreSettings {
+  storeName: string;
+  logoUrl?: string;
+  primaryColor?: string;
+  terms?: string;
+  privacyPolicy?: string;
+}
+
+const STORE_DOC_ID = 'store';
+
 export const settingsService = {
-  // ... existing methods
+  async getStoreSettings(): Promise<StoreSettings> {
+    const d = await getDoc(doc(db, 'settings', STORE_DOC_ID));
+    if (d.exists()) return d.data() as StoreSettings;
+    return {
+      storeName: 'Discreta Boutique',
+      logoUrl: ''
+    };
+  },
+
+  async saveStoreSettings(settings: StoreSettings) {
+    await setDoc(doc(db, 'settings', STORE_DOC_ID), settings);
+  },
 
   async getOperatingHours(): Promise<OperatingHoursSettings> {
     const d = await getDoc(doc(db, 'settings', OPERATING_HOURS_DOC_ID));
