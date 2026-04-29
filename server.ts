@@ -107,17 +107,13 @@ async function startServer() {
 
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
-    const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
-    if (isAsset) {
-      return next();
-    }
-
     if (req.path.startsWith('/api/')) return next();
 
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    let image = "https://discretaboutique.com.br/og-image.png"; // Default image
-    const ogUrl = `https://discretaboutique.com.br${req.path}`;
+    const origin = req.get('origin') || `${req.protocol}://${req.get('host')}`;
+    let image = `${origin}/og-image.png`; // Default image
+    const ogUrl = `${origin}${req.path}`;
     
     try {
       const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
@@ -130,7 +126,9 @@ async function startServer() {
         const settingsData = await settingsRes.json();
         const sFields = settingsData.fields || {};
         if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
-        if (sFields.logoUrl?.stringValue) image = sFields.logoUrl.stringValue;
+        if (sFields.logoUrl?.stringValue) {
+          image = sFields.logoUrl.stringValue;
+        }
       }
 
       // 2. Dynamic manifest handler
@@ -147,18 +145,29 @@ async function startServer() {
             {
               src: image,
               sizes: '192x192',
-              type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
+              type: image.includes('.svg') ? 'image/svg+xml' : 'image/png',
               purpose: 'any'
             },
             {
               src: image,
               sizes: '512x512',
-              type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
+              type: image.includes('.svg') ? 'image/svg+xml' : 'image/png',
               purpose: 'any'
+            },
+            {
+              src: image,
+              sizes: '192x192',
+              type: image.includes('.svg') ? 'image/svg+xml' : 'image/png',
+              purpose: 'maskable'
             }
           ]
         };
-        return res.json(manifest);
+        return res.setHeader('Content-Type', 'application/manifest+json').json(manifest);
+      }
+
+      const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
+      if (isAsset) {
+        return next();
       }
 
       // 3. Product metadata override
@@ -217,6 +226,9 @@ async function startServer() {
       <meta name="twitter:title" content="${title}" />
       <meta name="twitter:description" content="${description}" />
       <meta name="twitter:image" content="${image}" />
+      <meta itemprop="name" content="${title}" />
+      <meta itemprop="description" content="${description}" />
+      <meta itemprop="image" content="${image}" />
     `;
 
     try {
@@ -226,7 +238,8 @@ async function startServer() {
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
         if (image && image !== "https://discretaboutique.com.br/og-image.png") {
-            html = html.replace('href="/logo-red.svg"', `href="${image}"`);
+            const iconType = image.includes('.svg') ? 'image/svg+xml' : 'image/png';
+            html = html.replace('type="image/svg+xml" href="/logo-red.svg"', `type="${iconType}" href="${image}"`);
             html = html.replace('href="/og-image.png"', `href="${image}"`);
         }
         html = await vite.transformIndexHtml(req.url, html);
@@ -235,7 +248,8 @@ async function startServer() {
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
         if (image && image !== "https://discretaboutique.com.br/og-image.png") {
-            html = html.replace('href="/logo-red.svg"', `href="${image}"`);
+            const iconType = image.includes('.svg') ? 'image/svg+xml' : 'image/png';
+            html = html.replace('type="image/svg+xml" href="/logo-red.svg"', `type="${iconType}" href="${image}"`);
             html = html.replace('href="/og-image.png"', `href="${image}"`);
         }
       }
