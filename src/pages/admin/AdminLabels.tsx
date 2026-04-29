@@ -50,7 +50,7 @@ export function AdminLabels() {
            images: v.imageUrl ? [{url: v.imageUrl, path: '', isMain: true}] : [],
            categoryId: 'variant',
            slug: 'variant',
-         } as any);
+         } as unknown as Product);
       });
       
       /* 
@@ -67,8 +67,6 @@ export function AdminLabels() {
       if (error instanceof Error && error.message.includes('index')) {
         console.warn("Index needed for collectionGroup variants.", error.message);
       }
-    } finally {
-      // Done loading
     }
   };
 
@@ -122,7 +120,7 @@ export function AdminLabels() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Impressão de Etiquetas</h1>
-              <p className="text-sm text-slate-500">Gere e imprima etiquetas térmicas 48x80mm em rolo contínuo</p>
+              <p className="text-sm text-slate-500">Gere e imprima etiquetas térmicas 50x80mm em 2 colunas</p>
             </div>
           </div>
           <Button 
@@ -223,23 +221,25 @@ export function AdminLabels() {
         This is the print output.
         It is hidden on screen and only visible during print.
       */}
-      <div className="hidden print:block print:w-[48mm] print:m-0 print:p-0">
+      <div className="hidden print:block print:w-[100mm] print:m-0 print:p-0">
         <div className="print-label-grid">
            {labelsToPrint.map((prod, index) => {
               return (
               <div key={index} className="print-label flex flex-col items-center justify-start text-center overflow-hidden break-inside-avoid relative">
-                <div className="label-hole" />
-                <div className="label-brand text-black">DISCRETA</div>
-                <div className="w-full flex-1 flex flex-col justify-start items-center overflow-hidden mt-2">
-                   <div className="label-title text-black leading-tight line-clamp-3 uppercase px-1">{prod.name}</div>
-                   <div className="label-sku text-black leading-none mt-2">{prod.sku || 'UN'}</div>
+                {/* Punch Hole Representation */}
+                <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full border-2 border-black" />
+                
+                <div className="label-brand text-black mt-3">DISCRETA</div>
+                <div className="w-full flex flex-col justify-start items-center overflow-hidden h-[32mm]">
+                   <div className="label-title text-black leading-[1.1] w-full px-1">{prod.name}</div>
+                   <div className="label-sku text-black leading-none mt-3 truncate w-full">{prod.sku || 'UN'}</div>
                 </div>
 
-                <div className="w-full flex object-contain items-center justify-center mt-2">
+                <div className="w-full flex object-contain items-center justify-center mt-3">
                   <Barcode value={prod.gtin || prod.sku || String(Math.floor(Math.random() * 1000000000))} />
                 </div>
                 
-                <div className="w-full label-price font-normal text-black leading-none mt-auto mb-6">
+                <div className="w-full label-price font-normal text-black leading-none mt-auto mb-2">
                    R$ {(prod.price || 0).toFixed(2).replace('.', ',')}
                 </div>
               </div>
@@ -250,7 +250,7 @@ export function AdminLabels() {
           @media print {
             @page {
               margin: 0;
-              size: 48mm auto;
+              size: 100mm auto;
             }
             body {
               margin: 0 !important;
@@ -261,55 +261,50 @@ export function AdminLabels() {
             }
             * {
                box-sizing: border-box;
+               -webkit-print-color-adjust: exact;
             }
             .print-label-grid {
-              display: block;
-              width: 48mm;
+              display: grid;
+              grid-template-columns: 49mm 49mm;
+              width: 100mm;
               margin: 0;
               padding: 0;
+              gap: 0;
             }
             .print-label {
-              width: 48mm;
+              width: 49mm;
               height: 80mm;
-              padding: 4mm 2mm 4mm 2mm;
+              padding: 10mm 2mm 2mm 2mm;
               background-color: white;
               page-break-inside: avoid;
-              page-break-after: always;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              border-bottom: 1px solid #eee; /* Light divider for manual cutting if needed, otherwise ignored by sensors */
-            }
-            .label-hole {
-              width: 5mm;
-              height: 5mm;
-              border-radius: 50%;
-              background-color: #000;
-              margin-bottom: 2mm;
+              break-inside: avoid;
+              border: 0.5mm dashed #000;
+              position: relative;
             }
             .label-brand {
-              font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+              font-family: Arial, Helvetica, sans-serif;
               font-weight: 900;
               font-size: 18px;
               text-transform: uppercase;
-              letter-spacing: -0.5px;
+              letter-spacing: 0.5px;
               color: #000;
+              margin-bottom: 3mm;
               line-height: 1;
             }
             .label-title {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 12px;
+              font-size: 13px;
               font-weight: 700;
               color: #000;
-              max-height: 3.6em;
               display: -webkit-box;
-              -webkit-line-clamp: 3;
+              -webkit-line-clamp: 4;
               -webkit-box-orient: vertical;
               overflow: hidden;
+              text-overflow: ellipsis;
             }
             .label-sku {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 13px;
+              font-size: 12px;
               font-weight: 700;
               color: #000;
             }
@@ -317,11 +312,11 @@ export function AdminLabels() {
               font-family: Arial, Helvetica, sans-serif;
               font-size: 24px;
               letter-spacing: -1px;
-              font-weight: 900;
+              font-weight: 700;
               color: #000;
             }
             svg {
-              max-width: 100%;
+              max-width: 95%;
               height: auto;
               display: block;
             }
@@ -356,11 +351,27 @@ function Barcode({ value }: { value: string }) {
           margin: 0,
           background: "transparent",
           lineColor: "#000",
-          valid: function () {
+          valid: function (valid: boolean) {
             // EAN13 might be invalid due to checksum, fallback to code128 if so
+            if (!valid && format === "EAN13") {
+              try {
+                JsBarcode(barcodeRef.current, value, {
+                  format: "CODE128",
+                  displayValue: true,
+                  width: 1.3,
+                  height: 38,
+                  fontSize: 12,
+                  font: "Arial, Helvetica, sans-serif",
+                  textMargin: 3,
+                  margin: 0,
+                  background: "transparent",
+                  lineColor: "#000",
+                });
+              } catch(e) {}
+            }
           }
         });
-      } catch (err) {
+      } catch (errBarcode) {
         // Fallback to code 128 if EAN13 throws explicitly
         try {
           JsBarcode(barcodeRef.current, value, {
@@ -375,8 +386,8 @@ function Barcode({ value }: { value: string }) {
              background: "transparent",
              lineColor: "#000",
           });
-        } catch {
-          // Ignore
+        } catch (eFinal) {
+          console.error("Barcode generation error");
         }
       }
     }

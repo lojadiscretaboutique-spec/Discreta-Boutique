@@ -93,7 +93,7 @@ async function startServer() {
     }
   });
 
-  let vite: any;
+  let vite: import('vite').ViteDevServer;
   if (process.env.NODE_ENV !== "production") {
     vite = await createViteServer({
       server: { middlewareMode: true },
@@ -119,14 +119,52 @@ async function startServer() {
     let image = "https://discretaboutique.com.br/og-image.png"; // Default image
     const ogUrl = `https://discretaboutique.com.br${req.path}`;
     
-    // Check if it's a product page
-    const productMatch = req.path.match(/^\/produto\/([^/]+)$/);
-    if (productMatch) {
-      const slug = productMatch[1];
-      try {
-        const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
-        const config = JSON.parse(configRaw);
-        
+    try {
+      const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
+      const config = JSON.parse(configRaw);
+      
+      // 1. Fetch store settings for global defaults (Logo and Name)
+      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store`;
+      const settingsRes = await fetch(settingsUrl);
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        const sFields = settingsData.fields || {};
+        if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
+        if (sFields.logoUrl?.stringValue) image = sFields.logoUrl.stringValue;
+      }
+
+      // 2. Dynamic manifest handler
+      if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
+        const manifest = {
+          name: title.split('|')[0].trim(),
+          short_name: title.split('|')[0].trim(),
+          description: description,
+          theme_color: '#000000',
+          background_color: '#ffffff',
+          display: 'standalone',
+          start_url: '/',
+          icons: [
+            {
+              src: image,
+              sizes: '192x192',
+              type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: image,
+              sizes: '512x512',
+              type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
+              purpose: 'any'
+            }
+          ]
+        };
+        return res.json(manifest);
+      }
+
+      // 3. Product metadata override
+      const productMatch = req.path.match(/^\/produto\/([^/]+)$/);
+      if (productMatch) {
+        const slug = productMatch[1];
         const apiUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents:runQuery`;
         const response = await fetch(apiUrl, {
           method: "POST",
@@ -150,24 +188,23 @@ async function startServer() {
           const data = await response.json();
           if (data && data[0] && data[0].document) {
              const doc = data[0].document.fields;
-             title = `${doc.name?.stringValue || 'Produto'} | Discreta Boutique`;
-             
-             // Extract description
+             title = `${doc.name?.stringValue || 'Produto'} | ${title.split('|')[0].trim()}`;
              description = doc.shortDescription?.stringValue || doc.subtitle?.stringValue || description;
-             
-             // Extract image
              const imagesArray = doc.images?.arrayValue?.values;
              if (imagesArray && imagesArray.length > 0) {
-               const mainImage = imagesArray.find((img: any) => img.mapValue?.fields?.isMain?.booleanValue === true) || imagesArray[0];
-               if (mainImage.mapValue?.fields?.url?.stringValue) {
-                 image = mainImage.mapValue.fields.url.stringValue;
+               const mainImage = imagesArray.find((img: { mapValue?: { fields?: { isMain?: { booleanValue?: boolean } } } }) => 
+                 img.mapValue?.fields?.isMain?.booleanValue === true
+               ) || imagesArray[0];
+               const imgData = mainImage as { mapValue?: { fields?: { url?: { stringValue?: string } } } };
+               if (imgData.mapValue?.fields?.url?.stringValue) {
+                 image = imgData.mapValue.fields.url.stringValue;
                }
              }
           }
         }
-      } catch (e) {
-        console.error("Error fetching product metadata", e);
       }
+    } catch (e) {
+      console.error("Error fetching metadata:", e);
     }
 
     const ogTags = `
@@ -186,11 +223,21 @@ async function startServer() {
       let html = '';
       if (process.env.NODE_ENV !== 'production') {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
-        html = html.replace('</title>', '</title>\\n' + ogTags);
+        html = html.replace('</title>', '</title>\n' + ogTags);
+        // Replace dynamic logo for icons
+        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
+            html = html.replace('href="/logo-red.svg"', `href="${image}"`);
+            html = html.replace('href="/og-image.png"', `href="${image}"`);
+        }
         html = await vite.transformIndexHtml(req.url, html);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
-        html = html.replace('</title>', '</title>\\n' + ogTags);
+        html = html.replace('</title>', '</title>\n' + ogTags);
+        // Replace dynamic logo for icons
+        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
+            html = html.replace('href="/logo-red.svg"', `href="${image}"`);
+            html = html.replace('href="/og-image.png"', `href="${image}"`);
+        }
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch(e) {
