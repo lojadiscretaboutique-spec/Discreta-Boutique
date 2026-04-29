@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Search, Plus, Trash2, Printer, X } from 'lucide-react';
+import { Package, Search, Plus, Trash2, Printer } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { productService, ProductVariant } from '../../services/productService';
@@ -17,9 +17,7 @@ interface LabelItem {
 export function AdminLabels() {
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(true);
   const [selectedItems, setSelectedItems] = useState<LabelItem[]>([]);
-  const [isPrinting, setIsPrinting] = useState(false);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
 
   useEffect(() => {
@@ -28,7 +26,6 @@ export function AdminLabels() {
 
   const loadProducts = async () => {
     try {
-      setLoading(true);
       const data = await productService.listProducts();
       
       const allItems: Product[] = [];
@@ -71,7 +68,7 @@ export function AdminLabels() {
         console.warn("Index needed for collectionGroup variants.", error.message);
       }
     } finally {
-      setLoading(false);
+      // Done loading
     }
   };
 
@@ -125,7 +122,7 @@ export function AdminLabels() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Impressão de Etiquetas</h1>
-              <p className="text-sm text-slate-500">Gere e imprima etiquetas térmicas 50x80mm em 2 colunas</p>
+              <p className="text-sm text-slate-500">Gere e imprima etiquetas térmicas 48x80mm em rolo contínuo</p>
             </div>
           </div>
           <Button 
@@ -226,38 +223,23 @@ export function AdminLabels() {
         This is the print output.
         It is hidden on screen and only visible during print.
       */}
-      <div className="hidden print:block print:w-[100mm] print:m-0 print:p-0">
+      <div className="hidden print:block print:w-[48mm] print:m-0 print:p-0">
         <div className="print-label-grid">
            {labelsToPrint.map((prod, index) => {
-              const nameWords = prod.name.trim().split(' ');
-              let title = prod.name;
-              let subtitle = '';
-              
-              // Simplistic logic for two lines
-              if (nameWords.length > 2) {
-                title = nameWords.slice(0, 2).join(' '); // Get first two words as Brand
-                subtitle = nameWords.slice(2).join(' '); // Rest as subtitle
-              } else if (nameWords.length === 2) {
-                title = nameWords[0];
-                subtitle = nameWords[1];
-              }
-              
               return (
               <div key={index} className="print-label flex flex-col items-center justify-start text-center overflow-hidden break-inside-avoid relative">
+                <div className="label-hole" />
                 <div className="label-brand text-black">DISCRETA</div>
-                <div className="w-full flex flex-col justify-start items-center">
-                   <div className="label-title text-black leading-none">{title}</div>
-                   {subtitle && <div className="label-subtitle text-black mt-1 leading-none">{subtitle}</div>}
-                   <div className="label-sku text-black leading-none">{prod.sku || 'UN'}</div>
+                <div className="w-full flex-1 flex flex-col justify-start items-center overflow-hidden mt-2">
+                   <div className="label-title text-black leading-tight line-clamp-3 uppercase px-1">{prod.name}</div>
+                   <div className="label-sku text-black leading-none mt-2">{prod.sku || 'UN'}</div>
                 </div>
 
-                <div className="w-full flex object-contain items-center justify-center -mt-1">
+                <div className="w-full flex object-contain items-center justify-center mt-2">
                   <Barcode value={prod.gtin || prod.sku || String(Math.floor(Math.random() * 1000000000))} />
                 </div>
                 
-                <div className="label-policy text-black w-full text-center mt-0.5">Troca Somente Com Etiqueta</div>
-
-                <div className="w-full label-price font-normal text-black leading-none mt-2 mb-2">
+                <div className="w-full label-price font-normal text-black leading-none mt-auto mb-6">
                    R$ {(prod.price || 0).toFixed(2).replace('.', ',')}
                 </div>
               </div>
@@ -268,7 +250,7 @@ export function AdminLabels() {
           @media print {
             @page {
               margin: 0;
-              size: 100mm auto;
+              size: 48mm auto;
             }
             body {
               margin: 0 !important;
@@ -281,63 +263,61 @@ export function AdminLabels() {
                box-sizing: border-box;
             }
             .print-label-grid {
-              display: grid;
-              grid-template-columns: 48mm 48mm;
-              width: 96mm;
-              margin: 0 auto;
+              display: block;
+              width: 48mm;
+              margin: 0;
               padding: 0;
-              gap: 0;
-              justify-content: center;
             }
             .print-label {
               width: 48mm;
               height: 80mm;
-              padding: 9mm 2mm 2mm 2mm;
+              padding: 4mm 2mm 4mm 2mm;
               background-color: white;
               page-break-inside: avoid;
-              border: 2px dashed #000; /* helps with cutting */
+              page-break-after: always;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              border-bottom: 1px solid #eee; /* Light divider for manual cutting if needed, otherwise ignored by sensors */
+            }
+            .label-hole {
+              width: 5mm;
+              height: 5mm;
+              border-radius: 50%;
+              background-color: #000;
+              margin-bottom: 2mm;
             }
             .label-brand {
               font-family: var(--font-sans), Arial, Helvetica, sans-serif;
               font-weight: 900;
-              font-size: 20px;
+              font-size: 18px;
               text-transform: uppercase;
-              letter-spacing: -1px;
+              letter-spacing: -0.5px;
               color: #000;
-              margin-bottom: 2mm;
               line-height: 1;
             }
             .label-title {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 14px;
+              font-size: 12px;
               font-weight: 700;
               color: #000;
-            }
-            .label-subtitle {
-              font-family: Arial, Helvetica, sans-serif;
-              font-size: 14px;
-              font-weight: 700;
-              color: #000;
+              max-height: 3.6em;
+              display: -webkit-box;
+              -webkit-line-clamp: 3;
+              -webkit-box-orient: vertical;
+              overflow: hidden;
             }
             .label-sku {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 14px;
+              font-size: 13px;
               font-weight: 700;
-              margin-top: 2mm;
-              margin-bottom: 2mm;
-              color: #000;
-            }
-            .label-policy {
-              font-family: Arial, Helvetica, sans-serif;
-              font-size: 9px;
-              font-weight: 400;
               color: #000;
             }
             .label-price {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 22px;
+              font-size: 24px;
               letter-spacing: -1px;
-              font-weight: 700;
+              font-weight: 900;
               color: #000;
             }
             svg {
@@ -376,24 +356,8 @@ function Barcode({ value }: { value: string }) {
           margin: 0,
           background: "transparent",
           lineColor: "#000",
-          valid: function (valid: boolean) {
+          valid: function () {
             // EAN13 might be invalid due to checksum, fallback to code128 if so
-            if (!valid && format === "EAN13") {
-              try {
-                JsBarcode(barcodeRef.current, value, {
-                  format: "CODE128",
-                  displayValue: true,
-                  width: 1.3,
-                  height: 38,
-                  fontSize: 12,
-                  font: "Arial, Helvetica, sans-serif",
-                  textMargin: 3,
-                  margin: 0,
-                  background: "transparent",
-                  lineColor: "#000",
-                });
-              } catch(e) {}
-            }
           }
         });
       } catch (err) {
@@ -411,8 +375,8 @@ function Barcode({ value }: { value: string }) {
              background: "transparent",
              lineColor: "#000",
           });
-        } catch (e) {
-          console.error("Barcode generation error", e);
+        } catch {
+          // Ignore
         }
       }
     }
