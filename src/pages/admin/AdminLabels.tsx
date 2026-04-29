@@ -220,10 +220,11 @@ export function AdminLabels() {
               }
               
               return (
-              <div key={index} className="print-label flex flex-col items-center justify-start text-center overflow-hidden break-inside-avoid">
+              <div key={index} className="print-label flex flex-col items-center justify-start text-center overflow-hidden break-inside-avoid relative">
+                <div className="label-brand text-black">DISCRETA</div>
                 <div className="w-full flex flex-col justify-start items-center">
                    <div className="label-title text-black leading-none">{title}</div>
-                   {subtitle && <div className="label-subtitle text-black mt-0.5">{subtitle}</div>}
+                   {subtitle && <div className="label-subtitle text-black mt-1 leading-none">{subtitle}</div>}
                    <div className="label-sku text-black leading-none">{prod.sku || 'UN'}</div>
                 </div>
 
@@ -233,8 +234,8 @@ export function AdminLabels() {
                 
                 <div className="label-policy text-black w-full text-center mt-0.5">Troca Somente Com Etiqueta</div>
 
-                <div className="w-full label-price font-normal text-black leading-none mt-auto mb-2">
-                   {(prod.price || 0).toFixed(2).replace('.', ',')}
+                <div className="w-full label-price font-normal text-black leading-none mt-2 mb-2">
+                   R$ {(prod.price || 0).toFixed(2).replace('.', ',')}
                 </div>
               </div>
               );
@@ -258,38 +259,49 @@ export function AdminLabels() {
             }
             .print-label-grid {
               display: grid;
-              grid-template-columns: 50mm 50mm;
-              width: 100mm;
-              margin: 0;
+              grid-template-columns: 48mm 48mm;
+              width: 96mm;
+              margin: 0 auto;
               padding: 0;
               gap: 0;
+              justify-content: center;
             }
             .print-label {
-              width: 50mm;
+              width: 48mm;
               height: 80mm;
-              padding: 4mm 2mm 2mm 2mm;
+              padding: 9mm 2mm 2mm 2mm;
               background-color: white;
               page-break-inside: avoid;
-              border: 1px dashed transparent; /* helps with layout edges sometimes, keep transparent */
+              border: 2px dashed #000; /* helps with cutting */
+            }
+            .label-brand {
+              font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+              font-weight: 900;
+              font-size: 20px;
+              text-transform: uppercase;
+              letter-spacing: -1px;
+              color: #000;
+              margin-bottom: 2mm;
+              line-height: 1;
             }
             .label-title {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 15px;
+              font-size: 14px;
               font-weight: 700;
               color: #000;
             }
             .label-subtitle {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 11px;
-              font-weight: 400;
+              font-size: 14px;
+              font-weight: 700;
               color: #000;
             }
             .label-sku {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 34px;
-              font-weight: 400;
+              font-size: 14px;
+              font-weight: 700;
               margin-top: 2mm;
-              margin-bottom: 0;
+              margin-bottom: 2mm;
               color: #000;
             }
             .label-policy {
@@ -300,9 +312,9 @@ export function AdminLabels() {
             }
             .label-price {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 44px;
+              font-size: 22px;
               letter-spacing: -1px;
-              font-weight: 400;
+              font-weight: 700;
               color: #000;
             }
             svg {
