@@ -111,7 +111,9 @@ async function startServer() {
 
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    const origin = req.get('origin') || `${req.protocol}://${req.get('host')}`;
+    const protocol = req.get('x-forwarded-proto') || req.protocol;
+    const host = req.get('host');
+    const origin = `${protocol}://${host}`;
     let image = `${origin}/og-image.png`; // Default image
     const ogUrl = `${origin}${req.path}`;
     
@@ -120,7 +122,8 @@ async function startServer() {
       const config = JSON.parse(configRaw);
       
       // 1. Fetch store settings for global defaults (Logo and Name)
-      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store`;
+      // Use API Key for authenticated read access to public settings
+      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store?key=${config.apiKey}`;
       const settingsRes = await fetch(settingsUrl);
       if (settingsRes.ok) {
         const settingsData = await settingsRes.json();
@@ -220,6 +223,8 @@ async function startServer() {
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
       <meta property="og:image" content="${image}" />
+      <meta property="og:image:width" content="512" />
+      <meta property="og:image:height" content="512" />
       <meta property="og:url" content="${ogUrl}" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
@@ -233,11 +238,13 @@ async function startServer() {
 
     try {
       let html = '';
+      const isDefaultImage = image.endsWith('/og-image.png');
+      
       if (process.env.NODE_ENV !== 'production') {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
+        if (!isDefaultImage) {
             const iconType = image.includes('.svg') ? 'image/svg+xml' : 'image/png';
             html = html.replace('type="image/svg+xml" href="/logo-red.svg"', `type="${iconType}" href="${image}"`);
             html = html.replace('href="/og-image.png"', `href="${image}"`);
@@ -247,7 +254,7 @@ async function startServer() {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
+        if (!isDefaultImage) {
             const iconType = image.includes('.svg') ? 'image/svg+xml' : 'image/png';
             html = html.replace('type="image/svg+xml" href="/logo-red.svg"', `type="${iconType}" href="${image}"`);
             html = html.replace('href="/og-image.png"', `href="${image}"`);
