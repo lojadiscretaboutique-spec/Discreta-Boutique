@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Package, Search, Plus, Trash2, Printer, X } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { productService } from '../../services/productService';
+import { productService, ProductVariant } from '../../services/productService';
 import { Product } from '../../types/catalog';
 import JsBarcode from 'jsbarcode';
+import { collectionGroup, getDocs } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 interface LabelItem {
   id: string; // unique ID for the list
@@ -29,24 +31,45 @@ export function AdminLabels() {
       setLoading(true);
       const data = await productService.listProducts();
       
+      const allItems: Product[] = [];
+      
+      for (const p of data) {
+        if (!p.hasVariants) {
+          allItems.push(p);
+        }
+      }
+      
+      // Load all variants to show them in label selection since variants need barcode printing
+      const vSnap = await getDocs(collectionGroup(db, 'variants'));
+      vSnap.docs.forEach(doc => {
+         const v = doc.data() as ProductVariant;
+         allItems.push({
+           id: doc.id,
+           name: v.name,
+           sku: v.sku,
+           gtin: v.barcode || '',
+           price: v.price || v.promoPrice || 0,
+           active: v.active,
+           images: v.imageUrl ? [{url: v.imageUrl, path: '', isMain: true}] : [],
+           categoryId: 'variant',
+           slug: 'variant',
+         } as any);
+      });
+      
+      /* 
+        Optional mock product kept as example:
       const mockProduct: Product = {
         id: 'mock-123',
-        name: 'BLK Biquínis Bermuda Jeans',
-        sku: 'P',
-        gtin: '1234567890128',
-        price: 49.99,
-        active: true,
-        images: [],
-        categoryId: 'mock',
-        costPrice: 20,
-        slug: 'blk-biquinis',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      } as any;
+        ...
+      }; 
+      */
       
-      setProducts(data.length > 0 ? [...data, mockProduct] : [mockProduct]);
+      setProducts(allItems);
     } catch (error) {
       console.error('Error loading products', error);
+      if (error instanceof Error && error.message.includes('index')) {
+        console.warn("Index needed for collectionGroup variants.", error.message);
+      }
     } finally {
       setLoading(false);
     }

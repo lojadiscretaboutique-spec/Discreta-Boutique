@@ -74,6 +74,14 @@ export function AdminProducts() {
     return `${prefix}-${rand}`;
   };
 
+  const generateEan13 = () => {
+    let ean = "789"; 
+    for (let i = 0; i < 9; i++) ean += Math.floor(Math.random() * 10).toString();
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += parseInt(ean[i]) * (i % 2 === 0 ? 1 : 3);
+    return ean + ((10 - (sum % 10)) % 10).toString();
+  };
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -154,16 +162,51 @@ export function AdminProducts() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Ensure all variants have barcode if not provided
+    const finalVariants = variants.map(v => ({
+      ...v,
+      barcode: v.barcode || generateEan13(),
+      sku: v.sku || generateSku()
+    }));
+
     if (!form.name || !form.categoryId || form.price <= 0) {
       toast("Por favor, preencha os campos obrigatórios (Nome, Categoria e Preço).", 'warning');
       return;
     }
 
     setSubmitting(true);
+    // Check EAN uniqueness
+    const checkMainBarcode = form.hasVariants ? null : (form.gtin || generateEan13());
+    const barcodesToCheck = finalVariants.map(v => v.barcode).filter(Boolean);
+    if (checkMainBarcode) barcodesToCheck.push(checkMainBarcode);
+
+    if (barcodesToCheck.length > 0) {
+      if (new Set(barcodesToCheck).size !== barcodesToCheck.length) {
+        toast("Erro: Você tem Códigos de Barras (EAN) duplicados nas variações.", 'error');
+        setSubmitting(false);
+        return;
+      }
+      const gtinPromises = barcodesToCheck.map(b => productService.checkGtinExists(b as string, editingId || undefined));
+      const gtinResults = await Promise.all(gtinPromises);
+      if (gtinResults.some(r => r)) {
+        toast("Erro: Um dos Códigos de Barras (EAN) já está em uso por outro produto ou variação.", 'error');
+        setSubmitting(false);
+        return;
+      }
+    }
+
     try {
       const finalForm = {
         ...form,
         sku: form.sku || generateSku(),
+        gtin: form.hasVariants ? '' : (form.gtin || generateEan13()),
+        searchTerms: form.hasVariants ? finalVariants.map(v => `${v.name} ${v.barcode} ${v.sku}`.toLowerCase()) : [],
+        variantIdentifiers: form.hasVariants ? finalVariants.flatMap(v => [v.barcode, v.sku]).filter(Boolean) : [],
+        extras: {
+          ...form.extras,
+          showInCatalog: form.images.length > 0 ? (form.extras?.showInCatalog !== false) : false
+        },
         seo: {
           ...form.seo!,
           slug: form.seo?.slug || generateSlug(form.name)
@@ -171,9 +214,9 @@ export function AdminProducts() {
       };
 
       if (editingId) {
-        await productService.updateProduct(editingId, finalForm, variants);
+        await productService.updateProduct(editingId, finalForm, finalVariants);
       } else {
-        await productService.createProduct(finalForm, variants);
+        await productService.createProduct(finalForm, finalVariants);
       }
       
       setView('list');
@@ -195,8 +238,55 @@ export function AdminProducts() {
       const files = Array.from(e.target.files);
       const newImages = [...form.images];
       
+      const processImage = (file: File): Promise<Blob> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const MAX_WIDTH = 1080;
+              const MAX_HEIGHT = 1080;
+              let width = img.width;
+              let height = img.height;
+
+              if (width > height) {
+                if (width > MAX_WIDTH) {
+                  height *= MAX_WIDTH / width;
+                  width = MAX_WIDTH;
+                }
+              } else {
+                if (height > MAX_HEIGHT) {
+                  width *= MAX_HEIGHT / height;
+                  height = MAX_HEIGHT;
+                }
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx?.drawImage(img, 0, 0, width, height);
+
+              canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error("Canvas to Blob failed"));
+              }, 'image/webp', 0.85); // 85% quality WEBP
+            };
+            img.onerror = reject;
+            if (typeof event.target?.result === 'string') {
+              img.src = event.target.result;
+            }
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      };
+
       for (const file of files) {
-        const result = await productService.uploadImage(file);
+        const processedBlob = await processImage(file);
+        const processedFile = new File([processedBlob], file.name.replace(/\.[^/.]+$/, "") + ".webp", { type: 'image/webp' });
+        
+        const result = await productService.uploadImage(processedFile);
         newImages.push({
           url: result.url,
           path: result.path,
@@ -263,6 +353,7 @@ export function AdminProducts() {
       return {
         name: `${form.name} - ${name}`,
         sku: `${form.sku || 'SKU'}-${name.replace(/\s+/g, '-').toUpperCase()}-${index+1}`,
+        barcode: generateEan13(),
         stock: 0,
         price: form.price,
         active: true,
@@ -339,7 +430,7 @@ export function AdminProducts() {
                     <label className="block text-sm font-bold mb-1">Nome do Produto *</label>
                     <Input value={form.name} onChange={e => {
                       const name = e.target.value;
-                      setForm({ ...form, name, seo: { ...form.seo!, slug: generateSlug(name) } });
+                      setForm({ ...form, name, seo: { ...form.seo!, slug: generateSlug(name), metaTitle: name } });
                     }} placeholder="Ex: Sutiã Renda Luxo" />
                   </div>
                   <div className="md:col-span-2">
@@ -368,7 +459,7 @@ export function AdminProducts() {
                    <textarea 
                      className="w-full min-h-[80px] p-3 rounded-md border border-slate-600 bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
                      value={form.shortDescription}
-                     onChange={e => setForm({ ...form, shortDescription: e.target.value })}
+                     onChange={e => setForm({ ...form, shortDescription: e.target.value, seo: { ...form.seo!, metaDescription: e.target.value } })}
                    />
                 </div>
 
@@ -377,7 +468,17 @@ export function AdminProducts() {
                    <textarea 
                      className="w-full min-h-[200px] p-3 rounded-md border border-slate-600 bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
                      value={form.fullDescription}
-                     onChange={e => setForm({ ...form, fullDescription: e.target.value })}
+                     onChange={e => {
+                       const val = e.target.value;
+                       setForm({ 
+                         ...form, 
+                         fullDescription: val, 
+                         seo: { 
+                           ...form.seo!, 
+                           metaDescription: form.shortDescription ? form.seo?.metaDescription : val.substring(0, 160) 
+                         } 
+                       });
+                     }}
                      placeholder="Detalhes técnicos, benefícios e diferenciais..."
                    />
                 </div>
@@ -388,8 +489,15 @@ export function AdminProducts() {
                      <label htmlFor="active" className="text-sm font-bold">Produto Ativo</label>
                    </div>
                    <div className="flex items-center gap-2 bg-slate-800 p-3 rounded-lg border border-slate-700">
-                     <input type="checkbox" id="showInCatalog" checked={form.extras?.showInCatalog !== false} onChange={e => setForm({...form, extras: {...form.extras, showInCatalog: e.target.checked}})} className="w-4 h-4 text-red-600 rounded" />
-                     <label htmlFor="showInCatalog" className="text-sm font-bold whitespace-nowrap">Exibir Catálogo</label>
+                     <input 
+                       type="checkbox" 
+                       id="showInCatalog" 
+                       checked={(form.extras?.showInCatalog !== false) && form.images.length > 0} 
+                       onChange={e => setForm({...form, extras: {...form.extras, showInCatalog: e.target.checked}})} 
+                       disabled={form.images.length === 0}
+                       className="w-4 h-4 text-red-600 rounded disabled:opacity-50" 
+                     />
+                     <label htmlFor="showInCatalog" className={cn("text-sm font-bold whitespace-nowrap", form.images.length === 0 && "text-slate-500")} title={form.images.length === 0 ? "Requer imagens" : ""}>Exibir Catálogo</label>
                    </div>
                    <div className="flex items-center gap-2 bg-slate-800 p-3 rounded-lg border border-slate-700">
                      <input type="checkbox" id="featured" checked={form.featured} onChange={e => setForm({...form, featured: e.target.checked})} className="w-4 h-4 text-red-600 rounded" />
@@ -445,8 +553,11 @@ export function AdminProducts() {
                      </div>
                    </div>
                    <div>
-                     <label className="block text-sm font-bold mb-1">EAN / Código de Barras</label>
-                     <Input value={form.gtin} onChange={e => setForm({...form, gtin: e.target.value})} />
+                     <label className="block text-sm font-bold mb-1">EAN / Código de Barras {(!form.hasVariants) && <span className="text-red-500">*</span>}</label>
+                     <div className="relative">
+                        <Input value={form.gtin || ''} onChange={e => setForm({...form, gtin: e.target.value})} disabled={form.hasVariants} placeholder={form.hasVariants ? "Preencha na guia Variações" : "Gerado automaticamente"} className={form.hasVariants ? "bg-slate-800 text-slate-500" : ""} />
+                        {!form.hasVariants && <button type="button" onClick={() => setForm({...form, gtin: generateEan13()})} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-red-600">AUTO</button>}
+                     </div>
                    </div>
                    <div>
                      <label className="block text-sm font-bold mb-1">Unidade</label>
@@ -557,11 +668,14 @@ export function AdminProducts() {
                               </div>
                               <div>
                                 <label className="text-[10px] uppercase font-black text-slate-400 block mb-0.5">Barras (EAN)</label>
-                                <input className="w-full h-8 text-xs bg-slate-800 border rounded px-2 focus:ring-1 focus:ring-red-500 outline-none" value={v.barcode || ''} onChange={e => {const nv = [...variants]; nv[i].barcode = e.target.value; setVariants(nv)}} placeholder="789..." />
+                                <div className="relative">
+                                  <input className="w-full h-8 text-xs bg-slate-800 border rounded pl-2 pr-10 focus:ring-1 focus:ring-red-500 outline-none" value={v.barcode || ''} onChange={e => {const nv = [...variants]; nv[i].barcode = e.target.value; setVariants(nv)}} placeholder="789..." />
+                                  <button type="button" onClick={() => {const nv = [...variants]; nv[i].barcode = generateEan13(); setVariants(nv)}} className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] font-bold text-red-600 bg-red-950 px-1 rounded">AUTO</button>
+                                </div>
                               </div>
                               <div>
                                 <label className="text-[10px] uppercase font-black text-slate-400 block mb-0.5">Preço (R$)</label>
-                                <input className="w-full h-8 text-xs bg-slate-800 border rounded px-2 focus:ring-1 focus:ring-red-500 outline-none" value={v.price} onChange={e => {const nv = [...variants]; nv[i].price = Number(e.target.value); setVariants(nv)}} />
+                                <input type="number" step="0.01" className="w-full h-8 text-xs bg-slate-800 border rounded px-2 focus:ring-1 focus:ring-red-500 outline-none" value={v.price === null || v.price === undefined ? '' : v.price} onChange={e => {const nv = [...variants]; nv[i].price = e.target.value === '' ? 0 : Number(e.target.value); setVariants(nv)}} />
                               </div>
                               <div>
                                 <label className="text-[10px] uppercase font-black text-slate-400 block mb-0.5" title="Apenas leitura. Use o mód. Movimentações.">Estoque (Leitura)</label>
@@ -802,8 +916,9 @@ export function AdminProducts() {
         const nameMatch = p.name?.toLowerCase().includes(term);
         const skuMatch = p.sku?.toLowerCase().includes(term);
         const gtinMatch = p.gtin?.toLowerCase().includes(term);
+        const variantMatch = p.searchTerms?.some(st => st.includes(term));
 
-        return nameMatch || skuMatch || gtinMatch;
+        return nameMatch || skuMatch || gtinMatch || variantMatch;
     });
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / itemsPerPage));

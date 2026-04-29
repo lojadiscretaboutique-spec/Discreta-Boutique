@@ -6,7 +6,7 @@ import { stockMovementService } from '../../services/stockMovementService';
 import { categoryService } from '../../services/categoryService';
 import { Download, Upload, CheckCircle2, AlertCircle, RefreshCcw } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, collection } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 export function InventoryTab() {
@@ -18,6 +18,9 @@ export function InventoryTab() {
   const [step, setStep] = useState<1 | 2>(1); // 1: Upload, 2: Preview & Confirm
 
   interface ProcessedRow {
+    productId: string;
+    variantId: string;
+    variantName: string;
     sku: string;
     gtin: string;
     brand: string;
@@ -38,7 +41,7 @@ export function InventoryTab() {
     condition: 'new' | 'used';
     imageUrl: string;
 
-    status: 'novo' | 'atualizacao' | 'erro';
+    status: 'novo' | 'atualizacao' | 'nova_variacao' | 'erro';
     errorMsg?: string;
     productEntity?: Product;
     variantEntity?: ProductVariant;
@@ -51,12 +54,16 @@ export function InventoryTab() {
       setLoading(true);
       const products = await productService.listProducts();
       
-      const rows = products.map((p) => {
+      const rows: any[] = [];
+      for (const p of products) {
         const imageUrl = p.images && p.images.length > 0 
            ? p.images.find(img => img.isMain)?.url || p.images[0].url
            : '';
 
-        return {
+        const baseRow = {
+          productId: p.id || '',
+          variantId: '',
+          variantName: '',
           gtin: p.gtin || '',
           sku: p.sku || '',
           brand: p.brand || '',
@@ -77,11 +84,38 @@ export function InventoryTab() {
           condition: p.seo?.condition || 'new',
           imageUrl: imageUrl
         };
-      });
+
+        if (p.hasVariants) {
+          const res = await productService.getProduct(p.id!);
+          if (res && res.variants && res.variants.length > 0) {
+             res.variants.forEach(v => {
+                rows.push({
+                  ...baseRow,
+                  variantId: v.id || '',
+                  variantName: v.name || '',
+                  gtin: v.barcode || p.gtin || '',
+                  sku: v.sku || '',
+                  price: v.price || p.price || 0,
+                  promoPrice: v.promoPrice || p.promoPrice || '',
+                  stock: v.stock || 0,
+                  active: v.active !== false,
+                  imageUrl: v.imageUrl || imageUrl
+                });
+             });
+          } else {
+             rows.push(baseRow);
+          }
+        } else {
+          rows.push(baseRow);
+        }
+      }
 
       // Se não houver produtos, colocamos uma linha de exemplo
       if (rows.length === 0) {
         rows.push({
+          productId: '',
+          variantId: '',
+          variantName: '',
           gtin: '13243435643456',
           sku: 'HL773',
           brand: 'Hot Flowers',
@@ -185,13 +219,17 @@ export function InventoryTab() {
     try {
       const allProducts = await productService.listProducts();
 
+      const prodMap = new Map<string, Product>();
+      const varMap = new Map<string, ProductVariant>();
       const gtinMap = new Map<string, { product: Product, variant?: ProductVariant }>();
 
       for (const p of allProducts) {
+        prodMap.set(p.id!, p);
         if (p.hasVariants) {
           const res = await productService.getProduct(p.id!);
           if (res?.variants) {
              res.variants.forEach(v => {
+               varMap.set(`${p.id!}_${v.id!}`, v);
                const vGtin = ((v as any).gtin || v.barcode || '').trim().toLowerCase();
                if (vGtin) gtinMap.set(vGtin, { product: p, variant: v });
              });
@@ -207,6 +245,10 @@ export function InventoryTab() {
       for (let i = 0; i < csvRows.length; i++) {
         const row = csvRows[i];
         
+        const rawProductId = String(row['productId'] || '').trim();
+        const rawVariantId = String(row['variantId'] || '').trim();
+        const variantName = String(row['variantName'] || '').trim();
+
         const rawGtin = row['gtin'] || row['GTIN'] || '';
         const gtin = String(rawGtin).trim();
         
@@ -214,12 +256,10 @@ export function InventoryTab() {
         const sku = String(rawSku).trim();
         const name = String(row['name'] || row['Nome'] || '').trim();
         
-        if (!gtin) {
-           rows.push({ sku, gtin: '', brand: '', name: name || 'N/A', subtitle: '', fullDescription: '', price: 0, costPrice: 0, promoPrice: 0, stock: 0, unit: 'un', active: true, featured: false, controlStock: true, allowBackorder: false, hasVariants: false, condition: 'new', imageUrl: '', status: 'erro', errorMsg: 'GTIN ausente.' });
-           continue;
-        }
-
         const parsedRow: ProcessedRow = {
+          productId: rawProductId,
+          variantId: rawVariantId,
+          variantName,
           sku,
           gtin,
           brand: String(row['brand'] || row['Brand'] || row['Marca'] || '').trim(),
@@ -239,30 +279,66 @@ export function InventoryTab() {
           hasVariants: parseBool(row['hasVariants'] || row['HasVariants'], false),
           condition: String(row['condition'] || 'new').trim().toLowerCase() === 'used' ? 'used' : 'new',
           imageUrl: String(row['imageUrl'] || row['images'] || row['url'] || '').trim(),
-          status: 'novo'
+          status: 'erro'
         };
 
-        const exactGtinLower = gtin.toLowerCase();
-        const match = gtinMap.get(exactGtinLower);
+        if (rawProductId) {
+             const matchProd = prodMap.get(rawProductId);
+             if (!matchProd) {
+                 parsedRow.status = 'erro';
+                 parsedRow.errorMsg = 'Produto com esse productId não encontrado.';
+             } else {
+                 parsedRow.productEntity = matchProd;
+                 if (!parsedRow.name && matchProd.name) parsedRow.name = matchProd.name;
 
-        if (match) {
-           parsedRow.currentStock = match.variant ? match.variant.stock : match.product.stock;
-           parsedRow.diff = parsedRow.stock - parsedRow.currentStock;
-           parsedRow.status = 'atualizacao';
-           parsedRow.productEntity = match.product;
-           parsedRow.variantEntity = match.variant;
-           
-           if (!parsedRow.name && match.product.name) {
-               parsedRow.name = match.product.name;
-           }
+                 if (rawVariantId) {
+                     const matchVar = varMap.get(`${rawProductId}_${rawVariantId}`);
+                     if (!matchVar) {
+                         parsedRow.status = 'erro';
+                         parsedRow.errorMsg = 'Variação com esse variantId não encontrada.';
+                     } else {
+                         parsedRow.variantEntity = matchVar;
+                         parsedRow.currentStock = matchVar.stock || 0;
+                         parsedRow.diff = parsedRow.stock - parsedRow.currentStock;
+                         parsedRow.status = 'atualizacao';
+                     }
+                 } else {
+                     if (variantName) {
+                         parsedRow.status = 'nova_variacao';
+                         parsedRow.currentStock = 0;
+                         parsedRow.diff = parsedRow.stock;
+                     } else {
+                         if (matchProd.hasVariants) {
+                            parsedRow.status = 'erro';
+                            parsedRow.errorMsg = 'Produto principal tem variações. Especifique variantId ou variantName.';
+                         } else {
+                            parsedRow.currentStock = matchProd.stock || 0;
+                            parsedRow.diff = parsedRow.stock - parsedRow.currentStock;
+                            parsedRow.status = 'atualizacao';
+                         }
+                     }
+                 }
+             }
         } else {
-           if (!name) {
-             parsedRow.status = 'erro';
-             parsedRow.errorMsg = 'Nome ausente para novo produto.';
-           } else {
-             parsedRow.diff = parsedRow.stock;
-             parsedRow.currentStock = 0;
-           }
+             if (gtin && gtinMap.has(gtin.toLowerCase())) {
+                 const gm = gtinMap.get(gtin.toLowerCase())!;
+                 parsedRow.productEntity = gm.product;
+                 parsedRow.variantEntity = gm.variant;
+                 if (!parsedRow.name && gm.product.name) parsedRow.name = gm.product.name;
+                 
+                 parsedRow.currentStock = gm.variant ? (gm.variant.stock || 0) : (gm.product.stock || 0);
+                 parsedRow.diff = parsedRow.stock - parsedRow.currentStock;
+                 parsedRow.status = 'atualizacao';
+             } else {
+                 if (!name) {
+                     parsedRow.status = 'erro';
+                     parsedRow.errorMsg = 'Nome obrigatório para novos itens.';
+                 } else {
+                     parsedRow.status = 'novo';
+                     parsedRow.currentStock = 0;
+                     parsedRow.diff = parsedRow.stock;
+                 }
+             }
         }
 
         rows.push(parsedRow);
@@ -304,8 +380,17 @@ export function InventoryTab() {
       }
 
       const toProcess = processedRows.filter(r => r.status !== 'erro');
+      
+      const novos = toProcess.filter(r => r.status === 'novo');
+      const groupedNovos = new Map<string, ProcessedRow[]>();
+      for (const r of novos) {
+          const key = r.name.toLowerCase().trim();
+          if (!groupedNovos.has(key)) groupedNovos.set(key, []);
+          groupedNovos.get(key)!.push(r);
+      }
 
       for (const row of toProcess) {
+        if (row.status === 'novo') continue; // Handled later
         try {
           if (row.status === 'atualizacao') {
              
@@ -371,6 +456,10 @@ export function InventoryTab() {
                     const vPayload: any = {};
                     if (row.price > 0) vPayload.price = row.price;
                     if (row.promoPrice > 0) vPayload.promoPrice = row.promoPrice;
+                    if (row.sku) vPayload.sku = row.sku;
+                    if (row.gtin) vPayload.barcode = row.gtin;
+                    if (row.active !== undefined) vPayload.active = row.active;
+                    
                     if (Object.keys(vPayload).length > 0) {
                       await updateDoc(vRef, vPayload);
                     }
@@ -393,68 +482,38 @@ export function InventoryTab() {
                });
              }
              successCount++;
-          } else if (row.status === 'novo') {
-             let resolvedCategoryId = defaultCategoryId;
-             if (row.categoryId) {
-                 const matchedCat = categories.find(c => c.name.toLowerCase() === row.categoryId!.toLowerCase() || c.id === row.categoryId);
-                 if (matchedCat) {
-                     resolvedCategoryId = matchedCat.id;
-                 } else {
-                     const newCatId = await categoryService.createCategory({
-                         name: row.categoryId,
-                         slug: row.categoryId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
-                         parentId: null,
-                         level: 0,
-                         sortOrder: 0,
-                         isActive: true,
-                         isFeatured: false,
-                         showInMenu: true,
-                         showInHome: false,
-                         productCount: 0
-                     } as any);
-                     resolvedCategoryId = newCatId;
-                     categories.push({ id: newCatId, name: row.categoryId } as any);
-                 }
-             }
-
-             const newProduct: any = {
-               name: row.name,
-               sku: row.sku,
-               gtin: row.gtin,
-               brand: row.brand,
-               subtitle: row.subtitle,
-               fullDescription: row.fullDescription,
-               price: row.price || 0,
-               costPrice: row.costPrice || 0,
-               promoPrice: row.promoPrice || 0,
-               categoryId: resolvedCategoryId,
-               active: row.active,
-               featured: row.featured,
-               newRelease: false,
-               stock: 0, // Starts at 0, initialized via stockMovementService below cleanly
-               controlStock: row.controlStock,
-               allowBackorder: row.allowBackorder,
-               hasVariants: row.hasVariants,
-               unit: row.unit || 'un',
-               images: row.imageUrl ? [{ url: row.imageUrl, path: `products/imported_${row.gtin}_${Date.now()}`, isMain: true }] : [],
-               seo: {
-                 slug: row.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
-                 condition: row.condition || 'new'
-               }
+          } else if (row.status === 'nova_variacao') {
+             const pRef = doc(db, 'products', row.productEntity!.id!);
+             await updateDoc(pRef, { hasVariants: true });
+             
+             const variantsCol = collection(db, `products/${row.productEntity!.id!}/variants`);
+             const newVariantDoc = doc(variantsCol);
+             
+             const vPayload: any = {
+                active: row.active,
+                name: row.variantName,
+                sku: row.sku,
+                barcode: row.gtin,
+                price: row.price > 0 ? row.price : (row.productEntity!.price || 0),
+                promoPrice: row.promoPrice > 0 ? row.promoPrice : (row.productEntity!.promoPrice || 0),
+                stock: 0,
+                imageUrl: row.imageUrl,
+                attributes: {}
              };
-             
-             const createdId = await productService.createProduct(newProduct, []);
-             
+             await setDoc(newVariantDoc, vPayload);
+
              if (row.stock > 0) {
                await stockMovementService.registerMovement({
-                 productId: createdId,
-                 productName: row.name,
+                 productId: row.productEntity!.id!,
+                 productName: row.productEntity!.name,
+                 variantId: newVariantDoc.id,
+                 variantName: row.variantName,
                  sku: row.sku,
                  type: 'in',
                  quantity: row.stock,
                  reason: 'inventario_positivo',
                  channel: 'N/A',
-                 notes: 'Entrada Inicial via Planilha de Inventário CSV',
+                 notes: 'Nova Variação via Planilha de Inventário CSV',
                });
              }
              successCount++;
@@ -463,6 +522,130 @@ export function InventoryTab() {
           console.error("Item Error:", row.sku, itemErr);
           errorCount++;
         }
+      }
+
+      // Process New Products (combining variants into single products if they share the same name)
+      for (const [nameKey, rows] of groupedNovos.entries()) {
+          try {
+              const mainRow = rows[0];
+              const createWithVariants = rows.length > 1 || mainRow.variantName !== '';
+              
+              let resolvedCategoryId = defaultCategoryId;
+              if (mainRow.categoryId) {
+                  const matchedCat = categories.find(c => c.name.toLowerCase() === mainRow.categoryId!.toLowerCase() || c.id === mainRow.categoryId);
+                  if (matchedCat) {
+                      resolvedCategoryId = matchedCat.id;
+                  } else {
+                      const newCatId = await categoryService.createCategory({
+                          name: mainRow.categoryId,
+                          slug: mainRow.categoryId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
+                          parentId: null,
+                          level: 0,
+                          sortOrder: 0,
+                          isActive: true,
+                          isFeatured: false,
+                          showInMenu: true,
+                          showInHome: false,
+                          productCount: 0
+                      } as any);
+                      resolvedCategoryId = newCatId;
+                      categories.push({ id: newCatId, name: mainRow.categoryId } as any);
+                  }
+              }
+
+              const newProduct: any = {
+                name: mainRow.name,
+                sku: createWithVariants ? '' : mainRow.sku, // If variant, SKU stays on variant
+                gtin: createWithVariants ? '' : mainRow.gtin,
+                brand: mainRow.brand,
+                subtitle: mainRow.subtitle,
+                fullDescription: mainRow.fullDescription,
+                price: mainRow.price || 0,
+                costPrice: mainRow.costPrice || 0,
+                promoPrice: mainRow.promoPrice || 0,
+                categoryId: resolvedCategoryId,
+                active: mainRow.active,
+                featured: mainRow.featured,
+                newRelease: false,
+                stock: 0, 
+                controlStock: mainRow.controlStock,
+                allowBackorder: mainRow.allowBackorder,
+                hasVariants: createWithVariants,
+                unit: mainRow.unit || 'un',
+                images: mainRow.imageUrl ? [{ url: mainRow.imageUrl, path: `products/imported_${mainRow.gtin || Date.now()}_${Date.now()}`, isMain: true }] : [],
+                seo: {
+                  slug: mainRow.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
+                  condition: mainRow.condition || 'new'
+                }
+              };
+              
+              const variantsToCreate: ProductVariant[] = [];
+              if (createWithVariants) {
+                  for (const vRow of rows) {
+                      variantsToCreate.push({
+                          name: vRow.variantName || 'Principal',
+                          sku: vRow.sku,
+                          barcode: vRow.gtin,
+                          price: vRow.price || mainRow.price || 0,
+                          promoPrice: vRow.promoPrice || mainRow.promoPrice || 0,
+                          stock: 0, // Starts at 0, filled by stock movement
+                          active: vRow.active,
+                          imageUrl: vRow.imageUrl,
+                          attributes: {}
+                      });
+                  }
+              }
+
+              // productService.createProduct automatically handles creating the variants array if we pass it
+              const createdId = await productService.createProduct(newProduct, variantsToCreate);
+              
+              // Now register stock movements for each item we added
+              if (createWithVariants) {
+                  // Wait, createProduct doesn't return the IDs of the variants it created...
+                  // So we must fetch the variants right after to get their IDs
+                  const createdRes = await productService.getProduct(createdId);
+                  
+                  if (createdRes && createdRes.variants) {
+                      for (const vRow of rows) {
+                          if (vRow.stock > 0) {
+                              const matchedVar = createdRes.variants.find(v => v.barcode === vRow.gtin || v.sku === vRow.sku || v.name === (vRow.variantName || 'Principal'));
+                              if (matchedVar) {
+                                  await stockMovementService.registerMovement({
+                                    productId: createdId,
+                                    productName: mainRow.name,
+                                    variantId: matchedVar.id,
+                                    variantName: matchedVar.name,
+                                    sku: vRow.sku,
+                                    type: 'in',
+                                    quantity: vRow.stock,
+                                    reason: 'inventario_positivo',
+                                    channel: 'N/A',
+                                    notes: 'Entrada Inicial de Variação via CSV',
+                                  });
+                              }
+                          }
+                      }
+                  }
+              } else {
+                  if (mainRow.stock > 0) {
+                    await stockMovementService.registerMovement({
+                      productId: createdId,
+                      productName: mainRow.name,
+                      sku: mainRow.sku,
+                      type: 'in',
+                      quantity: mainRow.stock,
+                      reason: 'inventario_positivo',
+                      channel: 'N/A',
+                      notes: 'Entrada Inicial via Planilha de Inventário CSV',
+                    });
+                  }
+              }
+
+              successCount += rows.length;
+          } catch (itemErr) {
+             console.error("Grouped New Item Error:", nameKey, itemErr);
+             errorCount += rows.length;
+          }
       }
 
       if (errorCount === 0) {
@@ -524,18 +707,21 @@ export function InventoryTab() {
             </h4>
             <div className="text-sm text-blue-800 opacity-80 grid md:grid-cols-2 gap-4 mt-4">
               <ul className="space-y-1 list-disc pl-5">
-                <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">gtin</code> <span className="opacity-70">(Obrigatório - Código de Barras / Chave de Busca)</span></li>
+                <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">productId</code> <span className="opacity-70">(ID do Sistema - Preenchido ao exportar)</span></li>
+                <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">variantId</code> <span className="opacity-70">(ID da Variação - Preenchido ao exportar)</span></li>
+                <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">variantName</code> <span className="opacity-70">(Nome da variação Ex: M Azul)</span></li>
+                <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">gtin</code> <span className="opacity-70">(Código de Barras)</span></li>
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">sku</code> <span className="opacity-70">(Opcional - Código interno)</span></li>
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">brand</code> <span className="opacity-70">(Marca)</span></li>
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">name</code> <span className="opacity-70">(Obrigatório para item novo)</span></li>
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">price</code> <span className="opacity-70">(0.00 Decimal ponto)</span></li>
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">costPrice</code> <span className="opacity-70">(Custo Decimal ponto)</span></li>
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">promoPrice</code> <span className="opacity-70">(Promo Decimal ponto)</span></li>
+              </ul>
+              <ul className="space-y-1 list-disc pl-5">
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">stock</code> <span className="opacity-70">(Saldo Final contado em estoque)</span></li>
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">active</code> <span className="opacity-70">(true / false)</span></li>
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">featured</code> <span className="opacity-70">(true / false)</span></li>
-              </ul>
-              <ul className="space-y-1 list-disc pl-5">
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">controlStock</code> <span className="opacity-70">(true / false)</span></li>
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">allowBackorder</code> <span className="opacity-70">(true / false)</span></li>
                 <li><code className="bg-slate-900/50 px-1.5 py-0.5 rounded font-bold">hasVariants</code> <span className="opacity-70">(true / false)</span></li>
@@ -588,6 +774,7 @@ export function InventoryTab() {
                       <td className="px-5 py-3">
                          {row.status === 'novo' && <span className="px-2 py-1 bg-purple-100 text-purple-700 font-bold text-[10px] rounded uppercase tracking-widest">Criará Novo Produto</span>}
                          {row.status === 'atualizacao' && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 font-bold text-[10px] rounded uppercase tracking-widest">Atualizará Existente</span>}
+                         {row.status === 'nova_variacao' && <span className="px-2 py-1 bg-blue-100 text-blue-700 font-bold text-[10px] rounded uppercase tracking-widest">Criará Nova Variação</span>}
                          {row.status === 'erro' && <span className="px-2 py-1 bg-red-100 text-red-700 font-bold text-[10px] rounded uppercase tracking-widest">Inválido</span>}
                       </td>
                       <td className="px-5 py-3 font-mono text-slate-300 font-bold">{row.gtin || '-'}</td>
@@ -619,7 +806,8 @@ export function InventoryTab() {
                <div className="text-slate-400 font-medium">Total de registros lidos: <span className="font-bold text-slate-100">{processedRows.length}</span></div>
                <div className="flex gap-4">
                   <span className="text-slate-400 font-medium"><span className="text-emerald-600 font-bold">{processedRows.filter(r => r.status === 'atualizacao').length}</span> atualizados</span>
-                  <span className="text-slate-400 font-medium"><span className="text-purple-600 font-bold">{processedRows.filter(r => r.status === 'novo').length}</span> criações</span>
+                  <span className="text-slate-400 font-medium"><span className="text-purple-600 font-bold">{processedRows.filter(r => r.status === 'novo').length}</span> novos</span>
+                  <span className="text-slate-400 font-medium"><span className="text-blue-600 font-bold">{processedRows.filter(r => r.status === 'nova_variacao').length}</span> novas variações</span>
                   <span className="text-slate-400 font-medium"><span className="text-red-500 font-bold">{processedRows.filter(r => r.status === 'erro').length}</span> erros</span>
                </div>
             </div>

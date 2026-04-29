@@ -163,10 +163,16 @@ export function MovEstoque() {
         return true;
     });
 
-    const formProductsObj = products.filter(p => 
-        p.name.toLowerCase().includes(fProdSearch.toLowerCase()) || 
-        (p.sku && p.sku.toLowerCase().includes(fProdSearch.toLowerCase()))
-    );
+    const formProductsObj = products.filter(p => {
+        const term = fProdSearch.toLowerCase();
+        return (
+            p.name.toLowerCase().includes(term) || 
+            (p.sku && p.sku.toLowerCase().includes(term)) ||
+            (p.gtin && p.gtin.toLowerCase().includes(term)) ||
+            (p.searchTerms && p.searchTerms.some(st => st.includes(term))) ||
+            (p.variantIdentifiers && p.variantIdentifiers.some(vi => vi.toLowerCase().includes(term)))
+        );
+    });
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();

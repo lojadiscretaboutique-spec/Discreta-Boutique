@@ -30,9 +30,16 @@ export function AdminLogin() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setError('Por favor, preencha o e-mail e a senha.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
       const user = userCredential.user;
       
       // Verify if user is admin in users collection
@@ -68,8 +75,20 @@ export function AdminLogin() {
       }
       
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      setError('Falha na autenticação: ' + errorMsg);
+      console.warn('Erro contornado no login:', err); // Ajuda a explicar o log do console 400 Bad Request
+      let errorMessage = 'Falha na autenticação. Verifique suas credenciais.';
+      if (err instanceof Error) {
+        if (err.message.includes('auth/invalid-email')) {
+          errorMessage = 'O formato do e-mail é inválido.';
+        } else if (err.message.includes('auth/user-not-found') || err.message.includes('auth/wrong-password') || err.message.includes('auth/invalid-credential')) {
+          errorMessage = 'E-mail ou senha incorretos.';
+        } else if (err.message.includes('auth/too-many-requests')) {
+          errorMessage = 'Muitas tentativas falhas. Tente novamente mais tarde.';
+        } else if (err.message.includes('auth/operation-not-allowed')) {
+          errorMessage = 'Autenticação por e-mail e senha desativada no Firebase console.';
+        }
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

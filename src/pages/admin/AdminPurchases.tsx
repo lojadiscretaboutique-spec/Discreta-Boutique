@@ -205,10 +205,12 @@ export function AdminPurchases() {
     }
   };
 
-  const handleBarcodeOrEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleBarcodeOrEnter = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && searchTerm.trim()) {
       e.preventDefault();
       const term = searchTerm.toLowerCase().trim();
+      
+      // Look for exact match in main product
       const match = productsList.find(p => 
         p.gtin?.toLowerCase() === term || 
         p.sku?.toLowerCase() === term
@@ -216,18 +218,40 @@ export function AdminPurchases() {
       
       if (match) {
         handleProductSelect(match);
+        return;
+      } 
+      
+      // Look for exact match in variants
+      const variantMatchProduct = productsList.find(p => p.variantIdentifiers?.map(vi => vi.toLowerCase()).includes(term));
+      if (variantMatchProduct) {
+         try {
+            const pData = await productService.getProduct(variantMatchProduct.id!);
+            if (pData) {
+               const variant = pData.variants.find(v => v.barcode?.toLowerCase() === term || v.sku?.toLowerCase() === term);
+               if (variant) {
+                  addItem(variantMatchProduct, variant);
+                  setSearchTerm('');
+                  return;
+               }
+            }
+         } catch(err) {
+            console.error(err);
+         }
+      }
+
+      const partialMatches = productsList.filter(p => 
+        p.name.toLowerCase().includes(term) ||
+        p.sku?.toLowerCase().includes(term) ||
+        p.gtin?.toLowerCase().includes(term) ||
+        p.shortDescription?.toLowerCase().includes(term) ||
+        p.variantIdentifiers?.map(vi => vi.toLowerCase()).includes(term) ||
+        p.searchTerms?.some(st => st.includes(term))
+      );
+
+      if (partialMatches.length === 1) {
+        handleProductSelect(partialMatches[0]);
       } else {
-        const partialMatches = productsList.filter(p => 
-          p.name.toLowerCase().includes(term) ||
-          p.sku?.toLowerCase().includes(term) ||
-          p.gtin?.toLowerCase().includes(term) ||
-          p.shortDescription?.toLowerCase().includes(term)
-        );
-        if (partialMatches.length === 1) {
-          handleProductSelect(partialMatches[0]);
-        } else {
-          toast("Produto não encontrado unicamente por este código.", "warning");
-        }
+        toast("Produto não encontrado unicamente por este código.", "warning");
       }
     }
   };
@@ -376,7 +400,9 @@ export function AdminPurchases() {
                             return p.name.toLowerCase().includes(term) ||
                                    p.sku?.toLowerCase().includes(term) ||
                                    p.gtin?.toLowerCase().includes(term) ||
-                                   p.shortDescription?.toLowerCase().includes(term);
+                                   p.shortDescription?.toLowerCase().includes(term) ||
+                                   p.variantIdentifiers?.map(vi => vi.toLowerCase()).includes(term) ||
+                                   p.searchTerms?.some(st => st.includes(term));
                           }).map(p => (
                             <div key={p.id} className="p-2 border-b border-slate-100 last:border-0 hover:bg-slate-800 cursor-pointer" onClick={() => handleProductSelect(p)}>
                                <div className="flex items-center justify-between">

@@ -1,4 +1,4 @@
-import { serverTimestamp, collection, doc, updateDoc, getDoc, getDocs, query, orderBy, writeBatch } from 'firebase/firestore';
+import { serverTimestamp, collection, doc, updateDoc, getDoc, getDocs, query, orderBy, writeBatch, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
 
@@ -138,11 +138,29 @@ export interface Product {
     internalNotes?: string;
   };
 
+  searchTerms?: string[];
+  variantIdentifiers?: string[];
   createdAt?: Date | string | null;
   updatedAt?: Date | string | null;
 }
 
 export const productService = {
+  async checkGtinExists(gtin: string, excludeProductId?: string): Promise<boolean> {
+    if (!gtin) return false;
+    
+    // Check main products (gtin field)
+    const qProd = query(collection(db, 'products'), where('gtin', '==', gtin));
+    const snapProd = await getDocs(qProd);
+    if (snapProd.docs.some(d => d.id !== excludeProductId)) return true;
+
+    // Check products (variantIdentifiers array)
+    const qVar = query(collection(db, 'products'), where('variantIdentifiers', 'array-contains', gtin));
+    const snapVar = await getDocs(qVar);
+    if (snapVar.docs.some(d => d.id !== excludeProductId)) return true;
+
+    return false;
+  },
+
   async listProducts() {
     try {
       const q = query(collection(db, 'products'), orderBy('updatedAt', 'desc'));
@@ -226,7 +244,7 @@ export const productService = {
         'price', 'costPrice', 'promoPrice', 'sku', 'gtin', 'unit',
         'stock', 'minStock', 'controlStock', 'allowBackorder',
         'hasVariants', 'images', 'fashion', 'cosmetics', 'delivery',
-        'seo', 'extras'
+        'seo', 'extras', 'searchTerms', 'variantIdentifiers'
       ];
 
       allowedFields.forEach(field => {

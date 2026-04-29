@@ -15,7 +15,7 @@ import {
   AlertCircle,
   Hash
 } from 'lucide-react';
-import { collection, query, where, getDocs, limit, addDoc, serverTimestamp, doc, updateDoc, collectionGroup, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, addDoc, serverTimestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Button } from '../../components/ui/button';
 import { cn, formatCurrency, roundTo2 } from '../../lib/utils';
@@ -92,6 +92,7 @@ export function AdminPDV() {
   const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
   const [modalVariants, setModalVariants] = useState<ProductVariant[]>([]);
   const [loadingVariants, setLoadingVariants] = useState(false);
+  const [stockWarningModal, setStockWarningModal] = useState<{productName: string, stock: number} | null>(null);
   
   // Customer state
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -307,61 +308,62 @@ export function AdminPDV() {
         return;
       }
 
-      // If not found in main products, search in variants collectionGroup
-      let variantFound = false;
-      const variantsRef = collectionGroup(db, 'variants');
-      
-      try {
-        let vQ = query(variantsRef, where('sku', 'in', termsToSearch), limit(1));
-        let vSnap = await getDocs(vQ);
-        
-        if (vSnap.empty) {
-          vQ = query(variantsRef, where('barcode', '==', term), limit(1));
-          vSnap = await getDocs(vQ);
-        }
+      // If not found in main products, search in variantIdentifiers
+      const pQ = query(productsRef, where('variantIdentifiers', 'array-contains', term), limit(1));
+      const pSnap = await getDocs(pQ);
 
-        if (!vSnap.empty) {
-          const variantDoc = vSnap.docs[0];
-          const variant = { id: variantDoc.id, ...variantDoc.data() } as ProductVariant;
-          
-          // variantDoc.ref path is products/{productId}/variants/{variantId}
-          const productRef = variantDoc.ref.parent.parent;
-          if (productRef) {
-            const productSnap = await getDoc(productRef);
-            if (productSnap.exists()) {
-              const product = { id: productSnap.id, ...productSnap.data() } as Product;
-              playBeep();
-              addToCart(product, variant);
-              setSearchTerm('');
-              setSearchResults([]);
-              variantFound = true;
-            }
-          }
-        }
-      } catch (variantErr: any) {
-        console.warn("Busca por variante falhou (pode faltar índice):", variantErr);
-        const errorMsg = variantErr.message || variantErr.toString();
-        const match = errorMsg.match(/(https:\/\/console\.firebase\.google\.com[^\s]*)/);
+      if (!pSnap.empty) {
+        const productDoc = pSnap.docs[0];
+        const product = { id: productDoc.id, ...productDoc.data() } as Product;
         
-        if (match) {
-           window.prompt(
-             "ATENÇÃO - CONFIGURAÇÃO DO FIREBASE NECESSÁRIA:\n\n" +
-             "O Google Firebase exige que você crie um Índice para pesquisar as Variações.\n" +
-             "1. Copie o link abaixo.\n" +
-             "2. Cole em uma nova aba do navegador e clique em 'CRIAR'.\n" +
-             "3. Aguarde de 2 a 3 minutos para ele ficar 'Ativo'.\n\n" +
-             "Copie o link:", 
-             match[1]
-           );
-        } else if (errorMsg.includes('failed-precondition') || errorMsg.includes('COLLECTION_GROUP')) {
-           toast("Índice do Firebase ausente para variantes. Olhe o F12.", "error");
+        // Load its variants
+        const vSnap = await getDocs(collection(db, `products/${product.id}/variants`));
+        const variantDoc = vSnap.docs.find(d => {
+           const v = d.data();
+           return v.barcode === term || v.sku === term || termsToSearch.includes(v.sku);
+        });
+
+        if (variantDoc) {
+           const variant = { id: variantDoc.id, ...variantDoc.data() } as ProductVariant;
+           playBeep();
+           addToCart(product, variant);
+           setSearchTerm('');
+           setSearchResults([]);
+           return;
         }
       }
 
-      if (variantFound) return;
+      // 4. Se chegou aqui, não achou o EAN/SKU exato. Tentar buscar pelo nome ou pesquisar no termo de busca exato no firebase
+      // Se não houver nada no searchResults (pois o usuário bateu enter antes de 300ms), faz a busca aqui
+      let currentResults = searchResults;
+      if (currentResults.length === 0) {
+        const qAll = query(productsRef, where('active', '==', true), limit(1000));
+        const snapAll = await getDocs(qAll);
+        const allProds = snapAll.docs.map(d => ({id: d.id, ...d.data()} as Product));
+        currentResults = allProds.filter(p => {
+          return p.name.toLowerCase().includes(term) || 
+                 p.sku?.toLowerCase().includes(term) ||
+                 p.gtin?.toLowerCase().includes(term) ||
+                 p.internalCode?.toLowerCase().includes(term) ||
+                 p.variantIdentifiers?.some(vi => vi.toLowerCase().includes(term)) ||
+                 p.searchTerms?.some(st => st.includes(term));
+        }).slice(0, 15);
+        // Atualiza a lista na tela para que, se não houver um exact match e sim múltiplos,
+        // o usuário possa clicar na lista.
+        setSearchResults(currentResults);
+      }
+
+      const exactNameMatch = currentResults.find(p => p.name.toLowerCase().trim() === term);
+      if (exactNameMatch) {
+         playBeep();
+         addToCart(exactNameMatch);
+         setSearchTerm('');
+         setSearchResults([]);
+         return;
+      }
 
       // Check remaining internal codes if local search was tracking it
-      const localMatch = searchResults.find(p => 
+      const localMatch = currentResults.find(p => 
         p.gtin === term || p.sku === term || p.sku === upperTerm || p.internalCode === term || p.internalCode === upperTerm
       );
 
@@ -374,12 +376,12 @@ export function AdminPDV() {
       }
 
       // Checking current results if it's the only one
-      if (searchResults.length === 1) {
+      if (currentResults.length === 1) {
         playBeep();
-        addToCart(searchResults[0]);
+        addToCart(currentResults[0]);
         setSearchTerm('');
         setSearchResults([]);
-      } else if (searchResults.length > 1) {
+      } else if (currentResults.length > 1) {
          toast("Múltiplos produtos. Clique em um da lista abaixo.", "warning");
       } else {
          toast("EAN/SKU não encontrado no sistema.", "error");
@@ -490,7 +492,7 @@ export function AdminPDV() {
         const q = query(
           collection(db, 'products'),
           where('active', '==', true),
-          limit(200) // Increase limits so standard store sizes are fully searched by client-filter
+          limit(1000) // Increase limits so standard store sizes are fully searched by client-filter
         );
         const snap = await getDocs(q);
         const products = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
@@ -501,7 +503,9 @@ export function AdminPDV() {
           return p.name.toLowerCase().includes(s) || 
                  p.sku?.toLowerCase().includes(s) ||
                  p.gtin?.toLowerCase().includes(s) ||
-                 p.internalCode?.toLowerCase().includes(s);
+                 p.internalCode?.toLowerCase().includes(s) ||
+                 p.variantIdentifiers?.some(vi => vi.toLowerCase().includes(s)) ||
+                 p.searchTerms?.some(st => st.includes(s));
         }).slice(0, 15); // Cap displayed items
         
         setSearchResults(filtered);
@@ -535,6 +539,15 @@ export function AdminPDV() {
   const addToCart = (product: Product, variant?: ProductVariant) => {
     if (product.hasVariants && !variant) {
       openVariantModal(product);
+      return;
+    }
+
+    const currentStock = variant ? (variant.stock || 0) : (product.stock || 0);
+    if (currentStock <= 0) {
+      setStockWarningModal({
+        productName: variant ? `${product.name} - ${variant.name}` : product.name,
+        stock: currentStock
+      });
       return;
     }
 
@@ -1696,6 +1709,44 @@ export function AdminPDV() {
                    </div>
                  )}
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Stock Warning Modal */}
+      <AnimatePresence>
+        {stockWarningModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[130] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md overflow-hidden text-center p-8 shadow-2xl"
+            >
+              <div className="flex justify-center mb-6 text-red-500">
+                <AlertCircle size={64} className="opacity-80" />
+              </div>
+              <h3 className="text-2xl font-black uppercase tracking-tighter italic text-white mb-2">Estoque Insuficiente</h3>
+              <p className="text-slate-300 font-bold mb-6">
+                Não é permitido vender produtos sem estoque no PDV.
+              </p>
+              <div className="bg-slate-800 rounded-xl p-4 mb-8">
+                <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mb-1">Produto</p>
+                <p className="text-lg font-black text-white leading-tight mb-4">{stockWarningModal.productName}</p>
+                <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mb-1">Estoque Atual</p>
+                <p className="text-3xl font-black text-red-500">{stockWarningModal.stock}</p>
+              </div>
+              <Button 
+                onClick={() => setStockWarningModal(null)} 
+                className="w-full h-14 bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest rounded-xl text-lg hover:scale-[1.02] active:scale-[0.98] transition-all"
+              >
+                ENTENDI
+              </Button>
             </motion.div>
           </motion.div>
         )}
