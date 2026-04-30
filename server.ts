@@ -119,7 +119,7 @@ async function startServer() {
     if (req.path.startsWith('/api/')) return next();
     
     const isManifest = req.path === '/manifest.webmanifest' || req.path === '/manifest.json';
-    const isHtml = req.accepts('html') && !req.path.includes('.');
+    const isHtml = !req.path.startsWith('/api') && !req.path.includes('.');
 
     if (!isManifest && !isHtml) {
       return next();
@@ -144,8 +144,17 @@ async function startServer() {
         const sFields = settingsData.fields || {};
         if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
         if (sFields.logoUrl?.stringValue) {
-          image = sFields.logoUrl.stringValue;
+          let logo = sFields.logoUrl.stringValue.trim();
+          if (!logo.startsWith('http')) {
+            logo = `${origin}${logo.startsWith('/') ? '' : '/'}${logo}`;
+          }
+          image = logo;
         }
+      }
+
+      // Safe Fallback
+      if (!image || image.length < 5) {
+        image = `${origin}/og-image.png`;
       }
 
       if (isManifest) {
@@ -185,6 +194,7 @@ async function startServer() {
             }
           ]
         };
+        res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
         return res.setHeader('Content-Type', 'application/manifest+json').json(manifest);
       }
 
@@ -238,9 +248,9 @@ async function startServer() {
         <meta property="og:description" content="${description}" />
         <meta property="og:image" content="${image}" />
         <meta property="og:image:secure_url" content="${image}" />
-        <meta property="og:image:type" content="${image.includes('.svg') ? 'image/svg+xml' : 'image/png'}" />
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
+        <meta property="og:image:type" content="image/png" />
+        <meta property="og:image:width" content="512" />
+        <meta property="og:image:height" content="512" />
         <meta property="og:url" content="${ogUrl}" />
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="Discreta Boutique" />
@@ -281,6 +291,10 @@ async function startServer() {
         htmlContents = await vite.transformIndexHtml(req.url, htmlContents);
       }
       
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
       return res.status(200).set({ 'Content-Type': 'text/html' }).send(htmlContents);
     } catch(err) {
       console.error("Renderer error:", err);
