@@ -151,11 +151,12 @@ async function startServer() {
       if (isManifest) {
         const manifest = {
           name: title.split('|')[0].trim(),
-          short_name: title.split('|')[0].trim(),
+          short_name: "Discreta",
           description: description,
           theme_color: '#000000',
-          background_color: '#ffffff',
+          background_color: '#000000',
           display: 'standalone',
+          orientation: 'portrait',
           start_url: '/',
           icons: [
             {
@@ -173,6 +174,12 @@ async function startServer() {
             {
               src: image,
               sizes: '192x192',
+              type: image.includes('.svg') ? 'image/svg+xml' : 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: image,
+              sizes: '512x512',
               type: image.includes('.svg') ? 'image/svg+xml' : 'image/png',
               purpose: 'maskable'
             }
@@ -225,13 +232,15 @@ async function startServer() {
       }
 
       const ogTags = `
+        <title>${title}</title>
+        <meta name="description" content="${description}" />
         <meta property="og:title" content="${title}" />
         <meta property="og:description" content="${description}" />
         <meta property="og:image" content="${image}" />
         <meta property="og:image:secure_url" content="${image}" />
         <meta property="og:image:type" content="${image.includes('.svg') ? 'image/svg+xml' : 'image/png'}" />
-        <meta property="og:image:width" content="512" />
-        <meta property="og:image:height" content="512" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
         <meta property="og:url" content="${ogUrl}" />
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="Discreta Boutique" />
@@ -253,12 +262,19 @@ async function startServer() {
         htmlContents = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
       }
 
-      htmlContents = htmlContents.replace('</title>', `</title>\n${ogTags}`);
+      // Remove existing title and description if any to avoid duplicates
+      htmlContents = htmlContents.replace(/<title>.*<\/title>/, '');
+      htmlContents = htmlContents.replace(/<meta name="description" content=".*" \/>/, '');
+      
+      htmlContents = htmlContents.replace('<head>', `<head>\n${ogTags}`);
       
       if (!isDefaultImage) {
         const iconType = image.includes('.svg') ? 'image/svg+xml' : 'image/png';
-        htmlContents = htmlContents.replace(/type="image\/svg\+xml" href="\/logo-red\.svg"/g, `type="${iconType}" href="${image}"`);
-        htmlContents = htmlContents.replace(/href="\/og-image\.png"/g, `href="${image}"`);
+        // Replace all relevant icons
+        htmlContents = htmlContents.replace(/rel="icon" type="[^"]+" href="\/logo-red\.svg"/g, `rel="icon" type="${iconType}" href="${image}"`);
+        htmlContents = htmlContents.replace(/rel="apple-touch-icon" href="\/og-image\.png"/g, `rel="apple-touch-icon" href="${image}"`);
+        // Fallback for any other og-image.png references
+        htmlContents = htmlContents.replace(/\/og-image\.png/g, image);
       }
 
       if (process.env.NODE_ENV !== 'production' && vite) {
