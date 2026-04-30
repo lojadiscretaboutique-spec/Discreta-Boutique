@@ -113,6 +113,44 @@ async function startServer() {
     }));
   }
 
+  // --- NEW: Proxy route for dynamic OG image ---
+  app.get('/og-image.png', async (req, res) => {
+    try {
+      const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
+      const config = JSON.parse(configRaw);
+      
+      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store?key=${config.apiKey}`;
+      const settingsRes = await fetch(settingsUrl);
+      
+      let logoUrl = null;
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        logoUrl = settingsData.fields?.logoUrl?.stringValue;
+      }
+
+      if (logoUrl) {
+        const imageRes = await fetch(logoUrl);
+        if (imageRes.ok) {
+          const buffer = await imageRes.arrayBuffer();
+          const contentType = imageRes.headers.get('Content-Type') || 'image/png';
+          
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          return res.send(Buffer.from(buffer));
+        }
+      }
+      
+      throw new Error('Logo not found or fetch failed');
+    } catch (err) {
+      const fallbackPath = process.env.NODE_ENV === 'production' 
+        ? path.resolve(process.cwd(), 'dist', 'og-image.png')
+        : path.resolve(process.cwd(), 'public', 'og-image.png');
+      
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      return res.sendFile(fallbackPath);
+    }
+  });
+
   // Define dynamic metadata handler before possible static asset fallthrough
   app.use(async (req, res, next) => {
     // Skip if it's explicitly an API call
@@ -130,7 +168,9 @@ async function startServer() {
     const protocol = req.get('x-forwarded-proto') || req.protocol;
     const host = req.get('host');
     const origin = `${protocol}://${host}`;
-    let image = `${origin}/og-image.png`;
+    
+    // Standardized Proxy URL for OG Image
+    let imageProxyUrl = `${origin}/og-image.png`;
     const ogUrl = `${origin}${req.path}`;
     
     try {
@@ -143,18 +183,6 @@ async function startServer() {
         const settingsData = await settingsRes.json();
         const sFields = settingsData.fields || {};
         if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
-        if (sFields.logoUrl?.stringValue) {
-          let logo = sFields.logoUrl.stringValue.trim();
-          if (!logo.startsWith('http')) {
-            logo = `${origin}${logo.startsWith('/') ? '' : '/'}${logo}`;
-          }
-          image = logo;
-        }
-      }
-
-      // Safe Fallback
-      if (!image || image.length < 5) {
-        image = `${origin}/og-image.png`;
       }
 
       if (isManifest) {
@@ -169,27 +197,27 @@ async function startServer() {
           start_url: '/',
           icons: [
             {
-              src: image,
+              src: "/og-image.png",
               sizes: '192x192',
-              type: image.includes('.svg') ? 'image/svg+xml' : 'image/png',
+              type: 'image/png',
               purpose: 'any'
             },
             {
-              src: image,
+              src: "/og-image.png",
               sizes: '512x512',
-              type: image.includes('.svg') ? 'image/svg+xml' : 'image/png',
+              type: 'image/png',
               purpose: 'any'
             },
             {
-              src: image,
+              src: "/og-image.png",
               sizes: '192x192',
-              type: image.includes('.svg') ? 'image/svg+xml' : 'image/png',
+              type: 'image/png',
               purpose: 'maskable'
             },
             {
-              src: image,
+              src: "/og-image.png",
               sizes: '512x512',
-              type: image.includes('.svg') ? 'image/svg+xml' : 'image/png',
+              type: 'image/png',
               purpose: 'maskable'
             }
           ]
@@ -234,7 +262,7 @@ async function startServer() {
                ) || imagesArray[0];
                const imgData = mainImage as { mapValue?: { fields?: { url?: { stringValue?: string } } } };
                if (imgData.mapValue?.fields?.url?.stringValue) {
-                 image = imgData.mapValue.fields.url.stringValue;
+                 imageProxyUrl = imgData.mapValue.fields.url.stringValue;
                }
              }
           }
@@ -246,8 +274,8 @@ async function startServer() {
         <meta name="description" content="${description}" />
         <meta property="og:title" content="${title}" />
         <meta property="og:description" content="${description}" />
-        <meta property="og:image" content="${image}" />
-        <meta property="og:image:secure_url" content="${image}" />
+        <meta property="og:image" content="${imageProxyUrl}" />
+        <meta property="og:image:secure_url" content="${imageProxyUrl}" />
         <meta property="og:image:type" content="image/png" />
         <meta property="og:image:width" content="512" />
         <meta property="og:image:height" content="512" />
@@ -257,14 +285,16 @@ async function startServer() {
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="${title}" />
         <meta name="twitter:description" content="${description}" />
-        <meta name="twitter:image" content="${image}" />
+        <meta name="twitter:image" content="${imageProxyUrl}" />
         <meta itemprop="name" content="${title}" />
         <meta itemprop="description" content="${description}" />
-        <meta itemprop="image" content="${image}" />
+        <meta itemprop="image" content="${imageProxyUrl}" />
+        <link rel="apple-touch-icon" href="/og-image.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       `;
 
       let htmlContents = '';
-      const isDefaultImage = image.includes('/og-image.png');
       
       if (process.env.NODE_ENV !== 'production') {
         htmlContents = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
@@ -278,14 +308,9 @@ async function startServer() {
       
       htmlContents = htmlContents.replace('<head>', `<head>\n${ogTags}`);
       
-      if (!isDefaultImage) {
-        const iconType = image.includes('.svg') ? 'image/svg+xml' : 'image/png';
-        // Replace all relevant icons
-        htmlContents = htmlContents.replace(/rel="icon" type="[^"]+" href="\/logo-red\.svg"/g, `rel="icon" type="${iconType}" href="${image}"`);
-        htmlContents = htmlContents.replace(/rel="apple-touch-icon" href="\/og-image\.png"/g, `rel="apple-touch-icon" href="${image}"`);
-        // Fallback for any other og-image.png references
-        htmlContents = htmlContents.replace(/\/og-image\.png/g, image);
-      }
+      // Standardized icon injection
+      htmlContents = htmlContents.replace(/rel="icon" type="[^"]+" href="\/logo-red\.svg"/g, `rel="icon" href="/og-image.png"`);
+      htmlContents = htmlContents.replace(/rel="apple-touch-icon" href="\/og-image\.png"/g, `rel="apple-touch-icon" href="/og-image.png"`);
 
       if (process.env.NODE_ENV !== 'production' && vite) {
         htmlContents = await vite.transformIndexHtml(req.url, htmlContents);
