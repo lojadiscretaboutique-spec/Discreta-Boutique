@@ -56,8 +56,30 @@ export function CatalogPage() {
           sessionStorage.setItem('catalog_products_time', now.toString());
         }
 
-        // Filter out products that have showInCatalog explicitly set to false
-        const visibleProds = prods.filter(p => !p.extras || p.extras.showInCatalog !== false);
+        // Filter products: Must have at least one image and be visible in catalog
+        const visibleProds = prods.filter(p => 
+          p.images && p.images.length > 0 && 
+          (!p.extras || p.extras.showInCatalog !== false)
+        );
+
+        // Identify which categories have at least one visible product
+        const categoryIdsWithProducts = new Set<string>();
+        visibleProds.forEach(p => {
+          if (p.categoryId) {
+            categoryIdsWithProducts.add(p.categoryId);
+            // Also add all parents
+            let parent = catsData.find(c => c.id === p.categoryId);
+            while (parent && parent.parentId) {
+              categoryIdsWithProducts.add(parent.parentId);
+              parent = catsData.find(c => c.id === parent?.parentId);
+            }
+          }
+        });
+
+        // Filter categories: Only those that have products (directly or in subcats)
+        const visibleCats = catsData.filter(c => categoryIdsWithProducts.has(c.id));
+
+        setCategories(visibleCats);
         setProducts(visibleProds);
         setFiltered(visibleProds);
       } catch (error) {

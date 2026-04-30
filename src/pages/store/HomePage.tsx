@@ -30,33 +30,43 @@ export function HomePage() {
       const bSnap = await getDocs(query(collection(db, 'banners'), where('active', '==', true)));
       setBanners(bSnap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
 
-      // 2. Destaques (Featured)
-      const fSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true), where('featured', '==', true), limit(10)));
-      const featured = fSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-      setFeaturedProducts(featured.filter(p => (!p.controlStock || p.allowBackorder || p.stock > 0) && (!p.extras || p.extras.showInCatalog !== false)));
-
-      // 3. Lançamentos (New Releases)
-      const nSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true), where('newRelease', '==', true), limit(10)));
-      const arrivals = nSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-      setNewArrivals(arrivals.filter(p => (!p.controlStock || p.allowBackorder || p.stock > 0) && (!p.extras || p.extras.showInCatalog !== false)));
-
-      // 4. Mais Vendidos (Fallback to recent active products to avoid complex index for now)
-      const sSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true), limit(30)));
-      let bestSellersData = sSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-      // Filter out of stock and hidden products for this specific section on home
-      bestSellersData = bestSellersData.filter(p => (!p.controlStock || p.allowBackorder || p.stock > 0) && (!p.extras || p.extras.showInCatalog !== false)).slice(0, 15);
+      // 2. All active products for filtering sections and categories
+      const pSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true)));
+      const allActiveProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
       
-      // Manual sort by date if index is not ready
-      bestSellersData.sort((a, b) => {
-        const dateA = a.createdAt?.seconds || 0;
-        const dateB = b.createdAt?.seconds || 0;
-        return dateB - dateA;
-      });
-      setBestSellers(bestSellersData);
+      // Filter products: Must have at least one image
+      const visibleProducts = allActiveProducts.filter(p => 
+        p.images && p.images.length > 0 && 
+        (!p.extras || p.extras.showInCatalog !== false)
+      );
 
-      // 5. Categories
-      const cSnap = await getDocs(query(collection(db, 'categories'), where('isActive', '==', true), where('level', '==', 0)));
-      setCategories(cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
+      // 3. Sections
+      setFeaturedProducts(visibleProducts.filter(p => p.featured && (!p.controlStock || p.allowBackorder || p.stock > 0)).slice(0, 10));
+      setNewArrivals(visibleProducts.filter(p => p.newRelease && (!p.controlStock || p.allowBackorder || p.stock > 0)).slice(0, 10));
+      
+      let bestSellersData = [...visibleProducts].filter(p => (!p.controlStock || p.allowBackorder || p.stock > 0));
+      bestSellersData.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setBestSellers(bestSellersData.slice(0, 15));
+
+      // 4. Categories visibility
+      const cSnap = await getDocs(query(collection(db, 'categories'), where('isActive', '==', true)));
+      const allCats = cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      
+      const categoryIdsWithProducts = new Set<string>();
+      visibleProducts.forEach(p => {
+        if (p.categoryId) {
+          categoryIdsWithProducts.add(p.categoryId);
+          let parent = allCats.find(c => c.id === p.categoryId);
+          while (parent && parent.parentId) {
+            categoryIdsWithProducts.add(parent.parentId);
+            parent = allCats.find(c => c.id === parent?.parentId);
+          }
+        }
+      });
+
+      // Filter root categories that have at least one product in their hierarchy
+      const visibleRootCats = allCats.filter(c => c.level === 0 && categoryIdsWithProducts.has(c.id));
+      setCategories(visibleRootCats);
 
     } catch (error) {
       console.error("Error loading home:", error);
