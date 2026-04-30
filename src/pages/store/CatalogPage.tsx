@@ -3,11 +3,12 @@ import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useSearchParams } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
-import { Search, ShoppingBag, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, ShoppingBag, X } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import { Product } from '../../services/productService';
 import { Category } from '../../services/categoryService';
+import { motion, AnimatePresence } from 'motion/react';
 
 export function CatalogPage() {
   const [searchParams] = useSearchParams();
@@ -16,7 +17,6 @@ export function CatalogPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [filtered, setFiltered] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [expandedCats, setExpandedCats] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState<string>(qCat || 'all');
   const [loading, setLoading] = useState(true);
@@ -42,14 +42,6 @@ export function CatalogPage() {
           sessionStorage.setItem('catalog_cats_time', now.toString());
         }
         setCategories(catsData);
-        
-        // Auto-expand category if passed in URL and it's a subcategory
-        if (qCat) {
-          const selected = catsData.find(c => c.id === qCat);
-          if (selected && selected.parentId) {
-            setExpandedCats(prev => [...prev, selected.parentId!]);
-          }
-        }
         
         let prods: Product[] = [];
         const cachedProducts = sessionStorage.getItem('catalog_products');
@@ -78,9 +70,19 @@ export function CatalogPage() {
   }, [qCat]);
 
   useEffect(() => {
+    const getAllChildCategoryIds = (catId: string): string[] => {
+      const children = categories.filter(c => c.parentId === catId);
+      let ids = [catId];
+      children.forEach(child => {
+        ids = [...ids, ...getAllChildCategoryIds(child.id)];
+      });
+      return ids;
+    };
+
     let result = products;
     if (selectedCat !== 'all') {
-      result = result.filter(p => p.categoryId === selectedCat);
+      const allCategoryIds = getAllChildCategoryIds(selectedCat);
+      result = result.filter(p => p.categoryId && allCategoryIds.includes(p.categoryId));
     }
     if (search.trim()) {
       const s = search.toLowerCase();
@@ -98,14 +100,15 @@ export function CatalogPage() {
 
     setFiltered(result);
     setCurrentPage(1); // Reset to page 1 unconditionally when filtering
-  }, [search, selectedCat, products]);
-
-  const toggleExpand = (catId: string) => {
-    setExpandedCats(prev => prev.includes(catId) ? prev.filter(id => id !== catId) : [...prev, catId]);
-  };
+  }, [search, selectedCat, products, categories]);
 
   const rootCategories = categories.filter(c => c.level === 0 || !c.parentId);
   const getSubcategories = (parentId: string) => categories.filter(c => c.parentId === parentId);
+
+  // Check if current selected is a subcategory to find its parent for the UI
+  const currentCategory = categories.find(c => c.id === selectedCat);
+  const activeRootId = currentCategory?.parentId || (currentCategory?.level === 0 ? currentCategory.id : null);
+  const activeSubcategories = activeRootId ? getSubcategories(activeRootId) : [];
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
   const paginatedProducts = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -119,140 +122,160 @@ export function CatalogPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-black text-white min-h-screen">
-      {/* Header / Search Area */}
-      <section className="bg-zinc-950 border-b border-zinc-900 py-10 px-4">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="text-center md:text-left">
-            <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic">Catálogo</h1>
-            <p className="text-red-500 font-bold text-xs uppercase tracking-[3px] mt-2">Escolha com prazer</p>
+      {/* Header / Search Area - More Compact and Sticky-friendly */}
+      <section className="bg-zinc-950 border-b border-zinc-900 pt-8 pb-6 px-4 sticky top-16 z-30 backdrop-blur-md bg-black/90">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="hidden md:block">
+              <h1 className="text-2xl md:text-4xl font-black uppercase tracking-tighter italic">Catálogo</h1>
+            </div>
+            
+            <div className="w-full max-w-xl relative group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-red-500 transition-colors" size={18} />
+              <Input 
+                type="text"
+                placeholder="O que você deseja hoje?" 
+                className="w-full bg-zinc-900/50 border-zinc-800 text-white pl-12 pr-4 py-6 rounded-2xl focus:ring-red-600 font-medium placeholder:text-zinc-600 transition-all h-auto"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="w-full max-w-md relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={20} />
-            <Input 
-              type="text"
-              placeholder="O que você deseja hoje?" 
-               className="w-full bg-zinc-900 border border-zinc-800 text-white pl-12 pr-4 py-4 rounded-full focus:outline-none focus:ring-2 focus:ring-red-600 font-medium placeholder:text-zinc-700 transition-all shadow-xl h-auto"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+
+          {/* Category Navigation - Highly Ergonomic for Mobile */}
+          <div className="space-y-4">
+            {/* Root Categories Horizontal Scroll */}
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+              <button 
+                onClick={() => setSelectedCat('all')}
+                className={cn(
+                  "whitespace-nowrap px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
+                  selectedCat === 'all' 
+                    ? "bg-red-600 text-white border-red-600 shadow-lg shadow-red-900/40" 
+                    : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700"
+                )}
+              >
+                Todos
+              </button>
+              {rootCategories.map(c => (
+                <button 
+                  key={c.id}
+                  onClick={() => setSelectedCat(c.id)}
+                  className={cn(
+                    "whitespace-nowrap px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
+                    activeRootId === c.id 
+                      ? "bg-white text-black border-white shadow-lg" 
+                      : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700"
+                  )}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+
+            {/* Subcategories - Secondary Row if Root Selected */}
+            <AnimatePresence mode="wait">
+              {activeRootId && activeSubcategories.length > 0 && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 py-1 border-t border-zinc-900/50 pt-3"
+                >
+                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mr-2 shrink-0">Sub:</span>
+                  <button 
+                    onClick={() => setSelectedCat(activeRootId)}
+                    className={cn(
+                      "whitespace-nowrap px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                      selectedCat === activeRootId 
+                        ? "text-red-500 bg-red-500/10" 
+                        : "text-zinc-500 hover:text-zinc-300"
+                    )}
+                  >
+                    Ver Tudo
+                  </button>
+                  {activeSubcategories.map(sub => (
+                    <button 
+                      key={sub.id}
+                      onClick={() => setSelectedCat(sub.id)}
+                      className={cn(
+                        "whitespace-nowrap px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                        selectedCat === sub.id 
+                          ? "text-red-500 bg-red-500/10" 
+                          : "text-zinc-500 hover:text-zinc-300"
+                      )}
+                    >
+                      {sub.name}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </section>
 
-      <div className="max-w-7xl mx-auto w-full px-4 py-12 flex flex-col md:flex-row gap-12">
-        {/* Simple pill filters for categories - Good for PWA/Mobile */}
-        <aside className="w-full md:w-64 shrink-0">
-          <div className="sticky top-28 space-y-8">
-            <div>
-              <h3 className="text-xs font-black uppercase tracking-[3px] text-zinc-500 mb-6 flex items-center gap-2">
-                 <div className="w-1.5 h-1.5 bg-red-600 rounded-full"></div>
-                 Categorias
-              </h3>
-              <div className="flex flex-col gap-3 overflow-x-auto no-scrollbar md:overflow-visible pb-4 md:pb-0">
-                <button 
-                  onClick={() => setSelectedCat('all')}
-                  className={cn(
-                    "whitespace-nowrap px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all border text-left",
-                    selectedCat === 'all' 
-                      ? "bg-red-600 text-white border-red-600 shadow-lg shadow-red-900/20" 
-                      : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-red-600"
-                  )}
-                >
-                  Todos
-                </button>
-                {rootCategories.map(c => {
-                  const subcats = getSubcategories(c.id);
-                  const hasChildren = subcats.length > 0;
-                  const isExpanded = expandedCats.includes(c.id);
-                  const isSelected = selectedCat === c.id;
+      <div className="max-w-7xl mx-auto w-full px-4 py-8">
+        {/* Results Info */}
+        <div className="flex justify-between items-center mb-8">
+          <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[2px]">
+            {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}
+          </p>
+          {(selectedCat !== 'all' || search) && (
+            <button 
+              onClick={() => { setSelectedCat('all'); setSearch(''); }}
+              className="text-[10px] font-black text-red-500 uppercase tracking-[2px] hover:underline flex items-center gap-1"
+            >
+              <X size={12} /> Limpar
+            </button>
+          )}
+        </div>
 
-                  return (
-                    <div key={c.id} className="flex flex-col gap-2">
-                      <div className="flex gap-2 w-full">
-                        <button 
-                          onClick={() => setSelectedCat(c.id)}
-                          className={cn(
-                            "whitespace-nowrap flex-1 px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all border text-left",
-                            isSelected 
-                              ? "bg-red-600 text-white border-red-600 shadow-lg shadow-red-900/20" 
-                              : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-red-600"
-                          )}
-                        >
-                          {c.name}
-                        </button>
-                        {hasChildren && (
-                          <button 
-                            onClick={() => toggleExpand(c.id)}
-                            className={cn(
-                              "flex shrink-0 justify-center items-center w-11 h-11 border rounded-full transition-colors",
-                              isExpanded 
-                                ? "bg-red-600/10 border-red-600/30 text-red-500 hover:bg-red-600 hover:text-white" 
-                                : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-red-500 hover:border-red-600"
-                            )}
-                          >
-                            {isExpanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
-                          </button>
-                        )}
-                      </div>
-                      
-                      {isExpanded && hasChildren && (
-                        <div className="flex flex-col gap-2 pl-4 border-l border-zinc-800 ml-5 mt-1">
-                          {subcats.map(sub => (
-                            <button 
-                              key={sub.id}
-                              onClick={() => setSelectedCat(sub.id)}
-                              className={cn(
-                                "whitespace-nowrap px-4 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border text-left",
-                                selectedCat === sub.id 
-                                  ? "bg-red-600 text-white border-red-600 shadow-lg shadow-red-900/20" 
-                                  : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-red-500 hover:bg-zinc-800"
-                              )}
-                            >
-                              {sub.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            
-            <div className="hidden md:block bg-zinc-900/50 p-6 rounded-3xl border border-zinc-800">
-               <h4 className="text-sm font-bold mb-4">Privacidade Atômica</h4>
-               <p className="text-xs text-zinc-500 leading-relaxed">
-                 Nossa entrega é 100% blindada. Embalagem neutra e checkout sigiloso via WhatsApp.
-               </p>
-            </div>
-          </div>
-        </aside>
-
-        {/* Product Grid */}
-        <main className="flex-1">
+        {/* Product Grid - Optimized Columns */}
+        <main className="w-full">
           {loading ? (
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {[1,2,3,4,5,6,7,8].map(i => (
-                <div key={i} className="aspect-[4/5] bg-zinc-900 rounded-2xl border border-zinc-800 animate-pulse"></div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+              {[1,2,3,4,5,6,7,8,9,10].map(i => (
+                <div key={i} className="aspect-[4/5] bg-zinc-900 rounded-3xl border border-zinc-800 animate-pulse"></div>
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-32 bg-zinc-950 border border-zinc-900 rounded-[3rem]">
-              <p className="text-zinc-600 font-bold uppercase tracking-widest text-sm mb-6">Nenhum desejo encontrado.</p>
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }}
+              className="text-center py-32 bg-zinc-950/50 border border-dashed border-zinc-800 rounded-[3rem]"
+            >
+              <div className="mb-6 flex justify-center">
+                <div className="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700">
+                  <Search size={40} />
+                </div>
+              </div>
+              <p className="text-zinc-500 font-black uppercase tracking-widest text-sm mb-6 px-4">Não encontramos o que você procura...</p>
               <Button 
                 variant="outline" 
-                className="rounded-full border-zinc-800 hover:bg-zinc-900 font-bold px-8"
+                className="rounded-full border-zinc-800 hover:bg-zinc-900 font-bold px-10 py-6 h-auto uppercase tracking-widest text-[10px]"
                 onClick={() => { setSearch(''); setSelectedCat('all'); }}
               >
-                Limpar filtros
+                Tentar novamente
               </Button>
-            </div>
+            </motion.div>
           ) : (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {paginatedProducts.map((p) => (
-                  <ProductGridCard key={p.id} product={p} />
-                ))}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+                <AnimatePresence mode="popLayout">
+                  {paginatedProducts.map((p) => (
+                    <motion.div
+                      layout
+                      key={p.id}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <ProductGridCard product={p} />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
 
               {totalPages > 1 && (
@@ -315,54 +338,61 @@ function ProductGridCard({ product }: { product: Product }) {
     <Link 
       to={`/produto/${product.seo?.slug || product.id}`} 
       className={cn(
-        "group bg-zinc-900 rounded-2xl overflow-hidden flex flex-col border border-zinc-800 transition-all duration-500",
-        isOut ? "grayscale opacity-60" : "hover:border-red-600"
+        "group bg-zinc-900/40 rounded-[2rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-500",
+        isOut ? "grayscale opacity-40" : "hover:border-red-600/50 hover:bg-zinc-900 hover:shadow-2xl hover:shadow-red-900/10"
       )}
     >
-      <div className="aspect-[4/5] relative bg-zinc-800 overflow-hidden">
+      <div className="aspect-[4/5] relative bg-zinc-900 overflow-hidden">
         {image ? (
           <img 
             src={image} 
             alt={product.name} 
             className={cn(
-              "w-full h-full object-cover transition-transform duration-700",
+              "w-full h-full object-cover transition-transform duration-1000 ease-out",
               !isOut && "group-hover:scale-110"
             )}
             referrerPolicy="no-referrer"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-zinc-600 text-xs text-center px-4">Sem Imagem</div>
+          <div className="absolute inset-0 flex items-center justify-center text-zinc-800 text-xs text-center px-4">Sem Imagem</div>
         )}
         
-        <div className="absolute top-2 left-2 flex flex-col gap-1">
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
           {product.newRelease && (
-            <span className="bg-red-600 text-white text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-sm">NEW</span>
+            <span className="bg-red-600 text-white text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-lg">New</span>
           )}
           {!!product.promoPrice && product.promoPrice < product.price && !isOut && (
-            <span className="bg-white text-black text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-sm">OFF</span>
+            <span className="bg-white text-black text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-lg">Sale</span>
           )}
         </div>
 
         {isOut && (
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-            <span className="bg-zinc-900 text-white text-[9px] font-black uppercase tracking-[2px] px-3 py-1.5 rounded-full border border-zinc-700">Esgotado</span>
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-[2px]">
+            <span className="bg-white text-black text-[8px] font-black uppercase tracking-[2px] px-4 py-2 rounded-full border shadow-xl">Esgotado</span>
           </div>
         )}
+        
+        {/* Quick Add overlay or something hidden could go here if requested, but keep it clean for now */}
       </div>
       
-      <div className="p-3 md:p-4 flex flex-col flex-1">
-        <h3 className="text-sm font-bold text-zinc-100 group-hover:text-red-500 transition-colors line-clamp-3 leading-tight min-h-[50px] md:min-h-[60px]">
+      <div className="p-4 md:p-6 flex flex-col flex-1">
+        <h3 className="text-xs md:text-sm font-bold text-zinc-200 group-hover:text-red-500 transition-colors line-clamp-2 leading-snug min-h-[40px]">
           {product.name}
         </h3>
-        <div className="mt-2 flex flex-col">
-          {!!product.promoPrice && product.promoPrice < product.price && !isOut ? (
-            <>
-              <span className="text-[10px] text-zinc-500 line-through">{formatCurrency(product.price)}</span>
-              <span className="text-base font-black text-red-500 tracking-tight">{formatCurrency(product.promoPrice)}</span>
-            </>
-          ) : (
-            <span className="text-base font-black text-zinc-100 tracking-tight">{formatCurrency(product.price)}</span>
-          )}
+        <div className="mt-4 flex items-center justify-between">
+          <div className="flex flex-col">
+            {!!product.promoPrice && product.promoPrice < product.price && !isOut ? (
+              <>
+                <span className="text-[10px] text-zinc-500 line-through opacity-50">{formatCurrency(product.price)}</span>
+                <span className="text-sm md:text-base font-black text-white tracking-tighter">{formatCurrency(product.promoPrice)}</span>
+              </>
+            ) : (
+              <span className="text-sm md:text-base font-black text-white tracking-tighter">{formatCurrency(product.price)}</span>
+            )}
+          </div>
+          <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 text-red-500">
+             <ShoppingBag size={14} />
+          </div>
         </div>
       </div>
     </Link>

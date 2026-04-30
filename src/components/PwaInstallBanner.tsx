@@ -1,29 +1,11 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Download, X, Smartphone, ImageIcon } from 'lucide-react';
+import { Download, X, Smartphone } from 'lucide-react';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import { useState, useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 
 export function PwaInstallBanner() {
   const { isInstallable, isInstalled, installApp } = usePwaInstall();
   const [isVisible, setIsVisible] = useState(false);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function loadLogo() {
-      try {
-        const docRef = doc(db, 'settings', 'store');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists() && docSnap.data().logoUrl) {
-          setLogoUrl(docSnap.data().logoUrl);
-        }
-      } catch (error) {
-        console.error("Error loading logo for PWA banner:", error);
-      }
-    }
-    loadLogo();
-  }, []);
 
   useEffect(() => {
     // Show after a small delay to not overwhelm the user
@@ -55,13 +37,9 @@ export function PwaInstallBanner() {
         >
           <div className="max-w-4xl mx-auto bg-zinc-950/95 backdrop-blur-xl border border-red-600/30 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5),0_0_20px_rgba(220,38,38,0.1)] overflow-hidden">
             <div className="flex items-center gap-4 p-4 py-3">
-              {/* Dynamic Logo Icon */}
-              <div className="hidden sm:flex w-12 h-12 bg-zinc-900 rounded-xl items-center justify-center shadow-lg border border-red-600/20 overflow-hidden shrink-0">
-                {logoUrl ? (
-                  <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
-                ) : (
-                  <Smartphone className="text-red-600" size={24} />
-                )}
+              {/* App Icon Mockup */}
+              <div className="hidden sm:flex w-12 h-12 bg-red-600 rounded-xl items-center justify-center shadow-lg shadow-red-600/20">
+                <Smartphone className="text-white" size={24} />
               </div>
 
               <div className="flex-1">

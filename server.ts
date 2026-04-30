@@ -102,131 +102,66 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
-    // Serve static files but EXCLUDE manifest and index.html so they can be dynamic
-    app.use(express.static(distPath, { 
-      index: false,
-      setHeaders: (res, path) => {
-        if (path.endsWith('.webmanifest') || path.endsWith('.json') || path.endsWith('index.html')) {
-          res.setHeader('Cache-Control', 'no-store');
-        }
-      }
-    }));
+    app.use(express.static(distPath, { index: false }));
   }
 
-  // --- NEW: Proxy route for dynamic OG image ---
-  app.get('/og-image.png', async (req, res) => {
-    try {
-      const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
-      const config = JSON.parse(configRaw);
-      
-      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store?key=${config.apiKey}`;
-      const settingsRes = await fetch(settingsUrl);
-      
-      let logoUrl = null;
-      if (settingsRes.ok) {
-        const settingsData = await settingsRes.json();
-        logoUrl = settingsData.fields?.logoUrl?.stringValue;
-      }
-
-      if (logoUrl) {
-        const imageRes = await fetch(logoUrl);
-        if (imageRes.ok) {
-          const buffer = await imageRes.arrayBuffer();
-          const contentType = imageRes.headers.get('Content-Type') || 'image/png';
-          
-          res.setHeader('Content-Type', contentType);
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          return res.send(Buffer.from(buffer));
-        }
-      }
-      
-      throw new Error('Logo not found or fetch failed');
-    } catch (err) {
-      const fallbackPath = process.env.NODE_ENV === 'production' 
-        ? path.resolve(process.cwd(), 'dist', 'og-image.png')
-        : path.resolve(process.cwd(), 'public', 'og-image.png');
-      
-      res.setHeader('Cache-Control', 'public, max-age=300');
-      return res.sendFile(fallbackPath);
-    }
-  });
-
-  // Define dynamic metadata handler before possible static asset fallthrough
-  app.use(async (req, res, next) => {
-    // Skip if it's explicitly an API call
-    if (req.path.startsWith('/api/')) return next();
-    
-    const isManifest = req.path === '/manifest.webmanifest' || req.path === '/manifest.json';
-    const isHtml = !req.path.startsWith('/api') && !req.path.includes('.');
-
-    if (!isManifest && !isHtml) {
+  // Open Graph dynamic injection for product pages
+  app.get('*all', async (req, res, next) => {
+    const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
+    if (isAsset) {
       return next();
     }
 
+    if (req.path.startsWith('/api/')) return next();
+
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    const protocol = req.get('x-forwarded-proto') || req.protocol;
-    const host = req.get('host');
-    const origin = `${protocol}://${host}`;
-    
-    // Standardized Proxy URL for OG Image
-    let imageProxyUrl = `${origin}/og-image.png`;
-    const ogUrl = `${origin}${req.path}`;
+    let image = "https://discretaboutique.com.br/og-image.png"; // Default image
+    const ogUrl = `https://discretaboutique.com.br${req.path}`;
     
     try {
       const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
       const config = JSON.parse(configRaw);
       
-      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store?key=${config.apiKey}`;
+      // 1. Fetch store settings for global defaults (Logo and Name)
+      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store`;
       const settingsRes = await fetch(settingsUrl);
       if (settingsRes.ok) {
         const settingsData = await settingsRes.json();
         const sFields = settingsData.fields || {};
         if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
+        if (sFields.logoUrl?.stringValue) image = sFields.logoUrl.stringValue;
       }
 
-      if (isManifest) {
+      // 2. Dynamic manifest handler
+      if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
         const manifest = {
           name: title.split('|')[0].trim(),
-          short_name: "Discreta",
+          short_name: title.split('|')[0].trim(),
           description: description,
           theme_color: '#000000',
-          background_color: '#000000',
+          background_color: '#ffffff',
           display: 'standalone',
-          orientation: 'portrait',
           start_url: '/',
           icons: [
             {
-              src: "/og-image.png",
+              src: image,
               sizes: '192x192',
-              type: 'image/png',
+              type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
               purpose: 'any'
             },
             {
-              src: "/og-image.png",
+              src: image,
               sizes: '512x512',
-              type: 'image/png',
+              type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
               purpose: 'any'
-            },
-            {
-              src: "/og-image.png",
-              sizes: '192x192',
-              type: 'image/png',
-              purpose: 'maskable'
-            },
-            {
-              src: "/og-image.png",
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'maskable'
             }
           ]
         };
-        res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
-        return res.setHeader('Content-Type', 'application/manifest+json').json(manifest);
+        return res.json(manifest);
       }
 
-      // Handle Product metadata
+      // 3. Product metadata override
       const productMatch = req.path.match(/^\/produto\/([^/]+)$/);
       if (productMatch) {
         const slug = productMatch[1];
@@ -262,68 +197,54 @@ async function startServer() {
                ) || imagesArray[0];
                const imgData = mainImage as { mapValue?: { fields?: { url?: { stringValue?: string } } } };
                if (imgData.mapValue?.fields?.url?.stringValue) {
-                 imageProxyUrl = imgData.mapValue.fields.url.stringValue;
+                 image = imgData.mapValue.fields.url.stringValue;
                }
              }
           }
         }
       }
+    } catch (e) {
+      console.error("Error fetching metadata:", e);
+    }
 
-      const ogTags = `
-        <title>${title}</title>
-        <meta name="description" content="${description}" />
-        <meta property="og:title" content="${title}" />
-        <meta property="og:description" content="${description}" />
-        <meta property="og:image" content="${imageProxyUrl}" />
-        <meta property="og:image:secure_url" content="${imageProxyUrl}" />
-        <meta property="og:image:type" content="image/png" />
-        <meta property="og:image:width" content="512" />
-        <meta property="og:image:height" content="512" />
-        <meta property="og:url" content="${ogUrl}" />
-        <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="Discreta Boutique" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="${title}" />
-        <meta name="twitter:description" content="${description}" />
-        <meta name="twitter:image" content="${imageProxyUrl}" />
-        <meta itemprop="name" content="${title}" />
-        <meta itemprop="description" content="${description}" />
-        <meta itemprop="image" content="${imageProxyUrl}" />
-        <link rel="apple-touch-icon" href="/og-image.png" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-      `;
+    const ogTags = `
+      <meta property="og:title" content="${title}" />
+      <meta property="og:description" content="${description}" />
+      <meta property="og:image" content="${image}" />
+      <meta property="og:url" content="${ogUrl}" />
+      <meta property="og:type" content="website" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="${title}" />
+      <meta name="twitter:description" content="${description}" />
+      <meta name="twitter:image" content="${image}" />
+    `;
 
-      let htmlContents = '';
-      
+    try {
+      let html = '';
       if (process.env.NODE_ENV !== 'production') {
-        htmlContents = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
+        html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
+        html = html.replace('</title>', '</title>\n' + ogTags);
+        // Replace dynamic logo for icons
+        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
+            html = html.replace('href="/logo-red.svg"', `href="${image}"`);
+            html = html.replace('href="/og-image.png"', `href="${image}"`);
+        }
+        html = await vite.transformIndexHtml(req.url, html);
       } else {
-        htmlContents = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
+        html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
+        html = html.replace('</title>', '</title>\n' + ogTags);
+        // Replace dynamic logo for icons
+        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
+            html = html.replace('href="/logo-red.svg"', `href="${image}"`);
+            html = html.replace('href="/og-image.png"', `href="${image}"`);
+        }
       }
-
-      // Remove existing title and description if any to avoid duplicates
-      htmlContents = htmlContents.replace(/<title>.*<\/title>/, '');
-      htmlContents = htmlContents.replace(/<meta name="description" content=".*" \/>/, '');
-      
-      htmlContents = htmlContents.replace('<head>', `<head>\n${ogTags}`);
-      
-      // Standardized icon injection
-      htmlContents = htmlContents.replace(/rel="icon" type="[^"]+" href="\/logo-red\.svg"/g, `rel="icon" href="/og-image.png"`);
-      htmlContents = htmlContents.replace(/rel="apple-touch-icon" href="\/og-image\.png"/g, `rel="apple-touch-icon" href="/og-image.png"`);
-
-      if (process.env.NODE_ENV !== 'production' && vite) {
-        htmlContents = await vite.transformIndexHtml(req.url, htmlContents);
-      }
-      
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-
-      return res.status(200).set({ 'Content-Type': 'text/html' }).send(htmlContents);
-    } catch(err) {
-      console.error("Renderer error:", err);
-      next();
+      res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+    } catch(e) {
+      if (vite) vite.ssrFixStacktrace(e);
+      console.error("Error rendering HTML:", e);
+      const errorMessage = e instanceof Error ? e.message : "Erro interno";
+      res.status(500).end(errorMessage);
     }
   });
 

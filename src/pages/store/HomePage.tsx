@@ -1,14 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { collection, query, where, getDocs, limit, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link } from 'react-router-dom';
-import { Package, ShoppingCart, Users, ChevronLeft, ChevronRight, UserCircle, Trash2, Save, CreditCard } from 'lucide-react';
+import { Package, ShoppingCart, Users, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react';
 import { formatCurrency, cn } from '../../lib/utils';
 import { Product } from '../../services/productService';
+import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
-import { Input } from '../../components/ui/input';
-import { Button } from '../../components/ui/button';
-import { useFeedback } from '../../contexts/FeedbackContext';
 
 interface Banner {
   id: string;
@@ -23,6 +21,7 @@ export function HomePage() {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [newArrivals, setNewArrivals] = useState<Product[]>([]);
   const [bestSellers, setBestSellers] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [currentBanner, setCurrentBanner] = useState(0);
 
   const loadData = useCallback(async () => {
@@ -54,6 +53,10 @@ export function HomePage() {
         return dateB - dateA;
       });
       setBestSellers(bestSellersData);
+
+      // 5. Categories
+      const cSnap = await getDocs(query(collection(db, 'categories'), where('isActive', '==', true), where('level', '==', 0)));
+      setCategories(cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
 
     } catch (error) {
       console.error("Error loading home:", error);
@@ -150,6 +153,61 @@ export function HomePage() {
           </div>
         )}
       </section>
+
+      {/* 1.5 CATEGORY EXPOSITION */}
+      {categories.length > 0 && (
+        <section className="bg-black py-16 border-b border-zinc-900">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="flex flex-col mb-10">
+              <h2 className="text-sm font-black uppercase tracking-[4px] text-zinc-600 mb-2">Coleções</h2>
+              <div className="w-12 h-1 bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"></div>
+            </div>
+
+            <div className="flex items-center gap-6 overflow-x-auto no-scrollbar pb-6">
+              {categories.map(cat => (
+                <Link 
+                  key={cat.id} 
+                  to={`/catalogo?categoria=${cat.id}`} 
+                  className="group relative shrink-0 w-32 md:w-44 h-52 md:h-64 rounded-[1.5rem] md:rounded-[2.5rem] overflow-hidden border border-zinc-900 bg-zinc-950 hover:border-red-600/40 transition-all duration-700 shadow-[0_20px_50px_rgba(0,0,0,1)] hover:shadow-red-900/20"
+                >
+                  {/* Background Image with Parallax-like hover */}
+                  <div className="absolute inset-0">
+                    {cat.image?.url ? (
+                      <img 
+                        src={cat.image.url} 
+                        alt={cat.name} 
+                        className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-125 opacity-40 group-hover:opacity-60" 
+                        referrerPolicy="no-referrer" 
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl font-black italic text-zinc-900">
+                        {cat.name.substring(0, 1)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dark Gradient Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/60 to-black transition-opacity duration-700" />
+                  
+                  {/* Centered Content */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-10">
+                    <span className="text-[6px] md:text-[8px] font-black uppercase tracking-[4px] text-red-600 mb-2 transform -translate-y-2 opacity-0 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-500">
+                      Coleção
+                    </span>
+                    <h3 className="text-sm md:text-lg font-black uppercase tracking-tighter italic text-white leading-tight drop-shadow-[0_2px_10px_rgba(0,0,0,1)] transition-transform duration-500 group-hover:scale-110">
+                      {cat.name}
+                    </h3>
+                    <div className="mt-3 w-0 h-0.5 bg-red-600 group-hover:w-8 transition-all duration-500 shadow-[0_0_10px_rgba(220,38,38,0.8)]"></div>
+                  </div>
+
+                  {/* Inner Glow Border */}
+                  <div className="absolute inset-0 border border-white/5 rounded-[1.5rem] md:rounded-[2.5rem] pointer-events-none" />
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* 2. CARROUSÉIS DE PRODUTOS */}
       <div className="max-w-7xl mx-auto w-full flex flex-col pt-10 pb-20 px-4 space-y-20">
