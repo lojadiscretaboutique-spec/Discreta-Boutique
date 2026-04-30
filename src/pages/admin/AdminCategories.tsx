@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '../../store/authStore';
+import Papa from 'papaparse';
 import { 
   Plus, Edit2, Trash2, Upload, Save, ArrowLeft, 
   Info, Layers, Image as ImageIcon, Search, 
   Check, ChevronRight, Copy, Eye, EyeOff, Tag, 
-  Globe, Settings2, Palette, Layout
+  Globe, Settings2, Palette, Layout, Download
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -55,6 +56,113 @@ export function AdminCategories() {
   const [form, setForm] = useState<Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'productCount'>>(initialCategory);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState<'image' | 'banner' | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportCSV = () => {
+    // Generate data rows from simple mapping
+    const exportData = categories.map(cat => {
+      const parent = categories.find(c => c.id === cat.parentId);
+      return {
+        id: cat.id,
+        nome: cat.name,
+        slug: cat.slug,
+        categoria_pai_id: cat.parentId || '',
+        categoria_pai_nome: parent?.name || '',
+        ordem: cat.sortOrder,
+        ativa: cat.isActive ? 'sim' : 'nao',
+        em_destaque: cat.isFeatured ? 'sim' : 'nao',
+        exibir_no_menu: cat.showInMenu ? 'sim' : 'nao',
+        exibir_na_home: cat.showInHome ? 'sim' : 'nao',
+        descricao_curta: cat.shortDescription || '',
+        descricao: cat.description || ''
+      };
+    });
+
+    const csv = Papa.unparse(exportData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `categorias_discreta_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast("CSV exportado com sucesso!");
+  };
+
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        try {
+          const rows = results.data as Record<string, string>[];
+          let successCount = 0;
+          let errorCount = 0;
+
+          // Load current state to map parents and check existence
+          const currentCats = await categoryService.listCategories();
+          
+          for (const row of rows) {
+            try {
+              const name = row.nome || row.name;
+              if (!name) continue;
+
+              const catData: Partial<Category> = {
+                name: name,
+                slug: row.slug || generateSlug(name),
+                sortOrder: Number(row.ordem || row.sortOrder || 0),
+                isActive: (row.ativa || row.active)?.toString().toLowerCase() === 'sim' || (row.ativa || row.active)?.toString().toLowerCase() === 'true',
+                isFeatured: (row.em_destaque || row.featured)?.toString().toLowerCase() === 'sim' || (row.em_destaque || row.featured)?.toString().toLowerCase() === 'true',
+                showInMenu: (row.exibir_no_menu || row.showInMenu)?.toString().toLowerCase() !== 'nao',
+                showInHome: (row.exibir_na_home || row.showInHome)?.toString().toLowerCase() !== 'nao',
+                shortDescription: row.descricao_curta || row.shortDescription || '',
+                description: row.descricao || row.description || '',
+                level: 0
+              };
+
+              // Resolve parentId
+              let parentId = row.categoria_pai_id || row.parentId || null;
+              if (!parentId && (row.categoria_pai_nome || row.parentName)) {
+                const parent = currentCats.find(c => c.name.toLowerCase() === (row.categoria_pai_nome || row.parentName).toLowerCase());
+                if (parent) parentId = parent.id;
+              }
+              
+              catData.parentId = parentId || null;
+              catData.level = parentId ? 1 : 0;
+
+              const existingId = row.id;
+              const exists = currentCats.find(c => (existingId && c.id === existingId) || c.slug === catData.slug);
+
+              if (exists) {
+                await categoryService.updateCategory(exists.id, catData);
+              } else {
+                await categoryService.createCategory(catData);
+              }
+              successCount++;
+            } catch (err) {
+              console.error("Erro ao importar linha:", row, err);
+              errorCount++;
+            }
+          }
+
+          toast(`Importação concluída: ${successCount} sucesso(s), ${errorCount} erro(s).`);
+          loadData();
+        } catch (err) {
+          console.error("Erro processando CSV:", err);
+          toast("Erro ao processar o arquivo CSV.", "error");
+        } finally {
+          setLoading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      }
+    });
+  };
 
   const generateSlug = (name: string) => {
     return name.toLowerCase().trim()
@@ -592,9 +700,34 @@ export function AdminCategories() {
         </div>
         <div className="flex items-center gap-2">
           {canCreate && (
-            <Button onClick={handleNew} className="bg-slate-950 hover:bg-slate-800 shadow-xl shadow-slate-200">
-               <Plus size={18} className="mr-2" /> Nova Categoria
-            </Button>
+            <>
+              <input 
+                type="file" 
+                accept=".csv" 
+                className="hidden" 
+                ref={fileInputRef} 
+                onChange={handleImportCSV} 
+              />
+              <Button 
+                variant="outline" 
+                onClick={() => fileInputRef.current?.click()} 
+                className="border-slate-700 hover:bg-slate-800 text-slate-300"
+                title="Importar de CSV"
+              >
+                <Upload size={18} className="mr-2" /> Importar
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleExportCSV} 
+                className="border-slate-700 hover:bg-slate-800 text-slate-300"
+                title="Exportar para CSV"
+              >
+                <Download size={18} className="mr-2" /> Exportar
+              </Button>
+              <Button onClick={handleNew} className="bg-slate-950 hover:bg-slate-800 shadow-xl shadow-slate-200">
+                <Plus size={18} className="mr-2" /> Nova Categoria
+              </Button>
+            </>
           )}
         </div>
       </div>
