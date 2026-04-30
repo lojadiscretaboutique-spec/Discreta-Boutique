@@ -144,37 +144,37 @@ export function CatalogPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-black text-white min-h-screen">
-      {/* Header / Search Area - More Compact and Sticky-friendly */}
-      <section className="bg-zinc-950 border-b border-zinc-900 pt-8 pb-6 px-4 sticky top-16 z-30 backdrop-blur-md bg-black/90">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="hidden md:block">
-              <h1 className="text-2xl md:text-4xl font-black uppercase tracking-tighter italic">Catálogo</h1>
-            </div>
-            
-            <div className="w-full max-w-xl relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-red-500 transition-colors" size={18} />
+      {/* Header / Search Area - Optimized for Space */}
+      <section className="bg-zinc-950 border-b border-zinc-900 pt-4 pb-2 px-4 sticky top-14 md:top-16 z-30 backdrop-blur-md bg-black/90">
+        <div className="max-w-7xl mx-auto space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 relative group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-red-500 transition-colors" size={14} />
               <Input 
                 type="text"
-                placeholder="O que você deseja hoje?" 
-                className="w-full bg-zinc-900/50 border-zinc-800 text-white pl-12 pr-4 py-6 rounded-2xl focus:ring-red-600 font-medium placeholder:text-zinc-600 transition-all h-auto"
+                placeholder="Pesquisar..." 
+                className="w-full bg-zinc-900/50 border-zinc-800 text-white pl-9 pr-4 py-2 rounded-xl focus:ring-1 focus:ring-red-600/50 font-medium placeholder:text-zinc-600 transition-all h-9 text-xs"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
+            {/* Minimal Title only on Desktop to save height */}
+            <div className="hidden lg:block shrink-0">
+              <h1 className="text-lg font-black uppercase tracking-tighter italic text-zinc-500">Catálogo</h1>
+            </div>
           </div>
 
-          {/* Category Navigation - Highly Ergonomic for Mobile */}
-          <div className="space-y-4">
+          {/* Category Navigation - More Compact */}
+          <div className="space-y-2">
             {/* Root Categories Horizontal Scroll */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-0.5">
               <button 
                 onClick={() => setSelectedCat('all')}
                 className={cn(
-                  "whitespace-nowrap px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
+                  "whitespace-nowrap px-3.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border",
                   selectedCat === 'all' 
-                    ? "bg-red-600 text-white border-red-600 shadow-lg shadow-red-900/40" 
-                    : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700"
+                    ? "bg-red-600 text-white border-red-600 shadow-md shadow-red-900/20" 
+                    : "bg-zinc-900/50 text-zinc-500 border-zinc-800/50 hover:border-zinc-700"
                 )}
               >
                 Todos
@@ -184,10 +184,10 @@ export function CatalogPage() {
                   key={c.id}
                   onClick={() => setSelectedCat(c.id)}
                   className={cn(
-                    "whitespace-nowrap px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
+                    "whitespace-nowrap px-3.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border",
                     activeRootId === c.id 
-                      ? "bg-white text-black border-white shadow-lg" 
-                      : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700"
+                      ? "bg-white text-black border-white shadow-sm" 
+                      : "bg-zinc-900/50 text-zinc-500 border-zinc-800/50 hover:border-zinc-700"
                   )}
                 >
                   {c.name}
@@ -195,36 +195,35 @@ export function CatalogPage() {
               ))}
             </div>
 
-            {/* Subcategories - Secondary Row if Root Selected */}
+            {/* Subcategories - Mini Row */}
             <AnimatePresence mode="wait">
               {activeRootId && activeSubcategories.length > 0 && (
                 <motion.div 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 py-1 border-t border-zinc-900/50 pt-3"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 py-1 border-t border-zinc-900/30 pt-2"
                 >
-                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mr-2 shrink-0">Sub:</span>
                   <button 
                     onClick={() => setSelectedCat(activeRootId)}
                     className={cn(
-                      "whitespace-nowrap px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                      "whitespace-nowrap px-3 py-1 rounded-md text-[8px] font-bold uppercase tracking-widest transition-all",
                       selectedCat === activeRootId 
-                        ? "text-red-500 bg-red-500/10" 
-                        : "text-zinc-500 hover:text-zinc-300"
+                        ? "text-red-500 bg-red-500/5" 
+                        : "text-zinc-600 hover:text-zinc-400"
                     )}
                   >
-                    Ver Tudo
+                    Tudo
                   </button>
                   {activeSubcategories.map(sub => (
                     <button 
                       key={sub.id}
                       onClick={() => setSelectedCat(sub.id)}
                       className={cn(
-                        "whitespace-nowrap px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                        "whitespace-nowrap px-3 py-1 rounded-md text-[8px] font-bold uppercase tracking-widest transition-all",
                         selectedCat === sub.id 
-                          ? "text-red-500 bg-red-500/10" 
-                          : "text-zinc-500 hover:text-zinc-300"
+                          ? "text-red-500 bg-red-500/5" 
+                          : "text-zinc-600 hover:text-zinc-400"
                       )}
                     >
                       {sub.name}
@@ -355,16 +354,18 @@ export function CatalogPage() {
 function ProductGridCard({ product }: { product: Product }) {
   const image = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
+  const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
+  const discount = hasPromo ? Math.round(((product.price - product.promoPrice!) / product.price) * 100) : 0;
   
   return (
     <Link 
       to={`/produto/${product.seo?.slug || product.id}`} 
       className={cn(
-        "group bg-zinc-900/40 rounded-[2rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-500",
-        isOut ? "grayscale opacity-40" : "hover:border-red-600/50 hover:bg-zinc-900 hover:shadow-2xl hover:shadow-red-900/10"
+        "group relative bg-zinc-950/40 rounded-[2.5rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-700 h-full",
+        isOut ? "grayscale opacity-40" : "hover:border-red-600/30 hover:bg-zinc-950 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:shadow-red-900/10"
       )}
     >
-      <div className="aspect-[4/5] relative bg-zinc-900 overflow-hidden">
+      <div className="aspect-[3/4] relative bg-zinc-900 overflow-hidden">
         {image ? (
           <img 
             src={image} 
@@ -376,46 +377,80 @@ function ProductGridCard({ product }: { product: Product }) {
             referrerPolicy="no-referrer"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-zinc-800 text-xs text-center px-4">Sem Imagem</div>
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-zinc-800 text-[10px] font-black uppercase tracking-widest text-center px-4 italic">Sem Imagem</div>
         )}
         
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-          {product.newRelease && (
-            <span className="bg-red-600 text-white text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-lg">New</span>
+        {/* Organic Floating Badges */}
+        <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+          {product.newRelease && !isOut && (
+            <motion.span 
+              initial={{ x: -20, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              className="bg-red-600 text-white text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-[0_5px_15px_rgba(220,38,38,0.4)] backdrop-blur-sm"
+            >
+              Novo
+            </motion.span>
           )}
-          {!!product.promoPrice && product.promoPrice < product.price && !isOut && (
-            <span className="bg-white text-black text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-lg">Sale</span>
+          {hasPromo && (
+            <motion.span 
+              initial={{ x: -20, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              className="bg-white text-black text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-xl"
+            >
+              -{discount}%
+            </motion.span>
           )}
         </div>
 
         {isOut && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-[2px]">
-            <span className="bg-white text-black text-[8px] font-black uppercase tracking-[2px] px-4 py-2 rounded-full border shadow-xl">Esgotado</span>
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-[4px] z-20">
+            <span className="bg-transparent text-white text-[10px] font-black uppercase tracking-[4px] border-b-2 border-white/20 pb-1">Esgotado</span>
           </div>
         )}
         
-        {/* Quick Add overlay or something hidden could go here if requested, but keep it clean for now */}
+        {/* Soft Glow Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
       </div>
       
-      <div className="p-4 md:p-6 flex flex-col flex-1">
-        <h3 className="text-xs md:text-sm font-bold text-zinc-200 group-hover:text-red-500 transition-colors line-clamp-2 leading-snug min-h-[40px]">
+      <div className="p-5 md:p-7 flex flex-col flex-1 relative">
+        <h3 className="text-xs md:text-sm font-bold text-zinc-400 group-hover:text-white transition-all duration-500 line-clamp-4 leading-[1.6] min-h-[4rem] md:min-h-[5rem] tracking-tight">
           {product.name}
         </h3>
-        <div className="mt-4 flex items-center justify-between">
-          <div className="flex flex-col">
-            {!!product.promoPrice && product.promoPrice < product.price && !isOut ? (
+
+        <div className="mt-auto pt-6 flex items-end justify-between">
+          <div className="flex flex-col gap-0.5">
+            {hasPromo ? (
               <>
-                <span className="text-[10px] text-zinc-500 line-through opacity-50">{formatCurrency(product.price)}</span>
-                <span className="text-sm md:text-base font-black text-white tracking-tighter">{formatCurrency(product.promoPrice)}</span>
+                <span className="text-[9px] md:text-[10px] text-zinc-600 font-bold line-through tracking-tighter opacity-70 group-hover:opacity-100 transition-opacity">
+                  {formatCurrency(product.price)}
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[10px] font-black text-red-600 uppercase tracking-tighter mb-0.5">R$</span>
+                  <span className="text-lg md:text-2xl font-black text-white tracking-tighter drop-shadow-2xl">
+                    {formatCurrency(product.promoPrice!).replace('R$', '').trim()}
+                  </span>
+                </div>
               </>
             ) : (
-              <span className="text-sm md:text-base font-black text-white tracking-tighter">{formatCurrency(product.price)}</span>
+              <div className="flex items-baseline gap-1">
+                <span className="text-[10px] font-black text-zinc-600 uppercase tracking-tighter mb-0.5 group-hover:text-red-600 transition-colors">R$</span>
+                <span className="text-lg md:text-2xl font-black text-white tracking-tighter drop-shadow-2xl transition-transform duration-500 group-hover:translate-x-1">
+                  {formatCurrency(product.price).replace('R$', '').trim()}
+                </span>
+              </div>
             )}
           </div>
-          <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 text-red-500">
-             <ShoppingBag size={14} />
+
+          <div className="relative">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden group-hover:border-red-600/50 group-hover:bg-red-600 transition-all duration-500 shadow-lg translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100">
+               <ShoppingBag size={18} className="text-zinc-500 group-hover:text-white transition-colors" />
+            </div>
           </div>
         </div>
+        
+        {/* Decoration line */}
+        <div className="absolute top-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-zinc-900 to-transparent" />
       </div>
     </Link>
   );

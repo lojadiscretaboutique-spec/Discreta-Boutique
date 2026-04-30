@@ -350,61 +350,97 @@ function ProductCarousel({ title, products, link }: { title: string, products: P
 function ProductItemCard({ product }: { product: Product }) {
   const mainImage = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
+  const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
+  const discount = hasPromo ? Math.round(((product.price - product.promoPrice!) / product.price) * 100) : 0;
   
   return (
     <Link 
       to={`/produto/${product.seo?.slug || product.id}`} 
       className={cn(
-        "group bg-zinc-900 rounded-2xl overflow-hidden flex flex-col border border-zinc-800 transition-all duration-300",
-        isOut ? "grayscale opacity-60" : "hover:border-red-600"
+        "group relative bg-zinc-950/40 rounded-[2.5rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-700 h-full",
+        isOut ? "grayscale opacity-40 shadow-none border-zinc-950" : "hover:border-red-600/30 hover:bg-zinc-950 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:shadow-red-900/10"
       )}
     >
-      <div className="aspect-[4/5] relative bg-zinc-800 overflow-hidden">
+      <div className="aspect-[3/4] relative bg-zinc-900 overflow-hidden">
         {mainImage ? (
           <img 
             src={mainImage} 
             alt={product.name} 
             className={cn(
-              "w-full h-full object-cover transition-transform duration-700",
+              "w-full h-full object-cover transition-transform duration-1000 ease-out",
               !isOut && "group-hover:scale-110"
             )}
             referrerPolicy="no-referrer"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs text-center px-4">Sem Imagem</div>
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-zinc-800 text-[10px] font-black uppercase tracking-widest text-center px-4 italic">Sem Imagem</div>
         )}
         
-        {/* Badges */}
-        <div className="absolute top-2 left-2 flex flex-col gap-1">
-          {product.newRelease && (
-            <span className="bg-red-600 text-white text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-sm">NEW</span>
+        {/* Organic Floating Badges */}
+        <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+          {product.newRelease && !isOut && (
+            <motion.span 
+              initial={{ x: -20, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              className="bg-red-600 text-white text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-[0_5px_15px_rgba(220,38,38,0.4)] backdrop-blur-sm"
+            >
+              Novo
+            </motion.span>
           )}
-          {!!product.promoPrice && product.promoPrice < product.price && !isOut && (
-            <span className="bg-white text-black text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-sm">OFF</span>
+          {hasPromo && (
+            <motion.span 
+              initial={{ x: -20, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              className="bg-white text-black text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-xl"
+            >
+              -{discount}%
+            </motion.span>
           )}
         </div>
 
         {isOut && (
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-            <span className="bg-zinc-900 text-white text-[9px] font-black uppercase tracking-[2px] px-3 py-1.5 rounded-full border border-zinc-700">Esgotado</span>
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-[4px] z-20">
+            <span className="bg-transparent text-white text-[10px] font-black uppercase tracking-[4px] border-b-2 border-white/20 pb-1">Esgotado</span>
           </div>
         )}
+        
+        {/* Soft Glow Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
       </div>
       
-      <div className="p-3 md:p-4 flex flex-col flex-1">
-        <h3 className="text-sm font-bold text-zinc-100 group-hover:text-red-500 transition-colors line-clamp-3 leading-tight min-h-[50px] md:min-h-[60px]">
+      <div className="p-5 md:p-6 flex flex-col flex-1 relative">
+        <h3 className="text-xs md:text-sm font-bold text-zinc-400 group-hover:text-white transition-all duration-500 line-clamp-4 leading-[1.6] min-h-[4rem] md:min-h-[5rem] tracking-tight">
           {product.name}
         </h3>
-        <div className="mt-2 flex flex-col">
-          {!!product.promoPrice && product.promoPrice < product.price && !isOut ? (
-            <>
-              <span className="text-[10px] text-zinc-500 line-through">{formatCurrency(product.price)}</span>
-              <span className="text-base font-black text-red-500 tracking-tight">{formatCurrency(product.promoPrice)}</span>
-            </>
-          ) : (
-            <span className="text-base font-black text-zinc-100 tracking-tight">{formatCurrency(product.price)}</span>
-          )}
+
+        <div className="mt-auto pt-6 flex flex-col gap-1">
+          <div className="flex flex-col gap-0.5">
+            {hasPromo ? (
+              <>
+                <span className="text-[9px] md:text-[10px] text-zinc-600 font-bold line-through tracking-tighter opacity-70 group-hover:opacity-100 transition-opacity">
+                  {formatCurrency(product.price)}
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[10px] font-black text-red-600 uppercase tracking-tighter mb-0.5">R$</span>
+                  <span className="text-lg md:text-2xl font-black text-white tracking-tighter drop-shadow-2xl">
+                    {formatCurrency(product.promoPrice!).replace('R$', '').trim()}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-baseline gap-1">
+                <span className="text-[10px] font-black text-zinc-600 uppercase tracking-tighter mb-0.5 group-hover:text-red-600 transition-colors">R$</span>
+                <span className="text-lg md:text-2xl font-black text-white tracking-tighter drop-shadow-2xl transition-transform duration-500 group-hover:translate-x-1">
+                  {formatCurrency(product.price).replace('R$', '').trim()}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
+        
+        {/* Decoration line */}
+        <div className="absolute top-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-zinc-900 to-transparent" />
       </div>
     </Link>
   );
