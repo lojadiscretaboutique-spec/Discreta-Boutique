@@ -3,8 +3,8 @@ import { State, City, DeliveryArea, deliveryAreaService } from '../../services/d
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Edit2, Trash2, Plus, ChevronRight, ArrowLeft, X } from 'lucide-react';
-import { formatCurrency } from '../../lib/utils';
+import { Edit2, Trash2, Plus, ChevronRight, ArrowLeft, X, Download, Upload } from 'lucide-react';
+import { formatCurrency, cn } from '../../lib/utils';
 
 import { useAuthStore } from '../../store/authStore';
 
@@ -182,25 +182,183 @@ export function AdminDeliveryAreas() {
         }
     };
 
+    const handleExportCSV = async () => {
+        try {
+            setLoading(true);
+            const allAreas = await deliveryAreaService.listDeliveryAreas();
+            if (allAreas.length === 0) {
+                toast('Não há áreas para exportar', 'info');
+                return;
+            }
+
+            const headers = ['id', 'estado', 'cidade', 'bairro', 'taxa_entrega', 'pedido_minimo', 'tempo_entrega', 'frete_gratis_acima', 'status'];
+            const rows = allAreas.map(a => [
+                a.id || '',
+                a.stateName || '',
+                a.cityName || '',
+                a.bairro || '',
+                a.taxaEntrega || 0,
+                a.pedidoMinimo || 0,
+                a.tempoEntrega || 0,
+                a.freteGratisAcima || 0,
+                a.status || 'ativo'
+            ]);
+
+            const csvContent = [
+                headers.join(','),
+                ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+            ].join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `areas_entrega_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+            toast('Exportação concluída', 'success');
+        } catch (error) {
+            toast('Erro ao exportar CSV', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const text = event.target?.result as string;
+                const lines = text.split(/\r?\n/).filter(l => l.trim());
+                if (lines.length <= 1) {
+                    toast('Arquivo CSV vazio ou inválido', 'error');
+                    return;
+                }
+
+                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, '').toLowerCase());
+                const dataRows = lines.slice(1);
+
+                setLoading(true);
+                let count = 0;
+                let errors = 0;
+
+                const allStates = await deliveryAreaService.listStates();
+                const allExistingAreas = await deliveryAreaService.listDeliveryAreas();
+
+                for (const row of dataRows) {
+                    // Enhanced CSV parsing for quoted values
+                    const values = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
+                    const obj: any = {};
+                    headers.forEach((h, i) => {
+                        obj[h] = values[i];
+                    });
+
+                    try {
+                        const stateName = obj.estado;
+                        const cityName = obj.cidade;
+                        const bairroName = obj.bairro;
+
+                        if (!stateName || !cityName || !bairroName) continue;
+                        
+                        const state = allStates.find(s => s.nome.toLowerCase() === stateName.toLowerCase());
+                        if (!state) {
+                            console.error(`Estado ${stateName} não encontrado`);
+                            errors++;
+                            continue;
+                        }
+                        
+                        const citiesInState = await deliveryAreaService.listCities(state.id);
+                        let city = citiesInState.find(c => c.nome.toLowerCase() === cityName.toLowerCase());
+                        
+                        if (!city) {
+                            const newCityId = await deliveryAreaService.saveCity({
+                                nome: cityName,
+                                stateId: state.id!,
+                                stateName: state.nome,
+                                status: 'ativo'
+                            });
+                            city = { id: newCityId, nome: cityName, stateId: state.id!, stateName: state.nome, status: 'ativo' };
+                        }
+
+                        // Try to find if area already exists even without ID in CSV
+                        let existingId = obj.id;
+                        if (!existingId) {
+                            const match = allExistingAreas.find(a => 
+                                a.cityId === city!.id && 
+                                a.bairro.toLowerCase() === bairroName.toLowerCase()
+                            );
+                            if (match) existingId = match.id;
+                        }
+
+                        const areaPayload: Partial<DeliveryArea> = {
+                            id: existingId || undefined,
+                            stateId: state.id,
+                            stateName: state.nome,
+                            cityId: city.id,
+                            cityName: city.nome,
+                            bairro: bairroName,
+                            taxaEntrega: Number(obj.taxa_entrega) || 0,
+                            pedidoMinimo: Number(obj.pedido_minimo) || 0,
+                            tempoEntrega: Number(obj.tempo_entrega) || 0,
+                            freteGratisAcima: Number(obj.frete_gratis_acima) || 0,
+                            status: (obj.status?.toLowerCase() === 'inativo' ? 'inativo' : 'ativo') as any
+                        };
+
+                        await deliveryAreaService.saveDeliveryArea(areaPayload);
+                        count++;
+                    } catch (err) {
+                        console.error('Import error for row:', row, err);
+                        errors++;
+                    }
+                }
+
+                toast(`Importação concluída: ${count} sucessos, ${errors} erros`, errors > 0 ? 'info' : 'success');
+                loadData();
+            } catch (error) {
+                toast('Erro ao processar CSV', 'error');
+            } finally {
+                setLoading(false);
+                if (e.target) e.target.value = '';
+            }
+        };
+        reader.readAsText(file);
+    };
+
     return (
         <div className="flex flex-col gap-6 pb-20">
             {/* Header & Breadcrumbs */}
-            <div className="flex flex-col gap-2">
-                <h1 className="text-3xl font-bold tracking-tight text-white">Áreas de Entrega</h1>
-                <div className="flex items-center text-sm font-medium text-slate-400 bg-slate-900 border px-4 py-2 rounded-lg w-max shadow-sm">
-                    <button onClick={goBackToStates} className={`hover:text-red-600 transition-colors ${viewMode === 'states' ? 'text-red-600 font-bold' : ''}`}>Estados</button>
-                    {selectedState && (
-                        <>
-                            <ChevronRight size={16} className="mx-2" />
-                            <button onClick={goBackToCities} className={`hover:text-red-600 transition-colors ${viewMode === 'cities' ? 'text-red-600 font-bold' : ''}`}>{selectedState.sigla} - {selectedState.nome}</button>
-                        </>
-                    )}
-                    {selectedCity && (
-                        <>
-                            <ChevronRight size={16} className="mx-2" />
-                            <span className="text-slate-100 font-bold">{selectedCity.nome}</span>
-                        </>
-                    )}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex flex-col gap-2">
+                    <h1 className="text-3xl font-bold tracking-tight text-white">Áreas de Entrega</h1>
+                    <div className="flex items-center text-sm font-medium text-slate-400 bg-slate-900 border px-4 py-2 rounded-lg w-max shadow-sm">
+                        <button onClick={goBackToStates} className={`hover:text-red-600 transition-colors ${viewMode === 'states' ? 'text-red-600 font-bold' : ''}`}>Estados</button>
+                        {selectedState && (
+                            <>
+                                <ChevronRight size={16} className="mx-2" />
+                                <button onClick={goBackToCities} className={`hover:text-red-600 transition-colors ${viewMode === 'cities' ? 'text-red-600 font-bold' : ''}`}>{selectedState.sigla} - {selectedState.nome}</button>
+                            </>
+                        )}
+                        {selectedCity && (
+                            <>
+                                <ChevronRight size={16} className="mx-2" />
+                                <span className="text-slate-100 font-bold">{selectedCity.nome}</span>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={loading} className="bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800">
+                        <Download size={14} className="mr-2" /> Exportar CSV
+                    </Button>
+                    <label className={cn(
+                        "cursor-pointer flex items-center bg-slate-900 text-slate-300 px-3 py-1.5 rounded-md text-sm font-bold border border-slate-700 hover:bg-slate-800 transition-colors",
+                        loading && "opacity-50 pointer-events-none"
+                    )}>
+                        <Upload size={14} className="mr-2" /> Importar CSV
+                        <input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" disabled={loading} />
+                    </label>
                 </div>
             </div>
 

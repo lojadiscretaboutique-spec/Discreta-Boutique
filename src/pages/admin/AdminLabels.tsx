@@ -22,6 +22,20 @@ export function AdminLabels() {
 
   useEffect(() => {
     loadProducts();
+    
+    // Check for pending items from purchases
+    const pending = localStorage.getItem('pending_labels');
+    if (pending) {
+      try {
+        const items = JSON.parse(pending);
+        if (Array.isArray(items)) {
+          setSelectedItems(prev => [...prev, ...items]);
+          localStorage.removeItem('pending_labels');
+        }
+      } catch (e) {
+        console.error("Error parsing pending labels", e);
+      }
+    }
   }, []);
 
   const loadProducts = async () => {

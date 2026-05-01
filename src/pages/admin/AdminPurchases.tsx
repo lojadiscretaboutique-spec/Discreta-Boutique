@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Trash2, ShoppingCart, Truck, CheckCircle2, 
-  Clock, DollarSign, Search, Loader2, ArrowLeft, Save, Edit2, XCircle, Eye
+  Clock, DollarSign, Search, Loader2, ArrowLeft, Save, Edit2, XCircle, Eye, Tag
 } from 'lucide-react';
 import { purchaseService, Purchase, PurchaseItem } from '../../services/purchaseService';
 import { productService, Product, ProductVariant } from '../../services/productService';
@@ -17,6 +18,7 @@ export function AdminPurchases() {
   const [view, setView] = useState<'list' | 'form'>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
   const { toast, confirm } = useFeedback();
+  const navigate = useNavigate();
   
   // Products and Categories
   const [productsList, setProductsList] = useState<Product[]>([]);
@@ -253,6 +255,66 @@ export function AdminPurchases() {
       } else {
         toast("Produto não encontrado unicamente por este código.", "warning");
       }
+    }
+  };
+
+  const handleSendToLabels = async (purchase: Purchase) => {
+    try {
+      setLoading(true);
+      const itemsToLabel: { id: string; product: Product; quantity: number }[] = [];
+      
+      for (const item of purchase.items) {
+        const product = productsList.find(p => p.id === item.productId);
+        
+        if (product) {
+          if (!item.variantId) {
+            itemsToLabel.push({
+              id: Math.random().toString(36).substring(7),
+              product: {
+                ...product,
+                price: product.price || 0
+              },
+              quantity: item.quantity
+            });
+          } else {
+            const pData = await productService.getProduct(item.productId);
+            if (pData) {
+              const v = pData.variants.find(v => v.id === item.variantId);
+              if (v) {
+                const adaptedProduct = {
+                    id: v.id,
+                    name: v.name,
+                    sku: v.sku,
+                    gtin: v.barcode || '',
+                    price: v.price || v.promoPrice || product.price || 0,
+                    active: v.active,
+                    images: v.imageUrl ? [{url: v.imageUrl, path: '', isMain: true}] : (product.images || []),
+                    categoryId: 'variant',
+                    slug: 'variant',
+                  } as Product;
+                  itemsToLabel.push({
+                    id: Math.random().toString(36).substring(7),
+                    product: adaptedProduct,
+                    quantity: item.quantity
+                  });
+              }
+            }
+          }
+        }
+      }
+      
+      if (itemsToLabel.length > 0) {
+        localStorage.setItem('pending_labels', JSON.stringify(itemsToLabel));
+        toast(`${itemsToLabel.length} tipos de itens enviados para impressão de etiquetas`, 'success');
+        navigate('/admin/etiquetas');
+      } else {
+        toast("Nenhum item válido para etiquetas encontrado", "warning");
+      }
+    } catch (err) {
+      console.error(err);
+      toast("Erro ao processar etiquetas", "error");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -679,6 +741,10 @@ export function AdminPurchases() {
                            </Button>
                          )}
   
+                         <Button size="sm" variant="ghost" onClick={() => handleSendToLabels(p)} title="Enviar itens para impressão de etiquetas">
+                           <Tag size={14} className="text-slate-400 group-hover:text-indigo-500" />
+                         </Button>
+
                          <Button size="sm" variant="ghost" onClick={() => handleEdit(p)}>
                            {itemIsReadOnly ? <Eye size={14} className="text-slate-400 group-hover:text-slate-300" /> : <Edit2 size={14} className="text-slate-400 group-hover:text-slate-300" />}
                          </Button>
