@@ -226,7 +226,7 @@ async function startServer() {
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
         if (image && image !== "https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0000764233.firebasestorage.app/o/branding%2Flogo_1777498145199?alt=media&token=1c7b46d9-cc91-4dab-a577-2fed828d9224") {
-            html = html.replace('href="/logo-red.svg"', `href="${image}"`);
+            html = html.replace('href="/og-image.png"', `href="${image}"`);
             html = html.replace('href="/og-image.png"', `href="${image}"`);
         }
         html = await vite.transformIndexHtml(req.url, html);
@@ -235,7 +235,7 @@ async function startServer() {
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
         if (image && image !== "https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0000764233.firebasestorage.app/o/branding%2Flogo_1777498145199?alt=media&token=1c7b46d9-cc91-4dab-a577-2fed828d9224") {
-            html = html.replace('href="/logo-red.svg"', `href="${image}"`);
+            html = html.replace('href="/og-image.png"', `href="${image}"`);
             html = html.replace('href="/og-image.png"', `href="${image}"`);
         }
       }
