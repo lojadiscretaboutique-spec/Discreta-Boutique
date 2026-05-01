@@ -35,31 +35,25 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Discreta Boutique',
-        short_name: 'Discreta Boutique',
-        description: 'Loja virtual exclusiva e rápida da Discreta Boutique',
+        name: 'Discreta',
+        short_name: 'Discreta',
+        description: 'Loja virtual exclusiva e rápida da Discreta',
         theme_color: '#000000',
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
         icons: [
           {
-            src: '/logo-red.svg',
+            src: '/logo.webp',
             sizes: '192x192',
-            type: 'image/svg+xml',
-            purpose: 'any'
+            type: 'image/webp',
+            purpose: 'any maskable'
           },
           {
-            src: '/logo-red.svg',
+            src: '/logo.webp',
             sizes: '512x512',
-            type: 'image/svg+xml',
-            purpose: 'any'
-          },
-          {
-            src: '/logo-white.svg',
-            sizes: '512x512',
-            type: 'image/svg+xml',
-            purpose: 'maskable'
+            type: 'image/webp',
+            purpose: 'any maskable'
           }
         ]
       }
