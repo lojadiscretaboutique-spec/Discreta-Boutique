@@ -12,7 +12,8 @@ export default defineConfig({
       includeAssets: [
         'logo-red.svg', 
         'logo-white.svg', 
-        'og-image.png'
+        'og-image.png',
+        'logo.webp'
       ],
       workbox: {
         cleanupOutdatedCaches: true,
@@ -35,7 +36,7 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Discreta Boutique',
+        name: 'Discreta',
         short_name: 'Discreta',
         description: 'Loja virtual exclusiva e rápida da Discreta Boutique',
         theme_color: '#000000',
@@ -44,21 +45,21 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/og-image.png',
+            src: '/logo.webp',
             sizes: '192x192',
-            type: 'image/png',
+            type: 'image/webp',
             purpose: 'any'
           },
           {
-            src: '/og-image.png',
+            src: '/logo.webp',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/webp',
             purpose: 'any'
           },
           {
-            src: '/og-image.png',
+            src: '/logo.webp',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/webp',
             purpose: 'maskable'
           }
         ]

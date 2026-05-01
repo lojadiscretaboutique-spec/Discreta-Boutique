@@ -137,7 +137,7 @@ async function startServer() {
       if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
         const manifest = {
           name: title.split('|')[0].trim(),
-          short_name: title.split('|')[0].trim(),
+          short_name: 'Discreta',
           description: description,
           theme_color: '#000000',
           background_color: '#ffffff',
@@ -145,16 +145,22 @@ async function startServer() {
           start_url: '/',
           icons: [
             {
-              src: image,
+              src: '/logo.webp',
               sizes: '192x192',
-              type: image.endsWith('.png') ? 'image/png' : 'og-image.png',
+              type: 'image/webp',
               purpose: 'any'
             },
             {
-              src: image,
+              src: '/logo.webp',
               sizes: '512x512',
-              type: image.endsWith('.png') ? 'image/png' : 'og-image.png',
+              type: 'image/webp',
               purpose: 'any'
+            },
+            {
+              src: '/logo.webp',
+              sizes: '512x512',
+              type: 'image/webp',
+              purpose: 'maskable'
             }
           ]
         };
@@ -224,20 +230,10 @@ async function startServer() {
       if (process.env.NODE_ENV !== 'production') {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
-        // Replace dynamic logo for icons
-        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
-            html = html.replace('href="/og-image.png"', `href="${image}"`);
-            html = html.replace('href="/og-image.png"', `href="${image}"`);
-        }
         html = await vite.transformIndexHtml(req.url, html);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
-        // Replace dynamic logo for icons
-        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
-            html = html.replace('href="/og-image.png"', `href="${image}"`);
-            html = html.replace('href="/og-image.png"', `href="${image}"`);
-        }
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch(e) {
