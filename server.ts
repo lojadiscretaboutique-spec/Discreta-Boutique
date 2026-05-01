@@ -114,7 +114,7 @@ async function startServer() {
 
     if (req.path.startsWith('/api/')) return next();
 
-    let title = "Discreta | Sensualidade e Elegância";
+    let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
     let image = "https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0000764233.firebasestorage.app/o/branding%2Flogo_1777498145199?alt=media&token=1c7b46d9-cc91-4dab-a577-2fed828d9224"; // Default image
     const ogUrl = `https://discretaboutique.com.br${req.path}`;
@@ -148,7 +148,7 @@ async function startServer() {
               src: image,
               sizes: '192x192',
               type: image.endsWith('.png') ? 'image/png' : 'og-image.png',
-              purpose: 'maskable'
+              purpose: 'any'
             },
             {
               src: image,
