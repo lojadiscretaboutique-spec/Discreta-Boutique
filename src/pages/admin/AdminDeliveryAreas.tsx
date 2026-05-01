@@ -236,7 +236,10 @@ export function AdminDeliveryAreas() {
                     return;
                 }
 
-                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, '').toLowerCase());
+                // Detect separator
+                const separator = lines[0].includes(';') ? ';' : ',';
+
+                const headers = lines[0].split(separator).map(h => h.trim().replace(/"/g, '').toLowerCase());
                 const dataRows = lines.slice(1);
 
                 setLoading(true);
@@ -247,8 +250,9 @@ export function AdminDeliveryAreas() {
                 const allExistingAreas = await deliveryAreaService.listDeliveryAreas();
 
                 for (const row of dataRows) {
-                    // Enhanced CSV parsing for quoted values
-                    const values = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
+                    // Enhanced CSV parsing for quoted values considering the separator
+                    const regex = new RegExp(`${separator}(?=(?:(?:[^"]*"){2})*[^"]*$)`);
+                    const values = row.split(regex).map(v => v.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
                     const obj: any = {};
                     headers.forEach((h, i) => {
                         obj[h] = values[i];
@@ -261,47 +265,66 @@ export function AdminDeliveryAreas() {
 
                         if (!stateName || !cityName || !bairroName) continue;
                         
-                        const state = allStates.find(s => s.nome.toLowerCase() === stateName.toLowerCase());
+                        const normalizeString = (str: string) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
+                        
+                        let state = allStates.find(s => normalizeString(s.nome) === normalizeString(stateName));
                         if (!state) {
-                            console.error(`Estado ${stateName} não encontrado`);
-                            errors++;
-                            continue;
+                            try {
+                                const newStateId = await deliveryAreaService.saveState({
+                                    nome: stateName.trim(),
+                                    uf: stateName.trim().substring(0, 2).toUpperCase(),
+                                    status: 'ativo'
+                                });
+                                state = { id: newStateId, nome: stateName.trim(), uf: stateName.trim().substring(0, 2).toUpperCase(), status: 'ativo' };
+                                allStates.push(state);
+                            } catch (e) {
+                                console.error(`Falha ao criar estado ${stateName}`, e);
+                                errors++;
+                                continue;
+                            }
                         }
                         
-                        const citiesInState = await deliveryAreaService.listCities(state.id);
-                        let city = citiesInState.find(c => c.nome.toLowerCase() === cityName.toLowerCase());
+                        const citiesInState = await deliveryAreaService.listCities(state.id!);
+                        let city = citiesInState.find(c => normalizeString(c.nome) === normalizeString(cityName));
                         
                         if (!city) {
                             const newCityId = await deliveryAreaService.saveCity({
-                                nome: cityName,
+                                nome: cityName.trim(),
                                 stateId: state.id!,
                                 stateName: state.nome,
                                 status: 'ativo'
                             });
-                            city = { id: newCityId, nome: cityName, stateId: state.id!, stateName: state.nome, status: 'ativo' };
+                            city = { id: newCityId, nome: cityName.trim(), stateId: state.id!, stateName: state.nome, status: 'ativo' };
                         }
 
                         // Try to find if area already exists even without ID in CSV
                         let existingId = obj.id;
-                        if (!existingId) {
+                        if (!existingId || existingId === 'undefined' || existingId === 'null') {
                             const match = allExistingAreas.find(a => 
                                 a.cityId === city!.id && 
-                                a.bairro.toLowerCase() === bairroName.toLowerCase()
+                                normalizeString(a.bairro) === normalizeString(bairroName)
                             );
                             if (match) existingId = match.id;
+                            else existingId = undefined;
                         }
 
+                        const parseNumber = (val: any) => {
+                            if (!val) return 0;
+                            const clean = String(val).replace(/[^\d.,-]/g, '').replace(',', '.');
+                            return Number(clean) || 0;
+                        };
+
                         const areaPayload: Partial<DeliveryArea> = {
-                            id: existingId || undefined,
+                            id: existingId,
                             stateId: state.id,
                             stateName: state.nome,
                             cityId: city.id,
                             cityName: city.nome,
                             bairro: bairroName,
-                            taxaEntrega: Number(obj.taxa_entrega) || 0,
-                            pedidoMinimo: Number(obj.pedido_minimo) || 0,
-                            tempoEntrega: Number(obj.tempo_entrega) || 0,
-                            freteGratisAcima: Number(obj.frete_gratis_acima) || 0,
+                            taxaEntrega: parseNumber(obj.taxa_entrega),
+                            pedidoMinimo: parseNumber(obj.pedido_minimo),
+                            tempoEntrega: parseNumber(obj.tempo_entrega),
+                            freteGratisAcima: parseNumber(obj.frete_gratis_acima),
                             status: (obj.status?.toLowerCase() === 'inativo' ? 'inativo' : 'ativo') as any
                         };
 

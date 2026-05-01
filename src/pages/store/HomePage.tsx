@@ -376,7 +376,6 @@ function ProductItemCard({ product }: { product: Product }) {
   const mainImage = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
   const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
-  const discount = hasPromo ? Math.round(((product.price - product.promoPrice!) / product.price) * 100) : 0;
   const hasVariants = !!product.hasVariants;
   const [quantity, setQuantity] = useState(1);
   const addItem = useCartStore(s => s.addItem);
@@ -442,9 +441,9 @@ function ProductItemCard({ product }: { product: Product }) {
               initial={{ x: -20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.1 }}
-              className="bg-white text-black text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-xl"
+              className="bg-red-600 text-white text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-xl"
             >
-              -{discount}%
+              Oferta
             </motion.span>
           )}
         </div>
