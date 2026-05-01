@@ -12,6 +12,10 @@ const ProductPage = lazy(() => import('./pages/store/ProductPage').then(m => ({ 
 const CartPage = lazy(() => import('./pages/store/CartPage').then(m => ({ default: m.CartPage })));
 const SuccessPage = lazy(() => import('./pages/store/SuccessPage').then(m => ({ default: m.SuccessPage })));
 const CustomerAreaPage = lazy(() => import('./pages/store/CustomerAreaPage').then(m => ({ default: m.CustomerAreaPage })));
+const PrivacyPolicyPage = lazy(() => import('./pages/store/PrivacyPolicyPage'));
+const AboutUsPage = lazy(() => import('./pages/store/AboutUsPage'));
+const ExchangePolicyPage = lazy(() => import('./pages/store/ExchangePolicyPage'));
+const LGPDPage = lazy(() => import('./pages/store/LGPDPage'));
 
 // Admin Pages
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin').then(m => ({ default: m.AdminLogin })));
@@ -112,6 +116,10 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/catalogo" element={<CatalogPage />} />
             <Route path="/area-cliente" element={<CustomerAreaPage />} />
+            <Route path="/politica-de-privacidade" element={<PrivacyPolicyPage />} />
+            <Route path="/quem-somos" element={<AboutUsPage />} />
+            <Route path="/politica-de-troca" element={<ExchangePolicyPage />} />
+            <Route path="/lgpd" element={<LGPDPage />} />
             <Route path="/carrinho" element={<CartPage />} />
             <Route path="/produto/:slug" element={<ProductPage />} />
             <Route path="/sucesso" element={<SuccessPage />} />

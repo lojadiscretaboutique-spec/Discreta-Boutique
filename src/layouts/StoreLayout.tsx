@@ -35,27 +35,29 @@ export function StoreLayout() {
     <div className="min-h-screen bg-black text-white flex flex-col font-sans">
       {/* Header */}
       <header className="bg-black/80 backdrop-blur-md text-white fixed top-0 w-full z-50 border-b border-zinc-900">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between relative">
           
-          {/* Mobile Menu Button */}
-          <button 
-            className="md:hidden p-2 -ml-2 text-zinc-400 hover:text-red-500"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          >
-            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+          <div className="flex items-center">
+            {/* Mobile Menu Button */}
+            <button 
+              className="md:hidden p-2 -ml-2 text-zinc-400 hover:text-red-500"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            >
+              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
 
-          {/* Logo Text Only */}
-          <Link to="/" className="flex items-center space-x-3">
+            {/* Desktop Nav */}
+            <nav className="hidden md:flex items-center space-x-8 text-xs font-bold uppercase tracking-widest">
+              <Link to="/" className="hover:text-red-500 transition-colors">Início</Link>
+              <Link to="/catalogo" className="hover:text-red-500 transition-colors">Produtos</Link>
+              <Link to="/area-cliente" className="hover:text-red-500 transition-colors">Área do Cliente</Link>
+            </nav>
+          </div>
+
+          {/* Logo Text Only - Absolute Centered */}
+          <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center">
             <span className="text-xl font-black tracking-tighter text-white uppercase italic">DISCRETA</span>
           </Link>
-
-          {/* Desktop Nav */}
-          <nav className="hidden md:flex items-center space-x-8 text-xs font-bold uppercase tracking-widest">
-            <Link to="/" className="hover:text-red-500 transition-colors">Início</Link>
-            <Link to="/catalogo" className="hover:text-red-500 transition-colors">Produtos</Link>
-            <Link to="/area-cliente" className="hover:text-red-500 transition-colors">Área do Cliente</Link>
-          </nav>
 
           {/* Actions */}
           <div className="flex items-center space-x-2 sm:space-x-4">
@@ -124,7 +126,12 @@ export function StoreLayout() {
               ))}
             </div>
             <div className="flex flex-col space-y-3 min-w-0">
-              <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2">Suporte</h3>
+              <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2">Institucional</h3>
+              <Link to="/quem-somos" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Quem Somos</Link>
+              <Link to="/politica-de-privacidade" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Privacidade</Link>
+              <Link to="/politica-de-troca" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Trocas e Devoluções</Link>
+              <Link to="/lgpd" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">LGPD</Link>
+              <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2 mt-4">Suporte</h3>
               <a href="mailto:contato@discretaboutique.com.br" className="text-zinc-500 hover:text-red-500 text-sm transition-colors break-all">contato@discretaboutique.com.br</a>
               <a href="https://wa.me/5588992340317" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">WhatsApp</a>
               <Link to="/admin" className="text-zinc-500 hover:text-red-500 text-sm transition-colors mt-2">Painel Admin</Link>

@@ -66,7 +66,37 @@ export function HomePage() {
 
       // Filter root categories that have at least one product in their hierarchy
       const visibleRootCats = allCats.filter(c => c.level === 0 && categoryIdsWithProducts.has(c.id));
-      setCategories(visibleRootCats);
+      
+      // Enriquecer categorias com imagens de fallback se necessário
+      const categoriesWithImages = visibleRootCats.map(cat => {
+        if (cat.image?.url) return cat;
+
+        // Tentar encontrar produtos nesta categoria ou subcategorias
+        const productsOfThisCat = visibleProducts.filter(p => {
+          if (p.categoryId === cat.id) return true;
+          // Verificar se o produto pertence a uma subcategoria desta categoria pai
+          const pCat = allCats.find(c => c.id === p.categoryId);
+          return pCat?.parentId === cat.id;
+        });
+
+        if (productsOfThisCat.length > 0) {
+          // Selecionar um produto aleatório da lista
+          const randomIndex = Math.floor(Math.random() * productsOfThisCat.length);
+          const randomProduct = productsOfThisCat[randomIndex];
+          
+          if (randomProduct.images && randomProduct.images.length > 0) {
+            const mainImg = randomProduct.images.find(i => i.isMain) || randomProduct.images[0];
+            return {
+              ...cat,
+              image: { url: mainImg.url }
+            };
+          }
+        }
+
+        return cat;
+      });
+
+      setCategories(categoriesWithImages);
 
     } catch (error) {
       console.error("Error loading home:", error);
@@ -173,45 +203,39 @@ export function HomePage() {
               <div className="w-12 h-1 bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"></div>
             </div>
 
-            <div className="flex items-center gap-6 overflow-x-auto no-scrollbar pb-6">
+            <div className="flex items-start gap-4 md:gap-8 overflow-x-auto no-scrollbar pb-6">
               {categories.map(cat => (
                 <Link 
                   key={cat.id} 
                   to={`/catalogo?categoria=${cat.id}`} 
-                  className="group relative shrink-0 w-32 md:w-44 h-52 md:h-64 rounded-[1.5rem] md:rounded-[2.5rem] overflow-hidden border border-zinc-900 bg-zinc-950 hover:border-red-600/40 transition-all duration-700 shadow-[0_20px_50px_rgba(0,0,0,1)] hover:shadow-red-900/20"
+                  className="group flex flex-col items-center shrink-0 w-24 md:w-32"
                 >
-                  {/* Background Image with Parallax-like hover */}
-                  <div className="absolute inset-0">
+                  {/* Circular Image Container */}
+                  <div className="relative w-20 h-20 md:w-28 md:h-28 rounded-full overflow-hidden border-2 border-zinc-900 bg-zinc-950 group-hover:border-red-600 transition-all duration-500 shadow-2xl mb-4">
                     {cat.image?.url ? (
                       <img 
                         src={cat.image.url} 
                         alt={cat.name} 
-                        className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-125 opacity-40 group-hover:opacity-60" 
+                        className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-115" 
                         referrerPolicy="no-referrer" 
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-4xl font-black italic text-zinc-900">
+                      <div className="w-full h-full flex items-center justify-center text-2xl font-black italic text-zinc-800">
                         {cat.name.substring(0, 1)}
                       </div>
                     )}
+                    
+                    {/* Subtle Overlay on hover */}
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                   </div>
-
-                  {/* Dark Gradient Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/60 to-black transition-opacity duration-700" />
                   
-                  {/* Centered Content */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-10">
-                    <span className="text-[6px] md:text-[8px] font-black uppercase tracking-[4px] text-red-600 mb-2 transform -translate-y-2 opacity-0 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-500">
-                      Coleção
-                    </span>
-                    <h3 className="text-sm md:text-lg font-black uppercase tracking-tighter italic text-white leading-tight drop-shadow-[0_2px_10px_rgba(0,0,0,1)] transition-transform duration-500 group-hover:scale-110">
-                      {cat.name}
-                    </h3>
-                    <div className="mt-3 w-0 h-0.5 bg-red-600 group-hover:w-8 transition-all duration-500 shadow-[0_0_10px_rgba(220,38,38,0.8)]"></div>
-                  </div>
-
-                  {/* Inner Glow Border */}
-                  <div className="absolute inset-0 border border-white/5 rounded-[1.5rem] md:rounded-[2.5rem] pointer-events-none" />
+                  {/* Title Below */}
+                  <h3 className="text-[10px] md:text-[11px] font-black uppercase tracking-[2px] md:tracking-[3px] text-zinc-500 group-hover:text-white text-center transition-colors duration-500 line-clamp-2 leading-tight">
+                    {cat.name}
+                  </h3>
+                  
+                  {/* Active Indicator line */}
+                  <div className="mt-2 w-0 h-0.5 bg-red-600 group-hover:w-4 transition-all duration-500 shadow-[0_0_8px_rgba(220,38,38,0.8)]"></div>
                 </Link>
               ))}
             </div>
