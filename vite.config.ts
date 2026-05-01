@@ -44,21 +44,21 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/og-image.png',
+            src: '/logo-red.svg',
             sizes: '192x192',
-            type: 'image/png',
+            type: 'image/svg+xml',
             purpose: 'any'
           },
           {
-            src: '/og-image.png',
+            src: '/logo-red.svg',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/svg+xml',
             purpose: 'any'
           },
           {
-            src: '/og-image.png',
+            src: '/logo-white.svg',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/svg+xml',
             purpose: 'maskable'
           }
         ]
