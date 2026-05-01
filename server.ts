@@ -114,9 +114,9 @@ async function startServer() {
 
     if (req.path.startsWith('/api/')) return next();
 
-    let title = "Discreta Boutique | Sensualidade e Elegância";
+    let title = "Discreta | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    let image = "https://discretaboutique.com.br/og-image.png"; // Default image
+    let image = "https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0000764233.firebasestorage.app/o/branding%2Flogo_1777498145199?alt=media&token=1c7b46d9-cc91-4dab-a577-2fed828d9224"; // Default image
     const ogUrl = `https://discretaboutique.com.br${req.path}`;
     
     try {
@@ -225,7 +225,7 @@ async function startServer() {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
+        if (image && image !== "https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0000764233.firebasestorage.app/o/branding%2Flogo_1777498145199?alt=media&token=1c7b46d9-cc91-4dab-a577-2fed828d9224") {
             html = html.replace('href="/logo-red.svg"', `href="${image}"`);
             html = html.replace('href="/og-image.png"', `href="${image}"`);
         }
@@ -234,7 +234,7 @@ async function startServer() {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
+        if (image && image !== "https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0000764233.firebasestorage.app/o/branding%2Flogo_1777498145199?alt=media&token=1c7b46d9-cc91-4dab-a577-2fed828d9224") {
             html = html.replace('href="/logo-red.svg"', `href="${image}"`);
             html = html.replace('href="/og-image.png"', `href="${image}"`);
         }
