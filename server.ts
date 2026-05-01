@@ -147,13 +147,13 @@ async function startServer() {
             {
               src: image,
               sizes: '192x192',
-              type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
-              purpose: 'any'
+              type: image.endsWith('.png') ? 'image/png' : 'og-image.png',
+              purpose: 'maskable'
             },
             {
               src: image,
               sizes: '512x512',
-              type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
+              type: image.endsWith('.png') ? 'image/png' : 'og-image.png',
               purpose: 'any'
             }
           ]
