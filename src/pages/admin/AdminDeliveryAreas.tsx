@@ -191,16 +191,20 @@ export function AdminDeliveryAreas() {
                 return;
             }
 
-            const headers = ['id', 'estado', 'cidade', 'bairro', 'taxa_entrega', 'pedido_minimo', 'tempo_entrega', 'frete_gratis_acima', 'status'];
+            const headers = ['id', 'estado', 'cidade', 'bairro', 'cep_inicial', 'cep_final', 'taxa_entrega', 'pedido_minimo', 'tempo_entrega', 'frete_gratis_acima', 'ordem', 'observacoes', 'status'];
             const rows = allAreas.map(a => [
                 a.id || '',
                 a.stateName || '',
                 a.cityName || '',
                 a.bairro || '',
+                a.cepInicial || '',
+                a.cepFinal || '',
                 a.taxaEntrega || 0,
                 a.pedidoMinimo || 0,
                 a.tempoEntrega || 0,
                 a.freteGratisAcima || 0,
+                a.ordem || 0,
+                a.observacoes || '',
                 a.status || 'ativo'
             ]);
 
@@ -321,10 +325,14 @@ export function AdminDeliveryAreas() {
                             cityId: city.id,
                             cityName: city.nome,
                             bairro: bairroName,
+                            cepInicial: obj.cep_inicial || '',
+                            cepFinal: obj.cep_final || '',
                             taxaEntrega: parseNumber(obj.taxa_entrega),
                             pedidoMinimo: parseNumber(obj.pedido_minimo),
                             tempoEntrega: parseNumber(obj.tempo_entrega),
                             freteGratisAcima: parseNumber(obj.frete_gratis_acima),
+                            ordem: parseNumber(obj.ordem),
+                            observacoes: obj.observacoes || '',
                             status: (obj.status?.toLowerCase() === 'inativo' ? 'inativo' : 'ativo') as any
                         };
 
