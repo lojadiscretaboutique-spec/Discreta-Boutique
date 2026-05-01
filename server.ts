@@ -225,7 +225,7 @@ async function startServer() {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0000764233.firebasestorage.app/o/branding%2Flogo_1777498145199?alt=media&token=1c7b46d9-cc91-4dab-a577-2fed828d9224") {
+        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
             html = html.replace('href="/og-image.png"', `href="${image}"`);
             html = html.replace('href="/og-image.png"', `href="${image}"`);
         }
@@ -234,7 +234,7 @@ async function startServer() {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0000764233.firebasestorage.app/o/branding%2Flogo_1777498145199?alt=media&token=1c7b46d9-cc91-4dab-a577-2fed828d9224") {
+        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
             html = html.replace('href="/og-image.png"', `href="${image}"`);
             html = html.replace('href="/og-image.png"', `href="${image}"`);
         }
