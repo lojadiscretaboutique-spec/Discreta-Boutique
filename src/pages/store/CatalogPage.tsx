@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
-import { Search, ShoppingBag, X } from 'lucide-react';
+import { Search, ShoppingBag, X, Minus, Plus } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import { Product } from '../../services/productService';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
+import { useCartStore } from '../../store/cartStore';
 
 export function CatalogPage() {
   const [searchParams] = useSearchParams();
@@ -141,6 +142,11 @@ export function CatalogPage() {
   for (let i = startPage; i <= endPage; i++) {
     pageNumbers.push(i);
   }
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <div className="flex-1 flex flex-col bg-black text-white min-h-screen">
@@ -302,7 +308,7 @@ export function CatalogPage() {
               {totalPages > 1 && (
                 <div className="flex justify-center items-center gap-2 mt-12 bg-zinc-900/50 p-2 rounded-full w-fit mx-auto border border-zinc-800">
                   <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
                     disabled={currentPage === 1}
                     className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-50 disabled:pointer-events-none transition-all"
                   >
@@ -310,14 +316,14 @@ export function CatalogPage() {
                   </button>
                   {startPage > 1 && (
                     <>
-                      <button onClick={() => setCurrentPage(1)} className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all">1</button>
+                      <button onClick={() => handlePageChange(1)} className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all">1</button>
                       {startPage > 2 && <span className="text-zinc-600">...</span>}
                     </>
                   )}
                   {pageNumbers.map(page => (
                     <button
                       key={page}
-                      onClick={() => setCurrentPage(page)}
+                      onClick={() => handlePageChange(page)}
                       className={cn(
                         "w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all shadow-sm",
                         currentPage === page 
@@ -331,11 +337,11 @@ export function CatalogPage() {
                   {endPage < totalPages && (
                     <>
                       {endPage < totalPages - 1 && <span className="text-zinc-600">...</span>}
-                      <button onClick={() => setCurrentPage(totalPages)} className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all">{totalPages}</button>
+                      <button onClick={() => handlePageChange(totalPages)} className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all">{totalPages}</button>
                     </>
                   )}
                   <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage === totalPages}
                     className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-50 disabled:pointer-events-none transition-all"
                   >
@@ -356,6 +362,31 @@ function ProductGridCard({ product }: { product: Product }) {
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
   const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
   const discount = hasPromo ? Math.round(((product.price - product.promoPrice!) / product.price) * 100) : 0;
+  const hasVariants = !!product.hasVariants;
+  const [quantity, setQuantity] = useState(1);
+  const addItem = useCartStore(s => s.addItem);
+  const navigate = useNavigate();
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (hasVariants) {
+      navigate(`/produto/${product.seo?.slug || product.id}`);
+    } else {
+      addItem({
+        id: `${product.id}-base`,
+        productId: product.id,
+        name: product.name,
+        price: hasPromo ? product.promoPrice! : product.price,
+        quantity: quantity,
+        sku: product.sku,
+        imageUrl: image || '',
+        variantId: undefined,
+        variantName: undefined
+      });
+      navigate('/carrinho');
+    }
+  };
   
   return (
     <Link 
@@ -365,14 +396,14 @@ function ProductGridCard({ product }: { product: Product }) {
         isOut ? "grayscale opacity-40" : "hover:border-red-600/30 hover:bg-zinc-950 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:shadow-red-900/10"
       )}
     >
-      <div className="aspect-[3/4] relative bg-zinc-900 overflow-hidden">
+      <div className="aspect-[3/4] relative bg-white overflow-hidden group-hover:bg-zinc-50 transition-colors duration-500">
         {image ? (
           <img 
             src={image} 
             alt={product.name} 
             className={cn(
               "w-full h-full object-cover transition-transform duration-1000 ease-out",
-              !isOut && "group-hover:scale-110"
+              !isOut && "group-hover:scale-105"
             )}
             referrerPolicy="no-referrer"
           />
@@ -410,47 +441,57 @@ function ProductGridCard({ product }: { product: Product }) {
         )}
         
         {/* Soft Glow Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
       </div>
       
-      <div className="p-5 md:p-7 flex flex-col flex-1 relative">
-        <h3 className="text-xs md:text-sm font-bold text-zinc-400 group-hover:text-white transition-all duration-500 line-clamp-4 leading-[1.6] min-h-[4rem] md:min-h-[5rem] tracking-tight">
-          {product.name}
+      <div className="p-4 md:p-5 flex flex-col flex-1 relative bg-zinc-950">
+        <h3 className="text-xs md:text-sm font-medium text-zinc-300 group-hover:text-white transition-colors duration-300 line-clamp-2 leading-snug min-h-[2.5rem] md:min-h-[2.75rem] mb-3 capitalize">
+          {product.name.toLowerCase()}
         </h3>
 
-        <div className="mt-auto pt-6 flex items-end justify-between">
-          <div className="flex flex-col gap-0.5">
-            {hasPromo ? (
-              <>
-                <span className="text-[9px] md:text-[10px] text-zinc-600 font-bold line-through tracking-tighter opacity-70 group-hover:opacity-100 transition-opacity">
-                  {formatCurrency(product.price)}
-                </span>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-[10px] font-black text-red-600 uppercase tracking-tighter mb-0.5">R$</span>
-                  <span className="text-lg md:text-2xl font-black text-white tracking-tighter drop-shadow-2xl">
-                    {formatCurrency(product.promoPrice!).replace('R$', '').trim()}
-                  </span>
-                </div>
-              </>
-            ) : (
-              <div className="flex items-baseline gap-1">
-                <span className="text-[10px] font-black text-zinc-600 uppercase tracking-tighter mb-0.5 group-hover:text-red-600 transition-colors">R$</span>
-                <span className="text-lg md:text-2xl font-black text-white tracking-tighter drop-shadow-2xl transition-transform duration-500 group-hover:translate-x-1">
-                  {formatCurrency(product.price).replace('R$', '').trim()}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="relative">
-            <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden group-hover:border-red-600/50 group-hover:bg-red-600 transition-all duration-500 shadow-lg translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100">
-               <ShoppingBag size={18} className="text-zinc-500 group-hover:text-white transition-colors" />
+        <div className="mt-auto flex flex-col w-full relative">
+          <div className="flex flex-col gap-1.5 mb-3">
+            {/* A Vista */}
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[11px] md:text-xs font-bold text-red-600 tracking-tight">à vista</span>
+              <span className="text-base md:text-lg font-black text-red-600 tracking-tighter">
+                {formatCurrency(hasPromo ? product.promoPrice! : product.price)}
+              </span>
+            </div>
+            
+            {/* Installments */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[9px] md:text-[10px] text-zinc-500 font-bold tracking-tight uppercase">
+                {hasPromo && (
+                  <span className="line-through opacity-60 mr-1.5 font-medium">{formatCurrency(product.price)}</span>
+                )}
+                OU 10X DE {formatCurrency((hasPromo ? product.promoPrice! : product.price) / 10)} SEM JUROS
+              </span>
             </div>
           </div>
+          
+          {/* Bottom Actions */}
+          {!isOut && (
+            <div className="flex items-stretch gap-2 w-full h-9 md:h-10 relative z-20" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+              {!hasVariants && (
+                <div className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded px-1.5 w-[4.5rem] md:w-20 shrink-0">
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setQuantity(Math.max(1, quantity - 1)); }} className="text-zinc-400 hover:text-white p-1 transition-colors"><Minus size={14} /></button>
+                  <span className="text-xs font-bold text-white">{quantity}</span>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setQuantity(quantity + 1); }} className="text-zinc-400 hover:text-white p-1 transition-colors"><Plus size={14} /></button>
+                </div>
+              )}
+              <button 
+                onClick={handleAddToCart}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] md:text-xs uppercase tracking-wider rounded transition-colors flex items-center justify-center"
+              >
+                Comprar
+              </button>
+            </div>
+          )}
         </div>
         
         {/* Decoration line */}
-        <div className="absolute top-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-zinc-900 to-transparent" />
+        <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
       </div>
     </Link>
   );

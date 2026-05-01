@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Link } from 'react-router-dom';
-import { Package, ShoppingCart, Users, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Package, ShoppingCart, Users, ChevronLeft, ChevronRight, CreditCard, Plus, Minus } from 'lucide-react';
 import { formatCurrency, cn } from '../../lib/utils';
 import { Product } from '../../services/productService';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
+import { useCartStore } from '../../store/cartStore';
 
 interface Banner {
   id: string;
@@ -196,22 +197,22 @@ export function HomePage() {
 
       {/* 1.5 CATEGORY EXPOSITION */}
       {categories.length > 0 && (
-        <section className="bg-black py-16 border-b border-zinc-900">
+        <section className="bg-black py-6 md:py-16 border-b border-zinc-900">
           <div className="max-w-7xl mx-auto px-4">
-            <div className="flex flex-col mb-10">
+            <div className="flex flex-col mb-4 md:mb-10">
               <h2 className="text-sm font-black uppercase tracking-[4px] text-zinc-600 mb-2">Coleções</h2>
               <div className="w-12 h-1 bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"></div>
             </div>
 
-            <div className="flex items-start gap-4 md:gap-8 overflow-x-auto no-scrollbar pb-6">
+            <div className="flex items-start gap-5 md:gap-8 overflow-x-auto no-scrollbar pb-6 scroll-p-4">
               {categories.map(cat => (
                 <Link 
                   key={cat.id} 
                   to={`/catalogo?categoria=${cat.id}`} 
-                  className="group flex flex-col items-center shrink-0 w-24 md:w-32"
+                  className="group flex flex-col items-center shrink-0 w-32 md:w-36"
                 >
                   {/* Circular Image Container */}
-                  <div className="relative w-20 h-20 md:w-28 md:h-28 rounded-full overflow-hidden border-2 border-zinc-900 bg-zinc-950 group-hover:border-red-600 transition-all duration-500 shadow-2xl mb-4">
+                  <div className="relative w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-2 border-zinc-800 bg-zinc-950 group-hover:border-red-600 transition-all duration-500 shadow-2xl mb-4">
                     {cat.image?.url ? (
                       <img 
                         src={cat.image.url} 
@@ -230,7 +231,7 @@ export function HomePage() {
                   </div>
                   
                   {/* Title Below */}
-                  <h3 className="text-[10px] md:text-[11px] font-black uppercase tracking-[2px] md:tracking-[3px] text-zinc-500 group-hover:text-white text-center transition-colors duration-500 line-clamp-2 leading-tight">
+                  <h3 className="text-xs md:text-xs font-bold uppercase tracking-[1.5px] md:tracking-[2px] text-zinc-400 group-hover:text-white text-center transition-colors duration-500 line-clamp-2 leading-tight px-1">
                     {cat.name}
                   </h3>
                   
@@ -244,7 +245,7 @@ export function HomePage() {
       )}
 
       {/* 2. CARROUSÉIS DE PRODUTOS */}
-      <div className="max-w-7xl mx-auto w-full flex flex-col pt-10 pb-20 px-4 space-y-20">
+      <div className="max-w-7xl mx-auto w-full flex flex-col pt-6 md:pt-10 pb-16 px-4 space-y-8 md:space-y-16">
         
         {/* DESTAQUES - CARROSSEL */}
         {featuredProducts.length > 0 && (
@@ -376,6 +377,31 @@ function ProductItemCard({ product }: { product: Product }) {
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
   const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
   const discount = hasPromo ? Math.round(((product.price - product.promoPrice!) / product.price) * 100) : 0;
+  const hasVariants = !!product.hasVariants;
+  const [quantity, setQuantity] = useState(1);
+  const addItem = useCartStore(s => s.addItem);
+  const navigate = useNavigate();
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (hasVariants) {
+      navigate(`/produto/${product.seo?.slug || product.id}`);
+    } else {
+      addItem({
+        id: `${product.id}-base`,
+        productId: product.id,
+        name: product.name,
+        price: hasPromo ? product.promoPrice! : product.price,
+        quantity: quantity,
+        sku: product.sku,
+        imageUrl: mainImage || '',
+        variantId: undefined,
+        variantName: undefined
+      });
+      navigate('/carrinho');
+    }
+  };
   
   return (
     <Link 
@@ -385,14 +411,14 @@ function ProductItemCard({ product }: { product: Product }) {
         isOut ? "grayscale opacity-40 shadow-none border-zinc-950" : "hover:border-red-600/30 hover:bg-zinc-950 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:shadow-red-900/10"
       )}
     >
-      <div className="aspect-[3/4] relative bg-zinc-900 overflow-hidden">
+      <div className="aspect-[3/4] relative bg-white overflow-hidden group-hover:bg-zinc-50 transition-colors duration-500">
         {mainImage ? (
           <img 
             src={mainImage} 
             alt={product.name} 
             className={cn(
               "w-full h-full object-cover transition-transform duration-1000 ease-out",
-              !isOut && "group-hover:scale-110"
+              !isOut && "group-hover:scale-105"
             )}
             referrerPolicy="no-referrer"
           />
@@ -430,41 +456,57 @@ function ProductItemCard({ product }: { product: Product }) {
         )}
         
         {/* Soft Glow Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
       </div>
       
-      <div className="p-5 md:p-6 flex flex-col flex-1 relative">
-        <h3 className="text-xs md:text-sm font-bold text-zinc-400 group-hover:text-white transition-all duration-500 line-clamp-4 leading-[1.6] min-h-[4rem] md:min-h-[5rem] tracking-tight">
-          {product.name}
+      <div className="p-4 md:p-5 flex flex-col flex-1 relative bg-zinc-950">
+        <h3 className="text-xs md:text-sm font-medium text-zinc-300 group-hover:text-white transition-colors duration-300 line-clamp-2 leading-snug min-h-[2.5rem] md:min-h-[2.75rem] mb-3 capitalize">
+          {product.name.toLowerCase()}
         </h3>
 
-        <div className="mt-auto pt-6 flex flex-col gap-1">
-          <div className="flex flex-col gap-0.5">
-            {hasPromo ? (
-              <>
-                <span className="text-[9px] md:text-[10px] text-zinc-600 font-bold line-through tracking-tighter opacity-70 group-hover:opacity-100 transition-opacity">
-                  {formatCurrency(product.price)}
-                </span>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-[10px] font-black text-red-600 uppercase tracking-tighter mb-0.5">R$</span>
-                  <span className="text-lg md:text-2xl font-black text-white tracking-tighter drop-shadow-2xl">
-                    {formatCurrency(product.promoPrice!).replace('R$', '').trim()}
-                  </span>
-                </div>
-              </>
-            ) : (
-              <div className="flex items-baseline gap-1">
-                <span className="text-[10px] font-black text-zinc-600 uppercase tracking-tighter mb-0.5 group-hover:text-red-600 transition-colors">R$</span>
-                <span className="text-lg md:text-2xl font-black text-white tracking-tighter drop-shadow-2xl transition-transform duration-500 group-hover:translate-x-1">
-                  {formatCurrency(product.price).replace('R$', '').trim()}
-                </span>
-              </div>
-            )}
+        <div className="mt-auto flex flex-col w-full relative">
+          <div className="flex flex-col gap-1.5 mb-3">
+            {/* A Vista */}
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[11px] md:text-xs font-bold text-red-600 tracking-tight">à vista</span>
+              <span className="text-base md:text-lg font-black text-red-600 tracking-tighter">
+                {formatCurrency(hasPromo ? product.promoPrice! : product.price)}
+              </span>
+            </div>
+            
+            {/* Installments */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[9px] md:text-[10px] text-zinc-500 font-bold tracking-tight uppercase">
+                {hasPromo && (
+                  <span className="line-through opacity-60 mr-1.5 font-medium">{formatCurrency(product.price)}</span>
+                )}
+                OU 10X DE {formatCurrency((hasPromo ? product.promoPrice! : product.price) / 10)} SEM JUROS
+              </span>
+            </div>
           </div>
+          
+          {/* Bottom Actions */}
+          {!isOut && (
+            <div className="flex items-stretch gap-2 w-full h-9 md:h-10 relative z-20" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+              {!hasVariants && (
+                <div className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded px-1.5 w-[4.5rem] md:w-20 shrink-0">
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setQuantity(Math.max(1, quantity - 1)); }} className="text-zinc-400 hover:text-white p-1 transition-colors"><Minus size={14} /></button>
+                  <span className="text-xs font-bold text-white">{quantity}</span>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setQuantity(quantity + 1); }} className="text-zinc-400 hover:text-white p-1 transition-colors"><Plus size={14} /></button>
+                </div>
+              )}
+              <button 
+                onClick={handleAddToCart}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] md:text-xs uppercase tracking-wider rounded transition-colors flex items-center justify-center"
+              >
+                Comprar
+              </button>
+            </div>
+          )}
         </div>
         
         {/* Decoration line */}
-        <div className="absolute top-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-zinc-900 to-transparent" />
+        <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
       </div>
     </Link>
   );
