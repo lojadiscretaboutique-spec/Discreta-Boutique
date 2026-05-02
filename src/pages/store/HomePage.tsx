@@ -204,39 +204,39 @@ export function HomePage() {
               <div className="w-12 h-1 bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"></div>
             </div>
 
-            <div className="flex items-start gap-5 md:gap-8 overflow-x-auto no-scrollbar pb-6 scroll-p-4">
+            <div className="flex items-start gap-6 md:gap-12 overflow-x-auto no-scrollbar pb-6 scroll-p-4">
               {categories.map(cat => (
                 <Link 
                   key={cat.id} 
                   to={`/catalogo?categoria=${cat.id}`} 
-                  className="group flex flex-col items-center shrink-0 w-32 md:w-36"
+                  className="group flex flex-col items-center shrink-0 w-32 md:w-44"
                 >
                   {/* Circular Image Container */}
-                  <div className="relative w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-2 border-zinc-800 bg-zinc-950 group-hover:border-red-600 transition-all duration-500 shadow-2xl mb-4">
+                  <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full overflow-hidden bg-zinc-900 transition-all duration-500 shadow-2xl mb-4 group-hover:shadow-red-900/20 group-hover:scale-105">
                     {cat.image?.url ? (
                       <img 
                         src={cat.image.url} 
                         alt={cat.name} 
-                        className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-115" 
+                        className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110" 
                         referrerPolicy="no-referrer" 
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-2xl font-black italic text-zinc-800">
+                      <div className="w-full h-full flex items-center justify-center text-4xl font-black italic text-zinc-800">
                         {cat.name.substring(0, 1)}
                       </div>
                     )}
                     
                     {/* Subtle Overlay on hover */}
-                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                   </div>
                   
                   {/* Title Below */}
-                  <h3 className="text-xs md:text-xs font-bold uppercase tracking-[1.5px] md:tracking-[2px] text-zinc-400 group-hover:text-white text-center transition-colors duration-500 line-clamp-2 leading-tight px-1">
+                  <h3 className="text-base md:text-lg font-black uppercase tracking-[1px] text-white group-hover:text-red-500 text-center transition-colors duration-500 line-clamp-2 leading-tight px-1">
                     {cat.name}
                   </h3>
                   
                   {/* Active Indicator line */}
-                  <div className="mt-2 w-0 h-0.5 bg-red-600 group-hover:w-4 transition-all duration-500 shadow-[0_0_8px_rgba(220,38,38,0.8)]"></div>
+                  <div className="mt-2 w-0 h-0.5 bg-red-600 group-hover:w-12 transition-all duration-500 shadow-[0_0_8px_rgba(220,38,38,0.8)]"></div>
                 </Link>
               ))}
             </div>
@@ -459,7 +459,7 @@ function ProductItemCard({ product }: { product: Product }) {
       </div>
       
       <div className="p-4 md:p-5 flex flex-col flex-1 relative bg-zinc-950">
-        <h3 className="text-xs md:text-sm font-medium text-zinc-300 group-hover:text-white transition-colors duration-300 line-clamp-2 leading-snug min-h-[2.5rem] md:min-h-[2.75rem] mb-3 capitalize">
+        <h3 className="text-sm md:text-base font-bold text-zinc-100 group-hover:text-white transition-colors duration-300 line-clamp-4 leading-snug min-h-[5rem] md:min-h-[6rem] mb-3 capitalize">
           {product.name.toLowerCase()}
         </h3>
 
@@ -467,15 +467,15 @@ function ProductItemCard({ product }: { product: Product }) {
           <div className="flex flex-col gap-1.5 mb-3">
             {/* A Vista */}
             <div className="flex items-baseline gap-1.5">
-              <span className="text-[11px] md:text-xs font-bold text-red-600 tracking-tight">à vista</span>
-              <span className="text-base md:text-lg font-black text-red-600 tracking-tighter">
+              <span className="text-xs md:text-sm font-bold text-red-600 tracking-tight">à vista</span>
+              <span className="text-xl md:text-2xl font-black text-red-600 tracking-tighter">
                 {formatCurrency(hasPromo ? product.promoPrice! : product.price)}
               </span>
             </div>
             
             {/* Installments */}
             <div className="flex flex-col gap-0.5">
-              <span className="text-[9px] md:text-[10px] text-zinc-500 font-bold tracking-tight uppercase">
+              <span className="text-[10px] md:text-[11px] text-zinc-400 font-black tracking-tight uppercase">
                 {hasPromo && (
                   <span className="line-through opacity-60 mr-1.5 font-medium">{formatCurrency(product.price)}</span>
                 )}

@@ -176,9 +176,15 @@ export function CartPage() {
           settingsService.getMercadoPagoSettings(),
           settingsService.getOperatingHours()
         ]);
-        setDbStates(states.filter(s => s.status === 'ativo'));
-        setDbCities(cities.filter(c => c.status === 'ativo'));
-        setDbAreas(areas.filter(a => a.status === 'ativo'));
+        
+        // Use more relaxed filter (include active or undefined status)
+        const activeStates = states.filter(s => s.status !== 'inativo');
+        const activeCities = cities.filter(c => c.status !== 'inativo');
+        const activeAreas = areas.filter(a => a.status !== 'inativo');
+
+        setDbStates(activeStates);
+        setDbCities(activeCities);
+        setDbAreas(activeAreas);
         setPaymentSettings(pSettings);
         setMpSettings(mpData);
         setOperatingHours(opHours);
@@ -188,6 +194,52 @@ export function CartPage() {
     };
     loadData();
   }, []);
+
+  const normalizeStr = (str: string) => 
+    str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
+
+  const handleStateBlur = () => {
+    const val = normalizeStr(stateName);
+    if (!val) return;
+    const match = dbStates.find(s => normalizeStr(s.sigla) === val || normalizeStr(s.nome) === val);
+    if (match) {
+      setStateName(match.sigla);
+    } else {
+      setStateName('');
+      setCityName('');
+      setAreaName('');
+      toast("Por favor, selecione um Estado da lista.", "warning");
+    }
+  };
+
+  const handleCityBlur = () => {
+    const val = normalizeStr(cityName);
+    if (!val) return;
+    const normState = normalizeStr(stateName);
+    const st = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
+    const match = dbCities.find(c => normalizeStr(c.nome) === val && (st ? c.stateId === st.id : true));
+    if (match) {
+      setCityName(match.nome);
+    } else {
+      setCityName('');
+      setAreaName('');
+      toast("Por favor, selecione uma Cidade da lista.", "warning");
+    }
+  };
+
+  const handleAreaBlur = () => {
+    const val = normalizeStr(areaName);
+    if (!val) return;
+    const normCity = normalizeStr(cityName);
+    const ct = dbCities.find(c => normalizeStr(c.nome) === normCity);
+    const match = dbAreas.find(a => normalizeStr(a.bairro) === val && (ct ? a.cityId === ct.id : true));
+    if (match) {
+      setAreaName(match.bairro);
+    } else {
+      setAreaName('');
+      toast("Por favor, selecione um Bairro atendido da lista.", "warning");
+    }
+  };
 
   // Preload from customer storage if we have one
   useEffect(() => {
@@ -348,8 +400,12 @@ export function CartPage() {
       return false;
     }
     
-    const validState = dbStates.find(s => s.sigla.trim().toUpperCase() === stateName.trim().toUpperCase());
-    const validCity = dbCities.find(c => c.nome.trim().toLowerCase() === cityName.trim().toLowerCase());
+    const normState = normalizeStr(stateName);
+    const normCity = normalizeStr(cityName);
+    const normArea = normalizeStr(areaName);
+
+    const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
+    const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
 
     if (!validState || !validCity) {
       toast("Por favor, selecione Estado e Cidade das sugestões.", 'warning');
@@ -357,9 +413,9 @@ export function CartPage() {
     }
 
     const validArea = dbAreas.find(a => 
-      (a.stateName === validState.sigla || a.stateName === validState.nome) &&
-      a.cityName.trim().toLowerCase() === validCity.nome.trim().toLowerCase() &&
-      a.bairro.trim().toLowerCase() === areaName.trim().toLowerCase()
+      (normalizeStr(a.stateName) === normalizeStr(validState.sigla) || normalizeStr(a.stateName) === normalizeStr(validState.nome)) &&
+      normalizeStr(a.cityName) === normalizeStr(validCity.nome) &&
+      normalizeStr(a.bairro) === normArea
     );
 
     if (!validArea) {
@@ -386,12 +442,16 @@ export function CartPage() {
       return;
     }
 
-    const validState = dbStates.find(s => s.sigla.trim().toUpperCase() === stateName.trim().toUpperCase());
-    const validCity = dbCities.find(c => c.nome.trim().toLowerCase() === cityName.trim().toLowerCase());
+    const normState = normalizeStr(stateName);
+    const normCity = normalizeStr(cityName);
+    const normArea = normalizeStr(areaName);
+
+    const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
+    const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
     const validArea = dbAreas.find(a => 
-      (a.stateName === validState?.sigla || a.stateName === validState!.nome) &&
-      a.cityName.trim().toLowerCase() === validCity?.nome.trim().toLowerCase() &&
-      a.bairro.trim().toLowerCase() === areaName.trim().toLowerCase()
+      (normalizeStr(a.stateName) === normalizeStr(validState?.sigla || '') || normalizeStr(a.stateName) === normalizeStr(validState?.nome || '')) &&
+      normalizeStr(a.cityName) === normalizeStr(validCity?.nome || '') &&
+      normalizeStr(a.bairro) === normArea
     );
 
     if (!validState || !validCity || !validArea) return;
@@ -613,7 +673,7 @@ export function CartPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8 lg:py-12">
+      <div className="max-w-7xl mx-auto px-4 py-8 lg:py-12 pb-40">
         <div className="flex flex-col gap-12 max-w-4xl mx-auto w-full">
           
           <div className="w-full">
@@ -741,27 +801,72 @@ export function CartPage() {
                     <div className="space-y-8">
                       <h3 className="text-sm font-black uppercase tracking-[4px] text-zinc-100 flex items-center gap-3">
                         <div className="w-2 h-2 bg-red-600 rounded-full shadow-[0_0_10px_rgba(220,38,38,0.6)]"></div>
-                        Onde Enviamos seu Desejo?
+                        Endereço para entrega
                       </h3>
                       
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
                         <div>
                           <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">UF *</label>
-                          <input required list="states-list" value={stateName} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white uppercase font-bold" onChange={e => setStateName(e.target.value.toUpperCase())} placeholder="UF" />
-                          <datalist id="states-list">{dbStates.map(s => <option value={s.sigla} key={s.id}>{s.nome}</option>)}</datalist>
+                          <input 
+                            required 
+                            list="states-list" 
+                            value={stateName} 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white uppercase font-bold" 
+                            onChange={e => setStateName(e.target.value.toUpperCase())} 
+                            onBlur={handleStateBlur}
+                            placeholder="UF" 
+                          />
+                          <datalist id="states-list">
+                            {dbStates.map(s => <option value={s.sigla} key={s.id}>{s.nome}</option>)}
+                            {dbStates.map(s => <option value={s.nome} key={`name-${s.id}`}>{s.sigla}</option>)}
+                          </datalist>
                         </div>
                         <div className="col-span-1 sm:col-span-2">
                           <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Cidade *</label>
-                          <input required list="cities-list" value={cityName} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" onChange={e => setCityName(e.target.value)} placeholder="Cidade" />
-                          <datalist id="cities-list">{dbCities.filter(c => { const st = dbStates.find(s => s.sigla === stateName); return st ? c.stateId === st.id : true; }).map(c => <option value={c.nome} key={c.id} />)}</datalist>
+                          <input 
+                            required 
+                            list="cities-list" 
+                            value={cityName} 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" 
+                            onChange={e => setCityName(e.target.value)} 
+                            onBlur={handleCityBlur}
+                            placeholder="Cidade" 
+                          />
+                          <datalist id="cities-list">
+                            {dbCities
+                              .filter(c => { 
+                                const normState = normalizeStr(stateName);
+                                const st = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState); 
+                                return st ? c.stateId === st.id : true; 
+                              })
+                              .map(c => <option value={c.nome} key={c.id}>{c.stateName}</option>)
+                            }
+                          </datalist>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div>
                           <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Bairro *</label>
-                          <input required list="areas-list" value={areaName} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" onChange={e => setAreaName(e.target.value)} placeholder="Bairro" />
-                          <datalist id="areas-list">{dbAreas.filter(a => { const ct = dbCities.find(c => c.nome.toLowerCase() === cityName.toLowerCase()); return ct ? a.cityId === ct.id : true; }).map(a => <option value={a.bairro} key={a.id} />)}</datalist>
+                          <input 
+                            required 
+                            list="areas-list" 
+                            value={areaName} 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" 
+                            onChange={e => setAreaName(e.target.value)} 
+                            onBlur={handleAreaBlur}
+                            placeholder="Bairro" 
+                          />
+                          <datalist id="areas-list">
+                            {dbAreas
+                              .filter(a => { 
+                                const normCity = normalizeStr(cityName);
+                                const ct = dbCities.find(c => normalizeStr(c.nome) === normCity); 
+                                return ct ? a.cityId === ct.id : true; 
+                              })
+                              .map(a => <option value={a.bairro} key={a.id}>{a.cityName}</option>)
+                            }
+                          </datalist>
                         </div>
                         <div>
                           <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Rua *</label>
@@ -1017,58 +1122,59 @@ export function CartPage() {
                   <span className="text-5xl font-black text-red-500 tracking-tighter">{formatCurrency(orderTotal)}</span>
                 </div>
               </div>
-
-              <div className="flex flex-col gap-4">
-                {step === 1 && (
-                  <Button 
-                    onClick={() => setStep(2)}
-                    className="w-full h-20 bg-white hover:bg-zinc-200 text-black font-black rounded-full text-base uppercase tracking-[3px] shadow-2xl transition-all"
-                  >
-                    Seguir para Entrega <ArrowRight className="ml-3 w-6 h-6" />
-                  </Button>
-                )}
-
-                {step === 2 && (
-                  <div className="flex flex-col gap-4">
-                    <Button 
-                      onClick={() => validateIdentification() && setStep(3)}
-                      className="w-full h-20 bg-white hover:bg-zinc-200 text-black font-black rounded-full text-base uppercase tracking-[3px] shadow-2xl transition-all"
-                    >
-                      Agendar Entrega <ArrowRight className="ml-3 w-6 h-6" />
-                    </Button>
-                    <button onClick={() => setStep(1)} className="text-[10px] font-black uppercase tracking-widest text-zinc-600 hover:text-white py-2">Revisar itens da sacola</button>
-                  </div>
-                )}
-
-                {step === 3 && (
-                  <div className="flex flex-col gap-4">
-                    <Button 
-                      disabled={!selectedSlot}
-                      onClick={() => setStep(4)}
-                      className="w-full h-20 bg-white hover:bg-zinc-200 text-black font-black rounded-full text-base uppercase tracking-[3px] shadow-2xl transition-all disabled:opacity-50"
-                    >
-                      Escolher Pagamento <ArrowRight className="ml-3 w-6 h-6" />
-                    </Button>
-                    <button onClick={() => setStep(2)} className="text-[10px] font-black uppercase tracking-widest text-zinc-600 hover:text-white py-2">Alterar endereço de entrega</button>
-                  </div>
-                )}
-
-                {step === 4 && (
-                  <div className="flex flex-col gap-4">
-                    <Button 
-                      disabled={loading || !paymentMethod}
-                      onClick={handleCheckout}
-                      className="w-full h-20 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-base uppercase tracking-[3px] shadow-2xl shadow-red-900/40 transition-all border-b-8 border-red-900 active:border-b-0 active:translate-y-2"
-                    >
-                      {loading ? 'Processando...' : 'Finalizar e Receber em Casa'}
-                    </Button>
-                    <button onClick={() => setStep(3)} className="text-[10px] font-black uppercase tracking-widest text-zinc-600 hover:text-white py-2">Alterar horário de entrega</button>
-                  </div>
-                )}
-              </div>
+              {/* Buttons removed from here as they are now fixed at the bottom */}
             </div>
           </div>
+        </div>
+      </div>
 
+      {/* Fixed Bottom Action Bar */}
+      <div className="fixed bottom-0 left-0 w-full bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 p-4 sm:p-6 z-[60] lg:z-50 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="hidden sm:flex flex-col">
+            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Total do Pedido</span>
+            <span className="text-2xl font-black text-red-500 tracking-tighter italic">{formatCurrency(orderTotal)}</span>
+          </div>
+          
+          <div className="w-full sm:w-auto min-w-[280px]">
+            {step === 1 && (
+              <Button 
+                onClick={() => setStep(2)}
+                className="w-full h-16 sm:h-14 px-12 bg-white hover:bg-zinc-200 text-black font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
+              >
+                Seguir para Entrega <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+            )}
+
+            {step === 2 && (
+              <Button 
+                onClick={() => validateIdentification() && setStep(3)}
+                className="w-full h-16 sm:h-14 px-12 bg-white hover:bg-zinc-200 text-black font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
+              >
+                Agendar Entrega <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+            )}
+
+            {step === 3 && (
+              <Button 
+                disabled={!selectedSlot}
+                onClick={() => setStep(4)}
+                className="w-full h-16 sm:h-14 px-12 bg-white hover:bg-zinc-200 text-black font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-50"
+              >
+                Escolher Pagamento <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+            )}
+
+            {step === 4 && (
+              <Button 
+                disabled={loading || !paymentMethod}
+                onClick={handleCheckout}
+                className="w-full h-16 sm:h-14 px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
+              >
+                {loading ? 'Processando...' : 'Finalizar e Receber em Casa'}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

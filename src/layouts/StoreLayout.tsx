@@ -104,48 +104,50 @@ export function StoreLayout() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-zinc-950 text-white py-16 px-4 border-t border-zinc-900">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12">
-          <div className="max-w-md">
-            <div className="flex items-center gap-3 mb-4">
-               <h2 className="text-2xl font-black tracking-tighter italic">DISCRETA BOUTIQUE</h2>
+      {!['/carrinho', '/sucesso'].includes(location.pathname) && (
+        <footer className="bg-zinc-950 text-white py-16 px-4 border-t border-zinc-900">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12">
+            <div className="max-w-md">
+              <div className="flex items-center gap-3 mb-4">
+                 <h2 className="text-2xl font-black tracking-tighter italic">DISCRETA BOUTIQUE</h2>
+              </div>
+              <p className="text-zinc-500 text-sm leading-relaxed">
+                Sua boutique especializada em momentos inesquecíveis. Produtos selecionados com rigor, 
+                garantindo máxima qualidade, prazer e segurança.
+              </p>
             </div>
-            <p className="text-zinc-500 text-sm leading-relaxed">
-              Sua boutique especializada em momentos inesquecíveis. Produtos selecionados com rigor, 
-              garantindo máxima qualidade, prazer e segurança.
-            </p>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-8">
+              <div className="flex flex-col space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2">Shopping</h3>
+                {categories.map(cat => (
+                  <Link key={cat.id} to={`/catalogo?categoria=${cat.id}`} className="text-zinc-500 hover:text-red-500 text-sm transition-colors">
+                    {cat.name}
+                  </Link>
+                ))}
+              </div>
+              <div className="flex flex-col space-y-3 min-w-0">
+                <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2">Institucional</h3>
+                <Link to="/quem-somos" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Quem Somos</Link>
+                <Link to="/politica-de-privacidade" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Privacidade</Link>
+                <Link to="/politica-de-troca" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Trocas e Devoluções</Link>
+                <Link to="/lgpd" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">LGPD</Link>
+                <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2 mt-4">Suporte</h3>
+                <a href="mailto:contato@discretaboutique.com.br" className="text-zinc-500 hover:text-red-500 text-sm transition-colors break-all">contato@discretaboutique.com.br</a>
+                <a href="https://wa.me/5588992340317" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">WhatsApp</a>
+                <Link to="/admin" className="text-zinc-500 hover:text-red-500 text-sm transition-colors mt-2">Painel Admin</Link>
+              </div>
+            </div>
           </div>
-          
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-8">
-            <div className="flex flex-col space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2">Shopping</h3>
-              {categories.map(cat => (
-                <Link key={cat.id} to={`/catalogo?categoria=${cat.id}`} className="text-zinc-500 hover:text-red-500 text-sm transition-colors">
-                  {cat.name}
-                </Link>
-              ))}
-            </div>
-            <div className="flex flex-col space-y-3 min-w-0">
-              <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2">Institucional</h3>
-              <Link to="/quem-somos" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Quem Somos</Link>
-              <Link to="/politica-de-privacidade" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Privacidade</Link>
-              <Link to="/politica-de-troca" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Trocas e Devoluções</Link>
-              <Link to="/lgpd" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">LGPD</Link>
-              <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2 mt-4">Suporte</h3>
-              <a href="mailto:contato@discretaboutique.com.br" className="text-zinc-500 hover:text-red-500 text-sm transition-colors break-all">contato@discretaboutique.com.br</a>
-              <a href="https://wa.me/5588992340317" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">WhatsApp</a>
-              <Link to="/admin" className="text-zinc-500 hover:text-red-500 text-sm transition-colors mt-2">Painel Admin</Link>
-            </div>
+          <div className="max-w-7xl mx-auto mt-16 pt-8 border-t border-zinc-900 flex flex-col md:flex-row justify-between items-center gap-6 text-zinc-600 text-[10px] font-bold uppercase tracking-widest text-center md:text-left">
+             <p className="whitespace-normal break-words max-w-[300px] md:max-w-none px-4 md:px-0">© 2026 Discreta Boutique. Todos os direitos reservados. CNPJ: 37.633.308/0001-84</p>
+             <div className="flex flex-wrap justify-center gap-4 px-4">
+                <span className="whitespace-nowrap">Proibido para menores de 18 anos</span>
+                <span className="whitespace-nowrap">Sigilo garantido</span>
+             </div>
           </div>
-        </div>
-        <div className="max-w-7xl mx-auto mt-16 pt-8 border-t border-zinc-900 flex flex-col md:flex-row justify-between items-center gap-6 text-zinc-600 text-[10px] font-bold uppercase tracking-widest text-center md:text-left">
-           <p className="whitespace-normal break-words max-w-[300px] md:max-w-none px-4 md:px-0">© 2026 Discreta Boutique. Todos os direitos reservados. CNPJ: 37.633.308/0001-84</p>
-           <div className="flex flex-wrap justify-center gap-4 px-4">
-              <span className="whitespace-nowrap">Proibido para menores de 18 anos</span>
-              <span className="whitespace-nowrap">Sigilo garantido</span>
-           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

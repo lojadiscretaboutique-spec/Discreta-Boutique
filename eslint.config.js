@@ -28,6 +28,8 @@ export default [
     rules: {
       ...reactHooks.configs.recommended.rules,
       ...tsPlugin.configs.recommended.rules,
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'warn',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

@@ -48,9 +48,10 @@ export interface DeliveryArea {
 export const deliveryAreaService = {
   // STATES
   async listStates(): Promise<State[]> {
-    const q = query(collection(db, 'states'), orderBy('ordem', 'asc'));
+    const q = collection(db, 'states');
     const snap = await getDocs(q);
-    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as State));
+    const result = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as State));
+    return result.sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
   },
   async saveState(data: Partial<State>): Promise<string> {
     const isNew = !data.id;
