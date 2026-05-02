@@ -46,6 +46,8 @@ interface Order {
   change?: number;
   scheduledDate?: string;
   scheduledTime?: string;
+  lastStatusSent?: string;
+  statusSentAt?: any;
 }
 
 export function AdminOrders() {
@@ -286,10 +288,38 @@ export function AdminOrders() {
          return;
       }
 
-      await updateDoc(doc(db, 'orders', id), {
+      const updates: any = {
         status: newStatus,
         updatedAt: serverTimestamp()
-      });
+      };
+
+      if (order.lastStatusSent !== newStatus) {
+        updates.lastStatusSent = newStatus;
+        updates.statusSentAt = serverTimestamp();
+      }
+
+      await updateDoc(doc(db, 'orders', id), updates);
+
+      // Send status notification only if it was newly sent
+      if (order.lastStatusSent !== newStatus) {
+        if (order.customerWhatsapp && order.customerWhatsapp.trim().length >= 8) {
+          try {
+            await fetch('/api/notifications/order-status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contact_id: order.customerWhatsapp,
+                status: newStatus,
+                pedido: order
+              })
+            });
+          } catch (err) {
+            console.error('Failed to send status notification:', err);
+          }
+        } else {
+          console.warn(`[AdminOrders] Não foi possível enviar notificação: WhatsApp ausente ou inválido (${order.customerWhatsapp}) para pedido ${order.id}`);
+        }
+      }
 
       if (newStatus === 'ENTREGUE') {
         await stockMovementService.realizeMovementsByOrderId(id);
