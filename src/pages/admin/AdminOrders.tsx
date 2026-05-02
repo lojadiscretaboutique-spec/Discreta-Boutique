@@ -132,7 +132,11 @@ export function AdminOrders() {
       setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
       setHasMore(snapshot.docs.length >= limitCount);
       setLoading(false);
-    }, (err) => {
+    }, (err: any) => {
+      if (err?.code === 'cancelled' || err?.message?.includes('CANCELLED')) {
+         console.warn('Firebase Listener Cancelled (Idle Stream). Auto-reconnecting...');
+         return;
+      }
       console.error(err);
       toast("Erro ao carregar pedidos.", 'error');
       setLoading(false);

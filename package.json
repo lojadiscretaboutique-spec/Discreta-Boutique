@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.1",
+    "@google/genai": "^1.51.0",
     "@mercadopago/sdk-react": "^1.0.7",
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/vite": "^4.2.4",

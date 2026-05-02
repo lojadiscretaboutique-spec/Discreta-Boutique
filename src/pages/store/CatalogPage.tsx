@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
-import { Search, ShoppingBag, X, Minus, Plus, Sparkles } from 'lucide-react';
+import { Search, X, Minus, Plus, Sparkles } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import { Product } from '../../services/productService';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
+import { useFeedback } from '../../contexts/FeedbackContext';
 
 export function CatalogPage() {
   const [searchParams] = useSearchParams();
@@ -25,14 +26,19 @@ export function CatalogPage() {
   const [aiSuggestion, setAiSuggestion] = useState<{
     mensagem: string;
     curadoria: string;
+    caracteristicas?: string[];
+    termos_relacionados?: string[];
+    sinonimos?: string[];
   } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
+  const { toast } = useFeedback();
 
   const handleSmartSearch = async () => {
     if (!search.trim()) return;
 
     setInterpreting(true);
+    const startTime = Date.now();
     try {
       const response = await fetch('/api/ia/interpretar-busca', {
         method: 'POST',
@@ -41,15 +47,13 @@ export function CatalogPage() {
       });
 
       if (!response.ok) {
-        // Se a API retornar erro (como 429 Rate Limit), apenas ignoramos e seguimos com busca normal
-        return;
+        throw new Error('Falha na resposta da IA');
       }
 
       const data = await response.json();
 
-      // Se a IA sinalizou fallback ou erro de timeout, apenas paramos aqui
       if (data.fallback) {
-        console.warn('IA indisponível ou lenta, utilizando busca tradicional.');
+        toast("Busca inteligente indisponível no momento. Usando busca tradicional.", "info");
         setAiSuggestion(null);
         return;
       }
@@ -58,7 +62,10 @@ export function CatalogPage() {
       if (data.mensagem_personalizada || data.sugestao_curadoria) {
         setAiSuggestion({
           mensagem: data.mensagem_personalizada || '',
-          curadoria: data.sugestao_curadoria || ''
+          curadoria: data.sugestao_curadoria || '',
+          caracteristicas: data.caracteristicas || [],
+          termos_relacionados: data.termos_relacionados || [],
+          sinonimos: data.sinonimos || []
         });
       } else {
         setAiSuggestion(null);
@@ -79,9 +86,36 @@ export function CatalogPage() {
           setSelectedCat(found.id);
         }
       }
+
+      // LOG DE INTENÇÕES (Client-side logging)
+      try {
+        await addDoc(collection(db, 'search_logs'), {
+          busca: search,
+          interpretacao: data,
+          duration: Date.now() - startTime,
+          timestamp: serverTimestamp(),
+          fallback: false,
+          source: 'catalogo_front_node'
+        });
+      } catch (err) {
+        console.error('Erro ao logar busca:', err);
+      }
+
     } catch (error) {
-      // Falha total na requisição: busca tradicional continua funcionando pelo estado 'search'
       console.error('Falha na busca inteligente:', error);
+      toast("Não foi possível processar a busca inteligente. Tente pesquisar por termos simples.", "warning");
+      // Log do erro
+      try {
+        await addDoc(collection(db, 'search_logs'), {
+          busca: search,
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: serverTimestamp(),
+          fallback: true,
+          source: 'catalogo_front_node_error'
+        });
+      } catch (e) {
+        console.error('Erro ao logar falha de busca:', e);
+      }
     } finally {
       setInterpreting(false);
     }
@@ -172,7 +206,27 @@ export function CatalogPage() {
     }
     if (search.trim()) {
       const s = search.toLowerCase();
-      result = result.filter(p => p.name.toLowerCase().includes(s));
+      const literalMatch = result.filter(p => p.name.toLowerCase().includes(s) || p.description?.toLowerCase().includes(s));
+      
+      // Se a IA interpretou a busca (tem sugestão) e a busca literal por nome não achou nada,
+      // ignora o filtro de texto para mostrar os produtos da categoria sugerida pela IA.
+      if (aiSuggestion) {
+        const semanticMatch = result.filter(p => {
+          const nameInfo = (p.name + " " + (p.description || "")).toLowerCase();
+          const matchesFeature = aiSuggestion.caracteristicas?.some(f => nameInfo.includes(f.toLowerCase()));
+          const matchesTerm = aiSuggestion.termos_relacionados?.some(t => nameInfo.includes(t.toLowerCase()));
+          const matchesSynonym = aiSuggestion.sinonimos?.some(syn => nameInfo.includes(syn.toLowerCase()));
+          return matchesFeature || matchesTerm || matchesSynonym || nameInfo.includes(s);
+        });
+
+        if (semanticMatch.length > 0) {
+          result = semanticMatch;
+        } else if (literalMatch.length > 0) {
+          result = literalMatch;
+        }
+      } else {
+        result = literalMatch;
+      }
     }
 
     // Sort by stock status (out of stock last)
@@ -186,7 +240,7 @@ export function CatalogPage() {
 
     setFiltered(result);
     setCurrentPage(1); // Reset to page 1 unconditionally when filtering
-  }, [search, selectedCat, products, categories]);
+  }, [search, selectedCat, products, categories, aiSuggestion]);
 
   const rootCategories = categories.filter(c => c.level === 0 || !c.parentId);
   const getSubcategories = (parentId: string) => categories.filter(c => c.parentId === parentId);
@@ -213,16 +267,20 @@ export function CatalogPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-black text-white min-h-screen">
-      {/* Header / Search Area - Optimized for Space */}
-      <section className="bg-zinc-950 border-b border-zinc-900 pt-4 pb-2 px-4 sticky top-14 md:top-16 z-30 backdrop-blur-md bg-black/90">
-        <div className="max-w-7xl mx-auto space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-red-500 transition-colors" size={14} />
+      {/* Header / Search Area - AI Assistant */}
+      <section className="bg-zinc-950 border-b border-zinc-900 pt-6 pb-4 px-4 sticky top-14 md:top-16 z-30 backdrop-blur-md bg-black/95">
+        <div className="max-w-7xl mx-auto space-y-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-red-500 mb-1 ml-1">
+              <Sparkles size={16} />
+              <h2 className="text-sm font-black uppercase tracking-tight">Especialista IA: O que você deseja hoje?</h2>
+            </div>
+            <div className="relative group w-full">
+              <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-red-600/40 group-focus-within:text-red-500 transition-colors" size={18} />
               <Input 
                 type="text"
-                placeholder="Pesquisar..." 
-                className="w-full bg-zinc-900/50 border-zinc-800 text-white pl-9 pr-12 py-2 rounded-xl focus:ring-1 focus:ring-red-600/50 font-medium placeholder:text-zinc-600 transition-all h-9 text-xs"
+                placeholder="Ex: Quero algo para usar a dois e sair da rotina..." 
+                className="w-full bg-zinc-900/80 border-red-900/30 text-white pl-12 pr-14 py-6 rounded-2xl focus:ring-1 focus:ring-red-600/50 font-medium placeholder:text-zinc-600 transition-all text-sm shadow-inner"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => {
@@ -232,16 +290,13 @@ export function CatalogPage() {
               <button 
                 onClick={handleSmartSearch}
                 disabled={interpreting || !search.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-zinc-500 hover:text-red-500 disabled:opacity-0 transition-all"
-                title="Busca Inteligente"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl disabled:opacity-0 disabled:scale-95 transition-all shadow-lg shadow-red-900/20"
+                title="Analisar Pedido"
               >
-                <Sparkles size={14} className={interpreting ? "animate-spin" : ""} />
+                <Search size={16} className={interpreting ? "animate-pulse" : ""} />
               </button>
             </div>
-            {/* Minimal Title only on Desktop to save height */}
-            <div className="hidden lg:block shrink-0">
-              <h1 className="text-lg font-black uppercase tracking-tighter italic text-zinc-500">Catálogo</h1>
-            </div>
+            <p className="text-xs text-zinc-500 font-medium ml-2">Descreva sua vontade. Nossa IA encontrará a curadoria perfeita para você.</p>
           </div>
 
           {/* Category Navigation - More Compact */}
@@ -376,7 +431,12 @@ export function CatalogPage() {
                       <Button 
                         size="sm" 
                         className="bg-white text-black hover:bg-zinc-200 rounded-full text-[10px] uppercase font-black px-6"
-                        onClick={() => setAiSuggestion(null)}
+                        onClick={() => {
+                          const grid = document.getElementById('products-grid');
+                          if (grid) {
+                            grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }}
                       >
                         Descobrir
                       </Button>
@@ -387,8 +447,23 @@ export function CatalogPage() {
             )}
           </AnimatePresence>
 
-          {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+          {interpreting ? (
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }}
+              className="text-center py-32 bg-zinc-950/50 border border-dashed border-red-600/20 rounded-[3rem] flex flex-col items-center justify-center mt-6"
+            >
+              <div className="relative mb-6">
+                <div className="absolute inset-0 bg-red-600/20 blur-xl rounded-full"></div>
+                <div className="w-20 h-20 bg-zinc-900 border-2 border-red-900/50 rounded-full flex items-center justify-center text-red-500 relative z-10">
+                  <Sparkles size={40} className="animate-pulse" />
+                </div>
+              </div>
+              <h3 className="text-white font-black text-xl mb-2">IA Analisando...</h3>
+              <p className="text-zinc-500 font-medium text-sm px-4">Buscando as melhores sugestões de nossa curadoria exclusiva.</p>
+            </motion.div>
+          ) : loading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6 mt-6">
               {[1,2,3,4,5,6,7,8,9,10].map(i => (
                 <div key={i} className="aspect-[4/5] bg-zinc-900 rounded-3xl border border-zinc-800 animate-pulse"></div>
               ))}
@@ -397,7 +472,7 @@ export function CatalogPage() {
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }}
-              className="text-center py-32 bg-zinc-950/50 border border-dashed border-zinc-800 rounded-[3rem]"
+              className="text-center py-32 bg-zinc-950/50 border border-dashed border-zinc-800 rounded-[3rem] mt-6"
             >
               <div className="mb-6 flex justify-center">
                 <div className="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700">
@@ -415,7 +490,7 @@ export function CatalogPage() {
             </motion.div>
           ) : (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+              <div id="products-grid" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6 scroll-mt-32 mt-6">
                 <AnimatePresence mode="popLayout">
                   {paginatedProducts.map((p) => (
                     <motion.div

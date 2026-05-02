@@ -1,8 +1,11 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, doc, getDocFromServer, setLogLevel } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
+
+// Suprime warnings internos de conexão dociata do Firestore
+setLogLevel('silent');
 
 interface FirebaseAppConfig {
   apiKey: string;

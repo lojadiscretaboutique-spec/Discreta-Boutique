@@ -75,7 +75,7 @@ export const interpretSearch = async (req: Request, res: Response) => {
     const { busca } = InterpretSearchInput.parse(req.body);
 
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('AI_TIMEOUT')), 2000)
+      setTimeout(() => reject(new Error('AI_TIMEOUT')), 10000)
     );
 
     const startTime = Date.now();
