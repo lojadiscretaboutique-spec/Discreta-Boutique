@@ -30,6 +30,7 @@ const storeAiLimiter = rateLimit({
 });
 
 router.post('/gerar-produto', adminAiLimiter, aiController.generateProduct);
+router.post('/gerar-categoria', adminAiLimiter, aiController.generateCategory);
 router.post('/interpretar-busca', storeAiLimiter, aiController.interpretSearch);
 router.post('/bot-consulta', storeAiLimiter, aiController.botConsult);
 

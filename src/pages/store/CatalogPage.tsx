@@ -29,6 +29,7 @@ export function CatalogPage() {
     caracteristicas?: string[];
     termos_relacionados?: string[];
     sinonimos?: string[];
+    produtos_recomendados?: string[];
   } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
@@ -40,10 +41,20 @@ export function CatalogPage() {
     setInterpreting(true);
     const startTime = Date.now();
     try {
+      // Criar contexto do catálogo limitado (apenas produtos em estoque)
+      const catalogContext = products
+        .filter(p => !p.stockStatus || p.stockStatus === 'in_stock')
+        .slice(0, 80) // Limite para não estourar tokens
+        .map(p => `${p.id}: ${p.name}`)
+        .join('\n');
+
       const response = await fetch('/api/ia/interpretar-busca', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ busca: search })
+        body: JSON.stringify({ 
+          busca: search,
+          contexto: catalogContext
+        })
       });
 
       if (!response.ok) {
@@ -65,7 +76,8 @@ export function CatalogPage() {
           curadoria: data.sugestao_curadoria || '',
           caracteristicas: data.caracteristicas || [],
           termos_relacionados: data.termos_relacionados || [],
-          sinonimos: data.sinonimos || []
+          sinonimos: data.sinonimos || [],
+          produtos_recomendados: data.produtos_recomendados || []
         });
       } else {
         setAiSuggestion(null);
@@ -206,26 +218,38 @@ export function CatalogPage() {
     }
     if (search.trim()) {
       const s = search.toLowerCase();
-      const literalMatch = result.filter(p => p.name.toLowerCase().includes(s) || p.description?.toLowerCase().includes(s));
       
-      // Se a IA interpretou a busca (tem sugestão) e a busca literal por nome não achou nada,
-      // ignora o filtro de texto para mostrar os produtos da categoria sugerida pela IA.
       if (aiSuggestion) {
+        // Prioridade 1: Consultar por IDs recomendados exatos da IA
+        const recommendedById = result.filter(p => aiSuggestion.produtos_recomendados?.includes(p.id));
+        
+        // Prioridade 2: Match semântico (características, termos, sinônimos)
         const semanticMatch = result.filter(p => {
           const nameInfo = (p.name + " " + (p.description || "")).toLowerCase();
           const matchesFeature = aiSuggestion.caracteristicas?.some(f => nameInfo.includes(f.toLowerCase()));
           const matchesTerm = aiSuggestion.termos_relacionados?.some(t => nameInfo.includes(t.toLowerCase()));
           const matchesSynonym = aiSuggestion.sinonimos?.some(syn => nameInfo.includes(syn.toLowerCase()));
-          return matchesFeature || matchesTerm || matchesSynonym || nameInfo.includes(s);
+          const matchesLiteral = nameInfo.includes(s);
+          return matchesFeature || matchesTerm || matchesSynonym || matchesLiteral;
         });
 
-        if (semanticMatch.length > 0) {
-          result = semanticMatch;
-        } else if (literalMatch.length > 0) {
-          result = literalMatch;
+        // Combinar e remover duplicatas, priorizando os recomendados por ID no topo
+        const combined = [...recommendedById];
+        semanticMatch.forEach(p => {
+          if (!combined.find(c => c.id === p.id)) {
+            combined.push(p);
+          }
+        });
+
+        if (combined.length > 0) {
+          result = combined;
+        } else {
+          // Fallback literal se nada bater (segurança)
+          result = result.filter(p => p.name.toLowerCase().includes(s) || p.description?.toLowerCase().includes(s));
         }
       } else {
-        result = literalMatch;
+        // Busca tradicional
+        result = result.filter(p => p.name.toLowerCase().includes(s) || p.description?.toLowerCase().includes(s));
       }
     }
 
@@ -296,7 +320,7 @@ export function CatalogPage() {
                 <Search size={16} className={interpreting ? "animate-pulse" : ""} />
               </button>
             </div>
-            <p className="text-xs text-zinc-500 font-medium ml-2">Descreva sua vontade. Nossa IA encontrará a curadoria perfeita para você.</p>
+            <p className="text-xs text-zinc-500 font-medium ml-2">Descreva sua vontade. Nossa IA encontrará a seleção perfeita para você.</p>
           </div>
 
           {/* Category Navigation - More Compact */}
@@ -460,7 +484,7 @@ export function CatalogPage() {
                 </div>
               </div>
               <h3 className="text-white font-black text-xl mb-2">IA Analisando...</h3>
-              <p className="text-zinc-500 font-medium text-sm px-4">Buscando as melhores sugestões de nossa curadoria exclusiva.</p>
+              <p className="text-zinc-500 font-medium text-sm px-4">Buscando as melhores sugestões de nossa seleção exclusiva.</p>
             </motion.div>
           ) : loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6 mt-6">
@@ -646,7 +670,7 @@ function ProductGridCard({ product }: { product: Product }) {
       </div>
       
       <div className="p-4 md:p-5 flex flex-col flex-1 relative bg-zinc-950">
-        <h3 className="text-xs md:text-sm font-medium text-zinc-300 group-hover:text-white transition-colors duration-300 line-clamp-2 leading-snug min-h-[2.5rem] md:min-h-[2.75rem] mb-3 capitalize">
+        <h3 className="text-xs md:text-sm font-medium text-zinc-300 group-hover:text-white transition-colors duration-300 line-clamp-4 leading-snug min-h-[4.25rem] md:min-h-[4.875rem] mb-3 capitalize">
           {product.name.toLowerCase()}
         </h3>
 

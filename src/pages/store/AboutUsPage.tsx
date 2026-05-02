@@ -21,7 +21,7 @@ export default function AboutUsPage() {
           <div className="space-y-6">
             <h2 className="text-3xl font-black italic tracking-tighter uppercase leading-none">Nossa <br/> Trajetória</h2>
             <p className="text-zinc-400 leading-relaxed">
-              A Discreta Boutique nasceu da visão de transformar o mercado de bem-estar e prazer em uma experiência de luxo, discrição e curadoria impecável. Acreditamos que cada momento é único e merece ser celebrado com produtos que unam qualidade superior e design inovador.
+              A Discreta Boutique nasceu da visão de transformar o mercado de bem-estar e prazer em uma experiência de luxo, discrição e seleção impecável. Acreditamos que cada momento é único e merece ser celebrado com produtos que unam qualidade superior e design inovador.
             </p>
             <p className="text-zinc-400 leading-relaxed">
               Mais do que uma loja, somos um refúgio para quem busca explorar seus desejos com segurança, elegância e o suporte de especialistas comprometidos com a satisfação do cliente.
@@ -47,7 +47,7 @@ export default function AboutUsPage() {
           </div>
           <div className="space-y-3">
             <div className="h-px w-12 bg-zinc-700"></div>
-            <h3 className="font-black text-xs uppercase tracking-widest text-white">Curadoria</h3>
+            <h3 className="font-black text-xs uppercase tracking-widest text-white">Seleção</h3>
             <p className="text-zinc-500 text-xs leading-relaxed">Produtos escolhidos por especialistas para proporcionar experiências sensoriais inesquecíveis.</p>
           </div>
         </section>

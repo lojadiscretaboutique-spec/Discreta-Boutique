@@ -5,7 +5,8 @@ import {
   Plus, Edit2, Trash2, Upload, Save, ArrowLeft, 
   Info, Layers, Image as ImageIcon, Search, 
   Check, ChevronRight, Copy, Eye, EyeOff, Tag, 
-  Globe, Settings2, Palette, Layout, Download
+  Globe, Settings2, Palette, Layout, Download,
+  Sparkles
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -56,6 +57,7 @@ export function AdminCategories() {
   const [form, setForm] = useState<Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'productCount'>>(initialCategory);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState<'image' | 'banner' | null>(null);
+  const [generatingAI, setGeneratingAI] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportCSV = () => {
@@ -319,6 +321,41 @@ export function AdminCategories() {
     }
   };
 
+  const handleGenerateAI = async () => {
+    if (!form.name) {
+      toast("Digite o nome da categoria primeiro para a IA analisar.", "warning");
+      return;
+    }
+
+    setGeneratingAI(true);
+    try {
+      const response = await fetch('/api/ia/gerar-categoria', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: form.name })
+      });
+
+      if (!response.ok) throw new Error('Falha ao gerar conteúdo');
+
+      const data = await response.json();
+      setForm(prev => ({
+        ...prev,
+        description: data.conteudo_seo,
+        shortDescription: data.descricao,
+        seoTitle: data.meta_title,
+        seoDescription: data.meta_description,
+        seoKeywords: data.palavras_chave.join(', ')
+      }));
+
+      toast("Conteúdo gerado pela IA com sucesso!", "success");
+    } catch (err) {
+      console.error(err);
+      toast("Erro ao gerar conteúdo com IA.", "error");
+    } finally {
+      setGeneratingAI(false);
+    }
+  };
+
   const removeImage = async (type: 'image' | 'banner') => {
     const img = type === 'image' ? form.image : form.banner;
     if (img) {
@@ -408,7 +445,19 @@ export function AdminCategories() {
             {/* 1. BÁSICO */}
             {activeTab === 'basic' && (
               <div className="space-y-6 motion-safe:animate-in fade-in slide-in-from-right-2">
-                <h3 className="text-lg font-bold border-b pb-2 flex items-center gap-2"><Info size={20} className="text-slate-400" /> Informações Básicas</h3>
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h3 className="text-lg font-bold flex items-center gap-2"><Info size={20} className="text-slate-400" /> Informações Básicas</h3>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    disabled={generatingAI}
+                    onClick={handleGenerateAI}
+                    className="border-red-600/30 text-red-500 hover:bg-red-950/20"
+                  >
+                    {generatingAI ? <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin mr-2"></div> : <Sparkles size={14} className="mr-2" />}
+                    {generatingAI ? 'Gerando...' : 'Gerar com IA'}
+                  </Button>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
                     <label className="block text-sm font-bold mb-1">Nome da Categoria *</label>
@@ -631,7 +680,19 @@ export function AdminCategories() {
             {/* 5. SEO */}
             {activeTab === 'seo' && (
               <div className="space-y-6 motion-safe:animate-in fade-in slide-in-from-right-2">
-                <h3 className="text-lg font-bold border-b pb-2 flex items-center gap-2"><Globe size={20} className="text-slate-400" /> Otimização para Buscadores (SEO)</h3>
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h3 className="text-lg font-bold flex items-center gap-2"><Globe size={20} className="text-slate-400" /> Otimização para Buscadores (SEO)</h3>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    disabled={generatingAI}
+                    onClick={handleGenerateAI}
+                    className="border-red-600/30 text-red-500 hover:bg-red-950/20"
+                  >
+                    {generatingAI ? <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin mr-2"></div> : <Sparkles size={14} className="mr-2" />}
+                    {generatingAI ? 'Gerando...' : 'Otimizar com IA'}
+                  </Button>
+                </div>
                 <div className="space-y-6">
                    <div>
                      <label className="block text-sm font-bold mb-1">Título da Página (Meta Title)</label>

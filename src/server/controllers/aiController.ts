@@ -47,8 +47,13 @@ const GenerateProductInput = z.object({
   categoria: z.string().min(3).max(50)
 });
 
+const GenerateCategoryInput = z.object({
+  nome: z.string().min(3).max(100)
+});
+
 const InterpretSearchInput = z.object({
-  busca: z.string().min(2).max(200)
+  busca: z.string().min(2).max(500),
+  contexto: z.string().optional()
 });
 
 export const generateProduct = async (req: Request, res: Response) => {
@@ -70,9 +75,28 @@ export const generateProduct = async (req: Request, res: Response) => {
   }
 };
 
+export const generateCategory = async (req: Request, res: Response) => {
+  try {
+    const { nome } = GenerateCategoryInput.parse(req.body);
+
+    const startTime = Date.now();
+    const result = await aiService.generateCategoryContent(nome);
+    const duration = Date.now() - startTime;
+
+    console.log(`[AI][SUCCESS] Geração de categoria: "${nome}" (${duration}ms)`);
+    res.json(result);
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Dados de entrada inválidos.', details: error.errors });
+    }
+    console.error(`[AI][ERROR] Geração de categoria falhou:`, error.message);
+    res.status(500).json({ error: error.message || 'Erro ao processar requisição de IA.' });
+  }
+};
+
 export const interpretSearch = async (req: Request, res: Response) => {
   try {
-    const { busca } = InterpretSearchInput.parse(req.body);
+    const { busca, contexto } = InterpretSearchInput.parse(req.body);
 
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('AI_TIMEOUT')), 10000)
@@ -80,9 +104,9 @@ export const interpretSearch = async (req: Request, res: Response) => {
 
     const startTime = Date.now();
     
-    // Race between AI service and 2s timeout
+    // Race between AI service and 10s timeout
     const result: any = await Promise.race([
-      aiService.interpretSearch(busca),
+      aiService.interpretSearch(busca, contexto),
       timeoutPromise
     ]);
 
@@ -109,31 +133,8 @@ export const interpretSearch = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Termo de busca inválido.' });
     }
 
-    // Registrar o log mesmo em caso de falha/timeout (se possível identificar a busca)
-    try {
-      const buscaTerm = req.body?.busca || 'unknown';
-      await addDoc(collection(db, 'search_logs'), {
-        busca: buscaTerm,
-        error: error.message,
-        timestamp: serverTimestamp(),
-        fallback: true,
-        source: 'catalogo'
-      });
-    } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, 'search_logs');
-    }
-
-    if (error.message === 'AI_TIMEOUT') {
-      console.warn(`[AI][TIMEOUT] Busca lenta atingida: "${req.body.busca}"`);
-    } else {
-      console.error(`[AI][ERROR] Interpretação de busca falhou:`, error.message);
-    }
-    
-    // Fallback response
-    res.json({ 
-      fallback: true, 
-      error: error.message === 'AI_TIMEOUT' ? 'Tempo esgotado' : 'Erro interno' 
-    });
+    console.warn(`[AI][FALLBACK] Erro na interpretação, servindo fallback:`, error.message);
+    res.json({ fallback: true, message: error.message });
   }
 };
 
@@ -163,7 +164,7 @@ export const botConsult = async (req: Request, res: Response) => {
       categoria: result.categoria,
       link: `https://${req.get('host')}/catalogo?cat=${encodeURIComponent(result.categoria || 'all')}`,
       sugestao: result.mensagem_personalizada || '',
-      texto_whatsapp: `🌸 *Discreta Boutique* 🌸\n\nEntendi sua busca: "${busca}"\n\n*Sugestão:* ${result.mensagem_personalizada}\n\nConfira nossa curadoria completa aqui: https://${req.get('host')}/catalogo?cat=${encodeURIComponent(result.categoria || 'all')}`
+      texto_whatsapp: `🌸 *Discreta Boutique* 🌸\n\nEntendi sua busca: "${busca}"\n\n*Sugestão:* ${result.mensagem_personalizada}\n\nConfira nossa seleção completa aqui: https://${req.get('host')}/catalogo?cat=${encodeURIComponent(result.categoria || 'all')}`
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
