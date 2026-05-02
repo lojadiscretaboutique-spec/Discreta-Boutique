@@ -34,6 +34,10 @@ export function ProductPage() {
           }
           
           const fallbackData = { id: found.id, ...found.data() } as Product;
+          
+          // Track view
+          productService.trackInteraction(fallbackData.id!, 'view');
+          
           setProduct(fallbackData);
           
           const vSnap = await getDocs(query(collection(db, `products/${found.id}/variants`)));
@@ -44,6 +48,10 @@ export function ProductPage() {
           }
         } else {
           const pData = { id: pSnap.docs[0].id, ...pSnap.docs[0].data() } as Product;
+          
+          // Track view
+          productService.trackInteraction(pData.id!, 'view');
+          
           setProduct(pData);
 
           const vSnap = await getDocs(query(collection(db, `products/${pData.id}/variants`)));
@@ -114,6 +122,9 @@ export function ProductPage() {
       variantName: selectedVariant?.name
     });
     
+    // Track conversion
+    productService.trackInteraction(product.id!, 'conversion');
+    
     if (redirect) {
       navigate('/carrinho');
     } else {
@@ -138,7 +149,7 @@ export function ProductPage() {
                    key={currentImage}
                    initial={{ opacity: 0, scale: 1.1 }}
                    animate={{ opacity: 1, scale: 1 }}
-                   src={currentImage} 
+                   src={currentImage || undefined} 
                    alt={product.name} 
                    className="absolute inset-0 w-full h-full object-cover" 
                    referrerPolicy="no-referrer"
@@ -163,7 +174,7 @@ export function ProductPage() {
                        currentImage === img.url ? "border-red-600 scale-105" : "border-zinc-800 opacity-50 grayscale hover:grayscale-0 hover:opacity-100"
                      )}
                    >
-                     <img src={img.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                     <img src={img.url || undefined} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                    </button>
                  ))}
               </div>

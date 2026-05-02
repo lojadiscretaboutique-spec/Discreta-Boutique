@@ -33,6 +33,7 @@ router.post('/gerar-produto', adminAiLimiter, aiController.generateProduct);
 router.post('/gerar-categoria', adminAiLimiter, aiController.generateCategory);
 router.post('/interpretar-busca', storeAiLimiter, aiController.interpretSearch);
 router.post('/registrar-clique', storeAiLimiter, aiController.trackClick);
+router.post('/sugerir-complementos', storeAiLimiter, aiController.suggestCartComplements);
 router.post('/bot-consulta', storeAiLimiter, aiController.botConsult);
 
 export default router;

@@ -181,7 +181,11 @@ export function AdminBanners() {
           <div className="grid grid-cols-1 gap-6 p-6">
             {banners.map((banner) => (
               <div key={banner.id} className="border rounded-xl overflow-hidden shadow-sm relative group">
-                <img src={banner.imageUrl} alt={banner.title} className="w-full h-48 md:h-64 object-cover" />
+                {banner.imageUrl ? (
+                  <img src={banner.imageUrl || undefined} alt={banner.title} className="w-full h-48 md:h-64 object-cover" />
+                ) : (
+                  <div className="w-full h-48 md:h-64 bg-slate-800 flex items-center justify-center text-slate-400 font-bold uppercase tracking-widest">Sem Imagem</div>
+                )}
                 <div className="absolute top-4 right-4 flex gap-2">
                   {canEdit && (
                     <Button 

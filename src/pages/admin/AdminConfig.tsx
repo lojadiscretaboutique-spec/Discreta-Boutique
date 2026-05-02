@@ -104,7 +104,7 @@ export function AdminConfig() {
             <div className="flex items-center gap-6 p-4 border-2 border-dashed border-slate-800 rounded-xl bg-slate-950">
               <div className="relative w-24 h-24 bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center border border-slate-800 shrink-0">
                 {config.logoUrl ? (
-                  <img src={config.logoUrl} alt="Logo preview" className="w-full h-full object-contain" />
+                  <img src={config.logoUrl || undefined} alt="Logo preview" className="w-full h-full object-contain" />
                 ) : (
                   <ImageIcon className="w-8 h-8 text-slate-700" />
                 )}

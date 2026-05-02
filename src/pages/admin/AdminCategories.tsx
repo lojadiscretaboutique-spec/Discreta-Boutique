@@ -572,7 +572,7 @@ export function AdminCategories() {
                       {form.image ? (
                         <>
                           <img 
-                            src={form.image.url} 
+                            src={form.image.url || undefined} 
                             className="w-full h-full object-cover" 
                             referrerPolicy="no-referrer"
                             onError={(e) => {
@@ -602,7 +602,7 @@ export function AdminCategories() {
                       {form.banner ? (
                         <>
                           <img 
-                            src={form.banner.url} 
+                            src={form.banner.url || undefined} 
                             className="w-full h-full object-cover" 
                             referrerPolicy="no-referrer"
                             onError={(e) => {
@@ -913,7 +913,7 @@ function CategoryRow({
                <div className="w-10 h-10 bg-slate-950 rounded-lg overflow-hidden border border-slate-700 shrink-0 flex items-center justify-center">
                   {category.image && !imgError ? (
                     <img 
-                      src={category.image.url} 
+                      src={category.image.url || undefined} 
                       className="w-full h-full object-cover" 
                       referrerPolicy="no-referrer"
                       onError={() => {
@@ -995,7 +995,7 @@ function SubcategoryRow({ sub, onEdit, onDelete }: { sub: Category, onEdit: (cat
             <div className="w-8 h-8 bg-slate-900 border rounded-lg overflow-hidden flex items-center justify-center shrink-0">
               {sub.image && !imgError ? (
                 <img 
-                  src={sub.image.url} 
+                  src={sub.image.url || undefined} 
                   className="w-full h-full object-cover" 
                   referrerPolicy="no-referrer"
                   onError={() => {

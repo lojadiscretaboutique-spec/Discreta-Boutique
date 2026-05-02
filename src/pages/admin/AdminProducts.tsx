@@ -774,7 +774,7 @@ export function AdminProducts() {
                                    v.imageUrl === img.url ? "border-red-600 scale-105 shadow-md" : "border-transparent opacity-40 hover:opacity-100"
                                  )}
                                >
-                                 <img src={img.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                               <img src={img.url || undefined} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                </button>
                              ))}
                              <button 
@@ -906,7 +906,7 @@ export function AdminProducts() {
                    {form.images.map((img, i) => (
                      <div key={i} className={cn("group relative aspect-square rounded-xl overflow-hidden border-2 transition-all", img.isMain ? "border-red-500 shadow-md" : "border-slate-700 hover:border-slate-600")}>
                         <img 
-                          src={img.url} 
+                          src={img.url || undefined} 
                           className="w-full h-full object-cover" 
                           onError={(e) => {
                             (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE;
@@ -1042,9 +1042,9 @@ export function AdminProducts() {
                      <td className="px-6 py-4">
                         <div className="flex items-center gap-4">
                            <div className="w-14 h-14 bg-slate-950 rounded-xl overflow-hidden shadow-sm shrink-0 border border-slate-700">
-                              {prod.images?.[0] ? (
+                              {prod.images?.[0]?.url ? (
                                 <img 
-                                  src={prod.images[0].url} 
+                                  src={prod.images[0].url || undefined} 
                                   className="w-full h-full object-cover" 
                                   referrerPolicy="no-referrer"
                                   onError={(e) => {

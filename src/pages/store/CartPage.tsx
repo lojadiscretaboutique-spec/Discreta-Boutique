@@ -59,6 +59,9 @@ export function CartPage() {
   const [lookingUp, setLookingUp] = useState(false);
   const [trocoPara, setTrocoPara] = useState('');
   
+  const [aiSuggestions, setAiSuggestions] = useState<{ motivo: string, produtos: any[] } | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
   const [showMpBrick, setShowMpBrick] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
 
@@ -374,6 +377,35 @@ export function CartPage() {
       return () => clearTimeout(timer);
     }
   }, [whatsapp, lookingUp, toast]);
+
+  useEffect(() => {
+    // Only fetch if has items and haven't fetched yet for this session/cart
+    if (items.length > 0 && !aiSuggestions && !loadingSuggestions) {
+      const fetchSuggestions = async () => {
+        setLoadingSuggestions(true);
+        try {
+          const response = await fetch('/api/ia/sugerir-complementos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              items: items.map(i => ({ id: i.productId, name: i.name })) 
+            })
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setAiSuggestions(data);
+          }
+        } catch (error) {
+          console.warn("Erro ao buscar sugestões:", error);
+        } finally {
+          setLoadingSuggestions(false);
+        }
+      };
+      fetchSuggestions();
+    } else if (items.length === 0) {
+      setAiSuggestions(null);
+    }
+  }, [items.length, aiSuggestions, loadingSuggestions]); // Run only when starting a new cart or items count changes from 0 
 
   if (items.length === 0) {
     return (
@@ -733,7 +765,7 @@ export function CartPage() {
                         <li key={item.id} className="p-6 sm:p-8 flex flex-col sm:flex-row gap-6 sm:items-center group">
                           <div className="w-20 h-20 sm:w-24 sm:h-24 bg-zinc-800 rounded-3xl overflow-hidden shrink-0 border border-zinc-700">
                             {item.imageUrl ? (
-                              <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                              <img src={item.imageUrl || undefined} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-zinc-600 text-[10px] text-center uppercase font-bold px-2">Sem Imagem</div>
                             )}
@@ -760,54 +792,89 @@ export function CartPage() {
                     </ul>
                   </div>
 
-                  {sessionStorage.getItem('ai_user_profile') && (
+                  {aiSuggestions && aiSuggestions.produtos.length > 0 && (
                     <motion.div 
+                      key="suggestions"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="bg-zinc-900/40 border border-red-500/10 rounded-3xl p-6"
+                      className="bg-zinc-900 border border-red-500/10 rounded-[2.5rem] p-8 shadow-2xl overflow-hidden relative group"
                     >
-                      <div className="flex items-center gap-2 mb-4">
-                        <Sparkles size={16} className="text-red-500" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                          Sugestão Exclusiva: {sessionStorage.getItem('ai_user_profile')}
-                        </span>
+                      <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <Sparkles size={120} className="text-red-500 animate-pulse" />
                       </div>
                       
-                      {sessionStorage.getItem('ai_user_profile') === 'iniciante' ? (
-                        <>
-                          <h4 className="text-lg font-bold text-white mb-2">Primeira vez com a gente?</h4>
-                          <p className="text-zinc-500 text-sm mb-4">Que tal o <span className="text-white font-bold italic">Kit Higienização Discreta</span>? Ele é essencial para garantir segurança e durabilidade aos seus acessórios desde o início.</p>
-                          <button 
-                            onClick={() => toast("Kit adicionado!", "success")}
-                            className="text-xs font-black uppercase tracking-tighter text-red-500 hover:text-red-400 transition-colors"
-                          >
-                            + Adicionar Kit por R$ 34,90
-                          </button>
-                        </>
-                      ) : sessionStorage.getItem('ai_user_profile') === 'intermediario' ? (
-                        <>
-                          <h4 className="text-lg font-bold text-white mb-2">Elevando a Experiência</h4>
-                          <p className="text-zinc-500 text-sm mb-4">Notamos seu interesse! O <span className="text-white font-bold italic">Power Booster de Bateria</span> é o companheiro ideal para que seus momentos nunca sejam interrompidos.</p>
-                          <button 
-                            onClick={() => toast("Item adicionado!", "success")}
-                            className="text-xs font-black uppercase tracking-tighter text-red-500 hover:text-red-400 transition-colors"
-                          >
-                            + Adicionar por R$ 49,90
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <h4 className="text-lg font-bold text-white mb-2">Para Especialistas</h4>
-                          <p className="text-zinc-500 text-sm mb-4">Para quem já conhece o melhor, nossa <span className="text-white font-bold italic">Bag de Transporte Térmica</span> garante a preservação e total discrição que você exige.</p>
-                          <button 
-                            onClick={() => toast("Item adicionado!", "success")}
-                            className="text-xs font-black uppercase tracking-tighter text-red-500 hover:text-red-400 transition-colors"
-                          >
-                            + Adicionar por R$ 89,90
-                          </button>
-                        </>
-                      )}
+                      <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center shadow-lg shadow-red-600/20">
+                            <Sparkles size={16} className="text-white" />
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-red-500">
+                            Check-out Inteligente: Sugestões Exclusivas
+                          </span>
+                        </div>
+                        
+                        <h4 className="text-2xl font-black text-white mb-3 tracking-tighter leading-tight">
+                          Complete sua experiência
+                        </h4>
+                        <p className="text-zinc-500 font-medium text-sm mb-10 max-w-md italic">
+                          "{aiSuggestions.motivo}"
+                        </p>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                          {aiSuggestions.produtos.map((p) => (
+                            <div 
+                              key={p.id} 
+                              onClick={() => navigate(`/produto/${p.seo?.slug || p.id}`)}
+                              className="cursor-pointer flex flex-col p-5 bg-zinc-950/50 rounded-3xl border border-zinc-800 hover:border-red-600/30 transition-all duration-500 group/item"
+                            >
+                              <div className="flex gap-4 mb-4">
+                                <div className="w-16 h-16 bg-zinc-900 rounded-2xl overflow-hidden shrink-0 border border-zinc-800">
+                                  {p.imageUrl ? (
+                                    <img src={p.imageUrl || undefined} alt={p.name} className="w-full h-full object-cover group-hover/item:scale-110 transition-transform duration-700" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-zinc-800 text-[8px] uppercase font-bold">Sem foto</div>
+                                  )}
+                                </div>
+                                <div className="flex flex-col justify-center min-w-0">
+                                  <h5 className="font-bold text-sm text-zinc-100 truncate uppercase tracking-tight mb-1">{p.name}</h5>
+                                  <div className="font-black text-lg text-white">{formatCurrency(p.price)}</div>
+                                </div>
+                              </div>
+
+                              {p.shortDescription && (
+                                <p className="text-[10px] text-zinc-500 line-clamp-2 mb-4 leading-relaxed italic">{p.shortDescription}</p>
+                              )}
+
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  useCartStore.getState().addItem({
+                                    id: `${p.id}-base`,
+                                    productId: p.id,
+                                    name: p.name,
+                                    price: p.price,
+                                    quantity: 1,
+                                    sku: p.sku || '',
+                                    imageUrl: p.imageUrl
+                                  });
+                                  toast(`${p.name} adicionado!`, "success");
+                                }}
+                                className="w-full py-3 bg-red-600/10 hover:bg-red-600 text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-white rounded-xl transition-all flex items-center justify-center gap-2"
+                              >
+                                <Plus size={14} /> ADICIONAR AO CARRINHO
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </motion.div>
+                  )}
+
+                  {!aiSuggestions && loadingSuggestions && (
+                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2.5rem] p-12 flex flex-col items-center justify-center space-y-4">
+                      <div className="w-10 h-10 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">IA analisando seu carrinho...</p>
+                    </div>
                   )}
                   <Link to="/catalogo" className="inline-flex items-center text-[10px] font-black uppercase tracking-widest text-zinc-700 hover:text-red-500 transition-colors">
                     <Plus size={14} className="mr-2" /> Escolher mais itens
@@ -1190,7 +1257,7 @@ export function CartPage() {
             {step === 1 && (
               <Button 
                 onClick={() => setStep(2)}
-                className="w-full h-16 sm:h-14 px-12 bg-white hover:bg-zinc-200 text-black font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
+                className="w-full h-16 sm:h-14 px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
               >
                 Seguir para Entrega <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
@@ -1199,7 +1266,7 @@ export function CartPage() {
             {step === 2 && (
               <Button 
                 onClick={() => validateIdentification() && setStep(3)}
-                className="w-full h-16 sm:h-14 px-12 bg-white hover:bg-zinc-200 text-black font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
+                className="w-full h-16 sm:h-14 px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
               >
                 Agendar Entrega <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
@@ -1209,7 +1276,7 @@ export function CartPage() {
               <Button 
                 disabled={!selectedSlot}
                 onClick={() => setStep(4)}
-                className="w-full h-16 sm:h-14 px-12 bg-white hover:bg-zinc-200 text-black font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-50"
+                className="w-full h-16 sm:h-14 px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-50"
               >
                 Escolher Pagamento <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
@@ -1219,9 +1286,9 @@ export function CartPage() {
               <Button 
                 disabled={loading || !paymentMethod}
                 onClick={handleCheckout}
-                className="w-full h-16 sm:h-14 px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
+                className="w-full h-16 sm:h-14 px-12 bg-green-600 hover:bg-green-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
               >
-                {loading ? 'Processando...' : 'Finalizar e Receber em Casa'}
+                {loading ? 'Processando...' : (paymentMode === 'retirada' ? 'Finalizar e aguardar retirada' : 'Finalizar e Receber em Casa')}
               </Button>
             )}
           </div>

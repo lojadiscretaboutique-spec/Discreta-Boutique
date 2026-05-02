@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
-import { Search, X, Minus, Plus, Sparkles } from 'lucide-react';
+import { Search, X, Minus, Plus, Sparkles, Frown, Loader2 } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
-import { Product } from '../../services/productService';
+import { Product, productService } from '../../services/productService';
+import { getBaseScore, getMatchScore } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
@@ -15,6 +16,7 @@ import { useFeedback } from '../../contexts/FeedbackContext';
 export function CatalogPage() {
   const [searchParams] = useSearchParams();
   const qCat = searchParams.get('categoria');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [filtered, setFiltered] = useState<Product[]>([]);
@@ -38,6 +40,11 @@ export function CatalogPage() {
 
   const handleSmartSearch = async () => {
     if (!search.trim()) return;
+
+    // Dismiss keyboard on search
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
 
     setInterpreting(true);
     try {
@@ -81,16 +88,21 @@ export function CatalogPage() {
   };
 
   const trackProductClick = async (productId: string) => {
-    if (!aiSuggestion?.searchId) return;
-    try {
-      await fetch('/api/ia/registrar-clique', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ searchId: aiSuggestion.searchId, productId })
-      });
-    } catch (e) {
-      console.warn('Erro ao registrar clique:', e);
+    // Register for AI (if applicable)
+    if (aiSuggestion?.searchId) {
+      try {
+        await fetch('/api/ia/registrar-clique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ searchId: aiSuggestion.searchId, productId })
+        });
+      } catch (e) {
+        console.warn('Erro ao registrar clique (AI):', e);
+      }
     }
+
+    // Register for overall ranking
+    productService.trackInteraction(productId, 'click');
   };
 
   useEffect(() => {
@@ -126,11 +138,16 @@ export function CatalogPage() {
           sessionStorage.setItem('catalog_products_time', now.toString());
         }
 
-        // Filter products: Must have at least one image and be visible in catalog
-        const visibleProds = prods.filter(p => 
-          p.images && p.images.length > 0 && 
+        // Filter products: be more permissive if strict rules result in empty catalog
+        let visibleProds = prods.filter(p => 
+          (p.images && p.images.length > 0) && 
           (!p.extras || p.extras.showInCatalog !== false)
         );
+
+        // Fallback: If no products have images, show all active products
+        if (visibleProds.length === 0 && prods.length > 0) {
+          visibleProds = prods.filter(p => !p.extras || p.extras.showInCatalog !== false);
+        }
 
         // Identify which categories have at least one visible product
         const categoryIdsWithProducts = new Set<string>();
@@ -193,18 +210,31 @@ export function CatalogPage() {
           result = result.filter(p => p.name.toLowerCase().includes(s) || p.description?.toLowerCase().includes(s));
         }
       } else {
-        // Busca tradicional
-        result = result.filter(p => p.name.toLowerCase().includes(s) || p.description?.toLowerCase().includes(s));
+        // Busca tradicional mais permissiva (divide por palavras)
+        const words = s.split(/\s+/).filter(w => w.length > 2);
+        if (words.length > 0) {
+          result = result.filter(p => {
+            const name = p.name.toLowerCase();
+            const desc = (p.description || "").toLowerCase();
+            return words.some(word => name.includes(word) || desc.includes(word)) || name.includes(s);
+          });
+        } else {
+          result = result.filter(p => p.name.toLowerCase().includes(s) || p.description?.toLowerCase().includes(s));
+        }
       }
     }
 
-    // Sort by stock status (out of stock last)
+    // Sort by stock status (out of stock last) and combined score
     result.sort((a, b) => {
       const aOut = a.controlStock && !a.allowBackorder && a.stock <= 0;
       const bOut = b.controlStock && !b.allowBackorder && b.stock <= 0;
       if (aOut && !bOut) return 1;
       if (!aOut && bOut) return -1;
-      return 0;
+      
+      const aScore = getBaseScore(a) + getMatchScore(a, aiSuggestion);
+      const bScore = getBaseScore(b) + getMatchScore(b, aiSuggestion);
+      
+      return bScore - aScore;
     });
 
     setFiltered(result);
@@ -247,6 +277,7 @@ export function CatalogPage() {
             <div className="relative group w-full">
               <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-red-600/40 group-focus-within:text-red-500 transition-colors" size={18} />
               <Input 
+                ref={searchInputRef}
                 type="text"
                 placeholder="Ex: Quero algo para usar a dois e sair da rotina..." 
                 className="w-full bg-zinc-900/80 border-red-900/30 text-white pl-12 pr-14 py-6 rounded-2xl focus:ring-1 focus:ring-red-600/50 font-medium placeholder:text-zinc-600 transition-all text-sm shadow-inner"
@@ -420,16 +451,38 @@ export function CatalogPage() {
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }}
-              className="text-center py-32 bg-zinc-950/50 border border-dashed border-red-600/20 rounded-[3rem] flex flex-col items-center justify-center mt-6"
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center"
             >
-              <div className="relative mb-6">
-                <div className="absolute inset-0 bg-red-600/20 blur-xl rounded-full"></div>
-                <div className="w-20 h-20 bg-zinc-900 border-2 border-red-900/50 rounded-full flex items-center justify-center text-red-500 relative z-10">
-                  <Sparkles size={40} className="animate-pulse" />
+              <motion.div 
+                animate={{ 
+                  scale: [1, 1.1, 1],
+                  rotate: [0, 5, -5, 0]
+                }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                className="relative mb-12"
+              >
+                <div className="absolute inset-0 bg-red-600/30 blur-[60px] rounded-full animate-pulse"></div>
+                <div className="w-32 h-32 bg-zinc-900 border-4 border-red-900/50 rounded-full flex items-center justify-center text-red-500 relative z-10 shadow-[0_0_50px_rgba(220,38,38,0.3)]">
+                  <Sparkles size={64} className="animate-pulse" />
                 </div>
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                  className="absolute -inset-4 border border-dashed border-red-600/20 rounded-full"
+                />
+              </motion.div>
+              
+              <h3 className="text-white font-black text-3xl md:text-4xl mb-4 tracking-tighter">
+                Sua Experiência Personalizada está Quase Pronta...
+              </h3>
+              <p className="text-zinc-400 font-medium text-lg max-w-md leading-relaxed">
+                Nossa IA está mergulhando em nosso catálogo exclusivo para encontrar as melhores opções baseadas em seu desejo agora.
+              </p>
+              <div className="mt-12 flex items-center gap-3 text-red-500/60 font-black uppercase tracking-[0.2em] text-[10px]">
+                <Loader2 className="animate-spin" size={14} />
+                Processando intenção
               </div>
-              <h3 className="text-white font-black text-xl mb-2">IA Analisando...</h3>
-              <p className="text-zinc-500 font-medium text-sm px-4">Buscando as melhores sugestões de nossa seleção exclusiva.</p>
             </motion.div>
           ) : loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6 mt-6">
@@ -439,23 +492,58 @@ export function CatalogPage() {
             </div>
           ) : filtered.length === 0 ? (
             <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }}
-              className="text-center py-32 bg-zinc-950/50 border border-dashed border-zinc-800 rounded-[3rem] mt-6"
+              initial={{ opacity: 0, y: 20 }} 
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center py-32 bg-zinc-950/40 border border-dashed border-zinc-800 rounded-[4rem] mt-6 flex flex-col items-center max-w-4xl mx-auto shadow-2xl"
             >
-              <div className="mb-6 flex justify-center">
-                <div className="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700">
-                  <Search size={40} />
-                </div>
-              </div>
-              <p className="text-zinc-500 font-black uppercase tracking-widest text-sm mb-6 px-4">Não encontramos o que você procura...</p>
-              <Button 
-                variant="outline" 
-                className="rounded-full border-zinc-800 hover:bg-zinc-900 font-bold px-10 py-6 h-auto uppercase tracking-widest text-[10px]"
-                onClick={() => { setSearch(''); setSelectedCat('all'); }}
+              <motion.div 
+                animate={{ 
+                  y: [0, -10, 0],
+                  rotate: [0, -5, 5, 0]
+                }}
+                transition={{ duration: 4, repeat: Infinity }}
+                className="mb-8 flex justify-center"
               >
-                Tentar novamente
-              </Button>
+                <div className="w-24 h-24 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-600 border border-zinc-800 shadow-inner">
+                  <Frown size={48} strokeWidth={1.5} />
+                </div>
+              </motion.div>
+              
+              <h3 className="text-white font-black text-2xl md:text-3xl mb-4 tracking-tighter px-6">
+                Ops! Não encontramos o que você deseja...
+              </h3>
+              
+              <p className="text-zinc-500 font-bold text-base md:text-lg mb-8 max-w-xl mx-auto leading-relaxed px-8">
+                Pode ser que você precise de um pouco mais de detalhes na sua busca. Tente descrever sua vontade com mais palavras para nossa IA te ajudar melhor!
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4 px-6 w-full justify-center">
+                <Button 
+                  variant="outline" 
+                  className="rounded-2xl border-zinc-700 hover:bg-zinc-900 font-black px-12 py-7 h-auto uppercase tracking-widest text-[11px] transition-all bg-zinc-950/80"
+                  onClick={() => { 
+                    setSearch(''); 
+                    setSelectedCat('all');
+                    setAiSuggestion(null);
+                  }}
+                >
+                  <X size={14} className="mr-2" /> Limpar Filtros
+                </Button>
+                <Button 
+                  className="rounded-2xl bg-red-600 hover:bg-red-500 font-black px-12 py-7 h-auto uppercase tracking-widest text-[11px] transition-all shadow-lg shadow-red-900/20"
+                  onClick={() => { 
+                    searchInputRef.current?.focus();
+                  }}
+                >
+                  <Search size={14} className="mr-2" /> Tentar Outra Busca
+                </Button>
+              </div>
+
+              <div className="mt-12 p-4 bg-zinc-900/30 rounded-2xl border border-zinc-800/50 max-w-xs">
+                <p className="text-[10px] text-zinc-600 font-medium italic">
+                  Dica: Busque por sensações, momentos ou tipos específicos de produtos (ex: "vibrador recarregável potente").
+                </p>
+              </div>
             </motion.div>
           ) : (
             <>
@@ -557,6 +645,8 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
         variantId: undefined,
         variantName: undefined
       });
+      // Track conversion
+      productService.trackInteraction(product.id!, 'conversion');
       navigate('/carrinho');
     }
   };
@@ -573,7 +663,7 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
       <div className="aspect-[3/4] relative bg-white overflow-hidden group-hover:bg-zinc-50 transition-colors duration-500">
         {image ? (
           <img 
-            src={image} 
+            src={image || undefined} 
             alt={product.name} 
             className={cn(
               "w-full h-full object-cover transition-transform duration-1000 ease-out",

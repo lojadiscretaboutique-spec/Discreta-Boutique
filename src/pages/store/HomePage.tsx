@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useNavigate } from 'react-router-dom';
 import { Package, ShoppingCart, Users, ChevronLeft, ChevronRight, CreditCard, Plus, Minus } from 'lucide-react';
 import { formatCurrency, cn } from '../../lib/utils';
 import { Product } from '../../services/productService';
+import { getLancamentos, getDestaques, getMaisVendidos, getEmAlta, getRecomendados, fillFallback } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
@@ -19,40 +20,46 @@ interface Banner {
 
 export function HomePage() {
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
-  const [newArrivals, setNewArrivals] = useState<Product[]>([]);
-  const [bestSellers, setBestSellers] = useState<Product[]>([]);
+  const [sections, setSections] = useState<{
+    lancamentos: Product[],
+    destaques: Product[],
+    maisVendidos: Product[],
+    emAlta: Product[],
+    recomendados: Product[]
+  }>({ lancamentos: [], destaques: [], maisVendidos: [], emAlta: [], recomendados: [] });
   const [categories, setCategories] = useState<Category[]>([]);
   const [currentBanner, setCurrentBanner] = useState(0);
 
   const loadData = useCallback(async () => {
     try {
-      // 1. Banners
       const bSnap = await getDocs(query(collection(db, 'banners'), where('active', '==', true)));
       setBanners(bSnap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
 
-      // 2. All active products for filtering sections and categories
       const pSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true)));
       const allActiveProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-      
-      // Filter products: Must have at least one image
       const visibleProducts = allActiveProducts.filter(p => 
         p.images && p.images.length > 0 && 
-        (!p.extras || p.extras.showInCatalog !== false)
+        (!p.extras || p.extras.showInCatalog !== false) &&
+        (!p.controlStock || p.allowBackorder || p.stock > 0)
       );
 
-      // 3. Sections
-      setFeaturedProducts(visibleProducts.filter(p => p.featured && (!p.controlStock || p.allowBackorder || p.stock > 0)).slice(0, 10));
-      setNewArrivals(visibleProducts.filter(p => p.newRelease && (!p.controlStock || p.allowBackorder || p.stock > 0)).slice(0, 10));
+      const usedIds = new Set<string>();
       
-      let bestSellersData = [...visibleProducts].filter(p => (!p.controlStock || p.allowBackorder || p.stock > 0));
-      bestSellersData.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      setBestSellers(bestSellersData.slice(0, 15));
+      const lancamentos = getLancamentos(visibleProducts, usedIds);
+      const destaques = getDestaques(visibleProducts, usedIds);
+      const maisVendidos = getMaisVendidos(visibleProducts, usedIds);
+      const emAlta = getEmAlta(visibleProducts, usedIds);
+      const recomendados = getRecomendados(visibleProducts, usedIds);
 
-      // 4. Categories visibility
+      // Fill fallbacks if needed
+      [lancamentos, destaques, maisVendidos, emAlta, recomendados].forEach(sec => {
+          if (sec.length < 8) sec.push(...fillFallback(visibleProducts, usedIds, 8 - sec.length));
+      });
+
+      setSections({ lancamentos, destaques, maisVendidos, emAlta, recomendados });
+
       const cSnap = await getDocs(query(collection(db, 'categories'), where('isActive', '==', true)));
       const allCats = cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
-      
       const categoryIdsWithProducts = new Set<string>();
       visibleProducts.forEach(p => {
         if (p.categoryId) {
@@ -65,35 +72,25 @@ export function HomePage() {
         }
       });
 
-      // Filter root categories that have at least one product in their hierarchy
       const visibleRootCats = allCats.filter(c => c.level === 0 && categoryIdsWithProducts.has(c.id));
-      
-      // Enriquecer categorias com imagens de fallback se necessário
       const categoriesWithImages = visibleRootCats.map(cat => {
         if (cat.image?.url) return cat;
 
-        // Tentar encontrar produtos nesta categoria ou subcategorias
         const productsOfThisCat = visibleProducts.filter(p => {
           if (p.categoryId === cat.id) return true;
-          // Verificar se o produto pertence a uma subcategoria desta categoria pai
           const pCat = allCats.find(c => c.id === p.categoryId);
           return pCat?.parentId === cat.id;
         });
 
         if (productsOfThisCat.length > 0) {
-          // Selecionar um produto aleatório da lista
           const randomIndex = Math.floor(Math.random() * productsOfThisCat.length);
           const randomProduct = productsOfThisCat[randomIndex];
           
           if (randomProduct.images && randomProduct.images.length > 0) {
             const mainImg = randomProduct.images.find(i => i.isMain) || randomProduct.images[0];
-            return {
-              ...cat,
-              image: { url: mainImg.url }
-            };
+            return { ...cat, image: { url: mainImg.url } };
           }
         }
-
         return cat;
       });
 
@@ -135,7 +132,7 @@ export function HomePage() {
                 {banners[currentBanner].linkUrl ? (
                   <Link to={banners[currentBanner].linkUrl} className="block h-full w-full cursor-pointer">
                     <img 
-                      src={banners[currentBanner].imageUrl} 
+                      src={banners[currentBanner].imageUrl || undefined} 
                       alt="" 
                       className="w-full h-full object-cover shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]"
                       referrerPolicy="no-referrer"
@@ -144,7 +141,7 @@ export function HomePage() {
                 ) : (
                   <div className="h-full w-full">
                     <img 
-                      src={banners[currentBanner].imageUrl} 
+                      src={banners[currentBanner].imageUrl || undefined} 
                       alt="" 
                       className="w-full h-full object-cover shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]"
                       referrerPolicy="no-referrer"
@@ -215,7 +212,7 @@ export function HomePage() {
                   <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full overflow-hidden bg-zinc-900 transition-all duration-500 shadow-2xl mb-4 group-hover:shadow-red-900/20 group-hover:scale-105">
                     {cat.image?.url ? (
                       <img 
-                        src={cat.image.url} 
+                        src={cat.image.url || undefined} 
                         alt={cat.name} 
                         className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110" 
                         referrerPolicy="no-referrer" 
@@ -247,40 +244,20 @@ export function HomePage() {
       {/* 2. CARROUSÉIS DE PRODUTOS */}
       <div className="max-w-7xl mx-auto w-full flex flex-col pt-6 md:pt-10 pb-16 px-4 space-y-8 md:space-y-16">
         
-        {/* DESTAQUES - CARROSSEL */}
-        {featuredProducts.length > 0 && (
-          <ProductCarousel 
-            title="Destaques" 
-            products={featuredProducts} 
-            link="/catalogo"
-          />
-        )}
+        {/* 1. LANÇAMENTOS */}
+        {sections.lancamentos.length > 0 && <ProductCarousel title="Lançamentos" products={sections.lancamentos} link="/catalogo" />}
+        
+        {/* 2. DESTAQUES */}
+        {sections.destaques.length > 0 && <ProductCarousel title="Destaques" products={sections.destaques} link="/catalogo" />}
+        
+        {/* 3. MAIS VENDIDOS */}
+        {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo" />}
 
-        {/* LANÇAMENTOS - CARROSSEL */}
-        {newArrivals.length > 0 && (
-          <ProductCarousel 
-            title="Lançamentos" 
-            products={newArrivals} 
-            link="/catalogo"
-          />
-        )}
+        {/* 4. EM ALTA */}
+        {sections.emAlta.length > 0 && <ProductCarousel title="Em Alta" products={sections.emAlta} link="/catalogo" />}
 
-        {/* MAIS VENDIDOS - GRID (KEEP AS GRID) */}
-        {bestSellers.length > 0 && (
-          <section>
-            <div className="flex justify-between items-end mb-8 border-b border-zinc-900 pb-4">
-              <div className="flex items-center gap-3">
-                 <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tighter italic">Mais Vendidos</h2>
-              </div>
-              <Link to="/catalogo" className="text-[10px] font-black text-zinc-500 uppercase tracking-[3px] hover:text-red-500 transition-colors">Ver tudo</Link>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {bestSellers.map(product => (
-                <ProductItemCard key={product.id} product={product} />
-              ))}
-            </div>
-          </section>
-        )}
+        {/* 5. RECOMENDADOS */}
+        {sections.recomendados.length > 0 && <ProductCarousel title="Recomendados" products={sections.recomendados} link="/catalogo" />}
 
       </div>
 
@@ -357,15 +334,15 @@ function ProductCarousel({ title, products, link }: { title: string, products: P
         {/* Navigation Buttons */}
         <button 
           onClick={() => scroll('left')}
-          className="absolute left-[-10px] md:left-[-20px] top-[40%] -translate-y-1/2 w-10 h-10 bg-zinc-900/80 backdrop-blur-md border border-zinc-800 rounded-full items-center justify-center text-white hover:bg-red-600 transition-all z-10 opacity-0 group-hover/carousel:opacity-100 hidden md:flex"
+          className="absolute left-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:left-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0"
         >
-          <ChevronLeft size={20} />
+          <ChevronLeft size={16} />
         </button>
         <button 
           onClick={() => scroll('right')}
-          className="absolute right-[-10px] md:right-[-20px] top-[40%] -translate-y-1/2 w-10 h-10 bg-zinc-900/80 backdrop-blur-md border border-zinc-800 rounded-full items-center justify-center text-white hover:bg-red-600 transition-all z-10 opacity-0 group-hover/carousel:opacity-100 hidden md:flex"
+          className="absolute right-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:right-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0"
         >
-          <ChevronRight size={20} />
+          <ChevronRight size={16} />
         </button>
       </div>
     </section>
@@ -413,7 +390,7 @@ function ProductItemCard({ product }: { product: Product }) {
       <div className="aspect-[3/4] relative bg-white overflow-hidden group-hover:bg-zinc-50 transition-colors duration-500">
         {mainImage ? (
           <img 
-            src={mainImage} 
+            src={mainImage || undefined} 
             alt={product.name} 
             className={cn(
               "w-full h-full object-cover transition-transform duration-1000 ease-out",

@@ -176,7 +176,11 @@ service cloud.firestore {
     }
 
     match /intelligent_searches/{doc} {
-      allow read, create, update: if true; // Allow server-side interactions via client SDK
+      allow read, create, update, delete: if true;
+    }
+
+    match /buscas_inteligentes/{doc} {
+      allow read, create, update, delete: if true;
     }
 
     match /{document=**} {

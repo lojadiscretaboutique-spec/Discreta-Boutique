@@ -1,4 +1,4 @@
-import { serverTimestamp, collection, doc, updateDoc, getDoc, getDocs, query, orderBy, writeBatch, where } from 'firebase/firestore';
+import { serverTimestamp, collection, doc, updateDoc, getDoc, getDocs, query, orderBy, writeBatch, where, increment, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
 
@@ -138,6 +138,12 @@ export interface Product {
     internalNotes?: string;
   };
 
+  // 10. Ranking
+  cliques?: number;
+  conversoes?: number;
+  visualizacoes?: number;
+  score?: number;
+
   searchTerms?: string[];
   variantIdentifiers?: string[];
   createdAt?: Date | string | null;
@@ -204,6 +210,48 @@ export const productService = {
     }
   },
 
+  async trackInteraction(productId: string, type: 'click' | 'conversion' | 'view', searchId?: string) {
+    try {
+      const productRef = doc(db, 'products', productId);
+      const updateData: any = {};
+      
+      if (type === 'click') {
+        updateData.cliques = increment(1);
+        updateData.score = increment(2);
+      } else if (type === 'conversion') {
+        updateData.conversoes = increment(1);
+        updateData.score = increment(5);
+      } else if (type === 'view') {
+        updateData.visualizacoes = increment(1);
+        updateData.score = increment(1);
+      }
+      
+      await updateDoc(productRef, updateData);
+
+      // Se houver searchId, registrar relação busca-produto
+      if (searchId) {
+        const engagementRef = doc(db, `intelligent_searches/${searchId}/engagements`, productId);
+        const engSnap = await getDoc(engagementRef);
+        
+        if (engSnap.exists()) {
+            const engUpdate: any = {};
+            if (type === 'click') engUpdate.clicks = increment(1);
+            if (type === 'conversion') engUpdate.conversions = increment(1);
+            await updateDoc(engagementRef, engUpdate);
+        } else {
+            await setDoc(engagementRef, {
+                clicks: type === 'click' ? 1 : 0,
+                conversions: type === 'conversion' ? 1 : 0,
+                productId
+            });
+        }
+      }
+
+    } catch (e) {
+      console.error("Error tracking interaction:", e);
+    }
+  },
+
   async createProduct(product: Omit<Product, 'id'>, variants: ProductVariant[]) {
     try {
       const batch = writeBatch(db);
@@ -211,6 +259,10 @@ export const productService = {
       
       const pData = {
         ...product,
+        cliques: 0,
+        conversoes: 0,
+        visualizacoes: 0,
+        score: 10, // Initial boost for new products
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };

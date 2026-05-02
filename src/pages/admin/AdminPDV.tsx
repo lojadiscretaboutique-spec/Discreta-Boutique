@@ -974,7 +974,7 @@ export function AdminPDV() {
                         >
                           <div className="w-full aspect-square bg-slate-800 rounded-xl mb-3 overflow-hidden relative">
                              {mainImg ? (
-                               <img src={mainImg} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                               <img src={mainImg || undefined} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                              ) : (
                                <div className="w-full h-full flex items-center justify-center text-slate-300"><Package size={24} /></div>
                              )}
@@ -997,7 +997,7 @@ export function AdminPDV() {
                   <div className="flex flex-col items-center justify-center h-full animate-in fade-in slide-in-from-bottom-8 duration-500">
                     <div className="w-[280px] h-[280px] bg-slate-800 rounded-3xl overflow-hidden mb-8 border border-white/10 shadow-2xl relative group">
                       {cart[cart.length - 1].imageUrl ? (
-                         <img src={cart[cart.length - 1].imageUrl} alt="Último item" className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
+                         <img src={cart[cart.length - 1].imageUrl || undefined} alt="Último item" className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
                       ) : (
                          <div className="w-full h-full flex items-center justify-center text-slate-200"><Package size={80} /></div>
                       )}
@@ -1287,7 +1287,7 @@ export function AdminPDV() {
               {cart.length > 0 ? cart.map((item, idx) => (
                 <div key={`${item.productId}-${item.variantId}-${idx}`} className="bg-slate-900/5 border border-white/10 rounded-2xl p-4 flex gap-4 animate-in fade-in slide-in-from-right-4">
                   <div className="w-16 h-16 bg-slate-800 rounded-xl overflow-hidden shrink-0">
-                    {item.imageUrl ? <img src={item.imageUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-full h-full flex items-center justify-center"><Package size={20} /></div>}
+                    {item.imageUrl ? <img src={item.imageUrl || undefined} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-full h-full flex items-center justify-center"><Package size={20} /></div>}
                   </div>
                   <div className="flex-1 flex flex-col justify-center min-w-0">
                     <h4 className="text-xs font-bold text-white truncate">{item.name}</h4>
