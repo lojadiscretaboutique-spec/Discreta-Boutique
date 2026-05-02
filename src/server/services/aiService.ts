@@ -11,15 +11,16 @@ const ProductContentSchema = z.object({
 });
 
 const SearchInterpretationSchema = z.object({
-  categoria: z.string().optional(),
+  termo_busca: z.string().default(''),
+  categoria: z.string().optional().default(''),
   intencao: z.string().optional().default(''),
   caracteristicas: z.array(z.string()).optional().default([]),
   nivel_usuario: z.string().optional().default('intermediario'),
   sinonimos: z.array(z.string()).optional().default([]),
   termos_relacionados: z.array(z.string()).optional().default([]),
   produtos_recomendados: z.array(z.string()).optional().default([]),
-  sugestao_curadoria: z.string().optional(),
-  mensagem_personalizada: z.string().optional()
+  sugestao_curadoria: z.string().optional().default(''),
+  mensagem_personalizada: z.string().optional().default('')
 });
 
 const CategoryContentSchema = z.object({
@@ -98,37 +99,44 @@ class AIService {
     }
   }
 
-  async interpretSearch(query: string, catalogContext?: string, retries = 1): Promise<z.infer<typeof SearchInterpretationSchema>> {
-    const cacheKey = `search_${query}_${catalogContext ? 'ctx' : 'noctx'}`;
+  async interpretSearch(query: string, retries = 1): Promise<z.infer<typeof SearchInterpretationSchema>> {
+    // 1. Pré-processamento: normalizar, remover pontuação e frases de preenchimento
+    const normalizedQuery = query
+      .toLowerCase()
+      .replace(/[?!.;,]/g, '')
+      .replace(/qual o melhor|quero algo para|você tem|onde encontro|preciso de/g, '')
+      .trim();
+    
+    if (!normalizedQuery) {
+      return SearchInterpretationSchema.parse({ termo_busca: query });
+    }
+
+    const cacheKey = `search_v2_${normalizedQuery}`;
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
     const prompt = `
-      Você é um concierge especialista em bem-estar íntimo da Discreta Boutique.
-      Seu objetivo é interpretar o desejo do cliente e sugerir produtos do nosso catálogo.
+      Você é um motor de busca semântico para a Discreta Boutique (E-commerce de Bem-estar Íntimo).
+      Sua tarefa é extrair a INTENÇÃO e ATRIBUTOS da busca do usuário.
 
-      BUSCA DO CLIENTE: "${query}"
+      BUSCA DO USUÁRIO: "${query}"
 
-      ${catalogContext ? `CATÁLOGO DISPONÍVEL (ID: Nome): \n${catalogContext}` : ''}
+      REGRAS:
+      1. NUNCA responda com texto livre. A saída deve ser APENAS JSON.
+      2. NUNCA sugira produtos específicos ou IDs.
+      3. Extraia características técnicas (ex: "recarregável", "silicone") e sinônimos.
+      4. Identifique a categoria mais provável.
 
-      Instruções:
-      1. Identifique a intenção emocional e técnica.
-      2. Selecione até 12 IDs de produtos do catálogo acima que MELHOR atendem ao desejo.
-      3. Se a busca for vaga, use os termos relacionados para ampliar.
-      4. Mensagem personalizada: Seja elegante, discreto e acolhedor (máx 180 caracteres).
-      5. Nunca use termos vulgares.
-
-      Retorne APENAS um JSON seguindo o esquema estrito:
+      FORMATO DE RETORNO:
       {
-        "intencao": "string",
-        "caracteristicas": ["string"],
-        "sinonimos": ["string"],
-        "termos_relacionados": ["string"],
-        "produtos_recomendados": ["ID1", "ID2"...],
-        "categoria": "nome da categoria sugerida",
-        "sugestao_curadoria": "Pitch curto de venda",
-        "mensagem_personalizada": "Texto acolhedor para o cliente",
-        "nivel_usuario": "iniciante|intermediario|avancado"
+        "termo_busca": "versão limpa e técnica da busca",
+        "categoria": "nome da categoria (ex: Vibradores, Lingeries)",
+        "intencao": "objetivo do usuário",
+        "caracteristicas": ["atributo1", "atributo2"],
+        "sinonimos": ["sinonimo1", "sinonimo2"],
+        "termos_relacionados": ["termo1", "termo2"],
+        "nivel_usuario": "iniciante|intermediario|avancado",
+        "mensagem_personalizada": "Mensagem acolhedora de até 120 caracteres"
       }
     `;
 
@@ -138,20 +146,24 @@ class AIService {
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
+        max_tokens: 300,
+        temperature: 0.3
       });
 
       const rawContent = response.choices[0].message.content || '{}';
       const parsed = JSON.parse(rawContent);
+      
       const validated = SearchInterpretationSchema.parse(parsed);
       this.setCache(cacheKey, validated);
       return validated;
     } catch (error) {
       if (retries > 0) {
-        console.warn(`[AI] Retentando interpretação de busca (Restantes: ${retries})`);
         return this.interpretSearch(query, retries - 1);
       }
-      console.error('Erro na OpenAI (interpretSearch):', error);
-      throw error;
+      return SearchInterpretationSchema.parse({
+        termo_busca: normalizedQuery,
+        mensagem_personalizada: 'Explorando nossa coleção para você...'
+      });
     }
   }
 

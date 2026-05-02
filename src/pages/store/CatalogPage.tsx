@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
@@ -24,12 +24,13 @@ export function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [interpreting, setInterpreting] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<{
+    searchId: string;
     mensagem: string;
     curadoria: string;
     caracteristicas?: string[];
     termos_relacionados?: string[];
     sinonimos?: string[];
-    produtos_recomendados?: string[];
+    rankedProducts?: any[];
   } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
@@ -39,97 +40,56 @@ export function CatalogPage() {
     if (!search.trim()) return;
 
     setInterpreting(true);
-    const startTime = Date.now();
     try {
-      // Criar contexto do catálogo limitado (apenas produtos em estoque)
-      const catalogContext = products
-        .filter(p => !p.stockStatus || p.stockStatus === 'in_stock')
-        .slice(0, 80) // Limite para não estourar tokens
-        .map(p => `${p.id}: ${p.name}`)
-        .join('\n');
-
       const response = await fetch('/api/ia/interpretar-busca', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          busca: search,
-          contexto: catalogContext
-        })
+        body: JSON.stringify({ busca: search })
       });
 
-      if (!response.ok) {
-        throw new Error('Falha na resposta da IA');
-      }
+      if (!response.ok) throw new Error('Falha na resposta da IA');
 
       const data = await response.json();
 
       if (data.fallback) {
-        toast("Busca inteligente indisponível no momento. Usando busca tradicional.", "info");
+        toast("Busca inteligente indisponível. Usando busca tradicional.", "info");
         setAiSuggestion(null);
         return;
       }
 
-      // Definir a sugestão de curadoria para mostrar no banner
-      if (data.mensagem_personalizada || data.sugestao_curadoria) {
-        setAiSuggestion({
-          mensagem: data.mensagem_personalizada || '',
-          curadoria: data.sugestao_curadoria || '',
-          caracteristicas: data.caracteristicas || [],
-          termos_relacionados: data.termos_relacionados || [],
-          sinonimos: data.sinonimos || [],
-          produtos_recomendados: data.produtos_recomendados || []
-        });
-      } else {
-        setAiSuggestion(null);
-      }
+      setAiSuggestion({
+        searchId: data.searchId,
+        mensagem: data.interpretacao.mensagem_personalizada || '',
+        curadoria: data.interpretacao.termo_busca || '',
+        caracteristicas: data.interpretacao.caracteristicas || [],
+        termos_relacionados: data.interpretacao.termos_relacionados || [],
+        sinonimos: data.interpretacao.sinonimos || [],
+        rankedProducts: data.produtos
+      });
 
-      // Salvar perfil do usuário para recomendações no carrinho
-      if (data.nivel_usuario) {
-        sessionStorage.setItem('ai_user_profile', data.nivel_usuario);
-      }
-
-      // Se a IA encontrou uma categoria correspondente, selecionamos ela
-      if (data.categoria) {
-        const found = categories.find(c => 
-          c.name.toLowerCase().includes(data.categoria.toLowerCase()) ||
-          data.categoria.toLowerCase().includes(c.name.toLowerCase())
-        );
-        if (found) {
-          setSelectedCat(found.id);
-        }
-      }
-
-      // LOG DE INTENÇÕES (Client-side logging)
-      try {
-        await addDoc(collection(db, 'search_logs'), {
-          busca: search,
-          interpretacao: data,
-          duration: Date.now() - startTime,
-          timestamp: serverTimestamp(),
-          fallback: false,
-          source: 'catalogo_front_node'
-        });
-      } catch (err) {
-        console.error('Erro ao logar busca:', err);
+      // Salvar perfil do usuário
+      if (data.interpretacao.nivel_usuario) {
+        sessionStorage.setItem('ai_user_profile', data.interpretacao.nivel_usuario);
       }
 
     } catch (error) {
       console.error('Falha na busca inteligente:', error);
-      toast("Não foi possível processar a busca inteligente. Tente pesquisar por termos simples.", "warning");
-      // Log do erro
-      try {
-        await addDoc(collection(db, 'search_logs'), {
-          busca: search,
-          error: error instanceof Error ? error.message : String(error),
-          timestamp: serverTimestamp(),
-          fallback: true,
-          source: 'catalogo_front_node_error'
-        });
-      } catch (e) {
-        console.error('Erro ao logar falha de busca:', e);
-      }
+      toast("Busca inteligente indisponível no momento.", "warning");
     } finally {
       setInterpreting(false);
+    }
+  };
+
+  const trackProductClick = async (productId: string) => {
+    if (!aiSuggestion?.searchId) return;
+    try {
+      await fetch('/api/ia/registrar-clique', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ searchId: aiSuggestion.searchId, productId })
+      });
+    } catch (e) {
+      console.warn('Erro ao registrar clique:', e);
     }
   };
 
@@ -219,32 +179,17 @@ export function CatalogPage() {
     if (search.trim()) {
       const s = search.toLowerCase();
       
-      if (aiSuggestion) {
-        // Prioridade 1: Consultar por IDs recomendados exatos da IA
-        const recommendedById = result.filter(p => aiSuggestion.produtos_recomendados?.includes(p.id));
+      if (aiSuggestion && aiSuggestion.rankedProducts) {
+        // Se temos um resultado ranqueado da IA, usamos ele
+        // Mapeamos os IDs retornados pelo backend para os objetos de produto carregados no front
+        const rankedIds = aiSuggestion.rankedProducts.map(rp => rp.id);
+        const rankedResult = rankedIds
+          .map(id => products.find(p => p.id === id))
+          .filter(p => !!p) as Product[];
         
-        // Prioridade 2: Match semântico (características, termos, sinônimos)
-        const semanticMatch = result.filter(p => {
-          const nameInfo = (p.name + " " + (p.description || "")).toLowerCase();
-          const matchesFeature = aiSuggestion.caracteristicas?.some(f => nameInfo.includes(f.toLowerCase()));
-          const matchesTerm = aiSuggestion.termos_relacionados?.some(t => nameInfo.includes(t.toLowerCase()));
-          const matchesSynonym = aiSuggestion.sinonimos?.some(syn => nameInfo.includes(syn.toLowerCase()));
-          const matchesLiteral = nameInfo.includes(s);
-          return matchesFeature || matchesTerm || matchesSynonym || matchesLiteral;
-        });
-
-        // Combinar e remover duplicatas, priorizando os recomendados por ID no topo
-        const combined = [...recommendedById];
-        semanticMatch.forEach(p => {
-          if (!combined.find(c => c.id === p.id)) {
-            combined.push(p);
-          }
-        });
-
-        if (combined.length > 0) {
-          result = combined;
+        if (rankedResult.length > 0) {
+          result = rankedResult;
         } else {
-          // Fallback literal se nada bater (segurança)
           result = result.filter(p => p.name.toLowerCase().includes(s) || p.description?.toLowerCase().includes(s));
         }
       } else {
@@ -525,7 +470,10 @@ export function CatalogPage() {
                       exit={{ opacity: 0, scale: 0.9 }}
                       transition={{ duration: 0.3 }}
                     >
-                      <ProductGridCard product={p} />
+                      <ProductGridCard 
+                        product={p} 
+                        onItemClick={() => trackProductClick(p.id)}
+                      />
                     </motion.div>
                   ))}
                 </AnimatePresence>
@@ -583,7 +531,7 @@ export function CatalogPage() {
   );
 }
 
-function ProductGridCard({ product }: { product: Product }) {
+function ProductGridCard({ product, onItemClick }: { product: Product, onItemClick?: () => void }) {
   const image = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
   const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
@@ -616,6 +564,7 @@ function ProductGridCard({ product }: { product: Product }) {
   return (
     <Link 
       to={`/produto/${product.seo?.slug || product.id}`} 
+      onClick={() => onItemClick?.()}
       className={cn(
         "group relative bg-zinc-950/40 rounded-[2.5rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-700 h-full",
         isOut ? "grayscale opacity-40" : "hover:border-red-600/30 hover:bg-zinc-950 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:shadow-red-900/10"

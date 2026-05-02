@@ -269,6 +269,20 @@ export default {
         fallback: { type: "boolean" },
         source: { type: "string" }
       }
+    },
+    IntelligentSearch: {
+      title: "Intelligent Search",
+      description: "Cache of AI interpreted searches to optimize costs and speed",
+      type: "object",
+      properties: {
+        busca_original: { type: "string" },
+        busca_processada: { type: "string" },
+        interpretacao: { type: "object" },
+        cliques: { type: "number" },
+        conversoes: { type: "number" },
+        timestamp: { type: "string", format: "date-time" }
+      },
+      required: ["busca_original", "busca_processada", "interpretacao"]
     }
   },
   firestore: {
@@ -323,6 +337,10 @@ export default {
     "search_logs": {
       schema: { $ref: "#/entities/SearchLog" },
       description: "Logs of customer search queries and AI interpretations"
+    },
+    "intelligent_searches": {
+      schema: { $ref: "#/entities/IntelligentSearch" },
+      description: "AI search cache and learning data"
     }
   }
 }
