@@ -11,8 +11,7 @@ service cloud.firestore {
         request.auth.uid == "VpnA7EDoSoUMF0VGOHyiCjyrOSf2" ||
         (
           "email" in request.auth.token && 
-          request.auth.token.email == "lojadiscretaboutique@gmail.com" &&
-          request.auth.token.email_verified == true
+          request.auth.token.email == "lojadiscretaboutique@gmail.com"
         )
       );
     }

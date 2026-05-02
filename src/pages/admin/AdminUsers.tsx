@@ -202,11 +202,11 @@ export function AdminUsers() {
                         <h3 className="font-bold flex items-center gap-2 text-slate-100"><UserIcon size={18} /> Dados da Conta</h3>
                         <div>
                             <label className="block text-xs font-bold mb-1 uppercase text-slate-400">Nome Completo *</label>
-                            <Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Ex: Maria Souza" />
+                            <Input value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} placeholder="Ex: Maria Souza" />
                         </div>
                         <div>
                             <label className="block text-xs font-bold mb-1 uppercase text-slate-400">Email (Login) *</label>
-                            <Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} disabled={!!formId} placeholder="nome@empresa.com" className="disabled:bg-slate-950 disabled:text-slate-400" />
+                            <Input type="email" value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})} disabled={!!formId} placeholder="nome@empresa.com" className="disabled:bg-slate-950 disabled:text-slate-400" />
                         </div>
                         {!formId && (
                             <div>
@@ -225,15 +225,15 @@ export function AdminUsers() {
                         )}
                         <div>
                             <label className="block text-xs font-bold mb-1 uppercase text-slate-400">Telefone / WhatsApp</label>
-                            <Input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="(00) 00000-0000" />
+                            <Input value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})} placeholder="(00) 00000-0000" />
                         </div>
                         <div>
                             <label className="block text-xs font-bold mb-1 uppercase text-slate-400">CPF (Opcional)</label>
-                            <Input value={form.cpf} onChange={e => setForm({...form, cpf: e.target.value})} placeholder="000.000.000-00" />
+                            <Input value={form.cpf || ''} onChange={e => setForm({...form, cpf: e.target.value})} placeholder="000.000.000-00" />
                         </div>
                         <div>
                             <label className="block text-xs font-bold mb-1 uppercase text-slate-400">Status de Acesso</label>
-                            <select className="w-full border border-slate-600 p-2.5 rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 bg-slate-800 font-semibold" value={form.status} onChange={e => setForm({...form, status: e.target.value as any})}>
+                            <select className="w-full border border-slate-600 p-2.5 rounded-md text-sm outline-none focus:ring-2 focus:ring-slate-900 bg-slate-800 font-semibold" value={form.status || ''} onChange={e => setForm({...form, status: e.target.value as any})}>
                                 <option value="ativo">Ativo (Pode acessar)</option>
                                 <option value="bloqueado">Bloqueado (Acesso Negado)</option>
                                 <option value="inativo">Inativo (Desligado)</option>
@@ -241,11 +241,11 @@ export function AdminUsers() {
                         </div>
                         <div>
                             <label className="block text-xs font-bold mb-1 uppercase text-slate-400">Anotações Internas (RH)</label>
-                            <textarea className="w-full border border-slate-600 p-3 rounded-md text-sm outline-none min-h-[100px]" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder="Observações..." />
+                            <textarea className="w-full border border-slate-600 p-3 rounded-md text-sm outline-none min-h-[100px]" value={form.notes || ''} onChange={e => setForm({...form, notes: e.target.value})} placeholder="Observações..." />
                         </div>
                         <div>
                             <label className="block text-xs font-bold mb-1 uppercase text-slate-400">Comissão de Venda Física (%)</label>
-                            <Input type="number" step="0.1" value={form.commission} onChange={e => setForm({...form, commission: Number(e.target.value)})} placeholder="Ex: 5" />
+                            <Input type="number" step="0.1" value={form.commission ?? 0} onChange={e => setForm({...form, commission: Number(e.target.value)})} placeholder="Ex: 5" />
                         </div>
                     </div>
                 </div>
@@ -340,7 +340,7 @@ export function AdminUsers() {
               <Input 
                 placeholder="Buscar usuário por nome ou email..." 
                 className="max-w-md bg-slate-900 h-10" 
-                value={searchTerm}
+                value={searchTerm || ''}
                 onChange={e => setSearchTerm(e.target.value)}
               />
           </div>

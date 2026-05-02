@@ -300,11 +300,11 @@ export function AdminCustomers() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                           <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Nome *</label>
-                          <Input required value={editForm.nome} onChange={e => setEditForm({...editForm, nome: e.target.value})} placeholder="Nome completo" />
+                          <Input required value={editForm.nome || ''} onChange={e => setEditForm({...editForm, nome: e.target.value})} placeholder="Nome completo" />
                       </div>
                       <div>
                           <label className="block text-xs font-bold uppercase text-slate-400 mb-1">WhatsApp *</label>
-                          <Input required value={editForm.whatsapp} onChange={e => setEditForm({...editForm, whatsapp: e.target.value})} placeholder="(11) 99999-9999" />
+                          <Input required value={editForm.whatsapp || ''} onChange={e => setEditForm({...editForm, whatsapp: e.target.value})} placeholder="(11) 99999-9999" />
                       </div>
 
                       <div className="md:col-span-2 mt-4">
@@ -419,7 +419,7 @@ export function AdminCustomers() {
                           </div>
                           <select 
                             className="border p-2 rounded bg-slate-900 font-bold outline-none"
-                            value={editForm.status}
+                            value={editForm.status || 'ativo'}
                             onChange={e => setEditForm({...editForm, status: e.target.value as any})}
                           >
                               <option value="ativo">Ativo - Liberado</option>

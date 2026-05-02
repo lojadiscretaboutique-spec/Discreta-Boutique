@@ -484,20 +484,20 @@ export function AdminProducts() {
                         {aiLoading ? 'Gerando...' : 'Gerar com IA'}
                       </button>
                     </div>
-                    <Input value={form.name} onChange={e => {
+                    <Input value={form.name || ''} onChange={e => {
                       const name = e.target.value;
                       setForm({ ...form, name, seo: { ...form.seo!, slug: generateSlug(name), metaTitle: name } });
                     }} placeholder="Ex: Sutiã Renda Luxo" />
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-bold mb-1">Subtítulo / Chamada Curta</label>
-                    <Input value={form.subtitle} onChange={e => setForm({ ...form, subtitle: e.target.value })} placeholder="Ex: O toque de elegância que você merece" />
+                    <Input value={form.subtitle || ''} onChange={e => setForm({ ...form, subtitle: e.target.value })} placeholder="Ex: O toque de elegância que você merece" />
                   </div>
                   <div>
                     <label className="block text-sm font-bold mb-1">Categoria Principal *</label>
                     <select 
                       className="w-full h-10 px-3 rounded-md border border-slate-600 bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                      value={form.categoryId}
+                      value={form.categoryId || ''}
                       onChange={e => setForm({ ...form, categoryId: e.target.value })}
                     >
                       <option value="">Selecione...</option>
@@ -506,7 +506,7 @@ export function AdminProducts() {
                   </div>
                   <div>
                     <label className="block text-sm font-bold mb-1">Marca / Fabricante</label>
-                    <Input value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value })} placeholder="Ex: Discreta Boutique" />
+                    <Input value={form.brand || ''} onChange={e => setForm({ ...form, brand: e.target.value })} placeholder="Ex: Discreta Boutique" />
                   </div>
                 </div>
 
@@ -514,7 +514,7 @@ export function AdminProducts() {
                    <label className="block text-sm font-bold mb-1">Descrição Curta</label>
                    <textarea 
                      className="w-full min-h-[80px] p-3 rounded-md border border-slate-600 bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                     value={form.shortDescription}
+                     value={form.shortDescription || ''}
                      onChange={e => setForm({ ...form, shortDescription: e.target.value, seo: { ...form.seo!, metaDescription: e.target.value } })}
                    />
                 </div>
@@ -523,7 +523,7 @@ export function AdminProducts() {
                    <label className="block text-sm font-bold mb-1">Descrição Completa</label>
                    <textarea 
                      className="w-full min-h-[200px] p-3 rounded-md border border-slate-600 bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                     value={form.fullDescription}
+                     value={form.fullDescription || ''}
                      onChange={e => {
                        const val = e.target.value;
                        setForm({ 
@@ -574,15 +574,15 @@ export function AdminProducts() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <label className="block text-sm font-bold mb-1">Preço de Custo (R$)</label>
-                    <Input type="number" step="0.01" value={form.costPrice} onChange={e => setForm({...form, costPrice: Number(e.target.value)})} />
+                    <Input type="number" step="0.01" value={form.costPrice ?? 0} onChange={e => setForm({...form, costPrice: Number(e.target.value)})} />
                   </div>
                   <div>
                     <label className="block text-sm font-bold mb-1 text-red-600">Preço de Venda (R$) *</label>
-                    <Input type="number" step="0.01" value={form.price} onChange={e => setForm({...form, price: Number(e.target.value)})} />
+                    <Input type="number" step="0.01" value={form.price ?? 0} onChange={e => setForm({...form, price: Number(e.target.value)})} />
                   </div>
                   <div>
                     <label className="block text-sm font-bold mb-1">Preço Promocional (R$)</label>
-                    <Input type="number" step="0.01" value={form.promoPrice} onChange={e => setForm({...form, promoPrice: Number(e.target.value)})} />
+                    <Input type="number" step="0.01" value={form.promoPrice ?? 0} onChange={e => setForm({...form, promoPrice: Number(e.target.value)})} />
                   </div>
                 </div>
 
@@ -604,7 +604,7 @@ export function AdminProducts() {
                    <div>
                      <label className="block text-sm font-bold mb-1">SKU Principal</label>
                      <div className="relative">
-                        <Input value={form.sku} onChange={e => setForm({...form, sku: e.target.value})} placeholder="Gerado automaticamente" />
+                        <Input value={form.sku || ''} onChange={e => setForm({...form, sku: e.target.value})} placeholder="Gerado automaticamente" />
                         <button type="button" onClick={() => setForm({...form, sku: generateSku()})} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-red-600">AUTO</button>
                      </div>
                    </div>
@@ -619,7 +619,7 @@ export function AdminProducts() {
                      <label className="block text-sm font-bold mb-1">Unidade</label>
                      <select 
                         className="w-full h-10 px-3 rounded-md border border-slate-600 bg-slate-900 text-sm focus:outline-none"
-                        value={form.unit}
+                        value={form.unit || 'un'}
                         onChange={e => setForm({...form, unit: e.target.value as Product['unit']})}
                      >
                       <option value="un">Unidade (un)</option>
@@ -640,7 +640,7 @@ export function AdminProducts() {
                      </label>
                      <Input 
                         type="number" 
-                        value={form.stock} 
+                        value={form.stock ?? 0} 
                         disabled 
                         title="O estoque deve ser gerenciado através do módulo Movimentação de Estoque." 
                         className="bg-slate-950 cursor-not-allowed text-slate-400 font-semibold"
@@ -649,7 +649,7 @@ export function AdminProducts() {
                    </div>
                    <div>
                      <label className="block text-sm font-bold mb-1">Estoque Mínimo (Alerta)</label>
-                     <Input type="number" value={form.minStock} onChange={e => setForm({...form, minStock: Number(e.target.value)})} />
+                     <Input type="number" value={form.minStock ?? 0} onChange={e => setForm({...form, minStock: Number(e.target.value)})} />
                    </div>
                    <div className="flex items-center gap-2">
                       <input type="checkbox" id="backorder" checked={form.allowBackorder} onChange={e => setForm({...form, allowBackorder: e.target.checked})} className="w-4 h-4 text-red-600 rounded" />
@@ -720,7 +720,7 @@ export function AdminProducts() {
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                               <div>
                                 <label className="text-[10px] uppercase font-black text-slate-400 block mb-0.5">SKU</label>
-                                <input className="w-full h-8 text-xs bg-slate-800 border rounded px-2 focus:ring-1 focus:ring-red-500 outline-none" value={v.sku} onChange={e => {const nv = [...variants]; nv[i].sku = e.target.value; setVariants(nv)}} />
+                                <input className="w-full h-8 text-xs bg-slate-800 border rounded px-2 focus:ring-1 focus:ring-red-500 outline-none" value={v.sku || ''} onChange={e => {const nv = [...variants]; nv[i].sku = e.target.value; setVariants(nv)}} />
                               </div>
                               <div>
                                 <label className="text-[10px] uppercase font-black text-slate-400 block mb-0.5">Barras (EAN)</label>
@@ -737,7 +737,7 @@ export function AdminProducts() {
                                 <label className="text-[10px] uppercase font-black text-slate-400 block mb-0.5" title="Apenas leitura. Use o mód. Movimentações.">Estoque (Leitura)</label>
                                 <input 
                                   className="w-full h-8 text-xs bg-slate-950 text-slate-400 font-bold border border-slate-700 rounded px-2 cursor-not-allowed outline-none" 
-                                  value={v.stock} 
+                                  value={v.stock ?? 0} 
                                   disabled 
                                   title="O estoque deve ser gerenciado através do módulo Movimentação de Estoque."
                                 />
@@ -812,7 +812,7 @@ export function AdminProducts() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold mb-1">Gênero</label>
-                    <select className="w-full h-10 px-3 border rounded-md" value={form.fashion?.gender} onChange={e => setForm({...form, fashion: {...form.fashion, gender: e.target.value as Product['fashion'] extends {gender?: infer G} ? G : never}})}>
+                    <select className="w-full h-10 px-3 border rounded-md" value={form.fashion?.gender || ''} onChange={e => setForm({...form, fashion: {...form.fashion, gender: e.target.value as Product['fashion'] extends {gender?: infer G} ? G : never}})}>
                       <option value="Feminino">Feminino</option>
                       <option value="Masculino">Masculino</option>
                       <option value="Unissex">Unissex</option>
@@ -821,11 +821,11 @@ export function AdminProducts() {
                   </div>
                   <div>
                     <label className="block text-sm font-bold mb-1">Material / Tecido</label>
-                    <Input value={form.fashion?.material} onChange={e => setForm({...form, fashion: {...form.fashion, material: e.target.value}})} placeholder="Ex: Seda, Algodão, Renda" />
+                    <Input value={form.fashion?.material || ''} onChange={e => setForm({...form, fashion: {...form.fashion, material: e.target.value}})} placeholder="Ex: Seda, Algodão, Renda" />
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-bold mb-1">Composição</label>
-                    <Input value={form.fashion?.composition} onChange={e => setForm({...form, fashion: {...form.fashion, composition: e.target.value}})} placeholder="Ex: 90% Poliamida, 10% Elastano" />
+                    <Input value={form.fashion?.composition || ''} onChange={e => setForm({...form, fashion: {...form.fashion, composition: e.target.value}})} placeholder="Ex: 90% Poliamida, 10% Elastano" />
                   </div>
                 </div>
 
@@ -843,11 +843,11 @@ export function AdminProducts() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <div>
                      <label className="block text-sm font-bold mb-1">Instruções de Lavagem</label>
-                     <textarea className="w-full h-24 border p-3 rounded" value={form.fashion?.washingInstructions} onChange={e => setForm({...form, fashion: {...form.fashion, washingInstructions: e.target.value}})} />
+                     <textarea className="w-full h-24 border p-3 rounded" value={form.fashion?.washingInstructions || ''} onChange={e => setForm({...form, fashion: {...form.fashion, washingInstructions: e.target.value}})} />
                    </div>
                    <div>
                      <label className="block text-sm font-bold mb-1">Tabela de Medidas (Texto ou HTML)</label>
-                     <textarea className="w-full h-24 border p-3 rounded" value={form.fashion?.sizeTable} onChange={e => setForm({...form, fashion: {...form.fashion, sizeTable: e.target.value}})} />
+                     <textarea className="w-full h-24 border p-3 rounded" value={form.fashion?.sizeTable || ''} onChange={e => setForm({...form, fashion: {...form.fashion, sizeTable: e.target.value}})} />
                    </div>
                 </div>
               </div>
@@ -860,17 +860,17 @@ export function AdminProducts() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold mb-1">Área de Uso</label>
-                    <Input value={form.cosmetics?.usageArea} onChange={e => setForm({...form, cosmetics: {...form.cosmetics, usageArea: e.target.value}})} placeholder="Rosto, Corpo, Íntimo..." />
+                    <Input value={form.cosmetics?.usageArea || ''} onChange={e => setForm({...form, cosmetics: {...form.cosmetics, usageArea: e.target.value}})} placeholder="Rosto, Corpo, Íntimo..." />
                   </div>
                   <div>
                     <label className="block text-sm font-bold mb-1">Volume (ml/g)</label>
-                    <Input value={form.cosmetics?.volume} onChange={e => setForm({...form, cosmetics: {...form.cosmetics, volume: e.target.value}})} placeholder="60ml, 150g..." />
+                    <Input value={form.cosmetics?.volume || ''} onChange={e => setForm({...form, cosmetics: {...form.cosmetics, volume: e.target.value}})} placeholder="60ml, 150g..." />
                   </div>
                 </div>
 
                 <div>
                    <label className="block text-sm font-bold mb-1">Modo de Uso</label>
-                   <textarea className="w-full h-24 border p-3 rounded" value={form.cosmetics?.usageMode} onChange={e => setForm({...form, cosmetics: {...form.cosmetics, usageMode: e.target.value}})} />
+                   <textarea className="w-full h-24 border p-3 rounded" value={form.cosmetics?.usageMode || ''} onChange={e => setForm({...form, cosmetics: {...form.cosmetics, usageMode: e.target.value}})} />
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-800 p-4 rounded-xl border border-slate-700">
@@ -938,16 +938,16 @@ export function AdminProducts() {
                      <label className="block text-sm font-bold mb-1">Slug da URL (Link)</label>
                      <div className="flex gap-2">
                        <span className="h-10 bg-slate-800 border rounded-md px-3 flex items-center text-xs text-slate-400">loja.com/produto/</span>
-                       <Input value={form.seo?.slug} onChange={e => setForm({...form, seo: {...form.seo!, slug: e.target.value}})} />
+                       <Input value={form.seo?.slug || ''} onChange={e => setForm({...form, seo: {...form.seo!, slug: e.target.value}})} />
                      </div>
                    </div>
                    <div>
                      <label className="block text-sm font-bold mb-1">Título da Página (Meta Title)</label>
-                     <Input value={form.seo?.metaTitle} onChange={e => setForm({...form, seo: {...form.seo!, metaTitle: e.target.value}})} placeholder="Padrão: Nome do Produto" />
+                     <Input value={form.seo?.metaTitle || ''} onChange={e => setForm({...form, seo: {...form.seo!, metaTitle: e.target.value}})} placeholder="Padrão: Nome do Produto" />
                    </div>
                    <div>
                      <label className="block text-sm font-bold mb-1">Meta Descrição</label>
-                     <textarea className="w-full h-24 border p-3 rounded text-sm" value={form.seo?.metaDescription} onChange={e => setForm({...form, seo: {...form.seo!, metaDescription: e.target.value}})} />
+                     <textarea className="w-full h-24 border p-3 rounded text-sm" value={form.seo?.metaDescription || ''} onChange={e => setForm({...form, seo: {...form.seo!, metaDescription: e.target.value}})} />
                    </div>
                 </div>
               </div>

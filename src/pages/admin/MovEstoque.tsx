@@ -270,7 +270,7 @@ export function MovEstoque() {
                             <Search className="absolute left-3 top-[50%] -translate-y-1/2 h-4 w-4 text-slate-400" />
                             <Input 
                                 placeholder="Buscar por produto, SKU ou motivo..." 
-                                value={searchTerm}
+                                value={searchTerm || ''}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="pl-9 bg-slate-800 border-slate-700 h-11"
                             />
@@ -412,7 +412,7 @@ export function MovEstoque() {
                                             <Search className="absolute left-3 top-[10px] h-4 w-4 text-slate-400" />
                                             <Input 
                                                 placeholder="Digite nome ou SKU para buscar..." 
-                                                value={fProdSearch}
+                                                value={fProdSearch || ''}
                                                 onChange={(e) => setFProdSearch(e.target.value)}
                                                 className="pl-9 h-10 border-slate-600"
                                                 autoFocus
@@ -451,7 +451,7 @@ export function MovEstoque() {
                                         <label className="text-sm font-semibold text-slate-200">Variação Específica (Obrigatório) <span className="text-red-500">*</span></label>
                                         <select 
                                             className="w-full border border-slate-600 p-2 rounded-lg bg-slate-900 text-sm focus:ring-2 focus:ring-slate-900 outline-none h-10 shadow-sm disabled:bg-slate-800 disabled:text-slate-400 disabled:cursor-not-allowed" 
-                                            value={fVariantId}
+                                            value={fVariantId || ''}
                                             onChange={e => setFVariantId(e.target.value)}
                                             required
                                             disabled={isLoadingVariants}
@@ -472,7 +472,7 @@ export function MovEstoque() {
                                         <label className="text-sm font-semibold text-slate-200">Origem / Motivação <span className="text-red-500">*</span></label>
                                         <select 
                                             className="w-full border border-slate-600 p-2 rounded-lg bg-slate-900 text-sm focus:ring-2 focus:ring-slate-900 outline-none h-10 shadow-sm" 
-                                            value={fReasonId}
+                                            value={fReasonId || ''}
                                             onChange={e => setFReasonId(e.target.value)}
                                             required
                                         >
@@ -486,7 +486,7 @@ export function MovEstoque() {
                                     </div>
                                     <div className="sm:col-span-2 space-y-2">
                                         <label className="text-sm font-semibold text-slate-200">Quantidade <span className="text-red-500">*</span></label>
-                                        <Input type="number" min="1" placeholder="Ex: 5" value={fQty} onChange={e => setFQty(e.target.value)} required className="h-10 border-slate-600 font-bold" />
+                                        <Input type="number" min="1" placeholder="Ex: 5" value={fQty || ''} onChange={e => setFQty(e.target.value)} required className="h-10 border-slate-600 font-bold" />
                                     </div>
                                 </div>
 
@@ -495,7 +495,7 @@ export function MovEstoque() {
                                     <label className="text-sm font-semibold text-slate-200">Canal de Movimentação (Opcional)</label>
                                     <select 
                                         className="w-full border border-slate-600 p-2 rounded-lg bg-slate-900 text-sm focus:ring-2 focus:ring-slate-900 outline-none h-10 shadow-sm" 
-                                        value={fChannel}
+                                        value={fChannel || ''}
                                         onChange={e => setFChannel(e.target.value)}
                                     >
                                         {CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -508,7 +508,7 @@ export function MovEstoque() {
                                     <textarea 
                                         placeholder="NF, Fornecedor, Link do Pedido..." 
                                         className="w-full border border-slate-600 p-3 rounded-lg bg-slate-900 text-sm focus:ring-2 focus:ring-slate-900 outline-none min-h-[80px] shadow-sm resize-none"
-                                        value={fNotes} 
+                                        value={fNotes || ''} 
                                         onChange={e => setFNotes(e.target.value)} 
                                     />
                                 </div>

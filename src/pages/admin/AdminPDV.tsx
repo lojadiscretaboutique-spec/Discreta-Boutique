@@ -1100,7 +1100,7 @@ export function AdminPDV() {
                           <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Nome Completo *</label>
                           <input 
                             required
-                            value={newCustomer.nome}
+                            value={newCustomer.nome || ''}
                             onChange={e => setNewCustomer(prev => ({...prev, nome: e.target.value}))}
                             className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4"
                             placeholder="João da Silva"
@@ -1110,7 +1110,7 @@ export function AdminPDV() {
                           <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">WhatsApp *</label>
                           <input 
                             required
-                            value={newCustomer.whatsapp}
+                            value={newCustomer.whatsapp || ''}
                             onChange={e => setNewCustomer(prev => ({...prev, whatsapp: e.target.value}))}
                             className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4"
                             placeholder="11999998888"
@@ -1120,7 +1120,7 @@ export function AdminPDV() {
                           <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Data de Nascimento (Opcional)</label>
                           <input 
                             type="date"
-                            value={newCustomer.dataNascimento}
+                            value={newCustomer.dataNascimento || ''}
                             onChange={e => setNewCustomer(prev => ({...prev, dataNascimento: e.target.value}))}
                             className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4 text-white"
                           />
@@ -1155,7 +1155,7 @@ export function AdminPDV() {
                               required
                               list="estados-sugestoes"
                               placeholder="SP" 
-                              value={newCustomer.endereco?.estado}
+                              value={newCustomer.endereco?.estado || ''}
                               onChange={e => setNewCustomer(prev => ({...prev, endereco: {...prev.endereco!, estado: e.target.value}}))}
                               className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4"
                             />
@@ -1166,7 +1166,7 @@ export function AdminPDV() {
                               required
                               list="cidades-sugestoes"
                               placeholder="São Paulo"
-                              value={newCustomer.endereco?.cidade}
+                              value={newCustomer.endereco?.cidade || ''}
                               onChange={e => setNewCustomer(prev => ({...prev, endereco: {...prev.endereco!, cidade: e.target.value}}))}
                               className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4"
                             />
@@ -1180,7 +1180,7 @@ export function AdminPDV() {
                               required
                               list="bairros-sugestoes"
                               placeholder="Centro"
-                              value={newCustomer.endereco?.bairro}
+                              value={newCustomer.endereco?.bairro || ''}
                               onChange={e => setNewCustomer(prev => ({...prev, endereco: {...prev.endereco!, bairro: e.target.value}}))}
                               className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4"
                             />
@@ -1190,7 +1190,7 @@ export function AdminPDV() {
                             <input 
                               required
                               placeholder="Nome da rua"
-                              value={newCustomer.endereco?.rua}
+                              value={newCustomer.endereco?.rua || ''}
                               onChange={e => setNewCustomer(prev => ({...prev, endereco: {...prev.endereco!, rua: e.target.value}}))}
                               className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4"
                             />
@@ -1203,32 +1203,32 @@ export function AdminPDV() {
                             <input 
                               required
                               placeholder="123"
-                              value={newCustomer.endereco?.numero}
+                              value={newCustomer.endereco?.numero || ''}
                               onChange={e => setNewCustomer(prev => ({...prev, endereco: {...prev.endereco!, numero: e.target.value}}))}
                               className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4"
                             />
                           </div>
                           <div className="col-span-2">
-                            <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Complemento</label>
-                            <input 
-                              placeholder="Apto 45"
-                              value={newCustomer.endereco?.complemento}
-                              onChange={e => setNewCustomer(prev => ({...prev, endereco: {...prev.endereco!, complemento: e.target.value}}))}
-                              className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4"
-                            />
-                          </div>
-                        </div>
+                             <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Complemento</label>
+                             <input 
+                               placeholder="Apto 45"
+                               value={newCustomer.endereco?.complemento || ''}
+                               onChange={e => setNewCustomer(prev => ({...prev, endereco: {...prev.endereco!, complemento: e.target.value}}))}
+                               className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4"
+                             />
+                           </div>
+                         </div>
                         
-                        <div>
-                          <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Ponto de Referência *</label>
-                          <input 
-                            required
-                            placeholder="Próximo ao mercado X"
-                            value={newCustomer.endereco?.referencia}
-                            onChange={e => setNewCustomer(prev => ({...prev, endereco: {...prev.endereco!, referencia: e.target.value}}))}
-                            className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4 mb-4"
-                          />
-                        </div>
+                         <div>
+                           <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Ponto de Referência *</label>
+                           <input 
+                             required
+                             placeholder="Próximo ao mercado X"
+                             value={newCustomer.endereco?.referencia || ''}
+                             onChange={e => setNewCustomer(prev => ({...prev, endereco: {...prev.endereco!, referencia: e.target.value}}))}
+                             className="w-full h-12 bg-slate-900/5 border border-white/10 rounded-xl px-4 mb-4"
+                           />
+                         </div>
 
                       </div>
 

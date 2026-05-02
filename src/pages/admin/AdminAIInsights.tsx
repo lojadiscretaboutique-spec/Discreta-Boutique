@@ -8,7 +8,6 @@ import {
   Brain, Search, TrendingUp, Sparkles, AlertCircle, 
   Clock, Filter, ShieldCheck, Zap
 } from 'lucide-react';
-import { Card } from '../../components/ui/card';
 
 const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
@@ -27,8 +26,11 @@ export default function AdminAIInsights() {
           timestamp: doc.data().timestamp?.toDate()
         }));
         setLogs(data);
-      } catch (err) {
-        console.error(err);
+      } catch (err: any) {
+        console.error("Erro ao carregar logs de IA:", err);
+        if (err.code === 'permission-denied') {
+          console.error("Acesso negado aos logs. Verifique as regras do Firestore.");
+        }
       } finally {
         setLoading(false);
       }
