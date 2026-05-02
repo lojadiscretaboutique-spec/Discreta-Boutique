@@ -9,7 +9,11 @@ service cloud.firestore {
     function isMasterAdmin() {
       return signedIn() && (
         request.auth.uid == "VpnA7EDoSoUMF0VGOHyiCjyrOSf2" ||
-        ("email" in request.auth.token && request.auth.token.email == "lojadiscretaboutique@gmail.com")
+        (
+          "email" in request.auth.token && 
+          request.auth.token.email == "lojadiscretaboutique@gmail.com" &&
+          request.auth.token.email_verified == true
+        )
       );
     }
 
@@ -165,6 +169,11 @@ service cloud.firestore {
       allow create: if can('compras', 'criar');
       allow update: if can('compras', 'editar');
       allow delete: if can('compras', 'excluir');
+    }
+
+    match /search_logs/{doc} {
+      allow create: if true; 
+      allow read: if isMasterAdmin() || can('dashboard', 'visualizar') || can('logs', 'visualizar');
     }
 
     match /{document=**} {

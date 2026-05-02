@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
+import aiRoutes from './src/server/routes/aiRoutes.js';
 // Note: We'll use the client SDK in the backend for simplicity since we're in a controlled environment,
 // but for high security, firebase-admin would be preferred if service account keys were available.
 // In this case, we use the credentials provided in the .env or via the service to demonstrate the flow.
@@ -13,9 +14,13 @@ console.log(`Server environment ready: ${__filename}`);
 
 async function startServer() {
   const app = express();
+  app.set('trust proxy', 1);
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.use(express.json());
+
+  // AI Routes
+  app.use('/api/ia', aiRoutes);
 
   // Mercado Pago Preference Creation
   app.post("/api/payments/create-preference", async (req, res) => {

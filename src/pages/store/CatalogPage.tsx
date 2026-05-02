@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
-import { Search, ShoppingBag, X, Minus, Plus } from 'lucide-react';
+import { Search, ShoppingBag, X, Minus, Plus, Sparkles } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import { Product } from '../../services/productService';
@@ -21,8 +21,71 @@ export function CatalogPage() {
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState<string>(qCat || 'all');
   const [loading, setLoading] = useState(true);
+  const [interpreting, setInterpreting] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<{
+    mensagem: string;
+    curadoria: string;
+  } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
+
+  const handleSmartSearch = async () => {
+    if (!search.trim()) return;
+
+    setInterpreting(true);
+    try {
+      const response = await fetch('/api/ia/interpretar-busca', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ busca: search })
+      });
+
+      if (!response.ok) {
+        // Se a API retornar erro (como 429 Rate Limit), apenas ignoramos e seguimos com busca normal
+        return;
+      }
+
+      const data = await response.json();
+
+      // Se a IA sinalizou fallback ou erro de timeout, apenas paramos aqui
+      if (data.fallback) {
+        console.warn('IA indisponível ou lenta, utilizando busca tradicional.');
+        setAiSuggestion(null);
+        return;
+      }
+
+      // Definir a sugestão de curadoria para mostrar no banner
+      if (data.mensagem_personalizada || data.sugestao_curadoria) {
+        setAiSuggestion({
+          mensagem: data.mensagem_personalizada || '',
+          curadoria: data.sugestao_curadoria || ''
+        });
+      } else {
+        setAiSuggestion(null);
+      }
+
+      // Salvar perfil do usuário para recomendações no carrinho
+      if (data.nivel_usuario) {
+        sessionStorage.setItem('ai_user_profile', data.nivel_usuario);
+      }
+
+      // Se a IA encontrou uma categoria correspondente, selecionamos ela
+      if (data.categoria) {
+        const found = categories.find(c => 
+          c.name.toLowerCase().includes(data.categoria.toLowerCase()) ||
+          data.categoria.toLowerCase().includes(c.name.toLowerCase())
+        );
+        if (found) {
+          setSelectedCat(found.id);
+        }
+      }
+    } catch (error) {
+      // Falha total na requisição: busca tradicional continua funcionando pelo estado 'search'
+      console.error('Falha na busca inteligente:', error);
+    } finally {
+      setInterpreting(false);
+    }
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -159,10 +222,21 @@ export function CatalogPage() {
               <Input 
                 type="text"
                 placeholder="Pesquisar..." 
-                className="w-full bg-zinc-900/50 border-zinc-800 text-white pl-9 pr-4 py-2 rounded-xl focus:ring-1 focus:ring-red-600/50 font-medium placeholder:text-zinc-600 transition-all h-9 text-xs"
+                className="w-full bg-zinc-900/50 border-zinc-800 text-white pl-9 pr-12 py-2 rounded-xl focus:ring-1 focus:ring-red-600/50 font-medium placeholder:text-zinc-600 transition-all h-9 text-xs"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSmartSearch();
+                }}
               />
+              <button 
+                onClick={handleSmartSearch}
+                disabled={interpreting || !search.trim()}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-zinc-500 hover:text-red-500 disabled:opacity-0 transition-all"
+                title="Busca Inteligente"
+              >
+                <Sparkles size={14} className={interpreting ? "animate-spin" : ""} />
+              </button>
             </div>
             {/* Minimal Title only on Desktop to save height */}
             <div className="hidden lg:block shrink-0">
@@ -260,6 +334,59 @@ export function CatalogPage() {
 
         {/* Product Grid - Optimized Columns */}
         <main className="w-full">
+          {/* AI Recommendation Banner */}
+          <AnimatePresence>
+            {aiSuggestion && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="mb-8 p-6 rounded-2xl bg-gradient-to-br from-red-600/30 via-zinc-900 to-zinc-950 border border-red-600/20 relative overflow-hidden"
+              >
+                <div className="absolute -top-10 -right-10 text-red-500/5 rotate-12">
+                  <Sparkles size={200} />
+                </div>
+                <div className="relative z-10">
+                  <div className="flex items-center gap-2 text-red-400 mb-3">
+                    <div className="bg-red-600 p-1 rounded-md">
+                      <Sparkles size={12} className="text-white" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white/90">Sugestão Discreta</span>
+                  </div>
+                  
+                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                    <div>
+                      <h2 className="text-xl md:text-2xl font-black text-white mb-2 leading-tight">
+                        {aiSuggestion.curadoria}
+                      </h2>
+                      <p className="text-zinc-400 text-sm max-w-2xl font-medium leading-relaxed italic">
+                        "{aiSuggestion.mensagem}"
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="ghost"
+                        className="text-white hover:text-white text-[10px] uppercase font-bold px-4"
+                        onClick={() => { setAiSuggestion(null); setSearch(''); setSelectedCat('all'); }}
+                      >
+                        Limpar
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        className="bg-white text-black hover:bg-zinc-200 rounded-full text-[10px] uppercase font-black px-6"
+                        onClick={() => setAiSuggestion(null)}
+                      >
+                        Descobrir
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
               {[1,2,3,4,5,6,7,8,9,10].map(i => (

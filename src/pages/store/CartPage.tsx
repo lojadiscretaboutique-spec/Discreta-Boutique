@@ -3,7 +3,7 @@ import { useCartStore } from '../../store/cartStore';
 import { useCustomerAuthStore } from '../../store/customerAuthStore';
 import { formatCurrency, cn, roundTo2 } from '../../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
-import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon } from 'lucide-react';
+import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -759,6 +759,56 @@ export function CartPage() {
                       ))}
                     </ul>
                   </div>
+
+                  {sessionStorage.getItem('ai_user_profile') && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-zinc-900/40 border border-red-500/10 rounded-3xl p-6"
+                    >
+                      <div className="flex items-center gap-2 mb-4">
+                        <Sparkles size={16} className="text-red-500" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                          Sugestão Exclusiva: {sessionStorage.getItem('ai_user_profile')}
+                        </span>
+                      </div>
+                      
+                      {sessionStorage.getItem('ai_user_profile') === 'iniciante' ? (
+                        <>
+                          <h4 className="text-lg font-bold text-white mb-2">Primeira vez com a gente?</h4>
+                          <p className="text-zinc-500 text-sm mb-4">Que tal o <span className="text-white font-bold italic">Kit Higienização Discreta</span>? Ele é essencial para garantir segurança e durabilidade aos seus acessórios desde o início.</p>
+                          <button 
+                            onClick={() => toast("Kit adicionado!", "success")}
+                            className="text-xs font-black uppercase tracking-tighter text-red-500 hover:text-red-400 transition-colors"
+                          >
+                            + Adicionar Kit por R$ 34,90
+                          </button>
+                        </>
+                      ) : sessionStorage.getItem('ai_user_profile') === 'intermediario' ? (
+                        <>
+                          <h4 className="text-lg font-bold text-white mb-2">Elevando a Experiência</h4>
+                          <p className="text-zinc-500 text-sm mb-4">Notamos seu interesse! O <span className="text-white font-bold italic">Power Booster de Bateria</span> é o companheiro ideal para que seus momentos nunca sejam interrompidos.</p>
+                          <button 
+                            onClick={() => toast("Item adicionado!", "success")}
+                            className="text-xs font-black uppercase tracking-tighter text-red-500 hover:text-red-400 transition-colors"
+                          >
+                            + Adicionar por R$ 49,90
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <h4 className="text-lg font-bold text-white mb-2">Para Especialistas</h4>
+                          <p className="text-zinc-500 text-sm mb-4">Para quem já conhece o melhor, nossa <span className="text-white font-bold italic">Bag de Transporte Térmica</span> garante a preservação e total discrição que você exige.</p>
+                          <button 
+                            onClick={() => toast("Item adicionado!", "success")}
+                            className="text-xs font-black uppercase tracking-tighter text-red-500 hover:text-red-400 transition-colors"
+                          >
+                            + Adicionar por R$ 89,90
+                          </button>
+                        </>
+                      )}
+                    </motion.div>
+                  )}
                   <Link to="/catalogo" className="inline-flex items-center text-[10px] font-black uppercase tracking-widest text-zinc-700 hover:text-red-500 transition-colors">
                     <Plus size={14} className="mr-2" /> Escolher mais itens
                   </Link>

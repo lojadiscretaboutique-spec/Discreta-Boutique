@@ -256,6 +256,19 @@ export default {
         updatedAt: { type: "string", format: "date-time" }
       },
       required: ["supplier", "total", "status"]
+    },
+    SearchLog: {
+      title: "Search Log",
+      description: "Log of AI interpreted search intentions",
+      type: "object",
+      properties: {
+        busca: { type: "string" },
+        interpretacao: { type: "object" },
+        duration: { type: "number" },
+        timestamp: { type: "string", format: "date-time" },
+        fallback: { type: "boolean" },
+        source: { type: "string" }
+      }
     }
   },
   firestore: {
@@ -306,6 +319,10 @@ export default {
     "purchases": {
       schema: { $ref: "#/entities/Purchase" },
       description: "Purchase orders from suppliers"
+    },
+    "search_logs": {
+      schema: { $ref: "#/entities/SearchLog" },
+      description: "Logs of customer search queries and AI interpretations"
     }
   }
 }

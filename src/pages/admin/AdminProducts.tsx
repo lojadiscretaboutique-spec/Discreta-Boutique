@@ -4,7 +4,7 @@ import { db } from '../../lib/firebase';
 import { 
   Plus, Edit2, Trash2, X, Upload, Save, ArrowLeft, 
   Info, DollarSign, Layers, Shirt, Droplets, Image as ImageIcon, 
-  Truck, Search, Settings, Check
+  Truck, Search, Settings, Check, Sparkles
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -59,6 +59,48 @@ export function AdminProducts() {
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const handleAIContent = async () => {
+    if (!form.name || !form.categoryId) {
+      toast("Para gerar conteúdo, preencha o Nome e a Categoria primeiro.", 'warning');
+      return;
+    }
+
+    setAiLoading(true);
+    try {
+      const catName = categories.find(c => c.id === form.categoryId)?.name || form.categoryId;
+      const response = await fetch('/api/ia/gerar-produto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: form.name, categoria: catName })
+      });
+
+      if (!response.ok) throw new Error('Erro na resposta da IA');
+
+      const data = await response.json();
+
+      setForm(prev => ({
+        ...prev,
+        subtitle: data.titulo || prev.subtitle,
+        shortDescription: data.descricao_curta || prev.shortDescription,
+        fullDescription: data.descricao_longa || prev.fullDescription,
+        seo: {
+          ...prev.seo!,
+          metaTitle: data.meta_title || prev.seo?.metaTitle,
+          metaDescription: data.meta_description || prev.seo?.metaDescription,
+          keywords: data.palavras_chave || prev.seo?.keywords
+        }
+      }));
+
+      toast("Conteúdo gerado com IA com sucesso! Revise os campos.", 'success');
+    } catch (error) {
+      console.error(error);
+      toast("Erro ao gerar conteúdo com IA.", 'error');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   // Auto-generation helpers
   const generateSlug = (name: string) => {
@@ -427,7 +469,21 @@ export function AdminProducts() {
                 <h3 className="text-lg font-bold border-b pb-2">Informações Gerais</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-bold mb-1">Nome do Produto *</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-bold">Nome do Produto *</label>
+                      <button 
+                        type="button"
+                        onClick={handleAIContent}
+                        disabled={aiLoading || !form.name || !form.categoryId}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all",
+                          aiLoading ? "bg-slate-800 text-slate-500" : "bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white"
+                        )}
+                      >
+                        <Sparkles size={12} className={aiLoading ? "animate-pulse" : ""} />
+                        {aiLoading ? 'Gerando...' : 'Gerar com IA'}
+                      </button>
+                    </div>
                     <Input value={form.name} onChange={e => {
                       const name = e.target.value;
                       setForm({ ...form, name, seo: { ...form.seo!, slug: generateSlug(name), metaTitle: name } });

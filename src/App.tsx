@@ -31,6 +31,7 @@ const AdminRoles = lazy(() => import('./pages/admin/AdminRoles').then(m => ({ de
 const AdminLogs = lazy(() => import('./pages/admin/AdminLogs').then(m => ({ default: m.AdminLogs })));
 const AdminConfig = lazy(() => import('./pages/admin/AdminConfig').then(m => ({ default: m.AdminConfig })));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const AdminAIInsights = lazy(() => import('./pages/admin/AdminAIInsights'));
 const AdminDeliveryAreas = lazy(() => import('./pages/admin/AdminDeliveryAreas').then(m => ({ default: m.AdminDeliveryAreas })));
 const AdminCaixa = lazy(() => import('./pages/admin/AdminCaixa').then(m => ({ default: m.AdminCaixa })));
 const AdminPDV = lazy(() => import('./pages/admin/AdminPDV').then(m => ({ default: m.AdminPDV })));
@@ -129,6 +130,7 @@ export default function App() {
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
+            <Route path="ia-insights" element={<AdminAIInsights />} />
             <Route path="pedidos" element={<AdminOrders />} />
             <Route path="categorias" element={<AdminCategories />} />
             <Route path="produtos" element={<AdminProducts />} />
