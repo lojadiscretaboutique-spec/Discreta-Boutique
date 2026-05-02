@@ -6,7 +6,7 @@ import { useCartStore } from '../../store/cartStore';
 import { formatCurrency, cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { ArrowLeft, Check, ShoppingBag, Package, Zap } from 'lucide-react';
-import { Product, ProductVariant } from '../../services/productService';
+import { Product, ProductVariant, productService } from '../../services/productService';
 import { motion } from 'motion/react';
 
 export function ProductPage() {
