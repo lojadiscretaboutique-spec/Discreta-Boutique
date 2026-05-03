@@ -20,6 +20,8 @@ async function startServer() {
   app.set('trust proxy', 1);
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
+  // 1. Serve public assets FIRST (before ANY other route)
+  app.use(express.static(path.resolve(process.cwd(), 'public')));
 
   app.use(express.json());
 
@@ -152,9 +154,7 @@ async function startServer() {
     }
   });
 
-  // Serve public assets explicitly with absolute path
-  app.use(express.static(path.resolve(process.cwd(), 'public')));
-
+  // Vite or Dist serving
   let vite: import('vite').ViteDevServer;
   if (process.env.NODE_ENV !== "production") {
     vite = await createViteServer({

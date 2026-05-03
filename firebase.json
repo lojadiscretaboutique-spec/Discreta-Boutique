@@ -1,0 +1,18 @@
+{
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "!**/*.@(png|jpg|jpeg|gif|svg|ico|json|webmanifest|js|css|woff|woff2|ttf|otf|eot)",
+        "run": {
+          "serviceId": "app"
+        }
+      }
+    ]
+  }
+}
