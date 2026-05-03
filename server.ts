@@ -121,7 +121,7 @@ async function startServer() {
 
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    let image = "https://discretaboutique.com.br/og-image.png"; // Default image
+    let image = "/logo.webp";
     const ogUrl = `https://discretaboutique.com.br${req.path}`;
     
     try {
@@ -152,13 +152,13 @@ async function startServer() {
             {
               src: image,
               sizes: '192x192',
-              type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
+              type: 'image/webp',
               purpose: 'any'
             },
             {
               src: image,
               sizes: '512x512',
-              type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
+              type: 'image/webp',
               purpose: 'any'
             }
           ]
@@ -230,18 +230,16 @@ async function startServer() {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
-            html = html.replace('href="/logo-red.svg"', `href="${image}"`);
-            html = html.replace('href="/og-image.png"', `href="${image}"`);
+        if (image && image !== "/logo.webp") {
+            html = html.replace('href="/logo.webp"', `href="${image}"`);
         }
         html = await vite.transformIndexHtml(req.url, html);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "https://discretaboutique.com.br/og-image.png") {
-            html = html.replace('href="/logo-red.svg"', `href="${image}"`);
-            html = html.replace('href="/og-image.png"', `href="${image}"`);
+        if (image && image !== "/logo.webp") {
+            html = html.replace('href="/logo.webp"', `href="${image}"`);
         }
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);

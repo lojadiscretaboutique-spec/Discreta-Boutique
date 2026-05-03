@@ -12,15 +12,13 @@ export default defineConfig({
       registerType: 'autoUpdate',
       filename: 'sw.js',
       includeAssets: [
-        'logo-red.svg', 
-        'logo-white.svg', 
-        'og-image.png'
+        'logo.webp'
       ],
       workbox: {
         cleanupOutdatedCaches: true,
         // Optimization: Don't cache admin pages by default if they are large
         // and only cache critical assets to keep precache size small
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,webp,webmanifest}'],
         navigateFallbackDenylist: [/^\/admin/], // Don't try to handle admin routes as SPA for offline if not needed
         runtimeCaching: [
           {
