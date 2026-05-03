@@ -170,8 +170,8 @@ async function startServer() {
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
     // Correctly identify asset paths to skip dynamic injection
-    const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
-    if (isAsset) {
+    // If path has a dot, treat it as a static file that should fall through to static middleware or 404
+    if (req.path.includes('.')) {
       return next();
     }
 
