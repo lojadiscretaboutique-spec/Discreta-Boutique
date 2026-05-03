@@ -173,10 +173,14 @@ async function startServer() {
 
     if (req.path.startsWith('/api/')) return next();
 
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    let image = "/logo.webp";
-    const ogUrl = `https://discretaboutique.com.br${req.path}`;
+    let image = `${baseUrl}/logo.png`;
+    const ogUrl = `${baseUrl}${req.path}`;
     
     try {
       const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
@@ -194,6 +198,7 @@ async function startServer() {
 
       // 2. Dynamic manifest handler
       if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
+        const iconUrl = (image && image.startsWith('/')) ? `${baseUrl}${image}` : image;
         const manifest = {
           name: title.split('|')[0].trim(),
           short_name: title.split('|')[0].trim(),
@@ -204,15 +209,15 @@ async function startServer() {
           start_url: '/',
           icons: [
             {
-              src: image,
+              src: iconUrl,
               sizes: '192x192',
-              type: 'image/webp',
+              type: 'image/png',
               purpose: 'any'
             },
             {
-              src: image,
+              src: iconUrl,
               sizes: '512x512',
-              type: 'image/webp',
+              type: 'image/png',
               purpose: 'any'
             }
           ]
@@ -266,6 +271,11 @@ async function startServer() {
       console.error("Error fetching metadata:", e);
     }
 
+    // Ensure image is absolute for social crawlers
+    if (image && image.startsWith('/')) {
+      image = `${baseUrl}${image}`;
+    }
+
     const ogTags = `
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
@@ -284,16 +294,16 @@ async function startServer() {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "/logo.webp") {
-            html = html.replace('href="/logo.webp"', `href="${image}"`);
+        if (image && image !== "/logo.png") {
+            html = html.replace('href="/logo.png"', `href="${image}"`);
         }
         html = await vite.transformIndexHtml(req.url, html);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "/logo.webp") {
-            html = html.replace('href="/logo.webp"', `href="${image}"`);
+        if (image && image !== "/logo.png") {
+            html = html.replace('href="/logo.png"', `href="${image}"`);
         }
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
