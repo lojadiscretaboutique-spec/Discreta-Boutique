@@ -17,7 +17,24 @@ async function startServer() {
   app.set('trust proxy', 1);
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
+
   app.use(express.json());
+
+  app.get("/api/test-botconversa", async (req, res) => {
+      try {
+          const testOrder = {
+              id: '123',
+              telefone: '5588999999999', 
+              nome: 'Teste',
+              status: 'CONFIRMADO',
+              type: 'online'
+          };
+          await sendOrderEvent(testOrder as any, 'test_origem');
+          res.json({ message: 'Teste executado!' });
+      } catch (e: any) {
+          res.status(500).json({ error: e.message });
+      }
+  });
 
   // AI Routes
   app.use('/api/ia', aiRoutes);
@@ -253,7 +270,11 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    setupOrderListener();
   });
 }
+
+import { setupOrderListener } from './src/server/services/firestoreListener';
+import { sendOrderEvent } from './src/server/services/botConversaService';
 
 startServer();
