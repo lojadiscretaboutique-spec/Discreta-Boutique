@@ -4,14 +4,13 @@ import * as aiController from '../controllers/aiController.js';
 
 const router = Router();
 
-// Rate limit para Administração (geração de conteúdo)
+  // Rate limit para Administração (geração de conteúdo)
 const adminAiLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hora
   max: 100,
   message: { error: 'Limite de geração de conteúdo atingido para esta hora.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || 'anonymous-admin',
   validate: { trustProxy: false }
 });
 
@@ -25,7 +24,6 @@ const storeAiLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || 'anonymous-store',
   validate: { trustProxy: false }
 });
 

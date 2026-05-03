@@ -152,8 +152,8 @@ async function startServer() {
     }
   });
 
-  // Serve public assets explicitly
-  app.use(express.static('public'));
+  // Serve public assets explicitly with absolute path
+  app.use(express.static(path.resolve(process.cwd(), 'public')));
 
   let vite: import('vite').ViteDevServer;
   if (process.env.NODE_ENV !== "production") {
@@ -169,13 +169,14 @@ async function startServer() {
 
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
-    // Correctly identify asset paths to skip dynamic injection
-    // If path has a dot, treat it as a static file that should fall through to static middleware or 404
-    if (req.path.includes('.')) {
+    // 1. Skip API routes
+    if (req.path.startsWith('/api/')) return next();
+
+    // 2. Skip files with extensions (assets) to avoid returning HTML for images
+    // We EXCLUDE manifest files from this so they can be handled dynamically below
+    if (req.path.includes('.') && !req.path.endsWith('.html') && !req.path.endsWith('.json') && !req.path.endsWith('.webmanifest')) {
       return next();
     }
-
-    if (req.path.startsWith('/api/')) return next();
 
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const host = req.get('host');
@@ -196,10 +197,10 @@ async function startServer() {
         const settingsData = await settingsRes.json();
         const sFields = settingsData.fields || {};
         if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
-        if (sFields.logoUrl?.stringValue) image = sFields.logoUrl.stringValue;
+        // User requested NOT to use Firebase logo for SEO to prioritize local /logo.png or product image
       }
 
-      // 2. Dynamic manifest handler
+      // 2. Dynamic manifest handler (if manifest.json exists in public it might be caught by static, but this allows dynamic title)
       if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
         const manifest = {
           name: title.split('|')[0].trim(),
@@ -208,6 +209,7 @@ async function startServer() {
           theme_color: '#000000',
           background_color: '#ffffff',
           display: 'standalone',
+          name_full: title, // Extra field
           start_url: '/',
           icons: [
             {
@@ -281,13 +283,13 @@ async function startServer() {
     const ogTags = `
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
-      <meta property="og:image" content="${baseUrl}/logo.png" />
+      <meta property="og:image" content="${image}" />
       <meta property="og:url" content="${baseUrl}/" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${title}" />
       <meta name="twitter:description" content="${description}" />
-      <meta name="twitter:image" content="${baseUrl}/logo.png" />
+      <meta name="twitter:image" content="${image}" />
     `;
 
     try {
@@ -295,18 +297,10 @@ async function startServer() {
       if (process.env.NODE_ENV !== 'production') {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
-        // Replace dynamic logo for icons
-        if (image && image !== "/logo.png") {
-            html = html.replace('href="/logo.png"', `href="${image}"`);
-        }
         html = await vite.transformIndexHtml(req.url, html);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
-        // Replace dynamic logo for icons
-        if (image && image !== "/logo.png") {
-            html = html.replace('href="/logo.png"', `href="${image}"`);
-        }
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch(e) {
