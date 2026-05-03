@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDocs, where, limit, getCountFromServer } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, where, limit, getCountFromServer } from 'firebase/firestore';
+import { serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { formatCurrency, cn } from '../../lib/utils';
 import { format, isToday, startOfDay, startOfWeek, startOfMonth, startOfYear } from 'date-fns';
@@ -290,6 +291,13 @@ export function AdminOrders() {
         status: newStatus,
         updatedAt: serverTimestamp()
       });
+
+      // Trigger botconversa webhook
+      await fetch('/api/botconversa/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pedido: { ...order, status: newStatus } })
+      }).catch(e => console.error("Erro ao enviar webhook de status:", e));
 
       if (newStatus === 'ENTREGUE') {
         await stockMovementService.realizeMovementsByOrderId(id);

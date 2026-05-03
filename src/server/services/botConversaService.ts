@@ -1,5 +1,3 @@
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import axios from 'axios';
 
 const WEBHOOK_URL = process.env.BOTCONVERSA_WEBHOOK_URL;
@@ -9,113 +7,111 @@ interface Pedido {
     telefone: string;
     nome: string;
     status: string;
+    last_status_sent?: string;
     [key: string]: any;
 }
 
-const log = (message: string, data?: any) => {
-    console.log(`[BotConversaService] ${new Date().toISOString()}: ${message}`, data ? JSON.stringify(data) : '');
-};
+function gerarMensagem(pedido: Pedido): string {
+    const nome = pedido.nome;
+    const pid = pedido.id;
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    switch (pedido.status) {
+        case 'NOVO':
+        case 'PENDENTE':
+            let agendamento = '';
+            if (pedido.scheduledDate) {
+                const [year, month, day] = pedido.scheduledDate.split('-');
+                const dataFormatada = `${day}/${month}/${year}`;
+                agendamento = `*agendado para:* ${dataFormatada}${pedido.scheduledTime ? ` às ${pedido.scheduledTime}` : ''}`;
+            }
 
-async function sendWithRetry(payload: any, attempt: number = 1): Promise<any> {
-    if (!WEBHOOK_URL) {
-        log("Erro: BOTCONVERSA_WEBHOOK_URL não configurada");
-        throw new Error("BOTCONVERSA_WEBHOOK_URL não configurada");
-    }
+            return `Olá ${nome}! 💖
 
-    try {
-        console.log("🚀 DISPARANDO WEBHOOK BOTCONVERSA");
-        console.log("📦 PAYLOAD:", payload);
-        console.log("🌐 URL:", WEBHOOK_URL);
-        
-        log(`Tentativa ${attempt} de envio...`);
-        const response = await axios.post(WEBHOOK_URL, payload);
-        
-        console.log("📡 STATUS:", response.status);
-        console.log("📨 RESPOSTA:", response.data);
-        
-        log("Webhook enviado e processado pelo BotConversa", { status: response.status });
-        return response;
-    } catch (error: any) {
-        log(`Tentativa ${attempt} falhou: ${error.message}`);
-        if (attempt < 3) {
-            await delay(attempt * 2000); 
-            return sendWithRetry(payload, attempt + 1);
-        }
-        log("Erro definitivo após 3 tentativas.", { payload });
-        throw error;
-    }
-}
+Recebemos seu pedido com sucesso ✨!
+pedido: #${pid}
 
-function gerarTitulo(status: string): string {
-    return `Atualização de Pedido: ${status}`;
-}
+${agendamento}. 
 
-function gerarMensagem(status: string, pedido: Pedido): string {
-    switch (status.toUpperCase()) {
-        case 'CONFIRMADO':
-            return `Olá ${pedido.nome}! Seu pedido #${pedido.id} foi confirmado com sucesso.`;
+Já iniciamos a preparação com todo o cuidado, atenção aos detalhes e total discrição — exatamente como você merece.
+
+Em breve você receberá novas atualizações.
+
+Se precisar de algo, estamos por aqui. 💬`;
+        case 'AGUARDANDO_RETIRADA':
+        case 'PRONTO':
+            return `Olá ${nome}! ✨
+
+Seu pedido #${pid} já está pronto e disponível para retirada 📦
+
+Tudo foi preparado com cuidado e discrição para garantir a melhor experiência possível.
+
+Fique à vontade para retirar no horário combinado.
+
+Será um prazer te atender. 💖`;
+        case 'SAIU_PARA_ENTREGA':
+            return `Olá ${nome}! 🚚
+
+Seu pedido #${pid} já está a caminho ✨
+
+Preparamos tudo com atenção aos detalhes e ele segue com total discrição até você.
+
+Agora é só aguardar…
+
+Em breve estará em suas mãos. 💖`;
         case 'ENTREGUE':
-            return `Olá ${pedido.nome}! Seu pedido #${pedido.id} já foi entregue.`;
+            return `Olá ${nome}! 💖
+
+Seu pedido #${pid} foi entregue com sucesso ✨
+
+Esperamos que cada detalhe tenha sido exatamente como você imaginou — ou até melhor.
+
+Na Discreta Boutique, acreditamos que experiências especiais começam nos pequenos cuidados… e continuam mesmo após a entrega.
+
+Se quiser explorar novas possibilidades ou precisar de algo, estaremos sempre por aqui — com a mesma atenção e discrição de sempre.
+
+Aproveite seu momento. 💎`;
         default:
-            return `Olá ${pedido.nome}! O status do seu pedido #${pedido.id} foi atualizado para: ${status}.`;
+            return `Olá ${nome}! O status do seu pedido #${pid} foi atualizado para: ${pedido.status}.`;
     }
 }
 
-function identificarOrigemEvento(origem: string): string {
-    return origem;
+function formatarTelefone(telefone: string): string {
+    if (!telefone) return '';
+    let num = telefone.replace(/\D/g, '');
+    if (num.startsWith('55')) {
+        return num;
+    }
+    return `55${num}`;
 }
 
-export async function sendOrderEvent(pedido: Pedido, origem: string) {
-    if (!pedido.telefone || pedido.telefone.replace(/\D/g, '').length < 10) {
-        log("Telefone inválido, ignorando envio", { pedidoId: pedido.id });
+export async function sendWebhook(pedido: Pedido) {
+    if (!WEBHOOK_URL) {
+        console.error("❌ ERRO BOTCONVERSA: Webhook URL não configurada");
         return;
     }
 
-    const pedidoRef = doc(db, 'orders', pedido.id);
-    const pedidoSnap = await getDoc(pedidoRef);
-    
-    if (!pedidoSnap.exists()) {
-        log("Pedido não encontrado no Firestore", { pedidoId: pedido.id });
+    if (pedido.last_status_sent === pedido.status) {
+        console.log(`⚠️ Pedido ${pedido.id} já enviado com status ${pedido.status}. Ignorando.`);
         return;
     }
-    
-    const pedidoData = pedidoSnap.data() as any;
-    log("Verificando pedido para envio", { 
-        pedidoId: pedido.id, 
-        statusAtual: pedido.status, 
-        ultimoStatusEnviado: pedidoData.ultimo_status_enviado,
-        statusComparison: pedidoData.ultimo_status_enviado === pedido.status
-    });
-    
-    // Check duplication
-    if (pedidoData.ultimo_status_enviado === pedido.status) {
-        log("Status já enviado anteriormente, ignorando", { pedidoId: pedido.id, status: pedido.status });
-        return;
-    }
+
+    const nome = pedido.nome || pedido.customerName || 'Cliente';
+    const telefone = pedido.telefone || pedido.customerWhatsapp || '';
 
     const payload = {
-        telefone: pedido.telefone,
-        nome: pedido.nome,
+        telefone: formatarTelefone(telefone),
+        nome: nome,
         pedido_id: pedido.id,
         status: pedido.status,
-        titulo: gerarTitulo(pedido.status),
-        mensagem: gerarMensagem(pedido.status, pedido),
-        origem: identificarOrigemEvento(origem)
+        mensagem: gerarMensagem({ ...pedido, nome })
     };
-    log("Payload preparado para envio", { payload });
+
+    console.log("🚀 ENVIANDO WEBHOOK", pedido.id, payload);
 
     try {
-        await sendWithRetry(payload);
-        
-        // Update Firestore
-        await updateDoc(pedidoRef, {
-            ultimo_status_enviado: pedido.status,
-            ultimo_envio_timestamp: serverTimestamp()
-        });
-        
-    } catch (error) {
-        log("Ocorreu um erro ao enviar e registrar evento no Firestore", { error });
+        const response = await axios.post(WEBHOOK_URL, payload);
+        console.log("📡 STATUS:", response.status);
+    } catch (error: any) {
+        console.error("❌ ERRO BOTCONVERSA:", error.response?.data || error.message);
     }
 }

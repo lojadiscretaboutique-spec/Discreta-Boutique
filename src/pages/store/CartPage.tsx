@@ -5,8 +5,8 @@ import { formatCurrency, cn, roundTo2 } from '../../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
 import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { customerService } from '../../services/customerService';
@@ -542,11 +542,18 @@ export function CartPage() {
           quantity: i.quantity,
           sku: i.sku || ''
         })),
-        createdAt: exactNow,
-        updatedAt: exactNow,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
-      const docRef = await addDoc(collection(db, 'orders'), orderData);
+      const response = await fetch('/api/pedidos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData)
+      });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error);
+      const docRef = { id: data.orderId };
       
       // REGISTER STOCK RESERVATION
       for (const item of items) {

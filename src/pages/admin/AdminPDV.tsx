@@ -15,7 +15,8 @@ import {
   AlertCircle,
   Hash
 } from 'lucide-react';
-import { collection, query, where, getDocs, limit, addDoc, serverTimestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, addDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Button } from '../../components/ui/button';
 import { cn, formatCurrency, roundTo2 } from '../../lib/utils';
@@ -769,6 +770,15 @@ export function AdminPDV() {
       // ==========================================
 
       setLastOrderId(currentOrderId!);
+      
+      // Trigger botconversa webhook
+      const webhookPayload = { pedido: { ...orderData, id: currentOrderId, status: orderData.status } };
+      fetch('/api/botconversa/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload)
+      }).catch(e => console.error("Erro ao enviar webhook:", e));
+
       setStep('success');
       setCart([]);
       setSelectedCustomer(null);

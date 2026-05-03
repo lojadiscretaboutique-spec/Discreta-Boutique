@@ -7,15 +7,23 @@ export function setupOrderListener() {
     const q = query(collection(db, 'orders'));
     
     onSnapshot(q, (snapshot) => {
+        console.log(`[FirestoreListener] Snapshot recebido com ${snapshot.size} documentos.`);
         snapshot.docChanges().forEach(async (change) => {
             const orderData = change.doc.data();
-            const order = { id: change.doc.id, ...orderData } as any;
+            const order = { 
+                id: change.doc.id, 
+                telefone: orderData.customerWhatsapp, 
+                nome: orderData.customerName, 
+                ...orderData 
+            } as any;
             
-            console.log(`[FirestoreListener] Evento recebido: ${change.type}`, {
-                id: order.id,
-                type: order.type,
-                status: order.status
-            });
+            console.log(`📍 EVENTO DETECTADO: ${change.type}`, order.id);
+
+            // Prevenir envio duplicado
+            if (orderData.last_status_sent === orderData.status) {
+                console.log(`[FirestoreListener] Pedido já processado com este status: ${order.id}`);
+                return;
+            }
 
             // Apenas pedidos online
             if (orderData.type !== 'online') {
@@ -23,13 +31,9 @@ export function setupOrderListener() {
               return;
             }
 
-            if (change.type === 'added') {
-                console.log(`[FirestoreListener] Pedido adicionado: ${order.id}`);
-                await sendOrderEvent(order, 'checkout');
-            }
-            if (change.type === 'modified') {
-                console.log(`[FirestoreListener] Pedido modificado: ${order.id}`);
-                await sendOrderEvent(order, 'admin');
+            if (change.type === 'added' || change.type === 'modified') {
+                console.log(`[FirestoreListener] Processando evento de pedido: ${order.id}`);
+                await sendOrderEvent(order);
             }
         });
     });

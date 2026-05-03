@@ -5,6 +5,9 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import aiRoutes from './src/server/routes/aiRoutes.js';
+import { sendWebhook } from './src/server/services/botConversaService';
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from './src/lib/firebase';
 // Note: We'll use the client SDK in the backend for simplicity since we're in a controlled environment,
 // but for high security, firebase-admin would be preferred if service account keys were available.
 // In this case, we use the credentials provided in the .env or via the service to demonstrate the flow.
@@ -20,24 +23,58 @@ async function startServer() {
 
   app.use(express.json());
 
-  app.get("/api/test-botconversa", async (req, res) => {
-      try {
-          const testOrder = {
-              id: '123',
-              telefone: '5588999999999', 
-              nome: 'Teste',
-              status: 'CONFIRMADO',
-              type: 'online'
-          };
-          await sendOrderEvent(testOrder as any, 'test_origem');
-          res.json({ message: 'Teste executado!' });
-      } catch (e: any) {
-          res.status(500).json({ error: e.message });
-      }
-  });
-
   // AI Routes
   app.use('/api/ia', aiRoutes);
+
+  // Endpoint to create order and trigger webhook
+  app.post("/api/pedidos", async (req, res) => {
+    try {
+        console.log("✅ ROTA DE PEDIDO CHAMADA");
+        const orderData = req.body;
+        
+        // Save to DB
+        const docRef = await addDoc(collection(db, 'orders'), orderData);
+        const pedido = { id: docRef.id, ...orderData };
+        
+        // Trigger webhook
+        await sendWebhook(pedido);
+        
+        res.json({ success: true, orderId: docRef.id });
+    } catch (error: any) {
+        console.error("Erro ao criar pedido ou enviar webhook:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Backend-side trigger for BotConversa webhook
+  app.post("/api/botconversa/event", async (req, res) => {
+    try {
+      const { pedido } = req.body;
+      if (!pedido) return res.status(400).json({ error: "Pedido é obrigatório" });
+      
+      await sendWebhook(pedido);
+      res.json({ success: true, message: "Webhook disparado com sucesso" });
+    } catch (error: any) {
+      console.error("Erro ao enviar webhook:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Debug route for BotConversa
+  app.get("/debug/botconversa", async (req, res) => {
+    try {
+      const fakeOrder = {
+        id: "DEBUG_123",
+        telefone: "5511999999999",
+        nome: "Cliente Teste",
+        status: "TESTE_ORIGEM"
+      };
+      await sendWebhook(fakeOrder as any);
+      res.json({ success: true, message: "Evento de teste disparado" });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
 
   // Mercado Pago Preference Creation
   app.post("/api/payments/create-preference", async (req, res) => {
@@ -270,11 +307,10 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    setupOrderListener();
+    // setupOrderListener(); // Disabled as per refactoring request
   });
 }
 
 import { setupOrderListener } from './src/server/services/firestoreListener';
-import { sendOrderEvent } from './src/server/services/botConversaService';
 
 startServer();
