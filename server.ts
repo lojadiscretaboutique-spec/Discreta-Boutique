@@ -152,6 +152,9 @@ async function startServer() {
     }
   });
 
+  // Serve public assets explicitly
+  app.use(express.static('public'));
+
   let vite: import('vite').ViteDevServer;
   if (process.env.NODE_ENV !== "production") {
     vite = await createViteServer({
@@ -166,6 +169,7 @@ async function startServer() {
 
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
+    // Correctly identify asset paths to skip dynamic injection
     const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
     if (isAsset) {
       return next();
@@ -180,7 +184,6 @@ async function startServer() {
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
     let image = `${baseUrl}/logo.png`;
-    const ogUrl = `${baseUrl}${req.path}`;
     
     try {
       const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
@@ -198,7 +201,6 @@ async function startServer() {
 
       // 2. Dynamic manifest handler
       if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
-        const iconUrl = (image && image.startsWith('/')) ? `${baseUrl}${image}` : image;
         const manifest = {
           name: title.split('|')[0].trim(),
           short_name: title.split('|')[0].trim(),
@@ -209,16 +211,16 @@ async function startServer() {
           start_url: '/',
           icons: [
             {
-              src: iconUrl,
+              src: `${baseUrl}/logo-192.png`,
               sizes: '192x192',
               type: 'image/png',
-              purpose: 'any'
+              purpose: 'any maskable'
             },
             {
-              src: iconUrl,
+              src: `${baseUrl}/logo-512.png`,
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any'
+              purpose: 'any maskable'
             }
           ]
         };
@@ -279,13 +281,13 @@ async function startServer() {
     const ogTags = `
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
-      <meta property="og:image" content="${image}" />
-      <meta property="og:url" content="${ogUrl}" />
+      <meta property="og:image" content="${baseUrl}/logo.png" />
+      <meta property="og:url" content="${baseUrl}/" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${title}" />
       <meta name="twitter:description" content="${description}" />
-      <meta name="twitter:image" content="${image}" />
+      <meta name="twitter:image" content="${baseUrl}/logo.png" />
     `;
 
     try {
