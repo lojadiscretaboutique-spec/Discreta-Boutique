@@ -4,11 +4,9 @@ import { useCartStore } from '../store/cartStore';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { categoryService, Category } from '../services/categoryService';
-import { useSettings } from '../contexts/SettingsContext';
 
 export function StoreLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const settings = useSettings();
   const cartItems = useCartStore(state => state.items);
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
   

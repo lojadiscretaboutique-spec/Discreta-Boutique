@@ -2,9 +2,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Download, X, Share } from 'lucide-react';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import { useState, useEffect } from 'react';
+import { useSettings } from '../contexts/SettingsContext';
 
 export function PwaInstallBanner() {
   const { isInstallable, isInstalled, installApp, isIos } = usePwaInstall();
+  const settings = useSettings();
   const [isVisible, setIsVisible] = useState(false);
   const [showIosInstruction, setShowIosInstruction] = useState(false);
 
@@ -51,12 +53,16 @@ export function PwaInstallBanner() {
               <div className="flex items-center gap-4 w-full sm:w-auto flex-1">
                 {/* App Icon */}
                 <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex-shrink-0 items-center justify-center shadow-lg shadow-red-600/20 overflow-hidden border border-red-600/20 p-1">
-                  <img src="/logo.png" alt="Discreta" className="w-full h-full object-cover rounded-xl" />
+                  <img 
+                    src={settings.logoUrl || "/logo.png"} 
+                    alt={settings.storeName} 
+                    className="w-full h-full object-cover rounded-xl" 
+                  />
                 </div>
 
                 <div className="flex-1">
                   <h3 className="text-sm font-black text-white uppercase tracking-wider italic leading-none mb-1.5 flex items-center gap-2">
-                    App Discreta <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-sm font-bold not-italic">OFICIAL</span>
+                    App {settings.storeName.split(' ')[0]} <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-sm font-bold not-italic">OFICIAL</span>
                   </h3>
                   <p className="text-[11px] sm:text-xs text-zinc-300 font-bold uppercase tracking-wide leading-tight">
                     Instale o app e tenha acesso mais rápido e ofertas exclusivas!
