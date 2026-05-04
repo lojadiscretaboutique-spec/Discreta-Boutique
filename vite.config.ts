@@ -10,18 +10,17 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'inline',
       filename: 'sw.js',
       includeAssets: [
         'logo.png',
-        'logo.ico',
-        'logo.svg',
         'logo-192.png',
         'logo-512.png'
       ],
       workbox: {
         cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{js,css,html,png,ico,svg,webmanifest}'],
-        navigateFallbackDenylist: [/^\/admin/],
+        globPatterns: ['**/*.{js,css,html,png,ico,svg,webmanifest,json}'],
+        navigateFallbackDenylist: [/^\/admin/, /^\/api/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/firebasestorage\.googleapis\.com/,
@@ -29,9 +28,12 @@ export default defineConfig({
             options: {
               cacheName: 'firebase-images',
               expiration: {
-                maxEntries: 50,
+                maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Days
               },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
             },
           },
         ],

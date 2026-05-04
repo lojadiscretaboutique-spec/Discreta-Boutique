@@ -36,6 +36,53 @@ async function startServer() {
     next();
   });
 
+  // 2. Dynamic manifest handler - Move it before wildcard to ensure it's hit
+  app.get(['/manifest.json', '/manifest.webmanifest'], async (req, res) => {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+    
+    let title = "Discreta Boutique";
+    try {
+      const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
+      const config = JSON.parse(configRaw);
+      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store`;
+      const settingsRes = await fetch(settingsUrl);
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        const sFields = settingsData.fields || {};
+        if (sFields.storeName?.stringValue) title = sFields.storeName.stringValue;
+      }
+    } catch (e) {
+      console.error("Error fetching manifest title:", e);
+    }
+
+    const manifest = {
+      name: title,
+      short_name: title,
+      description: 'Experiências com discrição, elegância e sofisticação.',
+      theme_color: '#000000',
+      background_color: '#ffffff',
+      display: 'standalone',
+      start_url: '/',
+      icons: [
+        {
+          src: `${baseUrl}/logo-192.png`,
+          sizes: '192x192',
+          type: 'image/png',
+          purpose: 'any maskable'
+        },
+        {
+          src: `${baseUrl}/logo-512.png`,
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'any maskable'
+        }
+      ]
+    };
+    res.json(manifest);
+  });
+
   app.use(express.json());
 
   // AI Routes
@@ -181,13 +228,12 @@ async function startServer() {
   }
 
   // Open Graph dynamic injection for product pages
-  app.get('*all', async (req, res, next) => {
+  app.get('(.*)', async (req, res, next) => {
     // 1. Skip API routes
     if (req.path.startsWith('/api/')) return next();
 
     // 2. Skip files with extensions (assets) to avoid returning HTML for images
-    // We EXCLUDE manifest files from this so they can be handled dynamically below
-    if (req.path.includes('.') && !req.path.endsWith('.html') && !req.path.endsWith('.json') && !req.path.endsWith('.webmanifest')) {
+    if (req.path.includes('.') && !req.path.endsWith('.html')) {
       return next();
     }
 
@@ -210,36 +256,6 @@ async function startServer() {
         const settingsData = await settingsRes.json();
         const sFields = settingsData.fields || {};
         if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
-        // User requested NOT to use Firebase logo for SEO to prioritize local /logo.png or product image
-      }
-
-      // 2. Dynamic manifest handler (if manifest.json exists in public it might be caught by static, but this allows dynamic title)
-      if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
-        const manifest = {
-          name: title.split('|')[0].trim(),
-          short_name: title.split('|')[0].trim(),
-          description: description,
-          theme_color: '#000000',
-          background_color: '#ffffff',
-          display: 'standalone',
-          name_full: title, // Extra field
-          start_url: '/',
-          icons: [
-            {
-              src: `${baseUrl}/logo-192.png`,
-              sizes: '192x192',
-              type: 'image/png',
-              purpose: 'any maskable'
-            },
-            {
-              src: `${baseUrl}/logo-512.png`,
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'any maskable'
-            }
-          ]
-        };
-        return res.json(manifest);
       }
 
       // 3. Product metadata override
