@@ -152,6 +152,9 @@ async function startServer() {
     }
   });
 
+  // Serve public assets explicitly
+  app.use(express.static('public'));
+
   let vite: import('vite').ViteDevServer;
   if (process.env.NODE_ENV !== "production") {
     vite = await createViteServer({
@@ -166,17 +169,21 @@ async function startServer() {
 
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
-    const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
-    if (isAsset) {
+    // Correctly identify asset paths to skip dynamic injection
+    // If path has a dot, treat it as a static file that should fall through to static middleware or 404
+    if (req.path.includes('.')) {
       return next();
     }
 
     if (req.path.startsWith('/api/')) return next();
 
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    let image = "/logo.webp";
-    const ogUrl = `https://discretaboutique.com.br${req.path}`;
+    let image = `${baseUrl}/logo.png`;
     
     try {
       const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
@@ -189,7 +196,7 @@ async function startServer() {
         const settingsData = await settingsRes.json();
         const sFields = settingsData.fields || {};
         if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
-        if (sFields.logoUrl?.stringValue) image = sFields.logoUrl.stringValue;
+        // User requested NOT to use Firebase logo for SEO to prioritize local /logo.png or product image
       }
 
       // 2. Dynamic manifest handler
@@ -204,16 +211,16 @@ async function startServer() {
           start_url: '/',
           icons: [
             {
-              src: image,
+              src: `${baseUrl}/logo-192.png`,
               sizes: '192x192',
-              type: 'image/webp',
-              purpose: 'any'
+              type: 'image/png',
+              purpose: 'any maskable'
             },
             {
-              src: image,
+              src: `${baseUrl}/logo-512.png`,
               sizes: '512x512',
-              type: 'image/webp',
-              purpose: 'any'
+              type: 'image/png',
+              purpose: 'any maskable'
             }
           ]
         };
@@ -266,11 +273,16 @@ async function startServer() {
       console.error("Error fetching metadata:", e);
     }
 
+    // Ensure image is absolute for social crawlers
+    if (image && image.startsWith('/')) {
+      image = `${baseUrl}${image}`;
+    }
+
     const ogTags = `
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
       <meta property="og:image" content="${image}" />
-      <meta property="og:url" content="${ogUrl}" />
+      <meta property="og:url" content="${baseUrl}/" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${title}" />
@@ -283,18 +295,10 @@ async function startServer() {
       if (process.env.NODE_ENV !== 'production') {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
-        // Replace dynamic logo for icons
-        if (image && image !== "/logo.webp") {
-            html = html.replace('href="/logo.webp"', `href="${image}"`);
-        }
         html = await vite.transformIndexHtml(req.url, html);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
-        // Replace dynamic logo for icons
-        if (image && image !== "/logo.webp") {
-            html = html.replace('href="/logo.webp"', `href="${image}"`);
-        }
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch(e) {
