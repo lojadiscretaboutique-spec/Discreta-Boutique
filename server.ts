@@ -164,6 +164,26 @@ async function startServer() {
     app.use(express.static(distPath, { index: false }));
   }
 
+  // Endpoint for favicon to use store logo
+  app.get('/favicon.ico', async (req, res) => {
+    try {
+      const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
+      const config = JSON.parse(configRaw);
+      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store`;
+      const settingsRes = await fetch(settingsUrl);
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        const sFields = settingsData.fields || {};
+        if (sFields.logoUrl?.stringValue) {
+          return res.redirect(sFields.logoUrl.stringValue);
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching favicon:", e);
+    }
+    res.redirect('/logo.png');
+  });
+
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
     const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|txt|map)$/.test(req.path);
@@ -206,13 +226,11 @@ async function startServer() {
             {
               src: image,
               sizes: '192x192',
-              type: 'image/png',
               purpose: 'any maskable'
             },
             {
               src: image,
               sizes: '512x512',
-              type: 'image/png',
               purpose: 'any maskable'
             }
           ]
@@ -267,7 +285,8 @@ async function startServer() {
     }
 
     const ogTags = `
-      <link rel="icon" type="image/png" href="${image}" />
+      <link rel="icon" href="${image}" />
+      <link rel="shortcut icon" href="${image}" />
       <link rel="apple-touch-icon" href="${image}" />
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
