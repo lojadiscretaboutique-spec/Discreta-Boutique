@@ -29,8 +29,10 @@ export function HomePage() {
   }>({ lancamentos: [], destaques: [], maisVendidos: [], emAlta: [], recomendados: [] });
   const [categories, setCategories] = useState<Category[]>([]);
   const [currentBanner, setCurrentBanner] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
+    setLoading(true);
     try {
       const bSnap = await getDocs(query(collection(db, 'banners'), where('active', '==', true)));
       setBanners(bSnap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
@@ -98,6 +100,8 @@ export function HomePage() {
 
     } catch (error) {
       console.error("Error loading home:", error);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -193,7 +197,7 @@ export function HomePage() {
       </section>
 
       {/* 1.5 CATEGORY EXPOSITION */}
-      {categories.length > 0 && (
+      {(loading || categories.length > 0) && (
         <section className="bg-black py-6 md:py-16 border-b border-zinc-900">
           <div className="max-w-7xl mx-auto px-4">
             <div className="flex flex-col mb-4 md:mb-10">
@@ -202,40 +206,50 @@ export function HomePage() {
             </div>
 
             <div className="flex items-start gap-6 md:gap-12 overflow-x-auto no-scrollbar pb-6 scroll-p-4">
-              {categories.map(cat => (
-                <Link 
-                  key={cat.id} 
-                  to={`/catalogo?categoria=${cat.id}`} 
-                  className="group flex flex-col items-center shrink-0 w-32 md:w-44"
-                >
-                  {/* Circular Image Container */}
-                  <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full overflow-hidden bg-zinc-900 transition-all duration-500 shadow-2xl mb-4 group-hover:shadow-red-900/20 group-hover:scale-105">
-                    {cat.image?.url ? (
-                      <img 
-                        src={cat.image.url || undefined} 
-                        alt={cat.name} 
-                        className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110" 
-                        referrerPolicy="no-referrer" 
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-4xl font-black italic text-zinc-800">
-                        {cat.name.substring(0, 1)}
-                      </div>
-                    )}
-                    
-                    {/* Subtle Overlay on hover */}
-                    <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              {loading ? (
+                Array(6).fill(0).map((_, i) => (
+                  <div key={i} className="flex flex-col items-center shrink-0 w-32 md:w-44 animate-pulse">
+                    <div className="w-32 h-32 md:w-44 md:h-44 rounded-full bg-zinc-900 border border-zinc-800 mb-4 shadow-2xl" />
+                    <div className="h-4 bg-zinc-900 rounded w-20 mb-2" />
+                    <div className="h-0.5 bg-zinc-900 w-8" />
                   </div>
-                  
-                  {/* Title Below */}
-                  <h3 className="text-base md:text-lg font-black uppercase tracking-[1px] text-white group-hover:text-red-500 text-center transition-colors duration-500 line-clamp-2 leading-tight px-1">
-                    {cat.name}
-                  </h3>
-                  
-                  {/* Active Indicator line */}
-                  <div className="mt-2 w-0 h-0.5 bg-red-600 group-hover:w-12 transition-all duration-500 shadow-[0_0_8px_rgba(220,38,38,0.8)]"></div>
-                </Link>
-              ))}
+                ))
+              ) : (
+                categories.map(cat => (
+                  <Link 
+                    key={cat.id} 
+                    to={`/catalogo?categoria=${cat.id}`} 
+                    className="group flex flex-col items-center shrink-0 w-32 md:w-44"
+                  >
+                    {/* Circular Image Container */}
+                    <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full overflow-hidden bg-zinc-900 transition-all duration-500 shadow-2xl mb-4 group-hover:shadow-red-900/20 group-hover:scale-105">
+                      {cat.image?.url ? (
+                        <img 
+                          src={cat.image.url || undefined} 
+                          alt={cat.name} 
+                          className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110" 
+                          referrerPolicy="no-referrer" 
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-4xl font-black italic text-zinc-800">
+                          {cat.name.substring(0, 1)}
+                        </div>
+                      )}
+                      
+                      {/* Subtle Overlay on hover */}
+                      <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    </div>
+                    
+                    {/* Title Below */}
+                    <h3 className="text-base md:text-lg font-black uppercase tracking-[1px] text-white group-hover:text-red-500 text-center transition-colors duration-500 line-clamp-2 leading-tight px-1">
+                      {cat.name}
+                    </h3>
+                    
+                    {/* Active Indicator line */}
+                    <div className="mt-2 w-0 h-0.5 bg-red-600 group-hover:w-12 transition-all duration-500 shadow-[0_0_8px_rgba(220,38,38,0.8)]"></div>
+                  </Link>
+                ))
+              )}
             </div>
           </div>
         </section>
@@ -244,21 +258,29 @@ export function HomePage() {
       {/* 2. CARROUSÉIS DE PRODUTOS */}
       <div className="max-w-7xl mx-auto w-full flex flex-col pt-6 md:pt-10 pb-16 px-4 space-y-8 md:space-y-16">
         
-        {/* 1. LANÇAMENTOS */}
-        {sections.lancamentos.length > 0 && <ProductCarousel title="Lançamentos" products={sections.lancamentos} link="/catalogo" />}
-        
-        {/* 2. DESTAQUES */}
-        {sections.destaques.length > 0 && <ProductCarousel title="Destaques" products={sections.destaques} link="/catalogo" />}
-        
-        {/* 3. MAIS VENDIDOS */}
-        {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo" />}
+        {loading ? (
+          <>
+            <ProductCarousel title="Lançamentos" products={[]} loading={true} link="/catalogo" />
+            <ProductCarousel title="Destaques" products={[]} loading={true} link="/catalogo" />
+          </>
+        ) : (
+          <>
+            {/* 1. LANÇAMENTOS */}
+            {sections.lancamentos.length > 0 && <ProductCarousel title="Lançamentos" products={sections.lancamentos} link="/catalogo" />}
+            
+            {/* 2. DESTAQUES */}
+            {sections.destaques.length > 0 && <ProductCarousel title="Destaques" products={sections.destaques} link="/catalogo" />}
+            
+            {/* 3. MAIS VENDIDOS */}
+            {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo" />}
 
-        {/* 4. EM ALTA */}
-        {sections.emAlta.length > 0 && <ProductCarousel title="Em Alta" products={sections.emAlta} link="/catalogo" />}
+            {/* 4. EM ALTA */}
+            {sections.emAlta.length > 0 && <ProductCarousel title="Em Alta" products={sections.emAlta} link="/catalogo" />}
 
-        {/* 5. RECOMENDADOS */}
-        {sections.recomendados.length > 0 && <ProductCarousel title="Recomendados" products={sections.recomendados} link="/catalogo" />}
-
+            {/* 5. RECOMENDADOS */}
+            {sections.recomendados.length > 0 && <ProductCarousel title="Recomendados" products={sections.recomendados} link="/catalogo" />}
+          </>
+        )}
       </div>
 
       {/* BENEFÍCIOS */}
@@ -290,7 +312,7 @@ export function HomePage() {
   );
 }
 
-function ProductCarousel({ title, products, link }: { title: string, products: Product[], link: string }) {
+function ProductCarousel({ title, products, link, loading }: { title: string, products: Product[], link: string, loading?: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (direction: 'left' | 'right') => {
@@ -307,7 +329,7 @@ function ProductCarousel({ title, products, link }: { title: string, products: P
         <div className="flex items-center gap-3">
           <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tighter italic">{title}</h2>
         </div>
-        <Link to={link} className="text-[10px] font-black text-zinc-500 uppercase tracking-[3px] hover:text-red-500 transition-colors">Ver tudo</Link>
+        {!loading && <Link to={link} className="text-[10px] font-black text-zinc-500 uppercase tracking-[3px] hover:text-red-500 transition-colors">Ver tudo</Link>}
       </div>
 
       <div className="relative">
@@ -316,34 +338,38 @@ function ProductCarousel({ title, products, link }: { title: string, products: P
           className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-4 no-scrollbar"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-          {products.length > 0 ? (
+          {loading ? (
+             Array(5).fill(0).map((_, i) => (
+              <div key={i} className="min-w-[calc(50%-8px)] sm:min-w-[240px] snap-start">
+                <SkeletonCard />
+              </div>
+            ))
+          ) : products.length > 0 ? (
             products.map(product => (
               <div key={product.id} className="min-w-[calc(50%-8px)] sm:min-w-[240px] snap-start">
                 <ProductItemCard product={product} />
               </div>
             ))
-          ) : (
-            Array(5).fill(0).map((_, i) => (
-              <div key={i} className="min-w-[calc(50%-8px)] sm:min-w-[240px] snap-start">
-                <SkeletonCard />
-              </div>
-            ))
-          )}
+          ) : null}
         </div>
 
         {/* Navigation Buttons */}
-        <button 
-          onClick={() => scroll('left')}
-          className="absolute left-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:left-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <button 
-          onClick={() => scroll('right')}
-          className="absolute right-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:right-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0"
-        >
-          <ChevronRight size={16} />
-        </button>
+        {!loading && products.length > 0 && (
+          <>
+            <button 
+              onClick={() => scroll('left')}
+              className="absolute left-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:left-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button 
+              onClick={() => scroll('right')}
+              className="absolute right-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:right-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </>
+        )}
       </div>
     </section>
   );
@@ -490,12 +516,15 @@ function ProductItemCard({ product }: { product: Product }) {
 
 function SkeletonCard() {
   return (
-    <div className="bg-zinc-900 rounded-2xl border border-zinc-800 animate-pulse overflow-hidden">
-      <div className="aspect-[4/5] bg-zinc-800" />
-      <div className="p-4 space-y-2">
-        <div className="h-4 bg-zinc-800 rounded w-3/4" />
-        <div className="h-4 bg-zinc-800 rounded w-1/2" />
-        <div className="h-6 bg-zinc-800 rounded-full w-1/3 mt-4" />
+    <div className="bg-zinc-950/40 rounded-[2.5rem] border border-zinc-900 animate-pulse overflow-hidden h-full">
+      <div className="aspect-[3/4] bg-zinc-900" />
+      <div className="p-5 space-y-4">
+        <div className="h-4 bg-zinc-900 rounded-full w-3/4" />
+        <div className="h-4 bg-zinc-900 rounded-full w-1/2" />
+        <div className="space-y-2 pt-4">
+          <div className="h-6 bg-zinc-900 rounded-full w-2/3" />
+          <div className="h-10 bg-zinc-900 rounded w-full mt-4" />
+        </div>
       </div>
     </div>
   );

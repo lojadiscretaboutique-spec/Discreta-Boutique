@@ -284,28 +284,25 @@ class AIService {
 
   async suggestComplements(productNames: string[]): Promise<z.infer<typeof CartSuggestionSchema>> {
     const productsStr = productNames.join(', ');
-    const cacheKey = `cart_suggest_${productsStr}`;
+    const cacheKey = `cart_suggest_v4_${productsStr}`;
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
     const prompt = `
-      Você é um especialista em Cross-Sell (venda cruzada) para e-commerce de Bem-estar Íntimo.
-      Analise os produtos no carrinho do usuário e sugira o que falta para completar a experiência através de um objeto json.
+      Você é um especialista sênior em Mix de Produtos e Cross-Sell para a Discreta Boutique.
+      Analise os itens no carrinho e sugira uma categoria ou tipo de produto complementar que elevaria a experiência do cliente para o próximo nível.
       
       PRODUTOS NO CARRINHO: "${productsStr}"
       
-      REGRAS:
-      1. Se houver um brinquedo, sugira higienizador ou lubrificante.
-      2. Se houver lingerie, sugira acessórios ou cosméticos.
-      3. Se o carrinho estiver vazio (o que não deve ocorrer), sugira os mais vendidos.
+      OBJETIVO:
+      Sugerir algo que o usuário AINDA NÃO tem no carrinho e que faz todo sentido lógico e sensorial.
+      Seja variado nas sugestões. Não sugira sempre o básico (lubrificante). Pense em massageadores, velas, acessórios de toque, etc.
       
-      Sua resposta deve ser estritamente um objeto json válido.
-
-      FORMATO DE RETORNO (json):
+      REGRAS DE RETORNO (json):
       {
-        "foco_complemento": "termo técnico de busca para o catálogo (ex: lubrificante, massageador)",
-        "caracteristicas": ["silicone", "alto rendimento"],
-        "motivo": "frase curta explicando por que esse item completa os que já estão no carrinho"
+        "foco_complemento": "Um único termo técnico para busca no catálogo (ex: massageador, óleo, aromatizante, acessório)",
+        "caracteristicas": ["3 a 5 palavras-chave para refinar a busca no banco de dados"],
+        "motivo": "Uma frase curta e elegante (máx 150 chars) explicando o benefício da combinação"
       }
     `;
 
@@ -315,7 +312,8 @@ class AIService {
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-        temperature: 0.5
+        temperature: 0.8, // Aumentado para mais variedade nas sugestões
+        max_tokens: 250
       });
 
       const rawContent = response.choices[0].message.content || '{}';
@@ -331,16 +329,18 @@ class AIService {
       const result = CartSuggestionSchema.safeParse(parsed);
       if (!result.success) {
         console.error('[AI][VALIDATION_ERROR]', result.error.format());
-        console.error('[AI][RAW_PAYLOAD]', parsed);
-        // Fallback robusto se a validação falhar
         return {
-          foco_complemento: parsed.foco_complemento || 'higiene',
-          caracteristicas: this.normalizeArray(parsed.caracteristicas).length > 0 ? this.normalizeArray(parsed.caracteristicas) : ['essenciais'],
-          motivo: (parsed.motivo || 'Complementos ideais para sua compra.').substring(0, 150)
+          foco_complemento: 'higiene',
+          caracteristicas: ['limpeza', 'cuidado'],
+          motivo: 'Essenciais para sua rotina de bem-estar.'
         };
       }
 
-      this.setCache(cacheKey, result.data);
+      // Cache mais curto para sugestões de carrinho (15 min em vez de 1 hora)
+      this.cache.set(cacheKey, {
+        data: result.data,
+        expiry: Date.now() + (1000 * 60 * 15)
+      });
       return result.data;
     } catch (error) {
       console.error('Erro na OpenAI (suggestComplements):', error);

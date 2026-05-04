@@ -3,7 +3,7 @@ import { useCartStore } from '../../store/cartStore';
 import { useCustomerAuthStore } from '../../store/customerAuthStore';
 import { formatCurrency, cn, roundTo2 } from '../../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
-import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles } from 'lucide-react';
+import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles, Search } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { serverTimestamp } from 'firebase/firestore';
 import { useFeedback } from '../../contexts/FeedbackContext';
@@ -51,6 +51,7 @@ export function CartPage() {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  const [hasLookedUp, setHasLookedUp] = useState(false);
   const [trocoPara, setTrocoPara] = useState('');
 
   const [dbStates, setDbStates] = useState<State[]>([]);
@@ -258,6 +259,7 @@ export function CartPage() {
     if (currentCustomer && whatsapp === '') {
       setName(currentCustomer.nome || '');
       setWhatsapp(currentCustomer.whatsapp || '');
+      setHasLookedUp(true);
       if (currentCustomer.email) setEmail(currentCustomer.email);
       if (currentCustomer.enderecoObj) {
          setStateName(currentCustomer.enderecoObj.estado || '');
@@ -310,13 +312,20 @@ export function CartPage() {
   useEffect(() => {
     const cleanPhone = whatsapp.replace(/\D/g, '');
     
+    if (cleanPhone.length < 10) {
+      if (hasLookedUp) setHasLookedUp(false);
+      lastSearchedPhone.current = '';
+      return;
+    }
+
     // Only search if changed and >= 10 digits
-    if (cleanPhone.length >= 10 && cleanPhone !== lastSearchedPhone.current && !lookingUp) {
+    if (cleanPhone !== lastSearchedPhone.current && !lookingUp) {
       const timer = setTimeout(async () => {
         // Double check after timeout
         if (cleanPhone === lastSearchedPhone.current) return;
 
         setLookingUp(true);
+        setHasLookedUp(false);
         lastSearchedPhone.current = cleanPhone;
 
         try {
@@ -338,20 +347,37 @@ export function CartPage() {
               if (addr.complemento) setComplemento(addr.complemento);
             }
             if (cust.notes) setNotes(cust.notes);
+          } else {
+            toast('Ainda não temos seu cadastro. Preencha seus dados para continuar!', 'info');
+            // Clear fields for new registration if it wasn't pre-filled by a different lookup
+            setName('');
+            setEmail('');
+            setStateName('');
+            setCityName('');
+            setAreaName('');
+            setRua('');
+            setNumero('');
+            setReferencia('');
+            setComplemento('');
           }
+          setHasLookedUp(true);
         } catch (err) {
           console.error("Lookup error:", err);
+          toast("Erro ao consultar cadastro.", "error");
         } finally {
           setLookingUp(false);
         }
-      }, 1000); 
+      }, 1500); // 1.5s delay
       return () => clearTimeout(timer);
     }
   }, [whatsapp, lookingUp, toast]);
 
+  const cartItemIds = useMemo(() => items.map(i => i.productId).join(','), [items]);
+
   useEffect(() => {
-    // Only fetch if has items and haven't fetched yet for this session/cart
-    if (items.length > 0 && !aiSuggestions && !loadingSuggestions) {
+    // Fetch suggestions if has items
+    if (items.length > 0 && !loadingSuggestions) {
+      // Re-fetch if cart content changed significantly (different IDs)
       const fetchSuggestions = async () => {
         setLoadingSuggestions(true);
         try {
@@ -376,8 +402,7 @@ export function CartPage() {
     } else if (items.length === 0) {
       setAiSuggestions(null);
     }
-  }, [items.length, aiSuggestions, loadingSuggestions]); // Run only when starting a new cart or items count changes from 0 
-
+  }, [cartItemIds]); // Depende da string de IDs para atualizar quando o conteúdo muda
   if (items.length === 0) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20 text-center">
@@ -868,44 +893,86 @@ export function CartPage() {
                   exit={{ opacity: 0, x: 20 }}
                   className="space-y-12"
                 >
-                  <div className="bg-zinc-900 rounded-[2.5rem] border border-zinc-800 p-8 sm:p-12 shadow-2xl">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-                      <div>
-                        <label className="block text-[10px] font-black mb-3 uppercase tracking-[3px] text-zinc-500">WhatsApp *</label>
-                        <div className="relative">
-                          <input 
-                            required type="tel" value={whatsapp} 
-                            className={cn(
-                              "w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-lg",
-                              lookingUp && "opacity-50"
-                            )}
-                            onChange={e => setWhatsapp(e.target.value)} 
-                            placeholder="(00) 00000-0000" 
-                          />
-                          {lookingUp && (
-                            <div className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                              <span className="text-[10px] font-black text-red-500 uppercase tracking-widest animate-pulse">Buscando...</span>
-                              <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-black mb-3 uppercase tracking-[3px] text-zinc-500">Como prefere ser chamado? *</label>
+                  <div className="bg-zinc-900 rounded-[2.5rem] border border-zinc-800 p-8 sm:p-12 shadow-2xl relative overflow-hidden">
+                    {/* Splash Screen Consulting Overlay */}
+                    <AnimatePresence>
+                      {lookingUp && (
+                        <motion.div 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center"
+                        >
+                          <motion.div 
+                            animate={{ 
+                              scale: [1, 1.1, 1],
+                              opacity: [0.5, 1, 0.5] 
+                            }}
+                            transition={{ 
+                              duration: 2, 
+                              repeat: Infinity,
+                              ease: "easeInOut"
+                            }}
+                            className="w-24 h-24 bg-red-600/20 text-red-500 rounded-full flex items-center justify-center mb-8"
+                          >
+                            <Search size={48} />
+                          </motion.div>
+                          <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white mb-3">Consultando Cadastro</h3>
+                          <div className="flex items-center gap-3">
+                            <div className="w-2 h-2 bg-red-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                            <div className="w-2 h-2 bg-red-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                            <div className="w-2 h-2 bg-red-600 rounded-full animate-bounce"></div>
+                          </div>
+                          <p className="text-zinc-500 text-[10px] font-black uppercase tracking-[4px] mt-6">Buscando seus dados na Discreta Boutique</p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="max-w-md mx-auto mb-12">
+                      <label className="block text-[10px] font-black mb-3 uppercase tracking-[3px] text-zinc-500 text-center">Informe seu WhatsApp para começar *</label>
+                      <div className="relative">
                         <input 
-                          required value={name} 
-                          disabled={lookingUp}
+                          required type="tel" value={whatsapp} 
                           className={cn(
-                             "w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-lg",
-                             lookingUp && "opacity-50"
+                            "w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-black text-2xl text-center",
+                            lookingUp && "opacity-50"
                           )}
-                          onChange={e => setName(e.target.value)} 
-                          placeholder="Seu nome ou apelido" 
+                          onChange={e => setWhatsapp(e.target.value)} 
+                          placeholder="(00) 00000-0000" 
                         />
                       </div>
                     </div>
 
-                    <div className={cn("space-y-8 transition-all duration-500", lookingUp ? "opacity-30 pointer-events-none blur-sm" : "opacity-100")}>
+                    <div className={cn("space-y-8 transition-all duration-700", (!hasLookedUp || lookingUp) ? "max-h-0 opacity-0 overflow-hidden pointer-events-none" : "max-h-[2000px] opacity-100")}>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 pt-8 border-t border-zinc-800">
+                        <div>
+                          <label className="block text-[10px] font-black mb-3 uppercase tracking-[3px] text-zinc-500">Nome Completo *</label>
+                          <input 
+                            required value={name} 
+                            disabled={lookingUp}
+                            className={cn(
+                               "w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-lg",
+                               lookingUp && "opacity-50"
+                            )}
+                            onChange={e => setName(e.target.value)} 
+                            placeholder="Seu nome" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-black mb-3 uppercase tracking-[3px] text-zinc-500">E-mail (Opcional)</label>
+                          <input 
+                            value={email} 
+                            disabled={lookingUp}
+                            className={cn(
+                               "w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-lg",
+                               lookingUp && "opacity-50"
+                            )}
+                            onChange={e => setEmail(e.target.value)} 
+                            placeholder="seu@email.com" 
+                          />
+                        </div>
+                      </div>
+
                       <h3 className="text-sm font-black uppercase tracking-[4px] text-zinc-100 flex items-center gap-3">
                         <div className="w-2 h-2 bg-red-600 rounded-full shadow-[0_0_10px_rgba(220,38,38,0.6)]"></div>
                         Endereço para entrega
@@ -913,17 +980,17 @@ export function CartPage() {
                       
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
                         <div>
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">UF *</label>
+                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Estado *</label>
                           <input 
                             required 
-                            list="states-list" 
+                            list="estados-sugestoes" 
                             value={stateName} 
                             className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white uppercase font-bold" 
                             onChange={e => setStateName(e.target.value.toUpperCase())} 
                             onBlur={handleStateBlur}
-                            placeholder="UF" 
+                            placeholder="UF (Ex: CE)" 
                           />
-                          <datalist id="states-list">
+                          <datalist id="estados-sugestoes">
                             {dbStates.map(state => (
                               <option key={state.id} value={state.sigla}>{state.nome}</option>
                             ))}
@@ -933,14 +1000,14 @@ export function CartPage() {
                           <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Cidade *</label>
                           <input 
                             required 
-                            list="cities-list" 
+                            list="cidades-sugestoes" 
                             value={cityName} 
                             className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" 
                             onChange={e => setCityName(e.target.value)} 
                             onBlur={handleCityBlur}
-                            placeholder="Cidade" 
+                            placeholder="Selecione sua cidade" 
                           />
-                          <datalist id="cities-list">
+                          <datalist id="cidades-sugestoes">
                             {availableCities.map(city => (
                               <option key={city.id} value={city.nome} />
                             ))}
@@ -953,21 +1020,21 @@ export function CartPage() {
                           <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Bairro *</label>
                           <input 
                             required 
-                            list="areas-list" 
+                            list="bairros-sugestoes" 
                             value={areaName} 
                             className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" 
                             onChange={e => setAreaName(e.target.value)} 
                             onBlur={handleAreaBlur}
-                            placeholder="Bairro" 
+                            placeholder="Selecione seu bairro" 
                           />
-                          <datalist id="areas-list">
+                          <datalist id="bairros-sugestoes">
                             {availableBairros.map(bairro => (
                               <option key={bairro.id} value={bairro.bairro} />
                             ))}
                           </datalist>
                         </div>
                         <div>
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Rua *</label>
+                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Rua / Avenida *</label>
                           <input required value={rua} onChange={e => setRua(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" placeholder="Nome da rua" />
                         </div>
                       </div>
@@ -978,9 +1045,14 @@ export function CartPage() {
                           <input required value={numero} onChange={e => setNumero(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" placeholder="Nº" />
                         </div>
                         <div className="col-span-2">
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Referência *</label>
-                          <input required value={referencia} onChange={e => setReferencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" placeholder="Lado de..." />
+                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Ponto de Referência *</label>
+                          <input required value={referencia} onChange={e => setReferencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" placeholder="Ex: Próximo à padaria..." />
                         </div>
+                      </div>
+
+                      <div className="col-span-full">
+                        <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Complemento (Opcional)</label>
+                        <input value={complemento} onChange={e => setComplemento(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" placeholder="Apto, Bloco, etc" />
                       </div>
                     </div>
                   </div>
@@ -1246,8 +1318,9 @@ export function CartPage() {
 
             {step === 2 && (
               <Button 
+                disabled={!hasLookedUp || lookingUp}
                 onClick={() => validateIdentification() && setStep(3)}
-                className="w-full h-16 sm:h-14 px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
+                className="w-full h-16 sm:h-14 px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-30"
               >
                 Agendar Entrega <ArrowRight className="ml-2 w-5 h-5" />
               </Button>

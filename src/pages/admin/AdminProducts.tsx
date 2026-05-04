@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { 
   Plus, Edit2, Trash2, X, Upload, Save, ArrowLeft, 
   Info, DollarSign, Layers, Shirt, Droplets, Image as ImageIcon, 
-  Truck, Search, Settings, Check, Sparkles
+  Truck, Search, Settings, Check, Sparkles, CheckSquare, Square, Eye, EyeOff, Package, PackageX
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -27,6 +27,7 @@ export function AdminProducts() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const { toast, confirm } = useFeedback();
 
   const canCreate = hasPermission('produtos', 'criar');
@@ -122,6 +123,103 @@ export function AdminProducts() {
     let sum = 0;
     for (let i = 0; i < 12; i++) sum += parseInt(ean[i]) * (i % 2 === 0 ? 1 : 3);
     return ean + ((10 - (sum % 10)) % 10).toString();
+  };
+
+  const handleBulkAction = async (action: 'delete' | 'activate' | 'deactivate' | 'showInCatalog' | 'hideFromCatalog') => {
+    if (selectedIds.length === 0) return;
+
+    let message = '';
+    let confirmTitle = '';
+    let confirmText = '';
+    let variant: 'default' | 'danger' | 'warning' | 'info' | 'success' = 'default';
+
+    switch (action) {
+      case 'delete':
+        confirmTitle = 'Excluir Selecionados';
+        message = `Tem certeza que deseja excluir ${selectedIds.length} produtos? Esta ação não pode ser desfeita.`;
+        confirmText = 'Excluir';
+        variant = 'danger';
+        break;
+      case 'activate':
+        confirmTitle = 'Tornar Ativos';
+        message = `Deseja tornar ${selectedIds.length} produtos ativos?`;
+        confirmText = 'Confirmar';
+        break;
+      case 'deactivate':
+        confirmTitle = 'Tornar Indisponíveis';
+        message = `Deseja tornar ${selectedIds.length} produtos indisponíveis (Inativos)?`;
+        confirmText = 'Confirmar';
+        break;
+      case 'showInCatalog':
+        confirmTitle = 'Exibir no Catálogo';
+        message = `Deseja exibir ${selectedIds.length} produtos no catálogo do site?`;
+        confirmText = 'Confirmar';
+        break;
+      case 'hideFromCatalog':
+        confirmTitle = 'Ocultar do Catálogo';
+        message = `Deseja ocultar ${selectedIds.length} produtos do catálogo do site?`;
+        confirmText = 'Confirmar';
+        break;
+    }
+
+    const ok = await confirm({
+      title: confirmTitle,
+      message,
+      confirmText,
+      variant
+    });
+
+    if (!ok) return;
+
+    setLoading(true);
+    try {
+      if (action === 'delete') {
+        // Bulk delete one by one to handle variants correctly as in service
+        // (Batch would be more complex due to variants subcollection)
+        for (const id of selectedIds) {
+          await productService.deleteProduct(id);
+        }
+        toast(`${selectedIds.length} produtos excluídos com sucesso!`);
+      } else {
+        const batch = writeBatch(db);
+        selectedIds.forEach(id => {
+          const ref = doc(db, 'products', id);
+          const updateData: any = { updatedAt: serverTimestamp() };
+          
+          if (action === 'activate') updateData.active = true;
+          if (action === 'deactivate') updateData.active = false;
+          if (action === 'showInCatalog') updateData['extras.showInCatalog'] = true;
+          if (action === 'hideFromCatalog') updateData['extras.showInCatalog'] = false;
+          
+          batch.update(ref, updateData);
+        });
+        await batch.commit();
+        toast(`${selectedIds.length} produtos atualizados com sucesso!`);
+      }
+      setSelectedIds([]);
+      loadData();
+    } catch (error) {
+      console.error(error);
+      toast("Erro ao realizar ação em lote.", 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === currentProducts.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(currentProducts.map(p => p.id!));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter(i => i !== id));
+    } else {
+      setSelectedIds([...selectedIds, id]);
+    }
   };
 
   const loadData = useCallback(async () => {
@@ -1012,6 +1110,17 @@ export function AdminProducts() {
               />
            </div>
            <div className="flex items-center gap-4 text-xs font-bold text-slate-400">
+              {selectedIds.length > 0 && (
+                <div className="flex items-center gap-2 pr-4 border-r border-slate-700">
+                  <span className="text-red-500 font-black">{selectedIds.length} Selecionados:</span>
+                  <button onClick={() => handleBulkAction('activate')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Tornar Ativos"><Package size={14} /></button>
+                  <button onClick={() => handleBulkAction('deactivate')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Tornar Indisponíveis"><PackageX size={14} /></button>
+                  <button onClick={() => handleBulkAction('showInCatalog')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Exibir no Site"><Eye size={14} /></button>
+                  <button onClick={() => handleBulkAction('hideFromCatalog')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Ocultar do Site"><EyeOff size={14} /></button>
+                  <button onClick={() => handleBulkAction('delete')} className="p-1.5 hover:bg-slate-700 rounded text-red-500 transition-colors" title="Excluir Selecionados"><Trash2 size={14} /></button>
+                  <button onClick={() => setSelectedIds([])} className="p-1.5 hover:bg-slate-700 rounded text-slate-500 transition-colors" title="Limpar Seleção"><X size={14} /></button>
+                </div>
+              )}
               <span className="flex items-center gap-1"><Check size={14} className="text-green-500" /> {filteredProducts.filter(p => p.active).length} Ativos</span>
               <span className="flex items-center gap-1"><X size={14} className="text-red-500" /> {filteredProducts.filter(p => !p.active).length} Inativos</span>
            </div>
@@ -1021,7 +1130,11 @@ export function AdminProducts() {
           <table className="w-full text-left text-sm min-w-[800px]">
              <thead className="bg-slate-800/80 text-slate-400 font-bold border-b text-[11px] uppercase tracking-widest">
                 <tr>
-                   <th className="px-6 py-4 w-12 text-center">#</th>
+                   <th className="px-6 py-4 w-12 text-center">
+                     <button onClick={toggleSelectAll} className="hover:text-red-500 transition-colors">
+                        {selectedIds.length === currentProducts.length && currentProducts.length > 0 ? <CheckSquare size={16} /> : <Square size={16} />}
+                     </button>
+                   </th>
                    <th className="px-6 py-4">Produto</th>
                    <th className="px-6 py-4">Estoque</th>
                    <th className="px-6 py-4">Preço</th>
@@ -1035,9 +1148,12 @@ export function AdminProducts() {
                 ) : currentProducts.length === 0 ? (
                   <tr><td colSpan={6} className="p-12 text-center text-slate-300">Nenhum produto encontrado.</td></tr>
                 ) : currentProducts.map((prod, index) => (
-                  <tr key={prod.id} className="hover:bg-slate-950 group transition-colors">
-                     <td className="px-6 py-4 text-center font-bold text-slate-500">
-                        {((currentPage - 1) * itemsPerPage) + index + 1}
+                  <tr key={prod.id} className={cn("hover:bg-slate-950 group transition-colors", selectedIds.includes(prod.id!) && "bg-slate-900/50")}>
+                     <td className="px-6 py-4 text-center">
+                        <button onClick={() => toggleSelect(prod.id!)} className="text-slate-500 hover:text-red-500 transition-all mb-1">
+                          {selectedIds.includes(prod.id!) ? <CheckSquare size={16} className="text-red-600" /> : <Square size={16} />}
+                        </button>
+                        <div className="text-[10px] text-slate-700 font-bold"># {((currentPage - 1) * itemsPerPage) + index + 1}</div>
                      </td>
                      <td className="px-6 py-4">
                         <div className="flex items-center gap-4">

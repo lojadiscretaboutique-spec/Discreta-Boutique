@@ -390,11 +390,45 @@ export function AdminOrders() {
     'cancelado': 'bg-red-100 text-red-800',
   };
 
+  const formatOrderDate = (date: any, pattern: string = "dd/MM - HH:mm") => {
+    if (!date) return '...';
+    try {
+      if (typeof date.toDate === 'function') {
+        return format(date.toDate(), pattern);
+      }
+      if (date instanceof Date) {
+        return format(date, pattern);
+      }
+      if (date?.seconds) {
+        return format(new Date(date.seconds * 1000), pattern);
+      }
+      const parsedDate = new Date(date);
+      if (!isNaN(parsedDate.getTime())) {
+        return format(parsedDate, pattern);
+      }
+    } catch (e) {
+      console.error("Error formatting date:", e);
+    }
+    return '...';
+  };
+
   const filteredOrders = orders.filter(o => {
     const matchesSearch = o.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) || o.id.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    let orderDate = new Date();
+    if (o.createdAt) {
+      if (typeof o.createdAt.toDate === 'function') orderDate = o.createdAt.toDate();
+      else if (o.createdAt instanceof Date) orderDate = o.createdAt;
+      else if (o.createdAt?.seconds) orderDate = new Date(o.createdAt.seconds * 1000);
+      else {
+        const d = new Date(o.createdAt);
+        if (!isNaN(d.getTime())) orderDate = d;
+      }
+    }
+
     const matchesTab = activeTab === 'geral' || 
       (activeTab === 'abertos' && !['ENTREGUE', 'CANCELADO', 'entregue', 'cancelado'].includes(o.status)) ||
-      (activeTab === 'hoje' && isToday(o.createdAt?.toDate ? o.createdAt.toDate() : new Date()));
+      (activeTab === 'hoje' && isToday(orderDate));
     return matchesSearch && matchesTab;
   });
 
@@ -501,7 +535,7 @@ export function AdminOrders() {
                   <td className="px-6 py-4">
                     <div className="font-mono text-[10px] text-slate-400 mb-1 tracking-tighter">#{order.id.slice(-6).toUpperCase()}</div>
                     <div className="font-black text-slate-200">
-                      {order.createdAt?.toDate ? format(order.createdAt.toDate(), "dd/MM - HH:mm") : '...'}
+                      {formatOrderDate(order.createdAt)}
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -638,7 +672,7 @@ export function AdminOrders() {
                      <div>
                        <h2 className="text-2xl font-black text-white uppercase italic tracking-tighter">Pedido #{selectedOrder.id.slice(-6).toUpperCase()}</h2>
                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
-                         {selectedOrder.createdAt?.toDate ? format(selectedOrder.createdAt.toDate(), "dd 'de' MMMM 'às' HH:mm") : '--'}
+                         {formatOrderDate(selectedOrder.createdAt, "dd 'de' MMMM 'às' HH:mm")}
                        </p>
                      </div>
                      <Button variant="ghost" size="icon" onClick={() => setViewingDetailsId(null)}>
@@ -805,7 +839,7 @@ export function AdminOrders() {
             <>
               <div className="header-info">
                 <div>PEDIDO: #{selectedOrder.id.slice(-6).toUpperCase()}</div>
-                <div>DATA: {selectedOrder.createdAt?.toDate ? format(selectedOrder.createdAt.toDate(), "dd/MM/yyyy HH:mm") : ''}</div>
+                <div>DATA: {formatOrderDate(selectedOrder.createdAt, "dd/MM/yyyy HH:mm")}</div>
                 <div>TIPO: {selectedOrder.type === 'pdv' ? 'BALCAO' : 'ONLINE'}</div>
                 {selectedOrder.scheduledDate && (
                   <div style={{ color: 'red', fontWeight: 'bold' }}>ENTREGA: {selectedOrder.scheduledDate.split('-').reverse().join('/')} @ {selectedOrder.scheduledTime}h</div>

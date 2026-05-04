@@ -269,22 +269,55 @@ export const suggestCartComplements = async (req: Request, res: Response) => {
     }
 
     const ranked = candidateProducts.map(p => {
-      let score = 0;
+      // Começamos com um pequeno fator aleatório para garantir variedade em produtos com relevância similar
+      let score = Math.random() * 5; 
       const nameInfo = (p.name + " " + (p.description || "")).toLowerCase();
+      const catInfo = (p.categoryId || p.category || "").toLowerCase();
       
-      if (nameInfo.includes(suggestion.foco_complemento.toLowerCase())) score += 50;
+      // Match principal (ex: "lubrificante")
+      const foco = suggestion.foco_complemento.toLowerCase();
+      if (nameInfo.includes(foco)) score += 50;
+      if (catInfo.includes(foco)) score += 30; // Categoria bater com o foco é muito relevante
+
+      // Match de características
       suggestion.caracteristicas.forEach(f => {
-        if (nameInfo.includes(f.toLowerCase())) score += 10;
+        const feature = f.toLowerCase();
+        if (nameInfo.includes(feature)) score += 15;
       });
+
+      // Bônus para produtos com maior taxa de conversão (se disponível)
+      if (p.stats?.purchases) score += Math.min(p.stats.purchases * 2, 20);
 
       return { ...p, score };
     });
 
+    // Ordenar por score decrecente
     ranked.sort((a, b) => b.score - a.score);
+
+    // Pegamos os top 6 e desses escolhemos 2 aleatoriamente para sugerir,
+    // ou apenas pegamos os top 2 se o score do primeiro for MUITO superior ao resto.
+    const topPool = ranked.slice(0, 6);
+    let selectedProducts = [];
+    
+    if (topPool.length > 0) {
+      // Se o primeiro é um "Super Match" (> 20 pontos de diferença pro segundo), mantém ele
+      if (topPool.length > 1 && (topPool[0].score - topPool[1].score) > 20) {
+        selectedProducts.push(topPool[0]);
+        // O segundo escolhemos aleatoriamente entre os outros 5
+        const remaining = topPool.slice(1);
+        if (remaining.length > 0) {
+          selectedProducts.push(remaining[Math.floor(Math.random() * remaining.length)]);
+        }
+      } else {
+        // Shuffle do pool de 6 e pega 2
+        const shuffled = [...topPool].sort(() => Math.random() - 0.5);
+        selectedProducts = shuffled.slice(0, 2);
+      }
+    }
 
     res.json({
       motivo: suggestion.motivo,
-      produtos: ranked.slice(0, 2).map(p => {
+      produtos: selectedProducts.map(p => {
         const mainImage = p.images?.find((img: any) => img.isMain)?.url || p.images?.[0]?.url || p.imageUrl || p.image || '';
         return {
           id: p.id,

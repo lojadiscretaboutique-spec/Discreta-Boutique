@@ -14,8 +14,10 @@ interface Pedido {
 function gerarMensagem(pedido: Pedido): string {
     const nome = pedido.nome;
     const pid = pedido.id;
+    // Normalize status to uppercase and replace spaces with underscores for easier comparison
+    const status = (pedido.status || '').toUpperCase().replace(/\s+/g, '_');
 
-    switch (pedido.status) {
+    switch (status) {
         case 'NOVO':
         case 'PENDENTE':
             let agendamento = '';
@@ -70,6 +72,12 @@ Na Discreta Boutique, acreditamos que experiências especiais começam nos peque
 Se quiser explorar novas possibilidades ou precisar de algo, estaremos sempre por aqui — com a mesma atenção e discrição de sempre.
 
 Aproveite seu momento. 💎`;
+        case 'CANCELADO':
+            return `Olá ${nome}! Seu pedido #${pid} foi CANCELADO. ❌
+
+Se houver alguma dúvida ou se quiser realizar uma nova escolha, nossa equipe está à disposição para te ajudar.
+
+Agradecemos o contato.`;
         default:
             return `Olá ${nome}! O status do seu pedido #${pid} foi atualizado para: ${pedido.status}.`;
     }

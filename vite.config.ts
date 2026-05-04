@@ -12,7 +12,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       filename: 'sw.js',
       includeAssets: [
-        'logo.webp'
+        'logo.png'
       ],
       workbox: {
         cleanupOutdatedCaches: true,
@@ -44,15 +44,15 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/logo.webp',
+            src: '/logo.png',
             sizes: '192x192',
-            type: 'image/webp',
+            type: 'image/png',
             purpose: 'any maskable'
           },
           {
-            src: '/logo.webp',
+            src: '/logo.png',
             sizes: '512x512',
-            type: 'image/webp',
+            type: 'image/png',
             purpose: 'any maskable'
           }
         ]
