@@ -10,17 +10,16 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'inline',
       filename: 'sw.js',
       includeAssets: [
-        'logo.png',
-        'logo-192.png',
-        'logo-512.png'
+        'logo.webp'
       ],
       workbox: {
         cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{js,css,html,png,ico,svg,webmanifest,json}'],
-        navigateFallbackDenylist: [/^\/admin/, /^\/api/],
+        // Optimization: Don't cache admin pages by default if they are large
+        // and only cache critical assets to keep precache size small
+        globPatterns: ['**/*.{js,css,html,webp,webmanifest}'],
+        navigateFallbackDenylist: [/^\/admin/], // Don't try to handle admin routes as SPA for offline if not needed
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/firebasestorage\.googleapis\.com/,
@@ -28,35 +27,32 @@ export default defineConfig({
             options: {
               cacheName: 'firebase-images',
               expiration: {
-                maxEntries: 100,
+                maxEntries: 50,
                 maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Days
               },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
             },
           },
         ],
       },
       manifest: {
-        name: 'Discreta Boutique',
+        name: 'Discreta',
         short_name: 'Discreta',
-        description: 'Experiências com discrição, elegância e sofisticação.',
+        description: 'Loja virtual exclusiva e rápida da Discreta',
         theme_color: '#000000',
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
         icons: [
           {
-            src: '/logo-192.png',
+            src: '/logo.webp',
             sizes: '192x192',
-            type: 'image/png',
+            type: 'image/webp',
             purpose: 'any maskable'
           },
           {
-            src: '/logo-512.png',
+            src: '/logo.webp',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/webp',
             purpose: 'any maskable'
           }
         ]

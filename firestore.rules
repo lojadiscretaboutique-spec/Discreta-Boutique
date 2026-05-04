@@ -61,11 +61,7 @@ service cloud.firestore {
     match /products/{doc} {
       allow read: if true; // Public for storefront
       allow create: if can('produtos', 'criar');
-      allow update: if can('produtos', 'editar') || 
-        (
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['cliques', 'conversoes', 'visualizacoes', 'score'])
-        );
+      allow update: if can('produtos', 'editar');
       allow delete: if can('produtos', 'excluir');
     }
 
@@ -102,14 +98,14 @@ service cloud.firestore {
     }
 
     match /settings/{doc} {
-      allow read: if true;
+      allow read: if signedIn();
       allow update: if can('settings', 'editar');
       allow create: if can('settings', 'criar');
     }
 
     match /auditLogs/{doc} {
       allow read: if can('logs', 'visualizar');
-      allow create: if true;
+      allow create: if signedIn();
       allow update, delete: if false;
     }
 
@@ -181,9 +177,6 @@ service cloud.firestore {
 
     match /intelligent_searches/{doc} {
       allow read, create, update, delete: if true;
-      match /engagements/{eng} {
-        allow read, create, update, delete: if true;
-      }
     }
 
     match /buscas_inteligentes/{doc} {

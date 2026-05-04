@@ -1,6 +1,6 @@
 import { collection, onSnapshot, query } from 'firebase/firestore';
-import { db } from '../../lib/firebase.js';
-import { sendOrderEvent } from './botConversaService.js';
+import { db } from '../../lib/firebase';
+import { sendOrderEvent } from './botConversaService';
 
 export function setupOrderListener() {
     console.log("[FirestoreListener] Iniciando listener de pedidos...");

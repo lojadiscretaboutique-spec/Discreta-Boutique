@@ -5,10 +5,12 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import aiRoutes from './src/server/routes/aiRoutes.js';
-import { sendWebhook } from './src/server/services/botConversaService.js';
+import { sendWebhook } from './src/server/services/botConversaService';
 import { collection, addDoc } from 'firebase/firestore';
-import { db } from './src/lib/firebase.js';
-import { setupOrderListener } from './src/server/services/firestoreListener.js';
+import { db } from './src/lib/firebase';
+// Note: We'll use the client SDK in the backend for simplicity since we're in a controlled environment,
+// but for high security, firebase-admin would be preferred if service account keys were available.
+// In this case, we use the credentials provided in the .env or via the service to demonstrate the flow.
 
 const __filename = fileURLToPath(import.meta.url);
 console.log(`Server environment ready: ${__filename}`);
@@ -18,68 +20,6 @@ async function startServer() {
   app.set('trust proxy', 1);
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
-  // 1. Serve public assets FIRST (before ANY other route)
-  app.use(express.static(path.resolve(process.cwd(), 'public')));
-
-  // Fallback for missing PWA icons to logo.png
-  app.get(['/logo-192.png', '/logo-512.png', '/logo.png'], (req, res, next) => {
-    const filePath = path.resolve(process.cwd(), 'public', req.path.substring(1));
-    if (!fs.existsSync(filePath)) {
-      // If the specific icon is missing, serve the main logo.png if it exists
-      const logoPath = path.resolve(process.cwd(), 'public', 'logo.png');
-      if (fs.existsSync(logoPath)) {
-        return res.status(200).set('Content-Type', 'image/png').sendFile(logoPath);
-      }
-    }
-    next();
-  });
-
-  // 2. Dynamic manifest handler - Move it before wildcard to ensure it's hit
-  app.get(['/manifest.json', '/manifest.webmanifest'], async (req, res) => {
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const baseUrl = `${protocol}://${host}`;
-    
-    let title = "Discreta Boutique";
-    try {
-      const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
-      const config = JSON.parse(configRaw);
-      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store`;
-      const settingsRes = await fetch(settingsUrl);
-      if (settingsRes.ok) {
-        const settingsData = await settingsRes.json();
-        const sFields = settingsData.fields || {};
-        if (sFields.storeName?.stringValue) title = sFields.storeName.stringValue;
-      }
-    } catch (e) {
-      console.error("Error fetching manifest title:", e);
-    }
-
-    const manifest = {
-      name: title,
-      short_name: title.split('|')[0].trim(),
-      description: 'Experiências com discrição, elegância e sofisticação.',
-      theme_color: '#000000',
-      background_color: '#ffffff',
-      display: 'standalone',
-      start_url: '/',
-      icons: [
-        {
-          src: '/logo-192.png',
-          sizes: '192x192',
-          type: 'image/png',
-          purpose: 'any maskable'
-        },
-        {
-          src: '/logo-512.png',
-          sizes: '512x512',
-          type: 'image/png',
-          purpose: 'any maskable'
-        }
-      ]
-    };
-    res.json(manifest);
-  });
 
   app.use(express.json());
 
@@ -212,7 +152,6 @@ async function startServer() {
     }
   });
 
-  // Vite or Dist serving
   let vite: import('vite').ViteDevServer;
   if (process.env.NODE_ENV !== "production") {
     vite = await createViteServer({
@@ -227,21 +166,17 @@ async function startServer() {
 
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
-    // 1. Skip API routes
-    if (req.path.startsWith('/api/')) return next();
-
-    // 2. Skip files with extensions (assets) to avoid returning HTML for images
-    if (req.path.includes('.') && !req.path.endsWith('.html')) {
+    const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
+    if (isAsset) {
       return next();
     }
 
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const baseUrl = `${protocol}://${host}`;
+    if (req.path.startsWith('/api/')) return next();
 
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    let image = `${baseUrl}/logo.png`;
+    let image = "/logo.webp";
+    const ogUrl = `https://discretaboutique.com.br${req.path}`;
     
     try {
       const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
@@ -254,6 +189,35 @@ async function startServer() {
         const settingsData = await settingsRes.json();
         const sFields = settingsData.fields || {};
         if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
+        if (sFields.logoUrl?.stringValue) image = sFields.logoUrl.stringValue;
+      }
+
+      // 2. Dynamic manifest handler
+      if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
+        const manifest = {
+          name: title.split('|')[0].trim(),
+          short_name: title.split('|')[0].trim(),
+          description: description,
+          theme_color: '#000000',
+          background_color: '#ffffff',
+          display: 'standalone',
+          start_url: '/',
+          icons: [
+            {
+              src: image,
+              sizes: '192x192',
+              type: 'image/webp',
+              purpose: 'any'
+            },
+            {
+              src: image,
+              sizes: '512x512',
+              type: 'image/webp',
+              purpose: 'any'
+            }
+          ]
+        };
+        return res.json(manifest);
       }
 
       // 3. Product metadata override
@@ -302,16 +266,11 @@ async function startServer() {
       console.error("Error fetching metadata:", e);
     }
 
-    // Ensure image is absolute for social crawlers
-    if (image && image.startsWith('/')) {
-      image = `${baseUrl}${image}`;
-    }
-
     const ogTags = `
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
       <meta property="og:image" content="${image}" />
-      <meta property="og:url" content="${baseUrl}/" />
+      <meta property="og:url" content="${ogUrl}" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${title}" />
@@ -324,10 +283,18 @@ async function startServer() {
       if (process.env.NODE_ENV !== 'production') {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
+        // Replace dynamic logo for icons
+        if (image && image !== "/logo.webp") {
+            html = html.replace('href="/logo.webp"', `href="${image}"`);
+        }
         html = await vite.transformIndexHtml(req.url, html);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
+        // Replace dynamic logo for icons
+        if (image && image !== "/logo.webp") {
+            html = html.replace('href="/logo.webp"', `href="${image}"`);
+        }
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch(e) {
@@ -340,7 +307,10 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    // setupOrderListener(); // Disabled as per refactoring request
   });
 }
+
+import { setupOrderListener } from './src/server/services/firestoreListener';
 
 startServer();
