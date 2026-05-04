@@ -152,9 +152,6 @@ async function startServer() {
     }
   });
 
-  // Serve public assets explicitly
-  app.use(express.static('public'));
-
   let vite: import('vite').ViteDevServer;
   if (process.env.NODE_ENV !== "production") {
     vite = await createViteServer({
@@ -169,9 +166,8 @@ async function startServer() {
 
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
-    // Correctly identify asset paths to skip dynamic injection
-    // If path has a dot, treat it as a static file that should fall through to static middleware or 404
-    if (req.path.includes('.')) {
+    const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
+    if (isAsset) {
       return next();
     }
 
@@ -196,11 +192,12 @@ async function startServer() {
         const settingsData = await settingsRes.json();
         const sFields = settingsData.fields || {};
         if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
-        // User requested NOT to use Firebase logo for SEO to prioritize local /logo.png or product image
+        if (sFields.logoUrl?.stringValue) image = sFields.logoUrl.stringValue;
       }
 
       // 2. Dynamic manifest handler
       if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
+        const iconUrl = `${baseUrl}/logo.png`;
         const manifest = {
           name: title.split('|')[0].trim(),
           short_name: title.split('|')[0].trim(),
@@ -211,16 +208,16 @@ async function startServer() {
           start_url: '/',
           icons: [
             {
-              src: `${baseUrl}/logo-192.png`,
+              src: iconUrl,
               sizes: '192x192',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
             },
             {
-              src: `${baseUrl}/logo-512.png`,
+              src: iconUrl,
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
             }
           ]
         };
@@ -281,13 +278,13 @@ async function startServer() {
     const ogTags = `
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
-      <meta property="og:image" content="${image}" />
+      <meta property="og:image" content="${baseUrl}/logo.png" />
       <meta property="og:url" content="${baseUrl}/" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${title}" />
       <meta name="twitter:description" content="${description}" />
-      <meta name="twitter:image" content="${image}" />
+      <meta name="twitter:image" content="${baseUrl}/logo.png" />
     `;
 
     try {
@@ -295,10 +292,18 @@ async function startServer() {
       if (process.env.NODE_ENV !== 'production') {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
+        // Replace dynamic logo for icons
+        if (image && image !== "/logo.png") {
+            html = html.replace('href="/logo.png"', `href="${image}"`);
+        }
         html = await vite.transformIndexHtml(req.url, html);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
+        // Replace dynamic logo for icons
+        if (image && image !== "/logo.png") {
+            html = html.replace('href="/logo.png"', `href="${image}"`);
+        }
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch(e) {

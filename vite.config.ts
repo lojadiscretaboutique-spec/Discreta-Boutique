@@ -14,9 +14,7 @@ export default defineConfig({
       includeAssets: [
         'logo.png',
         'logo.ico',
-        'logo.svg',
-        'logo-192.png',
-        'logo-512.png'
+        'logo.svg'
       ],
       workbox: {
         cleanupOutdatedCaches: true,
@@ -46,13 +44,13 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/logo-192.png',
+            src: '/logo.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any maskable'
           },
           {
-            src: '/logo-512.png',
+            src: '/logo.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'

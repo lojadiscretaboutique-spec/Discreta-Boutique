@@ -64,7 +64,7 @@ service cloud.firestore {
       allow update: if can('produtos', 'editar') || 
         (
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['cliques', 'conversoes', 'visualizacoes', 'score'])
+            .hasOnly(['cliques', 'conversoes', 'visualizacoes', 'score', 'stock', 'updatedAt'])
         );
       allow delete: if can('produtos', 'excluir');
     }
@@ -72,7 +72,11 @@ service cloud.firestore {
     match /products/{productId}/variants/{variantId} {
       allow read: if true; 
       allow create: if can('produtos', 'criar');
-      allow update: if can('produtos', 'editar');
+      allow update: if can('produtos', 'editar') ||
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['stock', 'updatedAt'])
+        );
       allow delete: if can('produtos', 'excluir');
     }
 
@@ -83,7 +87,7 @@ service cloud.firestore {
 
     match /stockMovements/{doc} {
       allow read: if can('stock', 'visualizar') || can('orders', 'editar') || can('orders', 'excluir');
-      allow create: if can('stock', 'criar') || can('orders', 'criar');
+      allow create: if can('stock', 'criar') || can('orders', 'criar') || true; // Allow public reservation
       allow update, delete: if can('stock', 'excluir') || can('orders', 'editar') || can('orders', 'excluir');
     }
 
