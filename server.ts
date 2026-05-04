@@ -23,6 +23,19 @@ async function startServer() {
   // 1. Serve public assets FIRST (before ANY other route)
   app.use(express.static(path.resolve(process.cwd(), 'public')));
 
+  // Fallback for missing PWA icons to logo.png
+  app.get(['/logo-192.png', '/logo-512.png', '/logo.png'], (req, res, next) => {
+    const filePath = path.resolve(process.cwd(), 'public', req.path.substring(1));
+    if (!fs.existsSync(filePath)) {
+      // If the specific icon is missing, serve the main logo.png if it exists
+      const logoPath = path.resolve(process.cwd(), 'public', 'logo.png');
+      if (fs.existsSync(logoPath)) {
+        return res.status(200).set('Content-Type', 'image/png').sendFile(logoPath);
+      }
+    }
+    next();
+  });
+
   app.use(express.json());
 
   // AI Routes
