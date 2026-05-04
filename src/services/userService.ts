@@ -59,61 +59,89 @@ export const userService = {
 
   // Core function to compile final permissions
   async calculateComputedPermissions(roleIds: string[], individualPerms: Record<string, Record<string, boolean>>): Promise<Record<string, Record<string, boolean>>> {
-      const allRoles = await roleService.listRoles();
-      const activeUserRoles = allRoles.filter(r => roleIds.includes(r.id!) && r.active);
-      
-      const finalPerms: Record<string, Record<string, boolean>> = {};
-      
-      // Initialize full matrix with false
-      MODULES.forEach(mod => {
-          finalPerms[mod.id] = {};
-          ACTIONS.forEach(act => {
-              finalPerms[mod.id][act] = false;
-          });
-      });
+      try {
+        const allRoles = await roleService.listRoles();
+        const activeUserRoles = allRoles.filter(r => roleIds.includes(r.id!) && r.active);
+        
+        const finalPerms: Record<string, Record<string, boolean>> = {};
+        
+        // Initialize full matrix with false
+        MODULES.forEach(mod => {
+            finalPerms[mod.id] = {};
+            ACTIONS.forEach(act => {
+                finalPerms[mod.id][act] = false;
+            });
+        });
 
-      // Pass 1: Add from Roles
-      for (const r of activeUserRoles) {
-          if (!r.permissions) continue;
-          for (const modId of Object.keys(r.permissions)) {
-              if (!finalPerms[modId]) finalPerms[modId] = {};
-              for (const act of Object.keys(r.permissions[modId])) {
-                  if (r.permissions[modId][act]) {
-                      finalPerms[modId][act] = true;
-                  }
-              }
-          }
+        // Pass 1: Add from Roles
+        for (const r of activeUserRoles) {
+            if (!r.permissions) continue;
+            for (const modId of Object.keys(r.permissions)) {
+                if (!finalPerms[modId]) finalPerms[modId] = {};
+                for (const act of Object.keys(r.permissions[modId])) {
+                    if (r.permissions[modId][act]) {
+                        finalPerms[modId][act] = true;
+                    }
+                }
+            }
+        }
+
+        // Pass 2: Add from Individual Permits
+        if (individualPerms) {
+            for (const modId of Object.keys(individualPerms)) {
+                if (!finalPerms[modId]) finalPerms[modId] = {};
+                for (const act of Object.keys(individualPerms[modId])) {
+                    if (individualPerms[modId][act]) {
+                        finalPerms[modId][act] = true;
+                    }
+                }
+            }
+        }
+
+        return finalPerms;
+      } catch (e) {
+        console.error("Erro ao calcular permissões:", e);
+        return {};
       }
-
-      // Pass 2: Add from Individual Permits
-      if (individualPerms) {
-          for (const modId of Object.keys(individualPerms)) {
-              if (!finalPerms[modId]) finalPerms[modId] = {};
-              for (const act of Object.keys(individualPerms[modId])) {
-                  if (individualPerms[modId][act]) {
-                      finalPerms[modId][act] = true;
-                  }
-              }
-          }
-      }
-
-      return finalPerms;
   },
 
   async saveUser(userId: string, data: Partial<User>) {
     let finalUserId = userId;
     let isCreatingProfile = userId.startsWith('temp_');
 
+    // Sanitizer helper for Firestore
+    const sanitize = (obj: any): any => {
+      if (obj === null || typeof obj !== 'object') return obj;
+      if (obj instanceof Date) return obj;
+      // Handle Firebase Timestamps if they come from existing data
+      if (typeof obj.toDate === 'function') return obj;
+
+      const newObj = Array.isArray(obj) ? [] : {};
+      for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+          const val = obj[key];
+          if (val !== undefined) {
+             (newObj as any)[key] = sanitize(val);
+          }
+        }
+      }
+      return newObj;
+    };
+
     // 1. If creating and has password, create Auth account first
     if (isCreatingProfile && data.email && data.password) {
         try {
             finalUserId = await this.createAuthUser(data.email, data.password);
-            isCreatingProfile = true; // Still marked as creation but now we have real UID
+            // After auth creation, we are no longer using temp ID
         } catch (authError: any) {
-            if (authError.code === 'auth/email-already-in-progress' || authError.code === 'auth/email-already-use') {
-                throw new Error("Este e-mail já possui uma conta no sistema. Use o e-mail existente.");
+            console.error("Erro no Auth ao criar usuário:", authError);
+            if (authError.code === 'auth/email-already-in-use' || authError.message?.includes('email-already-in-use')) {
+                throw new Error("Este e-mail já possui uma conta de acesso no sistema.");
             }
-            throw authError;
+            if (authError.code === 'auth/operation-not-allowed') {
+                throw new Error("O provedor de E-mail/Senha não está ativado no Firebase Console.");
+            }
+            throw new Error(`Erro de Autenticação: ${authError.message}`);
         }
     }
 
@@ -131,8 +159,10 @@ export const userService = {
         computed = await this.calculateComputedPermissions(mergedRoles, mergedIndv);
     }
 
+    const cleanData = sanitize(data);
+    
     const payload = {
-      ...data,
+      ...cleanData,
       ...(computed ? { computedPermissions: computed } : {}),
       updatedAt: serverTimestamp()
     } as any;
@@ -140,14 +170,19 @@ export const userService = {
     delete payload.id;
     delete payload.password; // Never store password in Firestore
 
-    if (!alreadyExists) {
-        payload.createdAt = serverTimestamp();
-        payload.email = data.email;
-        await setDoc(userRef, payload);
-        await auditLogService.logAction('Criar', 'users', finalUserId, { email: data.email });
-    } else {
-        await updateDoc(userRef, payload);
-        await auditLogService.logAction('Editar', 'users', finalUserId, { roles: data.roles });
+    try {
+      if (!alreadyExists) {
+          payload.createdAt = serverTimestamp();
+          payload.email = data.email;
+          await setDoc(userRef, payload);
+          await auditLogService.logAction('Criar', 'users', finalUserId, { email: data.email });
+      } else {
+          await updateDoc(userRef, payload);
+          await auditLogService.logAction('Editar', 'users', finalUserId, { roles: data.roles });
+      }
+    } catch (dbError: any) {
+      console.error("Erro no Firestore ao salvar usuário:", dbError);
+      throw new Error(`Erro no Banco de Dados: ${dbError.message}`);
     }
   },
 
