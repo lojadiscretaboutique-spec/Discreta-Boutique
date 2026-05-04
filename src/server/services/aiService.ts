@@ -50,7 +50,7 @@ class AIService {
     }
 
     try {
-      const { categoryService } = await import('../../services/categoryService');
+      const { categoryService } = await import('../../services/categoryService.js');
       const cats = await categoryService.listCategories();
       const catNames = [...new Set(cats.map(c => c.name)), "Outros"];
       

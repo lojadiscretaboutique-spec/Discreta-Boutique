@@ -5,12 +5,10 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import aiRoutes from './src/server/routes/aiRoutes.js';
-import { sendWebhook } from './src/server/services/botConversaService';
+import { sendWebhook } from './src/server/services/botConversaService.js';
 import { collection, addDoc } from 'firebase/firestore';
-import { db } from './src/lib/firebase';
-// Note: We'll use the client SDK in the backend for simplicity since we're in a controlled environment,
-// but for high security, firebase-admin would be preferred if service account keys were available.
-// In this case, we use the credentials provided in the .env or via the service to demonstrate the flow.
+import { db } from './src/lib/firebase.js';
+import { setupOrderListener } from './src/server/services/firestoreListener.js';
 
 const __filename = fileURLToPath(import.meta.url);
 console.log(`Server environment ready: ${__filename}`);
@@ -59,7 +57,7 @@ async function startServer() {
 
     const manifest = {
       name: title,
-      short_name: title,
+      short_name: title.split('|')[0].trim(),
       description: 'Experiências com discrição, elegância e sofisticação.',
       theme_color: '#000000',
       background_color: '#ffffff',
@@ -67,13 +65,13 @@ async function startServer() {
       start_url: '/',
       icons: [
         {
-          src: `${baseUrl}/logo-192.png`,
+          src: '/logo-192.png',
           sizes: '192x192',
           type: 'image/png',
           purpose: 'any maskable'
         },
         {
-          src: `${baseUrl}/logo-512.png`,
+          src: '/logo-512.png',
           sizes: '512x512',
           type: 'image/png',
           purpose: 'any maskable'
@@ -228,7 +226,7 @@ async function startServer() {
   }
 
   // Open Graph dynamic injection for product pages
-  app.get('{*all}', async (req, res, next) => {
+  app.get('*all', async (req, res, next) => {
     // 1. Skip API routes
     if (req.path.startsWith('/api/')) return next();
 
@@ -342,10 +340,7 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    // setupOrderListener(); // Disabled as per refactoring request
   });
 }
-
-import { setupOrderListener } from './src/server/services/firestoreListener';
 
 startServer();
