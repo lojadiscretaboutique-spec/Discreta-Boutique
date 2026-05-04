@@ -4,9 +4,11 @@ import { useCartStore } from '../store/cartStore';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { categoryService, Category } from '../services/categoryService';
+import { useSettings } from '../contexts/SettingsContext';
 
 export function StoreLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const settings = useSettings();
   const cartItems = useCartStore(state => state.items);
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
   
@@ -32,7 +34,7 @@ export function StoreLayout() {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col font-sans">
+    <div className="dark min-h-screen bg-black text-white flex flex-col font-sans">
       {/* Header */}
       <header className="bg-black/80 backdrop-blur-md text-white fixed top-0 w-full z-50 border-b border-zinc-900">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between relative">

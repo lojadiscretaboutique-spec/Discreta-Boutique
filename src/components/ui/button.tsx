@@ -14,10 +14,10 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Component = asChild ? Slot : "button"
     
     const variants = {
-      default: "bg-red-600 text-white hover:bg-red-700 active:bg-red-800",
-      outline: "border-2 border-slate-200 bg-transparent hover:bg-slate-100 text-slate-900",
-      ghost: "bg-transparent hover:bg-slate-100 text-slate-900",
-      danger: "bg-transparent text-red-600 hover:bg-red-100"
+      default: "bg-red-600 text-white hover:bg-red-700 active:bg-red-800 shadow-sm",
+      outline: "border-2 border-slate-200 dark:border-slate-700 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-100",
+      ghost: "bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-100",
+      danger: "bg-transparent text-red-600 hover:bg-red-100 dark:hover:bg-red-900/20"
     };
     const sizes = {
       sm: "h-9 rounded-md px-3",

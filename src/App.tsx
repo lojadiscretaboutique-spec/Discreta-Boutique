@@ -4,6 +4,7 @@ import { StoreLayout } from './layouts/StoreLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 import { motion, AnimatePresence } from 'motion/react';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
+import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 
 // Store Pages
 const HomePage = lazy(() => import('./pages/store/HomePage').then(m => ({ default: m.HomePage })));
@@ -45,18 +46,30 @@ const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours
 
 // Loading Component (Splash Screen)
 function PageLoader() {
+  const settings = useSettings();
+  
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black gap-6 overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-from)_0%,_transparent_70%)] from-red-900/20 to-transparent animate-pulse"></div>
       
-      <div className="relative">
-        <motion.h1 
-          initial={{ opacity: 0, scale: 0.8, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="text-6xl md:text-8xl font-black italic tracking-[-0.1em] text-white uppercase"
-        >
-          DISCRETA
-        </motion.h1>
+      <div className="relative flex flex-col items-center">
+        {settings.logoUrl ? (
+          <motion.img 
+            src={settings.logoUrl}
+            alt={settings.storeName}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-32 h-32 object-contain mb-4"
+          />
+        ) : (
+          <motion.h1 
+            initial={{ opacity: 0, scale: 0.8, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="text-6xl md:text-8xl font-black italic tracking-[-0.1em] text-white uppercase"
+          >
+            {settings.storeName.split(' ')[0]}
+          </motion.h1>
+        )}
         <motion.div 
           initial={{ width: 0 }}
           animate={{ width: "100%" }}
@@ -82,7 +95,7 @@ function ScrollToTop() {
   return null;
 }
 
-export default function App() {
+function AppContent() {
   const location = useLocation();
   const [isNavigating, setIsNavigating] = useState(false);
 
@@ -90,7 +103,7 @@ export default function App() {
     setIsNavigating(true);
     const timer = setTimeout(() => {
       setIsNavigating(false);
-    }, 800); // Small delay for splash effect
+    }, 800);
     return () => clearTimeout(timer);
   }, [location.pathname]);
 
@@ -160,5 +173,13 @@ export default function App() {
         </Routes>
       </Suspense>
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <SettingsProvider>
+      <AppContent />
+    </SettingsProvider>
   );
 }

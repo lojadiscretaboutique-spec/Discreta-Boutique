@@ -1,0 +1,68 @@
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+
+interface StoreSettings {
+  storeName: string;
+  whatsapp: string;
+  deliveryFee: number;
+  address: string;
+  instagram: string;
+  logoUrl?: string;
+  loading: boolean;
+}
+
+const SettingsContext = createContext<StoreSettings | undefined>(undefined);
+
+export function SettingsProvider({ children }: { children: React.ReactNode }) {
+  const [settings, setSettings] = useState<StoreSettings>({
+    storeName: 'Discreta Boutique',
+    whatsapp: '5511999999999',
+    deliveryFee: 15,
+    address: '',
+    instagram: '',
+    logoUrl: '',
+    loading: true
+  });
+
+  useEffect(() => {
+    const docRef = doc(db, 'settings', 'store');
+    
+    // Use onSnapshot for real-time updates when admin changes settings
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setSettings({
+          storeName: data.storeName || 'Discreta Boutique',
+          whatsapp: data.whatsapp || '5511999999999',
+          deliveryFee: Number(data.deliveryFee || 15),
+          address: data.address || '',
+          instagram: data.instagram || '',
+          logoUrl: data.logoUrl || '',
+          loading: false
+        });
+      } else {
+        setSettings(prev => ({ ...prev, loading: false }));
+      }
+    }, (error) => {
+      console.error("Error fetching settings:", error);
+      setSettings(prev => ({ ...prev, loading: false }));
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  return (
+    <SettingsContext.Provider value={settings}>
+      {children}
+    </SettingsContext.Provider>
+  );
+}
+
+export function useSettings() {
+  const context = useContext(SettingsContext);
+  if (context === undefined) {
+    throw new Error('useSettings must be used within a SettingsProvider');
+  }
+  return context;
+}

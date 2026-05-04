@@ -166,8 +166,8 @@ async function startServer() {
 
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
-    const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|webmanifest|json|txt|map)$/.test(req.path);
-    if (isAsset) {
+    const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|txt|map)$/.test(req.path);
+    if (isAsset && !req.path.includes('manifest')) {
       return next();
     }
 
@@ -207,13 +207,13 @@ async function startServer() {
               src: image,
               sizes: '192x192',
               type: 'image/png',
-              purpose: 'any'
+              purpose: 'any maskable'
             },
             {
               src: image,
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any'
+              purpose: 'any maskable'
             }
           ]
         };
@@ -267,6 +267,8 @@ async function startServer() {
     }
 
     const ogTags = `
+      <link rel="icon" type="image/png" href="${image}" />
+      <link rel="apple-touch-icon" href="${image}" />
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
       <meta property="og:image" content="${image}" />
@@ -283,18 +285,10 @@ async function startServer() {
       if (process.env.NODE_ENV !== 'production') {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
-        // Replace dynamic logo for icons
-        if (image && image !== "/logo.png") {
-            html = html.replace('href="/logo.png"', `href="${image}"`);
-        }
         html = await vite.transformIndexHtml(req.url, html);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
-        // Replace dynamic logo for icons
-        if (image && image !== "/logo.png") {
-            html = html.replace('href="/logo.png"', `href="${image}"`);
-        }
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch(e) {

@@ -4,7 +4,7 @@ import { db } from '../../lib/firebase';
 import { 
   Plus, Edit2, Trash2, X, Upload, Save, ArrowLeft, 
   Info, DollarSign, Layers, Shirt, Droplets, Image as ImageIcon, 
-  Truck, Search, Settings, Check, Sparkles, CheckSquare, Square, Eye, EyeOff, Package, PackageX
+  Search, Check, Sparkles, CheckSquare, Square, Eye, EyeOff, Package, PackageX
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';

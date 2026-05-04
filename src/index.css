@@ -11,6 +11,18 @@
 :root {
   --color-primary: #D32F2F;
   --color-primary-glow: rgba(211, 47, 47, 0.4);
+  
+  /* Light Mode (Default) */
+  --color-bg: #F8FAFC;
+  --color-surface: #FFFFFF;
+  --color-surface-light: #F1F5F9;
+  --color-text-main: #0F172A;
+  --color-text-dim: #64748B;
+  --color-border-main: #E2E8F0;
+}
+
+/* Dark Mode (Class .dark) */
+.dark, :root.dark {
   --color-bg: #0A0A0A;
   --color-surface: #161616;
   --color-surface-light: #222222;
@@ -32,49 +44,124 @@
     overflow-x: hidden;
   }
 
-  /* Backgrounds & Surfaces */
-  .bg-white, 
-  .bg-slate-900, 
-  .bg-slate-950, 
-  .bg-black {
+    /* Backgrounds & Surfaces */
+  .dark .bg-white, 
+  .dark .bg-slate-900, 
+  .dark .bg-slate-950, 
+  .dark .bg-black {
     background-color: var(--color-surface) !important;
   }
-  .bg-gray-100,
-  .bg-gray-50, 
-  .bg-slate-50 {
+  .dark .bg-gray-100,
+  .dark .bg-gray-50, 
+  .dark .bg-slate-50 {
     background-color: var(--color-bg) !important;
   }
-  .bg-slate-100, 
-  .bg-slate-200,
-  .bg-red-50 {
+  .dark .bg-slate-100, 
+  .dark .bg-slate-200,
+  .dark .bg-red-50,
+  .dark .bg-green-50,
+  .dark .bg-blue-50,
+  .dark .bg-purple-50,
+  .dark .bg-orange-50,
+  .dark .bg-yellow-50 {
     background-color: var(--color-surface-light) !important;
     color: var(--color-text-main) !important;
   }
 
-  /* Texts */
-  .text-slate-900, 
-  .text-slate-800, 
-  .text-slate-700, 
-  .text-black,
-  .text-red-950,
-  .text-slate-600 {
+  .dark .bg-green-100,
+  .dark .bg-blue-100,
+  .dark .bg-purple-100,
+  .dark .bg-orange-100 {
+    background-color: rgba(255, 255, 255, 0.1) !important;
     color: var(--color-text-main) !important;
   }
-  .text-slate-500, 
-  .text-slate-400, 
-  .text-gray-400,
-  .text-red-900 {
+
+  /* Light Mode Specific Overrides for better contrast */
+  :root:not(.dark) .bg-white {
+    background-color: #FFFFFF !important;
+  }
+  :root:not(.dark) .bg-slate-50, 
+  :root:not(.dark) .bg-gray-50 {
+    background-color: #F8FAFC !important;
+  }
+  :root:not(.dark) .bg-slate-100 {
+    background-color: #F1F5F9 !important;
+  }
+  
+  /* Smart Inverse Mapping for Light Mode */
+  :root:not(.dark) .bg-slate-900,
+  :root:not(.dark) .bg-slate-950,
+  :root:not(.dark) .bg-slate-800 {
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+    border-color: #E2E8F0 !important;
+  }
+
+  /* Handle children of inverted backgrounds */
+  :root:not(.dark) .bg-slate-900 .text-white,
+  :root:not(.dark) .bg-slate-950 .text-white,
+  :root:not(.dark) .bg-slate-800 .text-white,
+  :root:not(.dark) .bg-slate-900 .text-slate-100,
+  :root:not(.dark) .bg-slate-950 .text-slate-100,
+  :root:not(.dark) .bg-slate-800 .text-slate-100 {
+    color: #0F172A !important;
+  }
+  
+  :root:not(.dark) .bg-slate-900 .text-slate-400,
+  :root:not(.dark) .bg-slate-950 .text-slate-400,
+  :root:not(.dark) .bg-slate-800 .text-slate-400 {
+    color: #64748B !important;
+  }
+
+  /* Texts */
+  .dark .text-slate-900, 
+  .dark .text-slate-800, 
+  .dark .text-slate-700, 
+  .dark .text-black,
+  .dark .text-red-950,
+  .dark .text-slate-600 {
+    color: var(--color-text-main) !important;
+  }
+  .dark .text-slate-500, 
+  .dark .text-slate-400, 
+  .dark .text-gray-400,
+  .dark .text-red-900 {
     color: var(--color-text-dim) !important;
+  }
+  
+  /* Light mode text contrast enhancement */
+  :root:not(.dark) .text-slate-500,
+  :root:not(.dark) .text-gray-500 {
+    color: #334155 !important; 
+  }
+  :root:not(.dark) .text-slate-400,
+  :root:not(.dark) .text-gray-400 {
+    color: #475569 !important;
+  }
+  :root:not(.dark) .text-slate-100,
+  :root:not(.dark) .text-slate-50 {
+    color: #0F172A !important;
+  }
+  :root:not(.dark) .text-white {
+    /* Only override text-white if it's likely being used for contrast on a dark bg that is now light */
+    /* Handled by the bg mapping above mostly, but adding a specific one for spans/labels */
   }
 
   /* Borders */
-  .border-slate-200, 
-  .border-slate-300, 
-  .border-slate-100, 
-  .border-slate-800, 
-  .border-gray-800, 
-  .border-red-100 {
+  .dark .border-slate-200, 
+  .dark .border-slate-300, 
+  .dark .border-slate-100, 
+  .dark .border-slate-800, 
+  .dark .border-gray-800, 
+  .dark .border-red-100 {
     border-color: var(--color-border-main) !important;
+  }
+
+  :root:not(.dark) .border-slate-100,
+  :root:not(.dark) .border-slate-200,
+  :root:not(.dark) .border-slate-700,
+  :root:not(.dark) .border-slate-800 {
+    border-color: #E2E8F0 !important;
   }
 
   /* Primary Color Matches */

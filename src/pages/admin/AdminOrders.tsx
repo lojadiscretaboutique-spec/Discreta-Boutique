@@ -8,7 +8,7 @@ import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
 import { 
   Eye, Printer, Edit2, X, Save, 
-  Search, Monitor, Smartphone, User, MapPin, CreditCard, Clock, Trash2, XCircle
+  Search, Monitor, Smartphone, User, MapPin, CreditCard, Clock, Trash2, XCircle, Loader2
 } from 'lucide-react';
 
 import { Button } from '../../components/ui/button';
@@ -901,9 +901,3 @@ export function AdminOrders() {
     </div>
   );
 }
-
-const Loader2 = ({ size, className }: { size: number, className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-  </svg>
-);

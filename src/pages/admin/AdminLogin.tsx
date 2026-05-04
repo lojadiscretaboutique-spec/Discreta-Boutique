@@ -7,8 +7,10 @@ import { Input } from '../../components/ui/input';
 import { doc, getDoc } from 'firebase/firestore';
 import { useAuthStore } from '../../store/authStore';
 import { useFeedback } from '../../contexts/FeedbackContext';
+import { useSettings } from '../../contexts/SettingsContext';
 
 export function AdminLogin() {
+  const settings = useSettings();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -42,7 +44,6 @@ export function AdminLogin() {
       const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
       const user = userCredential.user;
       
-      // Verify if user is admin in users collection
       try {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         const userData = userDoc.data();
@@ -52,7 +53,6 @@ export function AdminLogin() {
           setError('Acesso negado. Sua conta não está ativa ou não possui privilégios.');
           checkAuth();
         } else {
-          // Verify if has any admin permission
           const perms = userData.computedPermissions || {};
           const hasAnyPerm = Object.values(perms).some((mod: any) => 
             Object.values(mod).some(val => val === true)
@@ -68,14 +68,13 @@ export function AdminLogin() {
           }
         }
       } catch {
-        // If Firestore blocks the read due to rules
         await auth.signOut();
         setError('Erro de permissão ao validar privilégios. Verifique seu cadastro no painel Firebase.');
         checkAuth();
       }
       
     } catch (err: unknown) {
-      console.warn('Erro contornado no login:', err); // Ajuda a explicar o log do console 400 Bad Request
+      console.warn('Erro contornado no login:', err);
       let errorMessage = 'Falha na autenticação. Verifique suas credenciais.';
       if (err instanceof Error) {
         if (err.message.includes('auth/invalid-email')) {
@@ -95,10 +94,15 @@ export function AdminLogin() {
   };
 
   return (
-    <div className="h-screen w-full flex items-center justify-center bg-slate-800 px-4">
-      <div className="max-w-md w-full bg-slate-900 rounded-xl shadow-xl border overflow-hidden">
-        <div className="bg-black py-6 text-center text-red-600 font-bold text-2xl tracking-tight">
-          DISCRETA<span className="font-light">ADMIN</span>
+    <div className="h-screen w-full flex items-center justify-center bg-slate-950 px-4">
+      <div className="max-w-md w-full bg-slate-900 rounded-xl shadow-xl border border-slate-800 overflow-hidden">
+        <div className="bg-black py-8 text-center flex flex-col items-center gap-2">
+          {settings.logoUrl ? (
+            <img src={settings.logoUrl} alt={settings.storeName} className="h-16 w-auto object-contain mb-2" />
+          ) : (
+            <span className="text-red-600 font-black text-3xl tracking-tighter italic">DISCRETA</span>
+          )}
+          <span className="text-slate-400 font-bold text-[10px] tracking-[0.2em] uppercase">Painel de Gestão</span>
         </div>
         <form onSubmit={handleLogin} className="p-8 flex flex-col space-y-4">
           {error && <div className="p-3 bg-red-100 text-red-700 rounded-md text-sm">{error}</div>}
