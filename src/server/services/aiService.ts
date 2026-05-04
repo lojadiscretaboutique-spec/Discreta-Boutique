@@ -105,14 +105,27 @@ class AIService {
     if (cached) return cached;
 
     const prompt = `
-      Você é um copywriter especialista em e-commerce de luxo e bem-estar íntimo.
-      Gere o conteúdo para o produto "${nome}" na categoria "${categoria}".
-      Linguagem: Sensual leve, discreta, sofisticada e elegante.
-      Nunca use termos vulgares ou explícitos.
+      Você é um copywriter sênior especializado em e-commerce de luxo e boutiques eróticas premium como a Discreta Boutique.
+      Sua missão é criar um conteúdo ENCANTADOR, PERSUASIVO e REALISTA que transforme visitantes em clientes.
       
-      IMPORTANTE: A resposta deve ser estritamente um objeto json.
+      Produto: "${nome}"
+      Categoria: "${categoria}"
       
-      Retorne um objeto json com: titulo, descricao_curta, descricao_longa (com benefícios em bullet points), meta_title, meta_description, palavras_chave.
+      DIRETRIZES DE ESTILO:
+      - Tom de voz: Elegante, sensual (sem ser vulgar), sofisticado e acolhedor.
+      - Foco: Desperte o desejo através de benefícios sensoriais e emocionais.
+      - Vocabulário: Use termos como "toque aveludado", "momentos inesquecíveis", "design anatômico", "elegância discreta", "experiência única".
+      - Proibição: NUNCA use termos vulgares, explícitos, gírias de baixo calão ou descrições pornográficas.
+      
+      INSTRUÇÕES PARA OS CAMPOS:
+      1. titulo (Chamada Curta): Uma frase de impacto que resume a promessa do produto (ex: "O segredo para noites de puro requinte").
+      2. descricao_curta: Um parágrafo envolvente que destaca o principal diferencial.
+      3. descricao_longa: Texto completo e estruturado. Comece com uma introdução sedutora. Liste os benefícios e diferenciais usando bullet points (•). Finalize com uma frase de fechamento que convide à ação/experiência.
+      4. meta_title: Título otimizado para Google. Deve conter o nome do produto e um benefício (máx 60 caracteres).
+      5. meta_description: Texto persuasivo para buscas no Google. Inclua uma chamada para ação e mencione "Entrega Discreta" (máx 155 caracteres).
+      6. palavras_chave: 5 a 8 termos técnicos e de busca relacionados ao produto.
+
+      IMPORTANTE: A resposta deve ser estritamente um objeto JSON válido.
     `;
 
     try {
@@ -358,19 +371,26 @@ class AIService {
     if (cached) return cached;
 
     const prompt = `
-      Você é um copywriter especialista em e-commerce de luxo e bem-estar íntimo.
-      Gere o conteúdo estratégico para a categoria de produtos "${nome}".
-      Linguagem: Sensual leve, discreta, sofisticada e elegante.
-      Nunca use termos vulgares ou explícitos.
-      
-      Retorne a resposta estritamente no formato json.
+      Você é um copywriter sênior especialista em branding e SEO para e-commerce de luxo e boutiques eróticas premium como a Discreta Boutique.
+      Sua missão é gerar o conteúdo estratégico e ENCANTADOR para a categoria de produtos "${nome}".
 
-      Retorne um objeto json com:
-      - descricao: Uma descrição curta e sedutora da categoria.
-      - conteudo_seo: Um texto longo (2-3 parágrafos) focado em SEO, explicando os benefícios e o que encontrar nessa categoria.
-      - meta_title: Título otimizado para o Google (máx 60 caracteres).
-      - meta_description: Descrição otimizada para o Google (máx 160 caracteres).
-      - palavras_chave: Lista de 5-8 palavras-chave relevantes.
+      DIRETRIZES DE ESTILO E QUALIDADE:
+      - Tom de voz: Sofisticado, elegante, sensual (sem ser vulgar) e altamente persuasivo.
+      - Foco: Despertar o desejo, elevar a autoestima e prometer experiências inesquecíveis.
+      - Proibição: NUNCA use termos vulgares, explícitos, gírias de baixo calão ou descrições pornográficas.
+
+      INSTRUÇÕES PARA OS CAMPOS:
+      1. descricao: Uma introdução sedutora e curta (1-2 frases) que funciona como o "slogan" da categoria.
+      2. conteudo_seo: Um texto LONGO, ELABORADO e ESTRUTURADO (mínimo 300 palavras). 
+         - Inicie contextualizando o papel desses produtos no prazer e bem-estar.
+         - Crie parágrafos envolventes que expliquem o que o cliente encontrará na coleção.
+         - Utilize gatilhos mentais de exclusividade, elegância e segurança.
+         - Finalize reforçando a qualidade e o sigilo absoluto na entrega.
+      3. meta_title: Título perfeito para Google (máx 60 caracteres). Deve ser impactante.
+      4. meta_description: Texto altamente persuasivo para cliques no Google (máx 155 caracteres), mencionando "Entrega 100% Discreta".
+      5. palavras_chave: Forneça uma lista EXAUSTIVA de 15 a 20 termos relevantes (tags), incluindo variações de busca, nomes técnicos e termos conceituais.
+
+      IMPORTANTE: A resposta deve ser estritamente um objeto JSON válido.
     `;
 
     try {
