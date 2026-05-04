@@ -173,13 +173,10 @@ async function startServer() {
 
     if (req.path.startsWith('/api/')) return next();
 
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const baseUrl = `${protocol}://${host}`;
-
     let title = "Discreta Boutique | Sensualidade e Elegância";
     let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    let image = `${baseUrl}/logo.png`;
+    let image = "/logo.webp";
+    const ogUrl = `https://discretaboutique.com.br${req.path}`;
     
     try {
       const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
@@ -197,7 +194,6 @@ async function startServer() {
 
       // 2. Dynamic manifest handler
       if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
-        const iconUrl = `${baseUrl}/logo.png`;
         const manifest = {
           name: title.split('|')[0].trim(),
           short_name: title.split('|')[0].trim(),
@@ -208,15 +204,15 @@ async function startServer() {
           start_url: '/',
           icons: [
             {
-              src: iconUrl,
+              src: image,
               sizes: '192x192',
-              type: 'image/png',
+              type: 'image/webp',
               purpose: 'any'
             },
             {
-              src: iconUrl,
+              src: image,
               sizes: '512x512',
-              type: 'image/png',
+              type: 'image/webp',
               purpose: 'any'
             }
           ]
@@ -270,21 +266,16 @@ async function startServer() {
       console.error("Error fetching metadata:", e);
     }
 
-    // Ensure image is absolute for social crawlers
-    if (image && image.startsWith('/')) {
-      image = `${baseUrl}${image}`;
-    }
-
     const ogTags = `
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
-      <meta property="og:image" content="${baseUrl}/logo.png" />
-      <meta property="og:url" content="${baseUrl}/" />
+      <meta property="og:image" content="${image}" />
+      <meta property="og:url" content="${ogUrl}" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${title}" />
       <meta name="twitter:description" content="${description}" />
-      <meta name="twitter:image" content="${baseUrl}/logo.png" />
+      <meta name="twitter:image" content="${image}" />
     `;
 
     try {
@@ -293,16 +284,16 @@ async function startServer() {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "/logo.png") {
-            html = html.replace('href="/logo.png"', `href="${image}"`);
+        if (image && image !== "/logo.webp") {
+            html = html.replace('href="/logo.webp"', `href="${image}"`);
         }
         html = await vite.transformIndexHtml(req.url, html);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
         html = html.replace('</title>', '</title>\n' + ogTags);
         // Replace dynamic logo for icons
-        if (image && image !== "/logo.png") {
-            html = html.replace('href="/logo.png"', `href="${image}"`);
+        if (image && image !== "/logo.webp") {
+            html = html.replace('href="/logo.webp"', `href="${image}"`);
         }
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);

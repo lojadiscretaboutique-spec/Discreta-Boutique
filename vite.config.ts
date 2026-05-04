@@ -12,14 +12,14 @@ export default defineConfig({
       registerType: 'autoUpdate',
       filename: 'sw.js',
       includeAssets: [
-        'logo.png',
-        'logo.ico',
-        'logo.svg'
+        'logo.webp'
       ],
       workbox: {
         cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{js,css,html,png,ico,svg,webmanifest}'],
-        navigateFallbackDenylist: [/^\/admin/],
+        // Optimization: Don't cache admin pages by default if they are large
+        // and only cache critical assets to keep precache size small
+        globPatterns: ['**/*.{js,css,html,webp,webmanifest}'],
+        navigateFallbackDenylist: [/^\/admin/], // Don't try to handle admin routes as SPA for offline if not needed
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/firebasestorage\.googleapis\.com/,
@@ -35,24 +35,24 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Discreta Boutique',
+        name: 'Discreta',
         short_name: 'Discreta',
-        description: 'Experiências com discrição, elegância e sofisticação.',
+        description: 'Loja virtual exclusiva e rápida da Discreta',
         theme_color: '#000000',
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
         icons: [
           {
-            src: '/logo.png',
+            src: '/logo.webp',
             sizes: '192x192',
-            type: 'image/png',
+            type: 'image/webp',
             purpose: 'any maskable'
           },
           {
-            src: '/logo.png',
+            src: '/logo.webp',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/webp',
             purpose: 'any maskable'
           }
         ]

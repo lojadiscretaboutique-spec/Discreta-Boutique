@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useCartStore } from '../../store/cartStore';
 import { useCustomerAuthStore } from '../../store/customerAuthStore';
 import { formatCurrency, cn, roundTo2 } from '../../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
 import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { serverTimestamp } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { customerService } from '../../services/customerService';
@@ -38,6 +39,11 @@ export function CartPage() {
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedSlot, setSelectedSlot] = useState<string>('');
   
+  // Endereco
+  const [dbStates, setDbStates] = useState<State[]>([]);
+  const [dbCities, setDbCities] = useState<City[]>([]);
+  const [dbAreas, setDbAreas] = useState<DeliveryArea[]>([]);
+
   const [selectedAreaId, setSelectedAreaId] = useState('');
   const [stateName, setStateName] = useState('');
   const [cityName, setCityName] = useState('');
@@ -52,35 +58,6 @@ export function CartPage() {
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [trocoPara, setTrocoPara] = useState('');
-
-  const [dbStates, setDbStates] = useState<State[]>([]);
-  const [dbCities, setDbCities] = useState<City[]>([]);
-  const [dbAreas, setDbAreas] = useState<DeliveryArea[]>([]);
-
-  // Memoized available locations
-  const availableCities = useMemo(() => {
-    if (!stateName) return dbCities;
-    const currentState = dbStates.find(s => s.sigla.toLowerCase() === stateName.toLowerCase() || s.nome.toLowerCase() === stateName.toLowerCase());
-    if (currentState) {
-      return dbCities.filter(c => c.stateId === currentState.id);
-    }
-    return dbCities;
-  }, [dbCities, dbStates, stateName]);
-
-  const availableBairros = useMemo(() => {
-    let filtered = dbAreas;
-    if (stateName) {
-      const currentState = dbStates.find(s => s.sigla.toLowerCase() === stateName.toLowerCase() || s.nome.toLowerCase() === stateName.toLowerCase());
-      if (currentState) {
-        filtered = filtered.filter(b => b.stateId === currentState.id);
-      }
-    }
-    if (cityName) {
-       const selectedCityName = cityName.toLowerCase();
-       filtered = filtered.filter(b => b.cityName.toLowerCase() === selectedCityName);
-    }
-    return filtered;
-  }, [dbAreas, dbStates, stateName, cityName]);
   
   const [aiSuggestions, setAiSuggestions] = useState<{ motivo: string, produtos: any[] } | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -231,25 +208,39 @@ export function CartPage() {
     if (match) {
       setStateName(match.sigla);
     } else {
-      // Don't clear immediately to allow typing, but we'll validate on next step
+      setStateName('');
+      setCityName('');
+      setAreaName('');
+      toast("Por favor, selecione um Estado da lista.", "warning");
     }
   };
 
   const handleCityBlur = () => {
     const val = normalizeStr(cityName);
     if (!val) return;
-    const match = availableCities.find(c => normalizeStr(c.nome) === val);
+    const normState = normalizeStr(stateName);
+    const st = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
+    const match = dbCities.find(c => normalizeStr(c.nome) === val && (st ? c.stateId === st.id : true));
     if (match) {
       setCityName(match.nome);
+    } else {
+      setCityName('');
+      setAreaName('');
+      toast("Por favor, selecione uma Cidade da lista.", "warning");
     }
   };
 
   const handleAreaBlur = () => {
     const val = normalizeStr(areaName);
     if (!val) return;
-    const match = availableBairros.find(a => normalizeStr(a.bairro) === val);
+    const normCity = normalizeStr(cityName);
+    const ct = dbCities.find(c => normalizeStr(c.nome) === normCity);
+    const match = dbAreas.find(a => normalizeStr(a.bairro) === val && (ct ? a.cityId === ct.id : true));
     if (match) {
       setAreaName(match.bairro);
+    } else {
+      setAreaName('');
+      toast("Por favor, selecione um Bairro atendido da lista.", "warning");
     }
   };
 
@@ -322,22 +313,60 @@ export function CartPage() {
         try {
           const cust = await customerService.getCustomerByWhatsapp(cleanPhone);
           
-          if (cust) {
-            toast(`Olá ${cust.nome.split(' ')[0]}, localizamos seu cadastro!`, 'success');
+          if (cust && cust.endereco) {
             setName(cust.nome);
             if (cust.email) setEmail(cust.email);
             
-            if (cust.endereco) {
-              const addr = cust.endereco;
-              setStateName(addr.estado || '');
-              setCityName(addr.cidade || '');
-              setAreaName(addr.bairro || '');
-              setRua(addr.rua || '');
-              setNumero(addr.numero || '');
-              setReferencia(addr.referencia || '');
-              if (addr.complemento) setComplemento(addr.complemento);
+            const addr = cust.endereco;
+            const states = await deliveryAreaService.listStates();
+            const state = states.find(s => 
+               s.sigla.trim().toUpperCase() === addr.estado.trim().toUpperCase()
+            );
+            
+            if (state) {
+              // 1. SELECT STATE
+              setStateName(state.sigla);
+              
+              // Load cities manually to ensure we find the right one
+              const cities = await deliveryAreaService.listCities(state.id!);
+              const activeCities = cities.filter(ci => ci.status === 'ativo');
+              
+              const city = activeCities.find(c => 
+                 c.nome.trim().toLowerCase() === addr.cidade.trim().toLowerCase()
+              );
+              
+              if (city) {
+                // Wait for State selection to settle
+                await new Promise(resolve => setTimeout(resolve, 800));
+                
+                // 3. SELECT CITY
+                setCityName(city.nome);
+                
+                // Load areas manually to ensure we find the right one
+                const areas = await deliveryAreaService.listActiveDeliveryAreasForCity(city.id!);
+                
+                const area = areas.find(a => 
+                   a.bairro.trim().toLowerCase() === addr.bairro.trim().toLowerCase()
+                );
+                
+                if (area) {
+                  // Wait for City selection to settle
+                  await new Promise(resolve => setTimeout(resolve, 800));
+                  
+                  // 5. SELECT AREA
+                  setSelectedAreaId(area.id!);
+                  setAreaName(area.bairro);
+                }
+              }
             }
+            
+            setRua(addr.rua);
+            setNumero(addr.numero);
+            setReferencia(addr.referencia);
+            if (addr.complemento) setComplemento(addr.complemento);
             if (cust.notes) setNotes(cust.notes);
+            
+            toast(`Olá ${cust.nome.split(' ')[0]}, bem-vindo(a) de volta!`, 'success');
           }
         } catch (err) {
           console.error("Lookup error:", err);
@@ -875,37 +904,25 @@ export function CartPage() {
                         <div className="relative">
                           <input 
                             required type="tel" value={whatsapp} 
-                            className={cn(
-                              "w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-lg",
-                              lookingUp && "opacity-50"
-                            )}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-lg"
                             onChange={e => setWhatsapp(e.target.value)} 
                             placeholder="(00) 00000-0000" 
                           />
-                          {lookingUp && (
-                            <div className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                              <span className="text-[10px] font-black text-red-500 uppercase tracking-widest animate-pulse">Buscando...</span>
-                              <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-                            </div>
-                          )}
+                          {lookingUp && <div className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>}
                         </div>
                       </div>
                       <div>
                         <label className="block text-[10px] font-black mb-3 uppercase tracking-[3px] text-zinc-500">Como prefere ser chamado? *</label>
                         <input 
                           required value={name} 
-                          disabled={lookingUp}
-                          className={cn(
-                             "w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-lg",
-                             lookingUp && "opacity-50"
-                          )}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-lg"
                           onChange={e => setName(e.target.value)} 
                           placeholder="Seu nome ou apelido" 
                         />
                       </div>
                     </div>
 
-                    <div className={cn("space-y-8 transition-all duration-500", lookingUp ? "opacity-30 pointer-events-none blur-sm" : "opacity-100")}>
+                    <div className="space-y-8">
                       <h3 className="text-sm font-black uppercase tracking-[4px] text-zinc-100 flex items-center gap-3">
                         <div className="w-2 h-2 bg-red-600 rounded-full shadow-[0_0_10px_rgba(220,38,38,0.6)]"></div>
                         Endereço para entrega
@@ -924,9 +941,8 @@ export function CartPage() {
                             placeholder="UF" 
                           />
                           <datalist id="states-list">
-                            {dbStates.map(state => (
-                              <option key={state.id} value={state.sigla}>{state.nome}</option>
-                            ))}
+                            {dbStates.map(s => <option value={s.sigla} key={s.id}>{s.nome}</option>)}
+                            {dbStates.map(s => <option value={s.nome} key={`name-${s.id}`}>{s.sigla}</option>)}
                           </datalist>
                         </div>
                         <div className="col-span-1 sm:col-span-2">
@@ -941,9 +957,14 @@ export function CartPage() {
                             placeholder="Cidade" 
                           />
                           <datalist id="cities-list">
-                            {availableCities.map(city => (
-                              <option key={city.id} value={city.nome} />
-                            ))}
+                            {dbCities
+                              .filter(c => { 
+                                const normState = normalizeStr(stateName);
+                                const st = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState); 
+                                return st ? c.stateId === st.id : true; 
+                              })
+                              .map(c => <option value={c.nome} key={c.id}>{c.stateName}</option>)
+                            }
                           </datalist>
                         </div>
                       </div>
@@ -961,9 +982,14 @@ export function CartPage() {
                             placeholder="Bairro" 
                           />
                           <datalist id="areas-list">
-                            {availableBairros.map(bairro => (
-                              <option key={bairro.id} value={bairro.bairro} />
-                            ))}
+                            {dbAreas
+                              .filter(a => { 
+                                const normCity = normalizeStr(cityName);
+                                const ct = dbCities.find(c => normalizeStr(c.nome) === normCity); 
+                                return ct ? a.cityId === ct.id : true; 
+                              })
+                              .map(a => <option value={a.bairro} key={a.id}>{a.cityName}</option>)
+                            }
                           </datalist>
                         </div>
                         <div>

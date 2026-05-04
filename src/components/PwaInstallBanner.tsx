@@ -51,7 +51,7 @@ export function PwaInstallBanner() {
               <div className="flex items-center gap-4 w-full sm:w-auto flex-1">
                 {/* App Icon */}
                 <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex-shrink-0 items-center justify-center shadow-lg shadow-red-600/20 overflow-hidden border border-red-600/20 p-1">
-                  <img src="/logo.png" alt="Discreta" className="w-full h-full object-cover rounded-xl" />
+                  <img src="/logo.webp" alt="Discreta" className="w-full h-full object-cover rounded-xl" />
                 </div>
 
                 <div className="flex-1">

@@ -61,22 +61,14 @@ service cloud.firestore {
     match /products/{doc} {
       allow read: if true; // Public for storefront
       allow create: if can('produtos', 'criar');
-      allow update: if can('produtos', 'editar') || 
-        (
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['cliques', 'conversoes', 'visualizacoes', 'score', 'stock', 'updatedAt'])
-        );
+      allow update: if can('produtos', 'editar');
       allow delete: if can('produtos', 'excluir');
     }
 
     match /products/{productId}/variants/{variantId} {
       allow read: if true; 
       allow create: if can('produtos', 'criar');
-      allow update: if can('produtos', 'editar') ||
-        (
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['stock', 'updatedAt'])
-        );
+      allow update: if can('produtos', 'editar');
       allow delete: if can('produtos', 'excluir');
     }
 
@@ -87,7 +79,7 @@ service cloud.firestore {
 
     match /stockMovements/{doc} {
       allow read: if can('stock', 'visualizar') || can('orders', 'editar') || can('orders', 'excluir');
-      allow create: if can('stock', 'criar') || can('orders', 'criar') || true; // Allow public reservation
+      allow create: if can('stock', 'criar') || can('orders', 'criar');
       allow update, delete: if can('stock', 'excluir') || can('orders', 'editar') || can('orders', 'excluir');
     }
 
@@ -106,14 +98,14 @@ service cloud.firestore {
     }
 
     match /settings/{doc} {
-      allow read: if true;
+      allow read: if signedIn();
       allow update: if can('settings', 'editar');
       allow create: if can('settings', 'criar');
     }
 
     match /auditLogs/{doc} {
       allow read: if can('logs', 'visualizar');
-      allow create: if true;
+      allow create: if signedIn();
       allow update, delete: if false;
     }
 
@@ -185,9 +177,6 @@ service cloud.firestore {
 
     match /intelligent_searches/{doc} {
       allow read, create, update, delete: if true;
-      match /engagements/{eng} {
-        allow read, create, update, delete: if true;
-      }
     }
 
     match /buscas_inteligentes/{doc} {

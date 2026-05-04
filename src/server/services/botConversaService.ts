@@ -22,15 +22,12 @@ function gerarMensagem(pedido: Pedido): string {
             if (pedido.scheduledDate) {
                 const [year, month, day] = pedido.scheduledDate.split('-');
                 const dataFormatada = `${day}/${month}/${year}`;
-                agendamento = `*agendado para:* ${dataFormatada}${pedido.scheduledTime ? ` às ${pedido.scheduledTime}` : ''}`;
+                agendamento = `\n\n*Agendamento:* ${dataFormatada}${pedido.scheduledTime ? ` às ${pedido.scheduledTime}` : ''}`;
             }
 
             return `Olá ${nome}! 💖
 
-Recebemos seu pedido com sucesso ✨!
-pedido: #${pid}
-
-${agendamento}. 
+Recebemos seu pedido #${pid} com sucesso ✨${agendamento}
 
 Já iniciamos a preparação com todo o cuidado, atenção aos detalhes e total discrição — exatamente como você merece.
 
