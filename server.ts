@@ -228,7 +228,7 @@ async function startServer() {
   }
 
   // Open Graph dynamic injection for product pages
-  app.get('(.*)', async (req, res, next) => {
+  app.get('{*all}', async (req, res, next) => {
     // 1. Skip API routes
     if (req.path.startsWith('/api/')) return next();
 
