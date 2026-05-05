@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { stockMovementService, NewStockMovement } from '../../services/stockMovementService';
@@ -78,6 +78,7 @@ export function MovEstoque() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [fProdSearch, setFProdSearch] = useState('');
+    const searchAtSelection = useRef('');
     const [fProductId, setFProductId] = useState('');
     const [fReasonId, setFReasonId] = useState(REASONS[0].id);
     const [fQty, setFQty] = useState('');
@@ -115,11 +116,26 @@ export function MovEstoque() {
 
     useEffect(() => {
         if (fProductId) {
+            setFVariantId('');
             const prod = products.find(p => p.id === fProductId);
             if (prod?.hasVariants) {
                 setIsLoadingVariants(true);
                 productService.getProduct(fProductId).then(res => {
-                    setProductVariants(res?.variants || []);
+                    const vars = res?.variants || [];
+                    setProductVariants(vars);
+                    
+                    // Auto-select variation if barcode matched
+                    if (searchAtSelection.current && vars.length > 0) {
+                        const term = searchAtSelection.current.trim().toLowerCase();
+                        const match = vars.find(v => 
+                            v.sku?.toLowerCase() === term || 
+                            v.barcode?.toLowerCase() === term
+                        );
+                        if (match) {
+                            setFVariantId(match.id!);
+                        }
+                    }
+                    searchAtSelection.current = ''; // Reset
                 }).catch(e => {
                     toast("Erro ao carregar variações do produto.", "error");
                 }).finally(() => {
@@ -130,9 +146,29 @@ export function MovEstoque() {
             }
         } else {
             setProductVariants([]);
+            setFVariantId('');
         }
-        setFVariantId('');
     }, [fProductId, products, toast]);
+
+    // Auto-selection on exact match (Barcode Support)
+    useEffect(() => {
+        const term = fProdSearch.trim();
+        if (!term || term.length < 3 || fProductId) return;
+        
+        // Exact match by SKU or GTIN or Internal Code
+        const exactMatch = products.find(p => 
+            p.sku?.toLowerCase() === term.toLowerCase() || 
+            p.gtin?.toLowerCase() === term.toLowerCase() ||
+            p.internalCode?.toLowerCase() === term.toLowerCase() ||
+            p.variantIdentifiers?.some(vi => vi.toLowerCase() === term.toLowerCase())
+        );
+
+        if (exactMatch) {
+            searchAtSelection.current = term;
+            setFProductId(exactMatch.id!);
+            setFProdSearch('');
+        }
+    }, [fProdSearch, products, fProductId]);
 
     // Filter processing
     const filteredMovements = movements.filter(m => {
@@ -164,13 +200,16 @@ export function MovEstoque() {
     });
 
     const formProductsObj = products.filter(p => {
-        const term = fProdSearch.toLowerCase();
+        const term = fProdSearch?.trim().toLowerCase();
+        if (!term) return false;
+        
         return (
             p.name.toLowerCase().includes(term) || 
             (p.sku && p.sku.toLowerCase().includes(term)) ||
             (p.gtin && p.gtin.toLowerCase().includes(term)) ||
-            (p.searchTerms && p.searchTerms.some(st => st.includes(term))) ||
-            (p.variantIdentifiers && p.variantIdentifiers.some(vi => vi.toLowerCase().includes(term)))
+            (p.internalCode && p.internalCode.toLowerCase().includes(term)) ||
+            (p.searchTerms?.some(st => st.toLowerCase().includes(term))) ||
+            (p.variantIdentifiers?.some(vi => vi.toLowerCase().includes(term)))
         );
     });
 
@@ -420,7 +459,11 @@ export function MovEstoque() {
                                             {fProdSearch && (
                                                 <div className="absolute top-12 left-0 right-0 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-auto py-1">
                                                     {formProductsObj.map(p => (
-                                                        <div key={p.id} onClick={() => { setFProductId(p.id!); setFProdSearch(''); }} className="px-4 py-2.5 hover:bg-slate-800 cursor-pointer flex justify-between items-center border-b border-slate-50 last:border-0">
+                                                        <div key={p.id} onClick={() => { 
+                                                            searchAtSelection.current = fProdSearch;
+                                                            setFProductId(p.id!); 
+                                                            setFProdSearch(''); 
+                                                        }} className="px-4 py-2.5 hover:bg-slate-800 cursor-pointer flex justify-between items-center border-b border-slate-50 last:border-0">
                                                             <div className="min-w-0 pr-4">
                                                                 <p className="font-medium text-sm text-slate-100 truncate">{p.name}</p>
                                                                 <p className="text-xs text-slate-400 font-mono mt-0.5">{p.sku}</p>
