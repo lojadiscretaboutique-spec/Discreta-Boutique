@@ -430,7 +430,7 @@ export function CatalogPage() {
                       </Button>
                       <Button 
                         size="sm" 
-                        className="bg-white text-black hover:bg-zinc-200 rounded-full text-[10px] uppercase font-black px-6"
+                        className="bg-white !text-zinc-950 hover:bg-zinc-100 rounded-full text-[10px] uppercase font-black px-6 shadow-sm flex-shrink-0"
                         onClick={() => {
                           const grid = document.getElementById('products-grid');
                           if (grid) {

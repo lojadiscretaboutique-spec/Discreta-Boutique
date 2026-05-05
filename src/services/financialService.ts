@@ -22,6 +22,7 @@ export interface FinancialTransaction {
   userId?: string;
   createdAt?: any;
   updatedAt?: any;
+  isManual?: boolean;
 }
 
 export const financialService = {
@@ -68,7 +69,11 @@ export const financialService = {
 
     // SYNC INTELIGENTE COM O CAIXA
     // Se o status for 'paid', registramos/atualizamos no caixa se houver um turno aberto
-    if (payload.status === 'paid') {
+    // REGRA: Somente lança no caixa se for lançamento manual ou estorno
+    const isEstorno = payload.description?.toLowerCase().includes('estorno');
+    const shouldSyncToCash = payload.isManual === true || isEstorno;
+
+    if (payload.status === 'paid' && shouldSyncToCash) {
         const session = await cashService.getCurrentSession();
         if (session) {
             // Procurar se já existe um lançamento de caixa para este financeiro

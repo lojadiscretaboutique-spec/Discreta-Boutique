@@ -132,7 +132,7 @@ export function AdminFinancial() {
     
     setSubmitting(true);
     try {
-      const payload = { ...form, userId: user?.uid };
+      const payload = { ...form, userId: user?.uid, isManual: true };
       if (payload.status === 'paid' && !payload.paymentDate) {
         payload.paymentDate = new Date().toISOString().split('T')[0];
       }
