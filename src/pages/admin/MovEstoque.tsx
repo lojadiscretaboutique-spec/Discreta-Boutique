@@ -9,6 +9,7 @@ import { format, subDays, startOfDay, isAfter } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Search, Plus, ArrowDownRight, ArrowUpRight, X, Filter } from 'lucide-react';
 import { InventoryTab } from './InventoryTab';
+import { getDateFromTimestamp, formatVariantName } from '../../lib/utils';
 import { cn } from '../../lib/utils';
 
 const REASONS = [
@@ -382,7 +383,7 @@ export function MovEstoque() {
                                                 <td className="px-6 py-4">
                                                     <p className="font-semibold text-white group-hover:text-slate-200 whitespace-normal break-words max-w-[300px]">
                                                         {m.productName}
-                                                        {m.variantName && <span className="text-emerald-700 ml-1.5 opacity-90 text-[13px] tracking-tight">/ {m.variantName}</span>}
+                                                        {m.variantName && <span className="text-emerald-700 ml-1.5 opacity-90 text-[13px] tracking-tight">/ {formatVariantName(m.variantName)}</span>}
                                                     </p>
                                                     <p className="text-xs text-slate-400 mt-0.5 font-mono">SKU: {m.sku}</p>
                                                 </td>
@@ -509,7 +510,7 @@ export function MovEstoque() {
                                             <option value="" disabled>{isLoadingVariants ? 'Carregando opções...' : 'Selecione a variação para movimentar o saldo...'}</option>
                                             {productVariants.map(v => (
                                                 <option key={v.id} value={v.id}>
-                                                    {v.name} &nbsp;&nbsp;(Saldo Constante: {v.stock} • SKU: {v.sku || 'N/A'})
+                                                    {formatVariantName(v.name)} &nbsp;&nbsp;(Saldo Constante: {v.stock} • SKU: {v.sku || 'N/A'})
                                                 </option>
                                             ))}
                                         </select>

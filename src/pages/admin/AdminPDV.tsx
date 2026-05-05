@@ -19,7 +19,7 @@ import { collection, query, where, getDocs, limit, addDoc, doc, updateDoc, getDo
 import { serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Button } from '../../components/ui/button';
-import { cn, formatCurrency, roundTo2 } from '../../lib/utils';
+import { cn, formatCurrency, roundTo2, formatVariantName } from '../../lib/utils';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
 import { Product, ProductVariant } from '../../services/productService';
@@ -1315,7 +1315,7 @@ export function AdminPDV() {
                   </div>
                   <div className="flex-1 flex flex-col justify-center min-w-0">
                     <h4 className="text-xs font-bold text-white truncate">{item.name}</h4>
-                    {item.variantName && <span className="text-[10px] text-red-500 font-bold uppercase">{item.variantName}</span>}
+                    {item.variantName && <span className="text-[10px] text-red-500 font-bold uppercase">{formatVariantName(item.variantName)}</span>}
                     <div className="mt-2 flex justify-between items-center">
                        <div className="flex items-center gap-3">
                          <button onClick={() => updateQty(idx, -1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-900/10 hover:bg-red-600 transition-colors"><Minus size={12} /></button>

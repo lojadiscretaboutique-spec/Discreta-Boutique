@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 interface StoreSettings {
@@ -21,7 +21,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     deliveryFee: 15,
     address: '',
     instagram: '',
-    logoUrl: '',
+    logoUrl: undefined,
     loading: true
   });
 
@@ -38,7 +38,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           deliveryFee: Number(data.deliveryFee || 15),
           address: data.address || '',
           instagram: data.instagram || '',
-          logoUrl: data.logoUrl || '',
+          logoUrl: data.logoUrl || undefined,
           loading: false
         });
       } else {

@@ -31,3 +31,15 @@ export function getDateFromTimestamp(timestamp: unknown): Date {
   if (typeof timestamp === 'string' || typeof timestamp === 'number') return new Date(timestamp);
   return new Date();
 }
+
+/**
+ * Extracts and cleans the variant name, removing product prefix if present.
+ * Example: "Product Name - Blue, M" -> "Blue, M"
+ */
+export function formatVariantName(name: string): string {
+  if (!name) return '';
+  if (name.includes(' - ')) {
+    return name.split(' - ').slice(1).join(' - ');
+  }
+  return name;
+}

@@ -7,7 +7,7 @@ import {
 import { purchaseService, Purchase, PurchaseItem } from '../../services/purchaseService';
 import { productService, Product, ProductVariant } from '../../services/productService';
 import { cashService } from '../../services/cashService';
-import { formatCurrency, cn } from '../../lib/utils';
+import { formatCurrency, cn, formatVariantName } from '../../lib/utils';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -625,7 +625,7 @@ export function AdminPurchases() {
                    {variantsList.map(v => (
                      <div key={v.id} className="flex justify-between items-center p-3 border rounded-xl hover:bg-slate-800">
                        <div className="flex flex-col">
-                          <span className="font-bold text-sm">{v.name}</span>
+                          <span className="font-bold text-sm">{formatVariantName(v.name)}</span>
                           <span className="text-[10px] text-slate-400">
                              {v.sku && `SKU: ${v.sku}`} {v.barcode && `| Barras: ${v.barcode}`} | Est: {v.stock}
                           </span>

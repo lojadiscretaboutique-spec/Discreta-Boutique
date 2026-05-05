@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, where, limit, getCountFromServer } from 'firebase/firestore';
 import { serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { formatCurrency, cn } from '../../lib/utils';
+import { formatCurrency, cn, formatVariantName } from '../../lib/utils';
 import { format, isToday, startOfDay, startOfWeek, startOfMonth, startOfYear } from 'date-fns';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
@@ -664,11 +664,11 @@ export function AdminOrders() {
                initial={{ opacity: 0, scale: 0.9, y: 20 }}
                animate={{ opacity: 1, scale: 1, y: 0 }}
                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-               className="relative bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden"
+               className="relative bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
              >
-                <div className="h-2 bg-red-600"></div>
-                <div className="p-8">
-                   <div className="flex justify-between items-start mb-8">
+                <div className="h-2 bg-red-600 shrink-0"></div>
+                <div className="p-4 md:p-8 overflow-y-auto flex-1 custom-scrollbar">
+                   <div className="flex justify-between items-start mb-6 md:mb-8">
                      <div>
                        <h2 className="text-2xl font-black text-white uppercase italic tracking-tighter">Pedido #{selectedOrder.id.slice(-6).toUpperCase()}</h2>
                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
@@ -727,14 +727,22 @@ export function AdminOrders() {
 
                    <section className="mb-8">
                       <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-[3px] mb-4">Itens do Pedido</h3>
-                      <div className="bg-slate-800 rounded-2xl p-4 space-y-2">
+                      <div className="bg-slate-800 rounded-2xl p-4 space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
                         {selectedOrder.items.map((item, i) => (
-                           <div key={i} className="flex justify-between items-center text-sm py-2 border-b border-slate-700 last:border-0">
+                           <div key={i} className="flex justify-between items-start md:items-center text-sm py-2 border-b border-slate-700 last:border-0 gap-4">
                               <div className="flex items-center gap-3">
-                                 <span className="w-8 h-8 flex items-center justify-center bg-slate-900 border border-slate-700 rounded-lg text-xs font-black text-red-600">{item.quantity}x</span>
-                                 <span className="font-bold text-slate-200 uppercase">{item.name}</span>
+                                 <span className="w-8 h-8 shrink-0 flex items-center justify-center bg-slate-900 border border-slate-700 rounded-lg text-xs font-black text-red-600">{item.quantity}x</span>
+                                 <div className="flex flex-col">
+                                   <span className="font-bold text-slate-200 uppercase leading-tight">{item.name}</span>
+                                   {item.variantId && (
+                                     <span className="text-[10px] text-red-600 font-bold uppercase">
+                                       {formatVariantName(item.name)}
+                                     </span>
+                                   )}
+                                   {item.sku && <span className="text-[10px] text-slate-500 font-mono tracking-tighter">{item.sku}</span>}
+                                 </div>
                               </div>
-                              <span className="font-bold text-white">{formatCurrency(item.price * item.quantity)}</span>
+                              <span className="font-bold text-white shrink-0">{formatCurrency(item.price * item.quantity)}</span>
                            </div>
                         ))}
                       </div>

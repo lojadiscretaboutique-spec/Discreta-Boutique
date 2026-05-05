@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useCartStore } from '../../store/cartStore';
 import { useCustomerAuthStore } from '../../store/customerAuthStore';
-import { formatCurrency, cn, roundTo2 } from '../../lib/utils';
+import { formatCurrency, cn, roundTo2, formatVariantName } from '../../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
 import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles, Search } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -775,7 +775,7 @@ export function CartPage() {
                           </div>
                           <div className="flex-1">
                             <h3 className="font-bold text-lg text-zinc-100 uppercase tracking-tight">{item.name}</h3>
-                            {item.variantName && <p className="text-xs font-bold text-red-500 uppercase tracking-widest mt-1">{item.variantName}</p>}
+                            {item.variantName && <p className="text-xs font-bold text-red-500 uppercase tracking-widest mt-1">{formatVariantName(item.variantName)}</p>}
                             <div className="font-black text-xl text-white mt-1">{formatCurrency(item.price)}</div>
                           </div>
                           <div className="flex items-center gap-4 bg-zinc-950 p-1.5 rounded-full border border-zinc-800 w-max">

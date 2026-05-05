@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCartStore } from '../../store/cartStore';
-import { formatCurrency, cn } from '../../lib/utils';
+import { formatCurrency, cn, formatVariantName } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { ArrowLeft, Check, ShoppingBag, Package, Zap } from 'lucide-react';
 import { Product, ProductVariant, productService } from '../../services/productService';
@@ -232,7 +232,7 @@ export function ProductPage() {
                           product.controlStock && !product.allowBackorder && v.stock <= 0 && "opacity-50 grayscale cursor-not-allowed"
                         )}
                       >
-                        {v.name}
+                        {formatVariantName(v.name)}
                       </button>
                     ))}
                   </div>
