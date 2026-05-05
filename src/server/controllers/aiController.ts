@@ -273,11 +273,56 @@ export const suggestCartComplements = async (req: Request, res: Response) => {
   }
 };
 
+export const suggestRelatedProducts = async (req: Request, res: Response) => {
+  try {
+    const { productId } = req.body;
+    if (!productId) return res.status(400).json({ error: 'ID do produto não informado' });
+
+    // 1. Buscar o produto alvo e o catálogo
+    const productsRef = collection(db, 'products');
+    const [targetSnap, catalogSnap] = await Promise.all([
+      getDocs(query(productsRef, where('__name__', '==', productId))),
+      getDocs(query(productsRef, where('active', '==', true), limit(200)))
+    ]);
+
+    if (targetSnap.empty) return res.status(404).json({ error: 'Produto não encontrado' });
+
+    const targetProduct = { id: targetSnap.docs[0].id, ...targetSnap.docs[0].data() };
+    const allProducts = catalogSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // 2. Chamar IA para seleção inteligente
+    const aiRecommendation = await aiService.suggestRelatedProducts(targetProduct, allProducts);
+
+    // 3. Cruzar IDs com objetos reais
+    const suggestedProducts = aiRecommendation.rankedIds
+      .map(id => allProducts.find(p => p.id === id))
+      .filter(p => !!p);
+
+    res.json({
+      mensagem: aiRecommendation.mensagem,
+      produtos: suggestedProducts.map(p => {
+        const mainImage = (p as any).images?.find((img: any) => img.isMain)?.url || (p as any).images?.[0]?.url || (p as any).imageUrl || (p as any).image || '';
+        return {
+          id: (p as any).id,
+          name: (p as any).name,
+          price: (p as any).price,
+          imageUrl: mainImage,
+          category: (p as any).categoryId || (p as any).category || ''
+        };
+      })
+    });
+  } catch (error: any) {
+    console.error('[SUGGEST_RELATED][ERROR]', error.message);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const aiController = {
   generateProduct,
   generateCategory,
   interpretSearch,
   trackClick,
   botConsult,
-  suggestCartComplements
+  suggestCartComplements,
+  suggestRelatedProducts
 };

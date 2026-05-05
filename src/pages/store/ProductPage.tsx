@@ -17,6 +17,10 @@ export function ProductPage() {
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [loading, setLoading] = useState(true);
   const [added, setAdded] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<{
+    produtos: any[];
+    mensagem: string;
+  } | null>(null);
   const addItem = useCartStore(s => s.addItem);
 
   useEffect(() => {
@@ -24,37 +28,37 @@ export function ProductPage() {
       if (!slug) return;
       try {
         const pSnap = await getDocs(query(collection(db, 'products'), where('seo.slug', '==', slug)));
+        let productData: Product | null = null;
+
         if (pSnap.empty) {
           const fallbackSnap = await getDocs(query(collection(db, 'products')));
           const found = fallbackSnap.docs.find(d => d.id === slug);
-          
-          if (!found) {
-            setProduct(null);
-            return;
-          }
-          
-          const fallbackData = { id: found.id, ...found.data() } as Product;
-          
-          // Track view
-          productService.trackInteraction(fallbackData.id!, 'view');
-          
-          setProduct(fallbackData);
-          
-          const vSnap = await getDocs(query(collection(db, `products/${found.id}/variants`)));
-          const vData = vSnap.docs.map(d => ({id: d.id, ...d.data()})) as ProductVariant[];
-          setVariants(vData);
-          if (vData.length > 0) {
-            setSelectedVariant(vData[0]);
+          if (found) {
+            productData = { id: found.id, ...found.data() } as Product;
           }
         } else {
-          const pData = { id: pSnap.docs[0].id, ...pSnap.docs[0].data() } as Product;
-          
-          // Track view
-          productService.trackInteraction(pData.id!, 'view');
-          
-          setProduct(pData);
+          productData = { id: pSnap.docs[0].id, ...pSnap.docs[0].data() } as Product;
+        }
 
-          const vSnap = await getDocs(query(collection(db, `products/${pData.id}/variants`)));
+        if (productData) {
+          productService.trackInteraction(productData.id!, 'view');
+          setProduct(productData);
+          
+          // Carregar Sugestões da IA
+          fetch('/api/ia/sugestao-produto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ productId: productData.id })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.produtos && data.produtos.length > 0) {
+              setAiSuggestions(data);
+            }
+          })
+          .catch(err => console.error('[AI_SUGGEST_FETCH_ERROR]', err));
+
+          const vSnap = await getDocs(query(collection(db, `products/${productData.id}/variants`)));
           const vData = vSnap.docs.map(d => ({id: d.id, ...d.data()})) as ProductVariant[];
           setVariants(vData);
           if (vData.length > 0) {
@@ -301,6 +305,55 @@ export function ProductPage() {
           </div>
         </div>
       </div>
+
+      {/* IA Suggestions Section */}
+      {aiSuggestions && aiSuggestions.produtos.length > 0 && (
+        <div className="bg-zinc-950/50 py-20 border-t border-zinc-900">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="flex flex-col mb-12">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="text-red-600 animate-pulse" size={16} />
+                <span className="text-xs font-black uppercase tracking-[4px] text-red-600">Discreta AI Curadoria</span>
+              </div>
+              <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic">
+                {aiSuggestions.mensagem}
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              {aiSuggestions.produtos.map((p, idx) => (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  key={p.id}
+                  onClick={() => {
+                    navigate(`/produto/${p.id}`);
+                    window.scrollTo(0, 0);
+                  }}
+                  className="group cursor-pointer"
+                >
+                  <div className="aspect-[3/4] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 mb-4 relative">
+                    <img 
+                      src={p.imageUrl} 
+                      alt={p.name} 
+                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 grayscale-[0.5] group-hover:grayscale-0"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-6">
+                      <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 px-4 rounded-full w-fit tracking-widest">
+                        Ver Detalhes
+                      </div>
+                    </div>
+                  </div>
+                  <h3 className="text-sm font-bold uppercase tracking-tight line-clamp-1 group-hover:text-red-500 transition-colors">{p.name}</h3>
+                  <p className="text-zinc-500 text-xs font-black uppercase tracking-widest mt-1">{formatCurrency(p.price)}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -245,6 +245,71 @@ class AIService {
     }
   }
 
+  async suggestRelatedProducts(targetProduct: any, products: any[]): Promise<{ 
+    rankedIds: string[], 
+    mensagem: string 
+  }> {
+    const compactTarget = {
+      id: targetProduct.id,
+      name: targetProduct.name,
+      cat: targetProduct.categoryId || targetProduct.category,
+      keys: targetProduct.palavras_chave || [],
+      desc: (targetProduct.description || targetProduct.shortDescription || "").substring(0, 200)
+    };
+
+    const candidates = products
+      .filter(p => p.id !== targetProduct.id)
+      .map(p => ({
+        id: p.id,
+        n: p.name,
+        c: p.categoryId || p.category,
+        k: p.palavras_chave || [],
+        d: (p.description || p.shortDescription || "").substring(0, 120),
+        t: { c: p.stats?.clicks || 0, v: p.stats?.purchases || 0 }
+      }));
+
+    const prompt = `
+      Como Consultora Especialista da Discreta Boutique, seu objetivo é sugerir produtos que COMPLEMENTEM ou sejam EXCELENTES ALTERNATIVAS ao produto que o cliente está vendo agora.
+
+      PRODUTO ATUAL:
+      ${JSON.stringify(compactTarget)}
+
+      CATÁLOGO DE CANDIDATOS (Dê preferência a itens que combinem com o estilo ou categoria do atual):
+      ${JSON.stringify(candidates.slice(0, 50))}
+
+      CRITÉRIOS DE SELEÇÃO:
+      1. Afinidade Semântica: Se é um vibrador de coelho, sugira outros vibradores premium ou géis estimulantes.
+      2. Cross-Selling: Sugira acessórios que melhorem a experiência (ex: lubrificantes para brinquedos).
+      3. Upselling/Popularidade: Itens com bons "Termômetros" (vendas v e cliques c) têm prioridade se forem relevantes.
+      4. Decida a quantidade ideal (entre 4 e 12 itens).
+
+      RETORNE APENAS JSON:
+      {
+        "rankedIds": ["id1", "id2", "..."],
+        "mensagem": "Uma frase elegante de convite (máx 80 caracteres) conectando o item atual com as sugestões"
+      }
+    `;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.2
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      return {
+        rankedIds: Array.isArray(parsed.rankedIds) ? parsed.rankedIds : [],
+        mensagem: parsed.mensagem || "Você também pode gostar destas escolhas exclusivas:"
+      };
+    } catch (error) {
+      console.error('[AI][SUGGEST_ERROR]', error);
+      return { rankedIds: [], mensagem: "Descubra mais opções exclusivas:" };
+    }
+  }
+
   async interpretSearch(query: string, retries = 1): Promise<z.infer<typeof SearchInterpretationSchema>> {
     // 1. Pré-processamento: normalizar, remover pontuação e frases de preenchimento
     const normalizedQuery = query
