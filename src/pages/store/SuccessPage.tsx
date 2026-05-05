@@ -50,7 +50,7 @@ export function SuccessPage() {
 
   const adminWhatsApp = "5588992340317";
   
-  let wpMessageBase = `Olá! Acabei de fazer um pedido no site.\n\n*Nº do Pedido:* #${orderId}`;
+  let wpMessageBase = `Olá! Acabei de fazer um pedido no site.\n\n*Nº do Pedido:* #${orderId.slice(-6).toUpperCase()}`;
   
   if (orderData) {
     wpMessageBase += `\n*Nome:* ${orderData.customerName || ''}`;
@@ -97,7 +97,7 @@ export function SuccessPage() {
         <div className="mb-10">
           <span className="text-[10px] font-black uppercase tracking-[5px] text-zinc-600 block mb-2">Protocolo do Desejo</span>
           <div className="text-2xl md:text-4xl font-black text-red-500 tracking-tight bg-black py-4 px-8 rounded-full border border-zinc-800 inline-block shadow-inner">
-            #{orderId}
+            #{orderId.slice(-6).toUpperCase()}
           </div>
         </div>
 

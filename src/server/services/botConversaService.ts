@@ -13,7 +13,7 @@ interface Pedido {
 
 function gerarMensagem(pedido: Pedido): string {
     const nome = pedido.nome;
-    const pid = pedido.id;
+    const pid = pedido.id ? pedido.id.slice(-6).toUpperCase() : '000000';
     // Normalize status to uppercase and replace spaces with underscores for easier comparison
     const status = (pedido.status || '').toUpperCase().replace(/\s+/g, '_');
 

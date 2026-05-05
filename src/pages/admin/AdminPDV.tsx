@@ -785,14 +785,8 @@ export function AdminPDV() {
 
       setLastOrderId(currentOrderId!);
       
-      // Trigger botconversa webhook
-      const webhookPayload = { pedido: { ...orderData, id: currentOrderId, status: orderData.status } };
-      fetch('/api/botconversa/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(webhookPayload)
-      }).catch(e => console.error("Erro ao enviar webhook:", e));
-
+      // Listener removes the need to manually trigger webhooks 
+      // thus preventing duplicated events.
       setStep('success');
       setCart([]);
       setSelectedCustomer(null);

@@ -32,12 +32,8 @@ async function startServer() {
         console.log("✅ ROTA DE PEDIDO CHAMADA");
         const orderData = req.body;
         
-        // Save to DB
+        // Save to DB (Listener will handle the webhook!)
         const docRef = await addDoc(collection(db, 'orders'), orderData);
-        const pedido = { id: docRef.id, ...orderData };
-        
-        // Trigger webhook
-        await sendWebhook(pedido);
         
         res.json({ success: true, orderId: docRef.id });
     } catch (error: any) {
@@ -320,7 +316,7 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    // setupOrderListener(); // Disabled as per refactoring request
+    setupOrderListener();
   });
 }
 

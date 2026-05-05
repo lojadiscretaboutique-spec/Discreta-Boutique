@@ -292,13 +292,6 @@ export function AdminOrders() {
         updatedAt: serverTimestamp()
       });
 
-      // Trigger botconversa webhook
-      await fetch('/api/botconversa/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pedido: { ...order, status: newStatus } })
-      }).catch(e => console.error("Erro ao enviar webhook de status:", e));
-
       if (newStatus === 'ENTREGUE') {
         await stockMovementService.realizeMovementsByOrderId(id);
       }

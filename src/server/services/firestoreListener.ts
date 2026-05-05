@@ -1,13 +1,12 @@
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { sendOrderEvent } from './botConversaService';
+import { sendWebhook } from './botConversaService';
 
 export function setupOrderListener() {
     console.log("[FirestoreListener] Iniciando listener de pedidos...");
     const q = query(collection(db, 'orders'));
     
     onSnapshot(q, (snapshot) => {
-        console.log(`[FirestoreListener] Snapshot recebido com ${snapshot.size} documentos.`);
         snapshot.docChanges().forEach(async (change) => {
             const orderData = change.doc.data();
             const order = { 
@@ -17,23 +16,41 @@ export function setupOrderListener() {
                 ...orderData 
             } as any;
             
-            console.log(`📍 EVENTO DETECTADO: ${change.type}`, order.id);
-
-            // Prevenir envio duplicado
-            if (orderData.last_status_sent === orderData.status) {
-                console.log(`[FirestoreListener] Pedido já processado com este status: ${order.id}`);
-                return;
-            }
-
-            // Apenas pedidos online
-            if (orderData.type !== 'online') {
-              console.log(`[FirestoreListener] Ignorando pedido por tipo: ${orderData.type}`);
-              return;
-            }
-
             if (change.type === 'added' || change.type === 'modified') {
-                console.log(`[FirestoreListener] Processando evento de pedido: ${order.id}`);
-                await sendOrderEvent(order);
+                // Notificar sobre todos os pedidos (mantendo funcionamento para loja online e PDV caso tenham whatsapp)
+                // Se não houver telefone no payload do webhook lá na frente ele rejeita suavemente
+
+                // Prevent duplicate submission by verifying last sent
+                if (orderData.last_status_sent === orderData.status) {
+                    return;
+                }
+
+                // If added, ignore old orders to avoid flooding when the server restarts
+                if (change.type === 'added') {
+                    const createdAtString = orderData.createdAt;
+                    if (createdAtString) {
+                        const createdAt = new Date(createdAtString).getTime();
+                        const now = new Date().getTime();
+                        if (now - createdAt > 1000 * 60 * 5) { // Older than 5 minutes
+                            // Mark as sent silently without triggering webhook
+                            await updateDoc(doc(db, 'orders', order.id), {
+                                last_status_sent: orderData.status
+                            });
+                            return;
+                        }
+                    }
+                }
+
+                console.log(`[FirestoreListener] Processando evento de pedido para botconversa: ${order.id}`);
+                try {
+                   await sendWebhook(order);
+                   // Marca no firestore que a notificação teste status foi enviada!
+                   await updateDoc(doc(db, 'orders', order.id), {
+                       last_status_sent: orderData.status
+                   });
+                } catch(e) {
+                   console.error("Erro ao notificar no listener", e);
+                }
             }
         });
     });
