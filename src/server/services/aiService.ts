@@ -8,7 +8,9 @@ const ProductContentSchema = z.object({
   descricao_longa: z.string(),
   meta_title: z.string().max(100),
   meta_description: z.string().max(200),
-  palavras_chave: z.array(z.string())
+  palavras_chave: z.array(z.string()),
+  sinonimos: z.array(z.string()).optional(),
+  termos_busca: z.array(z.string()).optional()
 });
 
 const SearchInterpretationSchema = z.object({
@@ -105,25 +107,30 @@ class AIService {
     if (cached) return cached;
 
     const prompt = `
-      Você é um copywriter sênior especializado em e-commerce de luxo e boutiques eróticas premium como a Discreta Boutique.
-      Sua missão é criar um conteúdo ENCANTADOR, PERSUASIVO e REALISTA que transforme visitantes em clientes.
+      Você é o copywriter sênior e estrategista de SEO número 1 do Brasil, especializado em e-commerce de luxo e boutiques eróticas premium como a Discreta Boutique.
+      Sua missão é criar o conteúdo mais COMPLETO, SEDUTOR e PERSUASIVO possível para o seguinte produto:
       
       Produto: "${nome}"
       Categoria: "${categoria}"
       
-      DIRETRIZES DE ESTILO:
-      - Tom de voz: Elegante, sensual (sem ser vulgar), sofisticado e acolhedor.
-      - Foco: Desperte o desejo através de benefícios sensoriais e emocionais.
-      - Vocabulário: Use termos como "toque aveludado", "momentos inesquecíveis", "design anatômico", "elegância discreta", "experiência única".
-      - Proibição: NUNCA use termos vulgares, explícitos, gírias de baixo calão ou descrições pornográficas.
+      A Discreta Boutique não vende apenas objetos; ela vende experiências, autoconhecimento, prazer e elegância. 
+      O conteúdo deve ser impecável, profissional e despertar desejo imediato.
+
+      DIRETRIZES TÉCNICAS E DE ESTILO:
+      - Tom de voz: Luxuoso, empoderado, sensual (sem jamais ser vulgar), seguro e sofisticado.
+      - Foco em Benefícios: Não foque apenas nas funções; foque em como o usuário se sentirá ao usar.
+      - Descrição Longa Primorosa: Use uma linguagem rica. Fale sobre texturas, sensações, som (discreto), facilidade de higienização e segurança dos materiais (silicone grau médico, livre de ftalatos, etc).
+      - SEO Master: Crie conteúdo que rankeie no Google mas que seja delicioso de ler.
       
-      INSTRUÇÕES PARA OS CAMPOS:
-      1. titulo (Chamada Curta): Uma frase de impacto que resume a promessa do produto (ex: "O segredo para noites de puro requinte").
-      2. descricao_curta: Um parágrafo envolvente que destaca o principal diferencial.
-      3. descricao_longa: Texto completo e estruturado. Comece com uma introdução sedutora. Liste os benefícios e diferenciais usando bullet points (•). Finalize com uma frase de fechamento que convide à ação/experiência.
-      4. meta_title: Título otimizado para Google. Deve conter o nome do produto e um benefício (máx 60 caracteres).
-      5. meta_description: Texto persuasivo para buscas no Google. Inclua uma chamada para ação e mencione "Entrega Discreta" (máx 155 caracteres).
-      6. palavras_chave: 5 a 8 termos técnicos e de busca relacionados ao produto.
+      ESTRUTURA DO JSON (Obrigatório):
+      1. titulo: Uma "Headline" hipnótica (ex: "O Despertar do Prazer em sua Forma Mais Pura").
+      2. descricao_curta: Um resumo "matador" de 2 a 3 frases que resume a essência do produto.
+      3. descricao_longa: Um texto extenso e estruturado. Use <p> para parágrafos e <ul>/<li> para benefícios. Inclua uma seção "Por que você vai amar:" e outra "Especificações premium:".
+      4. meta_title: Máximo 60 caracteres. Foco em cliques.
+      5. meta_description: Máximo 155 caracteres. Deve conter uma promessa forte e "Entrega Segura e 100% Discreta".
+      6. palavras_chave: 10 a 15 termos SEO de alta relevância (técnicos e de desejo).
+      7. sinonimos: 5 a 10 termos alternativos para busca interna (incluso nomes populares e variações).
+      8. termos_busca: Frases que os clientes digitariam no Google para achar este produto específico.
 
       IMPORTANTE: A resposta deve ser estritamente um objeto JSON válido.
     `;
@@ -132,8 +139,12 @@ class AIService {
       const client = this.getClient();
       const response = await client.chat.completions.create({
         model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { role: 'system', content: 'Você é um assistente de IA especialista em e-commerce erótico de luxo. Suas descrições são poéticas, seguras e convertem em vendas.' },
+          { role: 'user', content: prompt }
+        ],
         response_format: { type: 'json_object' },
+        temperature: 0.7,
       });
 
       const rawContent = response.choices[0].message.content || '{}';
@@ -506,24 +517,37 @@ class AIService {
 
   async enrichProduct(title: string, description: string): Promise<{keywords: string[], synonyms: string[], searchTerms: string[]}> {
     const prompt = `
-      Você é um especialista em SEO e e-commerce sênior para uma boutique erótica premium (Discreta Boutique).
-      Com base no título e descrição do produto abaixo, gere:
-      1. keywords: Palavras-chave relevantes (termos técnicos e de nicho).
-      2. synonyms: Sinônimos naturais (incluindo termos mais discretos e variações de linguagem).
-      3. searchTerms: Termos de busca populares que usuários usariam para encontrar este produto.
-
+      Você é o maior especialista em SEO e Inteligência de busca para o segmento Adulto Premium da América Latina.
+      Analise o produto "${title}" e sua descrição para gerar inteligência de busca.
+      
       PRODUTO: "${title}"
       DESCRIÇÃO: "${description}"
+
+      REGRAS PARA CADA CAMPO:
+      1. keywords: Termos de cauda curta e longa altamente relevantes. Inclua o nome da categoria provável.
+      2. synonyms: Como pessoas de diferentes perfis chamariam este produto? (Incluso termos formais, casuais e discretos).
+      3. searchTerms: Pense na dor ou desejo do cliente (Ex: "como apimentar a relação", "vibrador silencioso", "algema que não machuca").
+
+      Gere uma lista rica e exaustiva para cada campo.
       
-      Retorne estritamente um objeto JSON.
+      Retorne estritamente um objeto JSON:
+      {
+        "keywords": ["..."],
+        "synonyms": ["..."],
+        "searchTerms": ["..."]
+      }
     `;
 
     try {
       const client = this.getClient();
       const response = await client.chat.completions.create({
         model: 'gpt-4o-mini',
-        messages: [{ role: 'system', content: 'Você é um assistente especializado em SEO para e-commerce erótico premium.' }, { role: 'user', content: prompt }],
+        messages: [
+          { role: 'system', content: 'Você é um estrategista de SEO sênior focado em busca semântica para e-commerce premium.' },
+          { role: 'user', content: prompt }
+        ],
         response_format: { type: 'json_object' },
+        temperature: 0.5
       });
 
       const parsed = JSON.parse(response.choices[0].message.content || '{}');

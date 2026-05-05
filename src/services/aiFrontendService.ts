@@ -5,6 +5,8 @@ export interface GeneratedProductContent {
   meta_title: string;
   meta_description: string;
   palavras_chave: string[];
+  sinonimos?: string[];
+  termos_busca?: string[];
 }
 
 export interface GeneratedCategoryContent {

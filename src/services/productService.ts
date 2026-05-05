@@ -301,7 +301,8 @@ export const productService = {
         'price', 'costPrice', 'promoPrice', 'sku', 'gtin', 'unit',
         'stock', 'minStock', 'controlStock', 'allowBackorder',
         'hasVariants', 'images', 'fashion', 'cosmetics', 'delivery',
-        'seo', 'extras', 'searchTerms', 'variantIdentifiers'
+        'seo', 'extras', 'searchTerms', 'variantIdentifiers',
+        'ai_keywords', 'ai_synonyms', 'embedding'
       ];
 
       allowedFields.forEach(field => {

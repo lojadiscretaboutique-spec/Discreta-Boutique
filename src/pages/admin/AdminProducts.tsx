@@ -131,7 +131,21 @@ export function AdminProducts() {
       const enrichment = await aiFrontendService.enrichProduct(form.name, data.descricao_longa || form.fullDescription || '');
 
       // 3. Generate Embedding
-      const embeddingText = `${form.name} ${data.descricao_curta} ${enrichment.keywords.join(' ')} ${enrichment.synonyms.join(' ')}`;
+      // Use the most complete text possible for better semantic search
+      const combinedKeywords = [...new Set([...(data.palavras_chave || []), ...(enrichment.keywords || [])])];
+      const combinedSynonyms = [...new Set([...(data.sinonimos || []), ...(enrichment.synonyms || [])])];
+      const combinedSearchTerms = [...new Set([...(data.termos_busca || []), ...(enrichment.searchTerms || [])])];
+
+      const embeddingText = `
+        ${form.name} 
+        ${data.titulo} 
+        ${data.descricao_curta} 
+        ${data.descricao_longa.replace(/<[^>]*>/g, '')} 
+        ${combinedKeywords.join(' ')} 
+        ${combinedSynonyms.join(' ')} 
+        ${combinedSearchTerms.join(' ')}
+      `.trim();
+      
       const embedding = await aiFrontendService.generateEmbedding(embeddingText);
 
       setForm(prev => ({
@@ -139,14 +153,15 @@ export function AdminProducts() {
         subtitle: data.titulo || prev.subtitle,
         shortDescription: data.descricao_curta || prev.shortDescription,
         fullDescription: data.descricao_longa || prev.fullDescription,
-        ai_keywords: enrichment.keywords,
-        ai_synonyms: enrichment.synonyms,
+        ai_keywords: combinedKeywords,
+        ai_synonyms: combinedSynonyms,
+        searchTerms: combinedSearchTerms,
         embedding: embedding,
         seo: {
           ...prev.seo!,
           metaTitle: data.meta_title || prev.seo?.metaTitle,
           metaDescription: data.meta_description || prev.seo?.metaDescription,
-          keywords: (data.palavras_chave && data.palavras_chave.length > 0) ? data.palavras_chave : enrichment.keywords
+          keywords: combinedKeywords.length > 0 ? combinedKeywords : prev.seo?.keywords
         }
       }));
 
@@ -191,17 +206,29 @@ export function AdminProducts() {
 
           // 2. Call OpenAI Service via Backend
           const data = await aiFrontendService.generateProductContent(product.name, catName);
+          const enrichment = await aiFrontendService.enrichProduct(product.name, data.descricao_longa || product.fullDescription || '');
+
+          const combinedKeywords = [...new Set([...(data.palavras_chave || []), ...(enrichment.keywords || [])])];
+          const combinedSynonyms = [...new Set([...(data.sinonimos || []), ...(enrichment.synonyms || [])])];
+          const combinedSearchTerms = [...new Set([...(data.termos_busca || []), ...(enrichment.searchTerms || [])])];
+
+          const embeddingText = `${product.name} ${data.titulo} ${data.descricao_curta} ${combinedKeywords.join(' ')} ${combinedSynonyms.join(' ')}`;
+          const embedding = await aiFrontendService.generateEmbedding(embeddingText);
 
           // 3. Update the product with new content
           const updatedProduct: Partial<Product> = {
             subtitle: data.titulo || product.subtitle,
             shortDescription: data.descricao_curta || product.shortDescription,
             fullDescription: data.descricao_longa || product.fullDescription,
+            ai_keywords: combinedKeywords,
+            ai_synonyms: combinedSynonyms,
+            searchTerms: combinedSearchTerms,
+            embedding: embedding,
             seo: {
               ...(product.seo || { slug: generateSlug(product.name), condition: 'new' as const }),
               metaTitle: data.meta_title || product.seo?.metaTitle,
               metaDescription: data.meta_description || product.seo?.metaDescription,
-              keywords: data.palavras_chave || product.seo?.keywords
+              keywords: combinedKeywords
             }
           };
 
