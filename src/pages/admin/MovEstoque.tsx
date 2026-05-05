@@ -103,7 +103,7 @@ export function MovEstoque() {
                     return [];
                 })
             ]);
-            setProducts(prodData.filter(p => p.active));
+            setProducts(prodData);
             setMovements(movData);
         } catch (err: any) {
             toast("Erro ao carregar dados do estoque: " + err.message, 'error');
@@ -249,6 +249,12 @@ export function MovEstoque() {
                 channel: fChannel,
                 notes: fNotes,
             });
+
+            // Auto-activate product if it was inactive and it's an entry
+            if (!prod.active && reasonObj.type === 'in') {
+                await productService.updateProduct(prod.id!, { active: true }, productVariants);
+                toast("Produto reativado automaticamente devido à entrada de saldo.");
+            }
 
             toast("Movimentação de estoque salva com sucesso!");
             
@@ -465,7 +471,9 @@ export function MovEstoque() {
                                                             setFProdSearch(''); 
                                                         }} className="px-4 py-2.5 hover:bg-slate-800 cursor-pointer flex justify-between items-center border-b border-slate-50 last:border-0">
                                                             <div className="min-w-0 pr-4">
-                                                                <p className="font-medium text-sm text-slate-100 truncate">{p.name}</p>
+                                                                <p className="font-medium text-sm text-slate-100 truncate">
+                                                                    {p.name} {!p.active && <span className="text-rose-500 font-bold ml-1 text-[10px] uppercase">(Inativo)</span>}
+                                                                </p>
                                                                 <p className="text-xs text-slate-400 font-mono mt-0.5">{p.sku}</p>
                                                             </div>
                                                             <div className="shrink-0 flex items-center gap-2">
