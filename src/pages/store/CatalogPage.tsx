@@ -144,6 +144,18 @@ export function CatalogPage() {
         } else {
           const pSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true)));
           prods = pSnap.docs.map(d => ({id: d.id, ...d.data()} as Product));
+          
+          await Promise.all(prods.filter(p => p.hasVariants).map(async (p) => {
+            try {
+              const vSnap = await getDocs(collection(db, `products/${p.id}/variants`));
+              let sumStock = 0;
+              vSnap.docs.forEach(d => {
+                 sumStock += (Number(d.data().stock) || 0);
+              });
+              p.stock = sumStock;
+            } catch (e) {}
+          }));
+
           sessionStorage.setItem('catalog_products', JSON.stringify(prods));
           sessionStorage.setItem('catalog_products_time', now.toString());
         }

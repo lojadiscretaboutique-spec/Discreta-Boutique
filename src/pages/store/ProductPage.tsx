@@ -62,7 +62,8 @@ export function ProductPage() {
           const vData = vSnap.docs.map(d => ({id: d.id, ...d.data()})) as ProductVariant[];
           setVariants(vData);
           if (vData.length > 0) {
-            setSelectedVariant(vData[0]);
+            const firstInStock = vData.find(v => v.stock > 0);
+            setSelectedVariant(firstInStock || vData[0]);
           }
         }
       } catch (error) {

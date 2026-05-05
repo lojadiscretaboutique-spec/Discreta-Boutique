@@ -273,6 +273,21 @@ export const productService = {
         updatedAt: serverTimestamp()
       };
 
+      if (product.hasVariants) {
+        let totalVariantStock = 0;
+        variants.forEach(v => {
+          totalVariantStock += (Number(v.stock) || 0);
+        });
+        pData.stock = totalVariantStock;
+      }
+
+      if (Array.isArray(pData.ai_keywords)) pData.ai_keywords = pData.ai_keywords.flat(Infinity);
+      if (Array.isArray(pData.ai_synonyms)) pData.ai_synonyms = pData.ai_synonyms.flat(Infinity);
+      if (Array.isArray(pData.searchTerms)) pData.searchTerms = pData.searchTerms.flat(Infinity);
+      if (Array.isArray(pData.variantIdentifiers)) pData.variantIdentifiers = pData.variantIdentifiers.flat(Infinity);
+      if (Array.isArray(pData.categoryIds)) pData.categoryIds = pData.categoryIds.flat(Infinity);
+      if (pData.seo && Array.isArray(pData.seo.keywords)) pData.seo.keywords = pData.seo.keywords.flat(Infinity);
+
       batch.set(productRef, pData);
 
       // Create variants in subcollection
@@ -307,12 +322,26 @@ export const productService = {
       ];
 
       allowedFields.forEach(field => {
-        const val = (product as any)[field];
+        let val = (product as any)[field];
         if (val !== undefined) {
+          if (Array.isArray(val) && field !== 'images' && field !== 'embedding') {
+            val = val.flat(Infinity);
+          }
+          if (field === 'seo' && val && Array.isArray(val.keywords)) {
+            val.keywords = val.keywords.flat(Infinity);
+          }
           updateData[field] = val;
         }
       });
 
+      if (updateData.hasVariants && variants) {
+        let totalVariantStock = 0;
+        variants.forEach(v => {
+          totalVariantStock += (Number(v.stock) || 0);
+        });
+        updateData.stock = totalVariantStock;
+      }
+      
       updateData.updatedAt = serverTimestamp();
 
       await updateDoc(productRef, updateData);

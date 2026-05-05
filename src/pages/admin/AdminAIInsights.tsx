@@ -114,7 +114,7 @@ export default function AdminAIInsights() {
             <Filter size={18} className="text-red-500" /> Categorias Mais Desejadas
           </h3>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <PieChart>
                 <Pie
                   data={pieData}

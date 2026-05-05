@@ -274,7 +274,7 @@ export function AdminDashboard() {
                </div>
                <div className="flex-1 h-[300px] w-full relative z-10">
                   {metrics.chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                       <AreaChart data={metrics.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <defs>
                           <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
@@ -316,7 +316,7 @@ export function AdminDashboard() {
                </div>
                <div className="flex-1 h-[200px] w-full mt-6 relative flex items-center justify-center z-10">
                   {pieData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                       <PieChart>
                         <Pie
                           data={pieData}

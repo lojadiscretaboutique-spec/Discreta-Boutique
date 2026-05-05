@@ -39,6 +39,21 @@ export function HomePage() {
 
       const pSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true)));
       const allActiveProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+
+      // Assegurar o estoque de produtos com variações para que os cálculos reflitam o estado real das filhas
+      await Promise.all(allActiveProducts.filter(p => p.hasVariants).map(async (p) => {
+        try {
+          const vSnap = await getDocs(collection(db, `products/${p.id}/variants`));
+          let sumStock = 0;
+          vSnap.docs.forEach(d => {
+             sumStock += (Number(d.data().stock) || 0);
+          });
+          p.stock = sumStock;
+        } catch (e) {
+          // ignore
+        }
+      }));
+
       const visibleProducts = allActiveProducts.filter(p => 
         p.images && p.images.length > 0 && 
         (!p.extras || p.extras.showInCatalog !== false) &&

@@ -174,6 +174,18 @@ export function AdminLayout() {
         </div>
         
         <div className="flex justify-end gap-2 sm:gap-4 items-center">
+          {/* User Info */}
+          {user && (
+             <div className="flex items-center gap-2 mr-2">
+                <span className={cn("text-xs font-semibold hidden md:block", theme === 'dark' ? "text-slate-300" : "text-slate-600")}>
+                    {userData?.name || user.email}
+                </span>
+                <div className="w-8 h-8 rounded-full bg-red-600/20 text-red-600 flex items-center justify-center font-bold text-xs uppercase border border-red-600/30">
+                    {(userData?.name || user.email || 'A').charAt(0)}
+                </div>
+             </div>
+          )}
+
           {/* Theme Toggle */}
           <button 
             onClick={toggleTheme}
@@ -246,18 +258,18 @@ export function AdminLayout() {
                     };
 
                     return (
-                        <div key={item.name} className="flex flex-col mb-1 group">
+                        <div key={item.name} className="flex flex-col mb-1 group/menu">
                             <button 
                                 onClick={toggleMenu}
                                 className={cn(
                                 "flex justify-between items-center px-3 py-2.5 rounded-lg transition-all text-[13px] font-semibold tracking-wide whitespace-nowrap",
                                 isSubActive 
-                                  ? (theme === 'dark' ? "bg-slate-800/80 text-white" : "bg-slate-100 text-slate-900") 
-                                  : (theme === 'dark' ? "hover:bg-slate-800/50 text-slate-400 hover:text-white" : "hover:bg-slate-50 text-slate-800 hover:text-slate-900")
+                                  ? (theme === 'dark' ? "bg-slate-800 text-white" : "bg-slate-200 text-slate-900") 
+                                  : (theme === 'dark' ? "hover:bg-slate-800 text-slate-400 hover:text-white" : "hover:bg-slate-100 text-slate-700 hover:text-slate-900")
                                 )}
                             >
                                 <div className="flex items-center gap-3">
-                                    <Icon size={18} className={isSubActive ? "text-red-500" : (theme === 'dark' ? "text-slate-400 group-hover:text-red-400" : "text-slate-400 group-hover:text-red-500")} />
+                                    <Icon size={18} className={isSubActive ? "text-red-500" : (theme === 'dark' ? "text-slate-400 group-hover/menu:text-red-400" : "text-slate-400 group-hover/menu:text-red-500")} />
                                     <span>{item.name}</span>
                                 </div>
                                 <span className={cn("text-xs transition-transform duration-200", isOpen && "rotate-180")}>▼</span>
@@ -284,8 +296,8 @@ export function AdminLayout() {
                                                 className={cn(
                                                     "flex items-center px-3 py-2 rounded-md transition-all text-xs font-semibold tracking-wide whitespace-nowrap",
                                                     subActive 
-                                                    ? "bg-red-600/10 text-red-600 font-bold" 
-                                                    : (theme === 'dark' ? "text-slate-400 hover:bg-slate-800/30 hover:text-slate-300" : "text-slate-700 hover:bg-slate-50 hover:text-slate-900")
+                                                    ? (theme === 'dark' ? "bg-red-500/20 text-red-400 font-bold" : "bg-red-100 text-red-700 font-bold") 
+                                                    : (theme === 'dark' ? "text-slate-400 hover:bg-slate-800 hover:text-slate-300" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900")
                                                 )}
                                             >
                                                 {sub.name}
@@ -305,13 +317,13 @@ export function AdminLayout() {
                     key={item.path}
                     to={item.path}
                     className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-[13px] font-semibold tracking-wide whitespace-nowrap mb-1 group",
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-[13px] font-semibold tracking-wide whitespace-nowrap mb-1 group/menu",
                     isActive 
-                        ? "bg-red-600 text-white shadow-lg shadow-red-900/20" 
-                        : (theme === 'dark' ? "hover:bg-slate-800/50 text-slate-400 hover:text-white" : "hover:bg-slate-50 text-slate-700 hover:text-slate-900")
+                        ? "bg-red-600 text-white shadow-md shadow-red-500/20" 
+                        : (theme === 'dark' ? "hover:bg-slate-800 text-slate-400 hover:text-white" : "hover:bg-slate-100 text-slate-700 hover:text-slate-900")
                     )}
                 >
-                    <Icon size={18} className={isActive ? "text-white" : (theme === 'dark' ? "text-slate-400 group-hover:text-red-400" : "text-slate-400 group-hover:text-red-500")} />
+                    <Icon size={18} className={isActive ? "text-white" : (theme === 'dark' ? "text-slate-400 group-hover/menu:text-red-400" : "text-slate-400 group-hover/menu:text-red-500")} />
                     <span>{item.name}</span>
                 </Link>
                 )

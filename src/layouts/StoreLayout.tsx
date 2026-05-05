@@ -1,9 +1,10 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { ShoppingBag, Search, Menu, X } from 'lucide-react';
+import { ShoppingBag, Search, Menu, X, LayoutDashboard } from 'lucide-react';
 import { useCartStore } from '../store/cartStore';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { categoryService, Category } from '../services/categoryService';
+import { useAuthStore } from '../store/authStore';
 
 export function StoreLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -11,6 +12,7 @@ export function StoreLayout() {
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
   
   const [categories, setCategories] = useState<Category[]>([]);
+  const { user } = useAuthStore();
 
   const location = useLocation();
 
@@ -32,7 +34,7 @@ export function StoreLayout() {
   }, [location.pathname]);
 
   return (
-    <div className="dark min-h-screen bg-black text-white flex flex-col font-sans">
+    <div className="dark min-h-screen bg-black text-white flex flex-col font-sans relative">
       {/* Header */}
       <header className="bg-black/80 backdrop-blur-md text-white fixed top-0 w-full z-50 border-b border-zinc-900">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between relative">
@@ -102,6 +104,17 @@ export function StoreLayout() {
       <main className="flex-1 flex flex-col pt-16">
         <Outlet />
       </main>
+
+      {/* Floating Admin Button */}
+      {user && (
+        <Link 
+          to="/admin" 
+          className="fixed bottom-6 right-6 z-50 bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-full font-black uppercase tracking-widest text-xs flex items-center gap-2 shadow-[0_0_20px_rgba(220,38,38,0.4)] transition-all hover:scale-105"
+        >
+          <LayoutDashboard size={16} />
+          Painel Admin
+        </Link>
+      )}
 
       {/* Footer */}
       {!['/carrinho', '/sucesso'].includes(location.pathname) && (

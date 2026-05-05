@@ -92,6 +92,19 @@ export const stockMovementService = {
 
       await updateDoc(targetRef, updatePayload);
 
+      // Sincronizar o estoque do pai se for uma entrada/saída de variação
+      if (data.variantId) {
+        try {
+          const parentInc = data.type === 'in' ? data.quantity : -data.quantity;
+          await updateDoc(doc(db, 'products', data.productId), {
+            stock: increment(parentInc),
+            updatedAt: serverTimestamp()
+          });
+        } catch (e) {
+          console.warn("Não foi possível atualizar o estoque total do produto pai:", e);
+        }
+      }
+
       // 5. Audit Log
       await auditLogService.logAction('Registrar', 'stock_movement', data.productId, { 
         qty: data.quantity, 

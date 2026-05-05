@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { z } from 'zod';
 
 
@@ -41,7 +41,7 @@ const CategoryContentSchema = z.object({
 });
 
 class AIService {
-  private openai: OpenAI | null = null;
+  private aiInfo: GoogleGenAI | null = null;
   private cache = new Map<string, { data: any; expiry: number }>();
   private CACHE_TTL = 3600000; // 1 hora
   private categoriesCache: { data: string[], expiry: number } = { data: [], expiry: 0 };
@@ -68,15 +68,16 @@ class AIService {
   }
 
   private getClient() {
-    if (!this.openai) {
-      const apiKey = process.env.OPENAI_API_KEY;
+    if (!this.aiInfo) {
+      const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY; // fallback if they defined OPENAI_API_KEY and we migrated
       if (!apiKey) {
-        throw new Error('OPENAI_API_KEY não configurada no servidor.');
+        throw new Error('GEMINI_API_KEY não configurada no servidor.');
       }
-      this.openai = new OpenAI({ apiKey });
+      this.aiInfo = new GoogleGenAI({ apiKey });
     }
-    return this.openai;
+    return this.aiInfo;
   }
+
 
   private getFromCache(key: string) {
     const cached = this.cache.get(key);
@@ -141,17 +142,17 @@ class AIService {
 
     try {
       const client = this.getClient();
-      const response = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'Você é um assistente de IA especialista em e-commerce erótico de luxo. Suas descrições são poéticas, seguras e convertem em vendas.' },
-          { role: 'user', content: prompt }
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.7,
+      const response = await client.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt,
+        config: {
+          systemInstruction: 'Você é um assistente de IA especialista em e-commerce erótico de luxo. Suas descrições são poéticas, seguras e convertem em vendas.',
+          responseMimeType: 'application/json',
+          temperature: 0.7
+        }
       });
 
-      const rawContent = response.choices[0].message.content || '{}';
+      const rawContent = response.text || '{}';
       let parsed;
       try {
         parsed = JSON.parse(rawContent);
@@ -240,14 +241,13 @@ class AIService {
 
     try {
       const client = this.getClient();
-      const response = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        temperature: 0.1
+      const response = await client.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt,
+        config: { responseMimeType: 'application/json', temperature: 0.1 }
       });
 
-      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      const parsed = JSON.parse(response.text || '{}');
       return {
         rankedIds: Array.isArray(parsed.rankedIds) ? parsed.rankedIds : [],
         mensagem: parsed.mensagem || "Selecionamos os itens perfeitos para seu desejo.",
@@ -307,14 +307,13 @@ class AIService {
 
     try {
       const client = this.getClient();
-      const response = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        temperature: 0.2
+      const response = await client.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt,
+        config: { responseMimeType: 'application/json', temperature: 0.2 }
       });
 
-      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      const parsed = JSON.parse(response.text || '{}');
       return {
         rankedIds: Array.isArray(parsed.rankedIds) ? parsed.rankedIds : [],
         mensagem: parsed.mensagem || "Você também pode gostar destas escolhas exclusivas:"
@@ -378,15 +377,13 @@ class AIService {
     `;
     try {
       const client = this.getClient();
-      const response = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        max_tokens: 300,
-        temperature: 0.3
+      const response = await client.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt,
+        config: { responseMimeType: 'application/json', temperature: 0.3 }
       });
 
-      const rawContent = response.choices[0].message.content || '{}';
+      const rawContent = response.text || '{}';
       const parsed = JSON.parse(rawContent);
 
       // Normalização preventiva
@@ -461,15 +458,13 @@ class AIService {
 
     try {
       const client = this.getClient();
-      const response = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        temperature: 0.8, // Aumentado para mais variedade nas sugestões
-        max_tokens: 250
+      const response = await client.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt,
+        config: { responseMimeType: 'application/json', temperature: 0.8 }
       });
 
-      const rawContent = response.choices[0].message.content || '{}';
+      const rawContent = response.text || '{}';
       let parsed;
       try {
         parsed = JSON.parse(rawContent);
@@ -508,11 +503,11 @@ class AIService {
   async generateEmbedding(text: string): Promise<number[]> {
     try {
       const client = this.getClient();
-      const response = await client.embeddings.create({
-        model: 'text-embedding-3-small',
-        input: text,
+      const response = await client.models.embedContent({
+        model: 'gemini-embedding-2-preview',
+        contents: text,
       });
-      return response.data[0].embedding;
+      return response.embeddings?.[0]?.values || [];
     } catch (error) {
       console.error('[AI][EMBEDDING_ERROR]', error);
       return [];
@@ -544,17 +539,17 @@ class AIService {
 
     try {
       const client = this.getClient();
-      const response = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'Você é um estrategista de SEO sênior focado em busca semântica para e-commerce premium.' },
-          { role: 'user', content: prompt }
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.5
+      const response = await client.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt,
+        config: {
+          systemInstruction: 'Você é um estrategista de SEO sênior focado em busca semântica para e-commerce premium.',
+          responseMimeType: 'application/json',
+          temperature: 0.5
+        }
       });
 
-      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      const parsed = JSON.parse(response.text || '{}');
       return {
         keywords: this.normalizeArray(parsed.keywords),
         synonyms: this.normalizeArray(parsed.synonyms),
@@ -596,13 +591,13 @@ class AIService {
 
     try {
       const client = this.getClient();
-      const response = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
+      const response = await client.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt,
+        config: { responseMimeType: 'application/json', temperature: 0.7 }
       });
 
-      const rawContent = response.choices[0].message.content || '{}';
+      const rawContent = response.text || '{}';
       let parsed;
       try {
         parsed = JSON.parse(rawContent);
