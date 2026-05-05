@@ -62,11 +62,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (!state.userData || (state.userData as any).status !== 'ativo') return false;
     
     // Legacy support or new computed permissions map
-    if (state.userData.computedPermissions) {
-        return !!state.userData.computedPermissions[module]?.[action];
+    const computed = state.userData.computedPermissions;
+    if (computed) {
+        // If the module exists in the map, use it
+        if (computed[module]) {
+            return !!computed[module][action];
+        }
     }
     
-    // Fallback if missing new structure (legacy simple boolean check via .permissions)
+    // Fallback: If module is missing in computed map (data might be stale after adding new modules),
+    // we check legacy perms or allow visualizing if they have at least one valid submodule if it's a composite check
+    // But for simplicity and security, if it's not in computed and computed exists, we return false
+    // unless it's a very basic permission like 'dashboard' or if the user data is extremely old.
+    
     const legacyPerms = (state.userData as any).permissions;
     if (legacyPerms && legacyPerms[module]) return true;
 

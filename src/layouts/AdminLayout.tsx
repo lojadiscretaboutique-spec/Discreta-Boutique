@@ -8,7 +8,7 @@ import { cn } from '../lib/utils';
 import { useEffect, useState } from 'react';
 
 export function AdminLayout() {
-  const { user, isAdmin, isLoading, checkAuth, hasPermission } = useAuthStore();
+  const { user, userData, isAdmin, isLoading, checkAuth, hasPermission } = useAuthStore();
   const settings = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
@@ -71,6 +71,14 @@ export function AdminLayout() {
         }
 
         if (!isAdmin && !hasPermission(permissionNeeded, 'visualizar')) {
+          // If no dashboard permission, try to find another one
+          if (currentPath === '/admin' || currentPath === '/admin/') {
+             const firstAllowed = menu.find(m => hasPermission(m.permission, 'visualizar'));
+             if (firstAllowed) {
+                navigate(firstAllowed.path);
+                return;
+             }
+          }
           navigate('/admin');
         }
       }
@@ -97,7 +105,13 @@ export function AdminLayout() {
       <p className="text-sm font-bold tracking-widest uppercase opacity-50">Autenticando...</p>
     </div>
   );
-  if (!user || (!isAdmin && !hasPermission('dashboard'))) return null;
+  if (!user) return null;
+  
+  // Basic check: if not admin, must have at least one permission to see admin layout
+  const permissions = (userData as any)?.computedPermissions || {};
+  const hasAnyPermission = isAdmin || Object.keys(permissions).some(k => hasPermission(k, 'visualizar'));
+  
+  if (!hasAnyPermission) return null;
 
   const menu = [
     { name: 'Dashboard', path: '/admin', icon: LayoutDashboard, permission: 'dashboard' },
