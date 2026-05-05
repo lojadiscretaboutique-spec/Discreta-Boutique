@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { collection, getDocs, orderBy, query, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { aiFrontendService } from '../../services/aiFrontendService';
 import { 
   Plus, Edit2, Trash2, X, Upload, Save, ArrowLeft, 
   Info, DollarSign, Layers, Shirt, Droplets, Image as ImageIcon, 
@@ -89,47 +90,6 @@ export function AdminProducts() {
     setSearchTerm('');
   };
 
-  const handleAIContent = async () => {
-    if (!form.name || !form.categoryId) {
-      toast("Para gerar conteúdo, preencha o Nome e a Categoria primeiro.", 'warning');
-      return;
-    }
-
-    setAiLoading(true);
-    try {
-      const catName = categories.find(c => c.id === form.categoryId)?.name || form.categoryId;
-      const response = await fetch('/api/ia/gerar-produto', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: form.name, categoria: catName })
-      });
-
-      if (!response.ok) throw new Error('Erro na resposta da IA');
-
-      const data = await response.json();
-
-      setForm(prev => ({
-        ...prev,
-        subtitle: data.titulo || prev.subtitle,
-        shortDescription: data.descricao_curta || prev.shortDescription,
-        fullDescription: data.descricao_longa || prev.fullDescription,
-        seo: {
-          ...prev.seo!,
-          metaTitle: data.meta_title || prev.seo?.metaTitle,
-          metaDescription: data.meta_description || prev.seo?.metaDescription,
-          keywords: data.palavras_chave || prev.seo?.keywords
-        }
-      }));
-
-      toast("Conteúdo gerado com IA com sucesso! Revise os campos.", 'success');
-    } catch (error) {
-      console.error(error);
-      toast("Erro ao gerar conteúdo com IA.", 'error');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
   // Auto-generation helpers
   const generateSlug = (name: string) => {
     return name.toLowerCase().trim()
@@ -153,6 +113,39 @@ export function AdminProducts() {
   };
 
   const [bulkAiLoading, setBulkAiLoading] = useState(false);
+
+  const handleAIContent = async () => {
+    if (!form.name || !form.categoryId) {
+      toast("Para gerar conteúdo, preencha o Nome e a Categoria primeiro.", 'warning');
+      return;
+    }
+
+    setAiLoading(true);
+    try {
+      const catName = categories.find(c => c.id === form.categoryId)?.name || form.categoryId;
+      const data = await aiFrontendService.generateProductContent(form.name, catName);
+
+      setForm(prev => ({
+        ...prev,
+        subtitle: data.titulo || prev.subtitle,
+        shortDescription: data.descricao_curta || prev.shortDescription,
+        fullDescription: data.descricao_longa || prev.fullDescription,
+        seo: {
+          ...prev.seo!,
+          metaTitle: data.meta_title || prev.seo?.metaTitle,
+          metaDescription: data.meta_description || prev.seo?.metaDescription,
+          keywords: data.palavras_chave || prev.seo?.keywords
+        }
+      }));
+
+      toast("Conteúdo gerado com IA com sucesso! Revise os campos.", 'success');
+    } catch (error: any) {
+      console.error(error);
+      toast(error.message || "Erro ao gerar conteúdo com IA.", 'error');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const handleBulkAIContent = async () => {
     if (selectedIds.length === 0) return;
@@ -184,16 +177,8 @@ export function AdminProducts() {
           const { product, variants: productVariants } = detail;
           const catName = categories.find(c => c.id === product.categoryId)?.name || product.categoryId;
 
-          // 2. Call AI API
-          const response = await fetch('/api/ia/gerar-produto', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nome: product.name, categoria: catName })
-          });
-
-          if (!response.ok) throw new Error('AI Error');
-
-          const data = await response.json();
+          // 2. Call Gemini Service directly
+          const data = await aiFrontendService.generateProductContent(product.name, catName);
 
           // 3. Update the product with new content
           const updatedProduct: Partial<Product> = {
@@ -215,11 +200,6 @@ export function AdminProducts() {
           if (selectedIds.length > 3) {
              toast(`Processando: ${i + 1}/${selectedIds.length}...`, 'info');
           }
-
-          // Small delay to avoid rate limits if many products
-          if (selectedIds.length > 5 && i < selectedIds.length - 1) {
-             await new Promise(r => setTimeout(r, 600));
-          }
         } catch (err) {
           console.error(`Error processing product ${id}:`, err);
           failCount++;
@@ -238,6 +218,7 @@ export function AdminProducts() {
       setBulkAiLoading(false);
     }
   };
+
 
   const handleBulkAction = async (action: 'delete' | 'activate' | 'deactivate' | 'showInCatalog' | 'hideFromCatalog') => {
     if (selectedIds.length === 0) return;

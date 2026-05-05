@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '../../store/authStore';
+import { aiFrontendService } from '../../services/aiFrontendService';
 import Papa from 'papaparse';
 import { 
   Plus, Edit2, Trash2, Upload, Save, ArrowLeft, 
@@ -329,32 +330,26 @@ export function AdminCategories() {
 
     setGeneratingAI(true);
     try {
-      const response = await fetch('/api/ia/gerar-categoria', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: form.name })
-      });
-
-      if (!response.ok) throw new Error('Falha ao gerar conteúdo');
-
-      const data = await response.json();
+      const data = await aiFrontendService.generateCategoryContent(form.name);
+      
       setForm(prev => ({
         ...prev,
-        description: data.conteudo_seo,
-        shortDescription: data.descricao,
-        seoTitle: data.meta_title,
-        seoDescription: data.meta_description,
-        seoKeywords: data.palavras_chave.join(', ')
+        description: data.conteudo_seo || prev.description,
+        shortDescription: data.descricao || prev.shortDescription,
+        seoTitle: data.meta_title || prev.seoTitle,
+        seoDescription: data.meta_description || prev.seoDescription,
+        seoKeywords: data.palavras_chave.join(', ') || prev.seoKeywords
       }));
 
       toast("Conteúdo gerado pela IA com sucesso!", "success");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast("Erro ao gerar conteúdo com IA.", "error");
+      toast(err.message || "Erro ao gerar conteúdo com IA.", "error");
     } finally {
       setGeneratingAI(false);
     }
   };
+
 
   const removeImage = async (type: 'image' | 'banner') => {
     const img = type === 'image' ? form.image : form.banner;
