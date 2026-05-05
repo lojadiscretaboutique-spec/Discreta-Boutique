@@ -144,6 +144,11 @@ export interface Product {
   visualizacoes?: number;
   score?: number;
 
+  // IA Enhancement
+  ai_keywords?: string[];
+  ai_synonyms?: string[];
+  embedding?: number[];
+
   searchTerms?: string[];
   variantIdentifiers?: string[];
   createdAt?: Date | string | null;

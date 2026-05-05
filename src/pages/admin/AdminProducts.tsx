@@ -123,25 +123,37 @@ export function AdminProducts() {
     setAiLoading(true);
     try {
       const catName = categories.find(c => c.id === form.categoryId)?.name || form.categoryId;
+      
+      // 1. Generate text content (descriptions, meta tags)
       const data = await aiFrontendService.generateProductContent(form.name, catName);
+
+      // 2. Enrich with SEO keywords and synonyms using OpenAI
+      const enrichment = await aiFrontendService.enrichProduct(form.name, data.descricao_longa || form.fullDescription || '');
+
+      // 3. Generate Embedding
+      const embeddingText = `${form.name} ${data.descricao_curta} ${enrichment.keywords.join(' ')} ${enrichment.synonyms.join(' ')}`;
+      const embedding = await aiFrontendService.generateEmbedding(embeddingText);
 
       setForm(prev => ({
         ...prev,
         subtitle: data.titulo || prev.subtitle,
         shortDescription: data.descricao_curta || prev.shortDescription,
         fullDescription: data.descricao_longa || prev.fullDescription,
+        ai_keywords: enrichment.keywords,
+        ai_synonyms: enrichment.synonyms,
+        embedding: embedding,
         seo: {
           ...prev.seo!,
           metaTitle: data.meta_title || prev.seo?.metaTitle,
           metaDescription: data.meta_description || prev.seo?.metaDescription,
-          keywords: data.palavras_chave || prev.seo?.keywords
+          keywords: (data.palavras_chave && data.palavras_chave.length > 0) ? data.palavras_chave : enrichment.keywords
         }
       }));
 
-      toast("Conteúdo gerado com IA com sucesso! Revise os campos.", 'success');
+      toast("Conteúdo enriquecido com Inteligência Artificial com sucesso!", 'success');
     } catch (error: any) {
       console.error(error);
-      toast(error.message || "Erro ao gerar conteúdo com IA.", 'error');
+      toast(error.message || "Erro ao enriquecer conteúdo com IA.", 'error');
     } finally {
       setAiLoading(false);
     }
@@ -177,7 +189,7 @@ export function AdminProducts() {
           const { product, variants: productVariants } = detail;
           const catName = categories.find(c => c.id === product.categoryId)?.name || product.categoryId;
 
-          // 2. Call Gemini Service directly
+          // 2. Call OpenAI Service via Backend
           const data = await aiFrontendService.generateProductContent(product.name, catName);
 
           // 3. Update the product with new content
@@ -1142,6 +1154,74 @@ export function AdminProducts() {
                      <label className="block text-sm font-bold mb-1">Meta Descrição</label>
                      <textarea className="w-full h-24 border p-3 rounded text-sm" value={form.seo?.metaDescription || ''} onChange={e => setForm({...form, seo: {...form.seo!, metaDescription: e.target.value}})} />
                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-800">
+                      <div>
+                        <label className="block text-sm font-bold mb-1">Palavras-chave (IA)</label>
+                        <div className="flex flex-wrap gap-1 p-2 bg-slate-950 border border-slate-700 rounded-md min-h-[40px]">
+                           {form.ai_keywords?.map((k, i) => (
+                             <span key={i} className="text-[10px] bg-slate-800 px-2 py-0.5 rounded-full text-slate-300 flex items-center gap-1">
+                               {k}
+                               <button type="button" onClick={() => setForm({...form, ai_keywords: form.ai_keywords?.filter((_, idx) => idx !== i)})} className="hover:text-red-500"><X size={10}/></button>
+                             </span>
+                           ))}
+                           <input 
+                             placeholder="Digite e Enter..."
+                             className="bg-transparent border-none outline-none text-xs flex-1 min-w-[100px]"
+                             onKeyDown={e => {
+                               if (e.key === 'Enter') {
+                                 e.preventDefault();
+                                 const val = e.currentTarget.value.trim();
+                                 if (val) {
+                                   setForm({...form, ai_keywords: [...(form.ai_keywords || []), val]});
+                                   e.currentTarget.value = '';
+                                 }
+                               }
+                             }}
+                           />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold mb-1">Sinônimos (IA)</label>
+                        <div className="flex flex-wrap gap-1 p-2 bg-slate-950 border border-slate-700 rounded-md min-h-[40px]">
+                           {form.ai_synonyms?.map((s, i) => (
+                             <span key={i} className="text-[10px] bg-slate-800 px-2 py-0.5 rounded-full text-slate-300 flex items-center gap-1">
+                               {s}
+                               <button type="button" onClick={() => setForm({...form, ai_synonyms: form.ai_synonyms?.filter((_, idx) => idx !== i)})} className="hover:text-red-500"><X size={10}/></button>
+                             </span>
+                           ))}
+                           <input 
+                             placeholder="Digite e Enter..."
+                             className="bg-transparent border-none outline-none text-xs flex-1 min-w-[100px]"
+                             onKeyDown={e => {
+                               if (e.key === 'Enter') {
+                                 e.preventDefault();
+                                 const val = e.currentTarget.value.trim();
+                                 if (val) {
+                                   setForm({...form, ai_synonyms: [...(form.ai_synonyms || []), val]});
+                                   e.currentTarget.value = '';
+                                 }
+                               }
+                             }}
+                           />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 p-4 bg-red-600/5 rounded-xl border border-red-600/10">
+                       <div className={cn(
+                         "w-3 h-3 rounded-full",
+                         form.embedding && form.embedding.length > 0 ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-slate-500"
+                       )} />
+                       <div className="flex-1">
+                         <p className="text-xs font-bold text-slate-200">Vetores de Busca Semântica (Embeddings)</p>
+                         <p className="text-[10px] text-slate-400">
+                           {form.embedding && form.embedding.length > 0 
+                             ? `Vetor de ${form.embedding.length} dimensões carregado. Otimizado para busca inteligente.`
+                             : "Embeddings ausentes. Use o botão 'Gerar com IA' no topo para otimizar este produto para busca semântica."}
+                         </p>
+                       </div>
+                    </div>
                 </div>
               </div>
             )}

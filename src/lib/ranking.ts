@@ -26,19 +26,88 @@ export const getBaseScore = (p: Product) => {
 };
 
 export const getMatchScore = (p: Product, aiSuggestion: any) => {
-    if (!aiSuggestion) return 0;
     let score = 0;
     const name = p.name.toLowerCase();
     const desc = `${(p.shortDescription || "").toLowerCase()} ${(p.fullDescription || "").toLowerCase()}`;
+    const keywords = (p.ai_keywords || []).join(' ').toLowerCase();
+    const synonyms = (p.ai_synonyms || []).join(' ').toLowerCase();
+    
+    if (!aiSuggestion) {
+      return 0;
+    }
+
     const mainTerm = aiSuggestion.curadoria?.toLowerCase() || "";
     const caracteristicas = aiSuggestion.caracteristicas || [];
-    const sinonimos = aiSuggestion.sinonimos || [];
+    const sinonimosSugeridos = aiSuggestion.sinonimos || [];
     
-    if (name.includes(mainTerm)) score += 3;
-    if (caracteristicas.some((c: string) => name.includes(c.toLowerCase()) || desc.includes(c.toLowerCase()))) score += 2;
-    if (sinonimos.some((s: string) => name.includes(s.toLowerCase()) || desc.includes(s.toLowerCase()))) score += 1;
+    // Core term matching
+    if (name.includes(mainTerm)) score += 5;
+    if (keywords.includes(mainTerm)) score += 3;
+    if (synonyms.includes(mainTerm)) score += 2;
+    if (desc.includes(mainTerm)) score += 1;
+
+    // Features matching
+    caracteristicas.forEach((c: string) => {
+      const ct = c.toLowerCase();
+      if (name.includes(ct)) score += 3;
+      if (keywords.includes(ct)) score += 2;
+      if (desc.includes(ct)) score += 1;
+    });
+
+    // Synonyms suggestion matching
+    sinonimosSugeridos.forEach((s: string) => {
+      const st = s.toLowerCase();
+      if (name.includes(st)) score += 2;
+      if (keywords.includes(st)) score += 1;
+      if (synonyms.includes(st)) score += 1;
+    });
     
     return score;
+};
+
+/**
+ * Calculates cosine similarity between two vectors.
+ */
+const calculateCosineSimilarity = (vecA: number[], vecB: number[]) => {
+  if (!vecA || !vecB || vecA.length === 0 || vecB.length === 0) return 0;
+  if (vecA.length !== vecB.length) return 0;
+  
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  
+  for (let i = 0; i < vecA.length; i++) {
+      dotProduct += vecA[i] * vecB[i];
+      normA += vecA[i] * vecA[i];
+      normB += vecB[i] * vecB[i];
+  }
+  
+  const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  return isNaN(similarity) ? 0 : similarity;
+};
+
+export const getRankingHybrid = (products: Product[], aiSuggestion: any, queryEmbedding?: number[]): Product[] => {
+    return [...products].map(p => {
+        const base = getBaseScore(p);
+        const match = getMatchScore(p, aiSuggestion);
+        
+        let semanticBoost = 0;
+        if (queryEmbedding && p.embedding && p.embedding.length > 0) {
+            const similarity = calculateCosineSimilarity(queryEmbedding, p.embedding);
+            // Boost semantic similarity (range 0 to 1, multiplied to give it weight)
+            semanticBoost = similarity * 20; 
+        }
+
+        return {
+            ...p,
+            _tempScore: base + match + semanticBoost
+        };
+    })
+    .sort((a: any, b: any) => b._tempScore - a._tempScore)
+    .map((p: any) => {
+        const { _tempScore: _score, ...pWithoutScore } = p;
+        return pWithoutScore as Product;
+    });
 };
 
 // Ranking Sections
@@ -61,9 +130,5 @@ export const getRecomendados = (all: Product[], used: Set<string>) => pick(all.s
 export const fillFallback = (all: Product[], used: Set<string>, count: number) => pick(all.sort((a, b) => getBaseScore(b) - getBaseScore(a)), count, used);
 
 export const getRankingBusca = (products: Product[], aiSuggestion: any): Product[] => {
-    return [...products].sort((a, b) => {
-        const aTotalScore = getBaseScore(a) + getMatchScore(a, aiSuggestion);
-        const bTotalScore = getBaseScore(b) + getMatchScore(b, aiSuggestion);
-        return bTotalScore - aTotalScore;
-    });
+    return getRankingHybrid(products, aiSuggestion);
 };

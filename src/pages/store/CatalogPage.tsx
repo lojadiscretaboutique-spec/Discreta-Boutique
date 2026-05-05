@@ -7,8 +7,9 @@ import { Search, X, Minus, Plus, Sparkles, Frown, Loader2 } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
-import { getBaseScore, getMatchScore } from '../../lib/ranking';
+import { getRankingHybrid } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
+import { aiFrontendService } from '../../services/aiFrontendService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
 import { useFeedback } from '../../contexts/FeedbackContext';
@@ -26,6 +27,7 @@ export function CatalogPage() {
   const [selectedCat, setSelectedCat] = useState<string>(qCat || 'all');
   const [loading, setLoading] = useState(true);
   const [interpreting, setInterpreting] = useState(false);
+  const [queryEmbedding, setQueryEmbedding] = useState<number[] | undefined>(undefined);
   const [aiSuggestion, setAiSuggestion] = useState<{
     searchId: string;
     mensagem: string;
@@ -49,15 +51,21 @@ export function CatalogPage() {
 
     setInterpreting(true);
     try {
-      const response = await fetch('/api/ia/interpretar-busca', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ busca: searchTerm })
-      });
+      // Parallelize AI interpretation and Embedding generation
+      const [aiResponse, embedding] = await Promise.all([
+        fetch('/api/ia/interpretar-busca', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ busca: searchTerm })
+        }),
+        aiFrontendService.generateEmbedding(searchTerm)
+      ]);
 
-      if (!response.ok) throw new Error('Falha na resposta da IA');
+      setQueryEmbedding(embedding);
 
-      const data = await response.json();
+      if (!aiResponse.ok) throw new Error('Falha na resposta da IA');
+
+      const data = await aiResponse.json();
 
       if (data.fallback) {
         toast("Busca inteligente indisponível. Usando busca tradicional.", "info");
@@ -226,22 +234,12 @@ export function CatalogPage() {
       }
     }
 
-    // Sort by stock status (out of stock last) and combined score
-    result.sort((a, b) => {
-      const aOut = a.controlStock && !a.allowBackorder && a.stock <= 0;
-      const bOut = b.controlStock && !b.allowBackorder && b.stock <= 0;
-      if (aOut && !bOut) return 1;
-      if (!aOut && bOut) return -1;
-      
-      const aScore = getBaseScore(a) + getMatchScore(a, aiSuggestion);
-      const bScore = getBaseScore(b) + getMatchScore(b, aiSuggestion);
-      
-      return bScore - aScore;
-    });
-
-    setFiltered(result);
+    // Sort by stock status (out of stock last) and combined hybrid score
+    const ranked = getRankingHybrid(result, aiSuggestion, queryEmbedding);
+    
+    setFiltered(ranked);
     setCurrentPage(1); // Reset to page 1 unconditionally when filtering
-  }, [search, selectedCat, products, categories, aiSuggestion]);
+  }, [search, selectedCat, products, categories, aiSuggestion, queryEmbedding]);
 
   const rootCategories = categories.filter(c => c.level === 0 || !c.parentId);
   const getSubcategories = (parentId: string) => categories.filter(c => c.parentId === parentId);

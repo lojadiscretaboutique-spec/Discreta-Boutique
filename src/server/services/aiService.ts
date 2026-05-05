@@ -490,6 +490,54 @@ class AIService {
     }
   }
 
+  async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      const client = this.getClient();
+      const response = await client.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text,
+      });
+      return response.data[0].embedding;
+    } catch (error) {
+      console.error('[AI][EMBEDDING_ERROR]', error);
+      return [];
+    }
+  }
+
+  async enrichProduct(title: string, description: string): Promise<{keywords: string[], synonyms: string[], searchTerms: string[]}> {
+    const prompt = `
+      Você é um especialista em SEO e e-commerce sênior para uma boutique erótica premium (Discreta Boutique).
+      Com base no título e descrição do produto abaixo, gere:
+      1. keywords: Palavras-chave relevantes (termos técnicos e de nicho).
+      2. synonyms: Sinônimos naturais (incluindo termos mais discretos e variações de linguagem).
+      3. searchTerms: Termos de busca populares que usuários usariam para encontrar este produto.
+
+      PRODUTO: "${title}"
+      DESCRIÇÃO: "${description}"
+      
+      Retorne estritamente um objeto JSON.
+    `;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: 'Você é um assistente especializado em SEO para e-commerce erótico premium.' }, { role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      return {
+        keywords: this.normalizeArray(parsed.keywords),
+        synonyms: this.normalizeArray(parsed.synonyms),
+        searchTerms: this.normalizeArray(parsed.searchTerms)
+      };
+    } catch (error) {
+      console.error('[AI][ENRICH_ERROR]', error);
+      return { keywords: [], synonyms: [], searchTerms: [] };
+    }
+  }
+
   async generateCategoryContent(nome: string, retries = 2): Promise<z.infer<typeof CategoryContentSchema>> {
     const cacheKey = `category_${nome}`;
     const cached = this.getFromCache(cacheKey);

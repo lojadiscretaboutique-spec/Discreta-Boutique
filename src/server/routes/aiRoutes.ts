@@ -36,5 +36,7 @@ router.post('/registrar-clique', storeAiLimiter, aiController.trackClick);
 router.post('/sugerir-complementos', storeAiLimiter, aiController.suggestCartComplements);
 router.post('/sugestao-produto', storeAiLimiter, aiController.suggestRelatedProducts);
 router.post('/bot-consulta', storeAiLimiter, aiController.botConsult);
+router.post('/enriquecer-produto', adminAiLimiter, aiController.enrichProduct);
+router.post('/gerar-embedding', adminAiLimiter, aiController.generateEmbedding);
 
 export default router;

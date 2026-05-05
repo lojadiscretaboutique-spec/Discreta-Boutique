@@ -178,6 +178,26 @@ export const botConsult = async (req: Request, res: Response) => {
   }
 };
 
+export const enrichProduct = async (req: Request, res: Response) => {
+  try {
+    const { title, description } = req.body;
+    const result = await aiService.enrichProduct(title, description);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const generateEmbedding = async (req: Request, res: Response) => {
+  try {
+    const { text } = req.body;
+    const result = await aiService.generateEmbedding(text);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const suggestCartComplements = async (req: Request, res: Response) => {
   try {
     const { items } = req.body; // Array de { name: string, id: string }
@@ -324,5 +344,7 @@ export const aiController = {
   trackClick,
   botConsult,
   suggestCartComplements,
-  suggestRelatedProducts
+  suggestRelatedProducts,
+  enrichProduct,
+  generateEmbedding
 };
