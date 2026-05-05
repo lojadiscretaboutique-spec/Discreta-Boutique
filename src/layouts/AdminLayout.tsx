@@ -71,6 +71,7 @@ export function AdminLayout() {
         }
 
         if (!isAdmin && !hasPermission(permissionNeeded, 'visualizar')) {
+          toast.error(`Acesso Negado: Você não tem permissão para acessar esta página (${matchedItem.name}). Motivo: Falta perfil de acesso.`);
           // If no dashboard permission, try to find another one
           if (currentPath === '/admin' || currentPath === '/admin/') {
              const firstAllowed = menu.find(m => hasPermission(m.permission, 'visualizar'));

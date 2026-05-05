@@ -34,8 +34,19 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   } | null>(null);
 
   const toast = useCallback((message: string, type: ToastType = 'success') => {
+    let finalMessage = message;
+    
+    if (typeof finalMessage === 'string' && (
+      finalMessage.includes('permission-denied') || 
+      finalMessage.includes('Missing or insufficient permissions') ||
+      finalMessage.includes('Falha de permissão')
+    )) {
+      finalMessage = "Acesso Negado: Você não tem permissão para executar esta função. Motivo: Seu perfil não possui acesso necessário.";
+      type = 'error';
+    }
+
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts(prev => [...prev, { id, message, type }]);
+    setToasts(prev => [...prev, { id, message: finalMessage, type }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 4000);

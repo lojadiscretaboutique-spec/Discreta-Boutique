@@ -38,6 +38,7 @@ export function AdminProducts() {
   
   // Categories (to be loaded from DB)
   const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
+  const [categorySearch, setCategorySearch] = useState('');
 
   // Form State
   const initialProduct: Omit<Product, 'id'> = {
@@ -752,8 +753,20 @@ export function AdminProducts() {
                        <Layers size={16} className="text-red-500" />
                        Categorias Diversas e Funcionalidades (Seleção Múltipla)
                     </label>
-                    <div className="flex flex-wrap gap-2">
-                       {categories.map(c => {
+                    <div className="mb-4 relative">
+                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input
+                        type="text"
+                        placeholder="Pesquisar categoria..."
+                        value={categorySearch}
+                        onChange={(e) => setCategorySearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-1 focus:ring-red-500 outline-none"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto p-2 bg-slate-900/50 rounded-lg border border-slate-800">
+                       {categories
+                         .filter(c => c.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                         .map(c => {
                          const isSelected = form.categoryIds?.includes(c.id);
                          return (
                            <button
