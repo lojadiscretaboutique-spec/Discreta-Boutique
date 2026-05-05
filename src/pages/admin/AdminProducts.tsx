@@ -4,7 +4,8 @@ import { db } from '../../lib/firebase';
 import { 
   Plus, Edit2, Trash2, X, Upload, Save, ArrowLeft, 
   Info, DollarSign, Layers, Shirt, Droplets, Image as ImageIcon, 
-  Search, Check, Sparkles, CheckSquare, Square, Eye, EyeOff, Package, PackageX
+  Search, Check, Sparkles, CheckSquare, Square, Eye, EyeOff, Package, PackageX,
+  Filter, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -61,6 +62,32 @@ export function AdminProducts() {
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    hasImage: 'all',
+    stockStatus: 'all',
+    categoryId: 'all',
+    status: 'all',
+    showInCatalog: 'all',
+    featured: 'all',
+    newRelease: 'all',
+    hasVariants: 'all'
+  });
+
+  const clearFilters = () => {
+    setFilters({
+      hasImage: 'all',
+      stockStatus: 'all',
+      categoryId: 'all',
+      status: 'all',
+      showInCatalog: 'all',
+      featured: 'all',
+      newRelease: 'all',
+      hasVariants: 'all'
+    });
+    setSearchTerm('');
+  };
 
   const handleAIContent = async () => {
     if (!form.name || !form.categoryId) {
@@ -123,6 +150,93 @@ export function AdminProducts() {
     let sum = 0;
     for (let i = 0; i < 12; i++) sum += parseInt(ean[i]) * (i % 2 === 0 ? 1 : 3);
     return ean + ((10 - (sum % 10)) % 10).toString();
+  };
+
+  const [bulkAiLoading, setBulkAiLoading] = useState(false);
+
+  const handleBulkAIContent = async () => {
+    if (selectedIds.length === 0) return;
+
+    const ok = await confirm({
+      title: 'Gerar Descrições com IA em Massa',
+      message: `Deseja gerar automaticamente descrições otimizadas para os ${selectedIds.length} produtos selecionados? As descrições atuais serão substituídas pelas novas geradas pela IA.`,
+      confirmText: 'Gerar em Massa',
+      variant: 'info'
+    });
+
+    if (!ok) return;
+
+    setBulkAiLoading(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      for (let i = 0; i < selectedIds.length; i++) {
+        const id = selectedIds[i];
+        try {
+          // 1. Get current full product data
+          const detail = await productService.getProduct(id);
+          if (!detail) {
+            failCount++;
+            continue;
+          }
+
+          const { product, variants: productVariants } = detail;
+          const catName = categories.find(c => c.id === product.categoryId)?.name || product.categoryId;
+
+          // 2. Call AI API
+          const response = await fetch('/api/ia/gerar-produto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nome: product.name, categoria: catName })
+          });
+
+          if (!response.ok) throw new Error('AI Error');
+
+          const data = await response.json();
+
+          // 3. Update the product with new content
+          const updatedProduct: Partial<Product> = {
+            subtitle: data.titulo || product.subtitle,
+            shortDescription: data.descricao_curta || product.shortDescription,
+            fullDescription: data.descricao_longa || product.fullDescription,
+            seo: {
+              ...(product.seo || { slug: generateSlug(product.name), condition: 'new' as const }),
+              metaTitle: data.meta_title || product.seo?.metaTitle,
+              metaDescription: data.meta_description || product.seo?.metaDescription,
+              keywords: data.palavras_chave || product.seo?.keywords
+            }
+          };
+
+          await productService.updateProduct(id, updatedProduct, productVariants);
+          successCount++;
+          
+          // Feedback a cada item (opcional mas bom para o usuário)
+          if (selectedIds.length > 3) {
+             toast(`Processando: ${i + 1}/${selectedIds.length}...`, 'info');
+          }
+
+          // Small delay to avoid rate limits if many products
+          if (selectedIds.length > 5 && i < selectedIds.length - 1) {
+             await new Promise(r => setTimeout(r, 600));
+          }
+        } catch (err) {
+          console.error(`Error processing product ${id}:`, err);
+          failCount++;
+        }
+      }
+
+      toast(`Processamento concluído: ${successCount} produtos atualizados com IA. ${failCount > 0 ? `${failCount} falhas.` : ''}`, successCount > 0 ? 'success' : 'error');
+      if (successCount > 0) {
+        loadData();
+        setSelectedIds([]);
+      }
+    } catch (error) {
+      console.error(error);
+      toast("Ocorreu um erro ao processar a IA em lote.", 'error');
+    } finally {
+      setBulkAiLoading(false);
+    }
   };
 
   const handleBulkAction = async (action: 'delete' | 'activate' | 'deactivate' | 'showInCatalog' | 'hideFromCatalog') => {
@@ -1064,15 +1178,52 @@ export function AdminProducts() {
   }
 
     const filteredProducts = products.filter(p => {
-        if (!searchTerm) return true;
+        // Text Search
         const term = searchTerm.toLowerCase();
-        
-        const nameMatch = p.name?.toLowerCase().includes(term);
-        const skuMatch = p.sku?.toLowerCase().includes(term);
-        const gtinMatch = p.gtin?.toLowerCase().includes(term);
-        const variantMatch = p.searchTerms?.some(st => st.includes(term));
+        const termMatch = !searchTerm || (
+            p.name?.toLowerCase().includes(term) || 
+            p.sku?.toLowerCase().includes(term) || 
+            p.gtin?.toLowerCase().includes(term) || 
+            p.searchTerms?.some(st => st.includes(term))
+        );
 
-        return nameMatch || skuMatch || gtinMatch || variantMatch;
+        if (!termMatch) return false;
+
+        // Image Filter
+        if (filters.hasImage === 'yes' && (!p.images || p.images.length === 0)) return false;
+        if (filters.hasImage === 'no' && p.images && p.images.length > 0) return false;
+
+        // Stock Filter
+        const stock = p.stock || 0;
+        const minStock = p.minStock || 0;
+        if (filters.stockStatus === 'in_stock' && stock <= 0) return false;
+        if (filters.stockStatus === 'out_of_stock' && stock > 0) return false;
+        if (filters.stockStatus === 'low_stock' && (stock <= 0 || stock > minStock)) return false;
+
+        // Category Filter
+        if (filters.categoryId !== 'all' && p.categoryId !== filters.categoryId) return false;
+
+        // Status Filter
+        if (filters.status === 'active' && !p.active) return false;
+        if (filters.status === 'inactive' && p.active) return false;
+
+        // Catalog Filter
+        if (filters.showInCatalog === 'yes' && p.extras?.showInCatalog === false) return false;
+        if (filters.showInCatalog === 'no' && p.extras?.showInCatalog !== false) return false;
+
+        // Highlights Filter
+        if (filters.featured === 'yes' && !p.featured) return false;
+        if (filters.featured === 'no' && p.featured) return false;
+
+        // New Release Filter
+        if (filters.newRelease === 'yes' && !p.newRelease) return false;
+        if (filters.newRelease === 'no' && p.newRelease) return false;
+
+        // Variants Filter
+        if (filters.hasVariants === 'yes' && !p.hasVariants) return false;
+        if (filters.hasVariants === 'no' && p.hasVariants) return false;
+
+        return true;
     });
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / itemsPerPage));
@@ -1096,34 +1247,180 @@ export function AdminProducts() {
       </div>
 
       <div className="bg-slate-900 rounded-2xl shadow-sm border border-slate-700 overflow-hidden">
-        <div className="p-4 border-b bg-slate-800/50 flex flex-col md:flex-row gap-4 items-center justify-between">
-           <div className="relative w-full md:w-96">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <Input 
-                placeholder="Buscar por nome, SKU ou Código..." 
-                className="pl-10 h-10" 
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
-              />
-           </div>
-           <div className="flex items-center gap-4 text-xs font-bold text-slate-400">
-              {selectedIds.length > 0 && (
-                <div className="flex items-center gap-2 pr-4 border-r border-slate-700">
-                  <span className="text-red-500 font-black">{selectedIds.length} Selecionados:</span>
-                  <button onClick={() => handleBulkAction('activate')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Tornar Ativos"><Package size={14} /></button>
-                  <button onClick={() => handleBulkAction('deactivate')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Tornar Indisponíveis"><PackageX size={14} /></button>
-                  <button onClick={() => handleBulkAction('showInCatalog')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Exibir no Site"><Eye size={14} /></button>
-                  <button onClick={() => handleBulkAction('hideFromCatalog')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Ocultar do Site"><EyeOff size={14} /></button>
-                  <button onClick={() => handleBulkAction('delete')} className="p-1.5 hover:bg-slate-700 rounded text-red-500 transition-colors" title="Excluir Selecionados"><Trash2 size={14} /></button>
-                  <button onClick={() => setSelectedIds([])} className="p-1.5 hover:bg-slate-700 rounded text-slate-500 transition-colors" title="Limpar Seleção"><X size={14} /></button>
+        <div className="p-4 border-b bg-slate-800/50 space-y-4">
+          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+            <div className="relative w-full md:w-96 flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <Input 
+                  placeholder="Buscar por nome, SKU ou Código..." 
+                  className="pl-10 h-10" 
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                />
+              </div>
+              <Button 
+                variant="outline" 
+                className={cn("h-10 px-3", showFilters && "bg-slate-700")}
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                <Filter size={18} className={cn("mr-2", showFilters && "text-red-500")} />
+                Filtros
+                {showFilters ? <ChevronUp size={14} className="ml-1" /> : <ChevronDown size={14} className="ml-1" />}
+              </Button>
+            </div>
+            <div className="flex items-center gap-4 text-xs font-bold text-slate-400">
+               {selectedIds.length > 0 && (
+                 <div className="flex items-center gap-2 pr-4 border-r border-slate-700">
+                   <span className="text-red-500 font-black">{selectedIds.length} Selecionados:</span>
+                   <button 
+                     onClick={handleBulkAIContent} 
+                     disabled={bulkAiLoading}
+                     className={cn(
+                       "p-1.5 rounded transition-colors flex items-center gap-1",
+                       bulkAiLoading ? "text-slate-500 bg-slate-800" : "hover:bg-slate-700 text-purple-400 font-black uppercase text-[10px]"
+                     )} 
+                     title="Gerar Descrições com IA em Massa"
+                   >
+                     <Sparkles size={14} className={bulkAiLoading ? "animate-pulse" : ""} />
+                     {bulkAiLoading ? 'Processando IA...' : 'IA'}
+                   </button>
+                   <button onClick={() => handleBulkAction('activate')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Tornar Ativos"><Package size={14} /></button>
+                   <button onClick={() => handleBulkAction('deactivate')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Tornar Indisponíveis"><PackageX size={14} /></button>
+                   <button onClick={() => handleBulkAction('showInCatalog')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Exibir no Site"><Eye size={14} /></button>
+                   <button onClick={() => handleBulkAction('hideFromCatalog')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Ocultar do Site"><EyeOff size={14} /></button>
+                   <button onClick={() => handleBulkAction('delete')} className="p-1.5 hover:bg-slate-700 rounded text-red-500 transition-colors" title="Excluir Selecionados"><Trash2 size={14} /></button>
+                   <button onClick={() => setSelectedIds([])} className="p-1.5 hover:bg-slate-700 rounded text-slate-500 transition-colors" title="Limpar Seleção"><X size={14} /></button>
+                 </div>
+               )}
+               <span className="flex items-center gap-1"><Check size={14} className="text-green-500" /> {filteredProducts.filter(p => p.active).length} Ativos</span>
+               <span className="flex items-center gap-1"><X size={14} className="text-red-500" /> {filteredProducts.filter(p => !p.active).length} Inativos</span>
+            </div>
+          </div>
+
+          {showFilters && (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 p-4 bg-slate-900/50 rounded-xl border border-slate-700 motion-safe:animate-in fade-in slide-in-from-top-2">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-500">Imagem</label>
+                <select 
+                  className="w-full h-8 bg-slate-800 border-slate-700 rounded text-[10px] px-2 outline-none focus:ring-1 focus:ring-red-500"
+                  value={filters.hasImage}
+                  onChange={e => setFilters({...filters, hasImage: e.target.value})}
+                >
+                  <option value="all">Todas</option>
+                  <option value="yes">Com Imagem</option>
+                  <option value="no">Sem Imagem</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-500">Estoque</label>
+                <select 
+                  className="w-full h-8 bg-slate-800 border-slate-700 rounded text-[10px] px-2 outline-none focus:ring-1 focus:ring-red-500"
+                  value={filters.stockStatus}
+                  onChange={e => setFilters({...filters, stockStatus: e.target.value})}
+                >
+                  <option value="all">Todos</option>
+                  <option value="in_stock">Disponível</option>
+                  <option value="out_of_stock">Esgotado</option>
+                  <option value="low_stock">Estoque Baixo</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-500">Categoria</label>
+                <select 
+                  className="w-full h-8 bg-slate-800 border-slate-700 rounded text-[10px] px-2 outline-none focus:ring-1 focus:ring-red-500"
+                  value={filters.categoryId}
+                  onChange={e => setFilters({...filters, categoryId: e.target.value})}
+                >
+                  <option value="all">Todas</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-500">Status</label>
+                <select 
+                  className="w-full h-8 bg-slate-800 border-slate-700 rounded text-[10px] px-2 outline-none focus:ring-1 focus:ring-red-500"
+                  value={filters.status}
+                  onChange={e => setFilters({...filters, status: e.target.value})}
+                >
+                  <option value="all">Todos</option>
+                  <option value="active">Ativo</option>
+                  <option value="inactive">Inativo</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-500">Catálogo</label>
+                <select 
+                  className="w-full h-8 bg-slate-800 border-slate-700 rounded text-[10px] px-2 outline-none focus:ring-1 focus:ring-red-500"
+                  value={filters.showInCatalog}
+                  onChange={e => setFilters({...filters, showInCatalog: e.target.value})}
+                >
+                  <option value="all">Todos</option>
+                  <option value="yes">Exibir</option>
+                  <option value="no">Ocultar</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-500">Destaque</label>
+                <select 
+                  className="w-full h-8 bg-slate-800 border-slate-700 rounded text-[10px] px-2 outline-none focus:ring-1 focus:ring-red-500"
+                  value={filters.featured}
+                  onChange={e => setFilters({...filters, featured: e.target.value})}
+                >
+                  <option value="all">Todos</option>
+                  <option value="yes">Sim</option>
+                  <option value="no">Não</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-500">Lançamento</label>
+                <select 
+                  className="w-full h-8 bg-slate-800 border-slate-700 rounded text-[10px] px-2 outline-none focus:ring-1 focus:ring-red-500"
+                  value={filters.newRelease}
+                  onChange={e => setFilters({...filters, newRelease: e.target.value})}
+                >
+                  <option value="all">Todos</option>
+                  <option value="yes">Sim</option>
+                  <option value="no">Não</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-500">Variações</label>
+                <div className="flex gap-2">
+                  <select 
+                    className="flex-1 h-8 bg-slate-800 border-slate-700 rounded text-[10px] px-2 outline-none focus:ring-1 focus:ring-red-500"
+                    value={filters.hasVariants}
+                    onChange={e => setFilters({...filters, hasVariants: e.target.value})}
+                  >
+                    <option value="all">Todos</option>
+                    <option value="yes">Com Variação</option>
+                    <option value="no">Sem Variação</option>
+                  </select>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 w-8 p-0 hover:bg-red-500/10 text-slate-500 hover:text-red-500"
+                    onClick={clearFilters}
+                    title="Limpar Filtros"
+                  >
+                    <X size={14} />
+                  </Button>
                 </div>
-              )}
-              <span className="flex items-center gap-1"><Check size={14} className="text-green-500" /> {filteredProducts.filter(p => p.active).length} Ativos</span>
-              <span className="flex items-center gap-1"><X size={14} className="text-red-500" /> {filteredProducts.filter(p => !p.active).length} Inativos</span>
-           </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="overflow-x-auto">
