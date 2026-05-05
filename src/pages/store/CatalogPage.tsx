@@ -16,12 +16,13 @@ import { useFeedback } from '../../contexts/FeedbackContext';
 export function CatalogPage() {
   const [searchParams] = useSearchParams();
   const qCat = searchParams.get('categoria');
+  const qSearch = searchParams.get('q');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [filtered, setFiltered] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(qSearch || '');
   const [selectedCat, setSelectedCat] = useState<string>(qCat || 'all');
   const [loading, setLoading] = useState(true);
   const [interpreting, setInterpreting] = useState(false);
@@ -38,10 +39,10 @@ export function CatalogPage() {
   const itemsPerPage = 40;
   const { toast } = useFeedback();
 
-  const handleSmartSearch = async () => {
-    if (!search.trim()) return;
+  const handleSmartSearch = async (forcedSearch?: string) => {
+    const searchTerm = forcedSearch || search;
+    if (!searchTerm.trim()) return;
 
-    // Dismiss keyboard on search
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -51,7 +52,7 @@ export function CatalogPage() {
       const response = await fetch('/api/ia/interpretar-busca', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ busca: search })
+        body: JSON.stringify({ busca: searchTerm })
       });
 
       if (!response.ok) throw new Error('Falha na resposta da IA');
@@ -74,11 +75,6 @@ export function CatalogPage() {
         rankedProducts: data.produtos
       });
 
-      // Salvar perfil do usuário
-      if (data.interpretacao.nivel_usuario) {
-        sessionStorage.setItem('ai_user_profile', data.interpretacao.nivel_usuario);
-      }
-
     } catch (error) {
       console.error('Falha na busca inteligente:', error);
       toast("Busca inteligente indisponível no momento.", "warning");
@@ -86,6 +82,12 @@ export function CatalogPage() {
       setInterpreting(false);
     }
   };
+
+  useEffect(() => {
+    if (qSearch && products.length > 0) {
+      handleSmartSearch(qSearch);
+    }
+  }, [qSearch, products.length]);
 
   const trackProductClick = async (productId: string) => {
     // Register for AI (if applicable)

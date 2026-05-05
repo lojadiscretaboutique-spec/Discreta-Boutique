@@ -185,6 +185,66 @@ class AIService {
     }
   }
 
+  async huntProducts(query: string, products: any[]): Promise<{ 
+    rankedIds: string[], 
+    mensagem: string, 
+    curadoria: string,
+    caracteristicas: string[]
+  }> {
+    const compactProducts = products.map(p => ({
+      id: p.id,
+      n: p.name,
+      c: p.categoryId || p.category,
+      k: p.palavras_chave || [],
+      d: (p.description || p.shortDescription || "").substring(0, 160),
+      t: { c: p.stats?.clicks || 0, v: p.stats?.purchases || 0 } // Termômetros: cliques e vendas
+    }));
+
+    const prompt = `
+      Você é o Especialista de Vendas da Discreta Boutique. Sua missão é selecionar e ranquear os MELHORES produtos do catálogo para a busca do cliente.
+      
+      BUSCA DO CLIENTE: "${query}"
+      
+      CATÁLOGO DISPONÍVEL (ID, Nome, Categoria, Keywords, Descrição, Termômetros[Clique/Venda]):
+      ${JSON.stringify(compactProducts.slice(0, 80))} 
+      
+      REGRAS DE OURO:
+      1. Entenda a INTENÇÃO real (ex: "presente romântico", "aliviar tpm", "primeira vez").
+      2. Priorize o match SEMÂNTICO (o que o produto faz) sobre o nome exato.
+      3. Use os "Termômetros": Produtos com mais vendas (v) e cliques (c) devem ter leve prioridade se forem relevantes.
+      4. Selecione no máximo 20 produtos, em ordem decrescente de relevância.
+      
+      RETORNE APENAS JSON:
+      {
+        "rankedIds": ["id1", "id2"],
+        "mensagem": "Uma frase curta (máx 100 caracteres) sedutora e técnica explicando por que escolheu esses itens",
+        "curadoria": "Um título para a coleção (ex: Seleção Especial para Momentos A Dois)",
+        "caracteristicas": ["3 palavras-chave que definem esse resultado"]
+      }
+    `;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.1
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      return {
+        rankedIds: Array.isArray(parsed.rankedIds) ? parsed.rankedIds : [],
+        mensagem: parsed.mensagem || "Selecionamos os itens perfeitos para seu desejo.",
+        curadoria: parsed.curadoria || "Resultados da Busca",
+        caracteristicas: Array.isArray(parsed.caracteristicas) ? parsed.caracteristicas : []
+      };
+    } catch (error) {
+      console.error('[AI][HUNT_ERROR]', error);
+      return { rankedIds: [], mensagem: "Buscando o melhor para você...", curadoria: "Busca", caracteristicas: [] };
+    }
+  }
+
   async interpretSearch(query: string, retries = 1): Promise<z.infer<typeof SearchInterpretationSchema>> {
     // 1. Pré-processamento: normalizar, remover pontuação e frases de preenchimento
     const normalizedQuery = query
