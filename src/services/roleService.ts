@@ -23,6 +23,8 @@ export const MODULES = [
   { id: 'roles', label: 'Perfis de Acesso' },
   { id: 'settings', label: 'Configurações' },
   { id: 'areasEntrega', label: 'Áreas de Entrega' },
+  { id: 'compras', label: 'Compras' },
+  { id: 'financeiro', label: 'Financeiro' },
   { id: 'caixa', label: 'Controle de Caixa' },
   { id: 'relatorios', label: 'Relatórios' },
   { id: 'pdv', label: 'PDV' },

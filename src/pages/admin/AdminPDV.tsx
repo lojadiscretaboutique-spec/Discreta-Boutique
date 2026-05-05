@@ -692,29 +692,41 @@ export function AdminPDV() {
       let currentOrderId = editingOrderId;
 
       if (editingOrderId) {
-        // UPDATE EXISTING
+        // 1. REVERTER ESTOQUE ANTIGO (Para pedidos que já foram finalizados)
+        // Isso garante que se o usuário removeu ou adicionou itens na edição, o estoque se ajuste corretamente
+        await stockMovementService.deleteMovementsByOrderId(editingOrderId);
+
+        // 2. UPDATE EXISTING
         await updateDoc(doc(db, 'orders', editingOrderId), orderData);
         
-        if (editingOrderType === 'online') {
-            await stockMovementService.realizeMovementsByOrderId(editingOrderId, 'Venda (Loja Online/Site)');
-        } else {
-            // For pdv orders that somehow were edited and need realizing
-            await stockMovementService.realizeMovementsByOrderId(editingOrderId);
+        // 3. REGISTRAR NOVAS MOVIMENTAÇÕES (A partir do carrinho atual)
+        for (const item of cart) {
+          await stockMovementService.registerMovement({
+            productId: item.productId,
+            productName: item.name,
+            variantId: item.variantId || undefined,
+            sku: item.sku,
+            quantity: item.quantity,
+            type: 'out',
+            reason: `Venda PDV (Editado - #${editingOrderId.slice(-6).toUpperCase()})`,
+            channel: 'Loja Física',
+            orderId: editingOrderId
+          });
         }
         
-        // Se estiver editando, limpamos os lançamentos financeiros antigos associados a este pedido
+        // 4. Se estiver editando, limpamos os lançamentos financeiros antigos associados a este pedido
         // para regerar os novos (caso tenha mudado valor ou forma de pagto)
         await financialService.deleteTransactionsByOrderId(editingOrderId);
         await cashService.deleteTransactionsByOrderId(editingOrderId);
         
-        toast("Pedido atualizado com sucesso!", "success");
+        toast("Pedido atualizado e estoque recalculado!", "success");
       } else {
         // CREATE NEW
         orderData.createdAt = serverTimestamp();
         const orderRef = await addDoc(collection(db, 'orders'), orderData);
         currentOrderId = orderRef.id;
 
-        // Update stock only for NEW orders to avoid double deduction 
+        // Registrar movimentações de saída para cada item
         for (const item of cart) {
           await stockMovementService.registerMovement({
             productId: item.productId,
@@ -725,7 +737,7 @@ export function AdminPDV() {
             type: 'out',
             reason: 'Venda PDV',
             channel: 'Loja Física',
-            orderId: orderRef.id
+            orderId: currentOrderId
           });
         }
       }
