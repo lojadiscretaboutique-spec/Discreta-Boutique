@@ -46,6 +46,7 @@ export function AdminProducts() {
     featured: false,
     newRelease: false,
     categoryId: '',
+    categoryIds: [],
     sku: '',
     price: 0,
     stock: 0,
@@ -115,17 +116,21 @@ export function AdminProducts() {
   const [bulkAiLoading, setBulkAiLoading] = useState(false);
 
   const handleAIContent = async () => {
-    if (!form.name || !form.categoryId) {
-      toast("Para gerar conteúdo, preencha o Nome e a Categoria primeiro.", 'warning');
+    const hasCategory = form.categoryId || (form.categoryIds && form.categoryIds.length > 0);
+    if (!form.name || !hasCategory) {
+      toast("Para gerar conteúdo, preencha o Nome e selecione ao menos uma Categoria primeiro.", 'warning');
       return;
     }
 
     setAiLoading(true);
     try {
-      const catName = categories.find(c => c.id === form.categoryId)?.name || form.categoryId;
+      // Obter nomes de todas as categorias selecionadas para um prompt mais rico
+      const selectedCatNames = (form.categoryIds && form.categoryIds.length > 0)
+        ? categories.filter(c => form.categoryIds?.includes(c.id)).map(c => c.name)
+        : [categories.find(c => c.id === form.categoryId)?.name || form.categoryId];
       
       // 1. Generate text content (descriptions, meta tags)
-      const data = await aiFrontendService.generateProductContent(form.name, catName);
+      const data = await aiFrontendService.generateProductContent(form.name, selectedCatNames);
 
       // 2. Enrich with SEO keywords and synonyms using OpenAI
       const enrichment = await aiFrontendService.enrichProduct(form.name, data.descricao_longa || form.fullDescription || '');
@@ -140,6 +145,7 @@ export function AdminProducts() {
         ${form.name} 
         ${data.titulo} 
         ${data.descricao_curta} 
+        ${selectedCatNames.join(' ')}
         ${data.descricao_longa.replace(/<[^>]*>/g, '')} 
         ${combinedKeywords.join(' ')} 
         ${combinedSynonyms.join(' ')} 
@@ -202,17 +208,31 @@ export function AdminProducts() {
           }
 
           const { product, variants: productVariants } = detail;
-          const catName = categories.find(c => c.id === product.categoryId)?.name || product.categoryId;
+          
+          // Obter nomes de todas as categorias selecionadas
+          const selectedCatNames = (product.categoryIds && product.categoryIds.length > 0)
+            ? categories.filter(c => product.categoryIds?.includes(c.id)).map(c => c.name)
+            : [categories.find(c => c.id === product.categoryId)?.name || product.categoryId || 'Geral'];
 
           // 2. Call OpenAI Service via Backend
-          const data = await aiFrontendService.generateProductContent(product.name, catName);
+          const data = await aiFrontendService.generateProductContent(product.name, selectedCatNames);
           const enrichment = await aiFrontendService.enrichProduct(product.name, data.descricao_longa || product.fullDescription || '');
 
           const combinedKeywords = [...new Set([...(data.palavras_chave || []), ...(enrichment.keywords || [])])];
           const combinedSynonyms = [...new Set([...(data.sinonimos || []), ...(enrichment.synonyms || [])])];
           const combinedSearchTerms = [...new Set([...(data.termos_busca || []), ...(enrichment.searchTerms || [])])];
 
-          const embeddingText = `${product.name} ${data.titulo} ${data.descricao_curta} ${combinedKeywords.join(' ')} ${combinedSynonyms.join(' ')}`;
+          const embeddingText = `
+            ${product.name} 
+            ${data.titulo} 
+            ${data.descricao_curta} 
+            ${selectedCatNames.join(' ')}
+            ${data.descricao_longa.replace(/<[^>]*>/g, '')} 
+            ${combinedKeywords.join(' ')} 
+            ${combinedSynonyms.join(' ')} 
+            ${combinedSearchTerms.join(' ')}
+          `.trim();
+          
           const embedding = await aiFrontendService.generateEmbedding(embeddingText);
 
           // 3. Update the product with new content
@@ -384,6 +404,7 @@ export function AdminProducts() {
         const p = detail.product;
         setForm({
           ...p,
+          categoryIds: p.categoryIds || (p.categoryId ? [p.categoryId] : []),
           fashion: p.fashion || {},
           cosmetics: p.cosmetics || {},
           seo: p.seo || { slug: generateSlug(p.name), condition: 'new' },
@@ -444,7 +465,8 @@ export function AdminProducts() {
       sku: v.sku || generateSku()
     }));
 
-    if (!form.name || !form.categoryId || form.price <= 0) {
+    const hasCategory = form.categoryId || (form.categoryIds && form.categoryIds.length > 0);
+    if (!form.name || !hasCategory || form.price <= 0) {
       toast("Por favor, preencha os campos obrigatórios (Nome, Categoria e Preço).", 'warning');
       return;
     }
@@ -618,15 +640,15 @@ export function AdminProducts() {
     
     const newVariants: ProductVariant[] = combinations.map((combo: string[] | string, index: number) => {
       const comboArr = Array.isArray(combo) ? combo : [combo];
-      const name = comboArr.join(' ');
+      const name = comboArr.join(', ');
       const attrs: Record<string, string> = {};
       tempAttrs.forEach((a, i) => {
         attrs[a.name] = comboArr[i];
       });
 
       return {
-        name: `${form.name} - ${name}`,
-        sku: `${form.sku || 'SKU'}-${name.replace(/\s+/g, '-').toUpperCase()}-${index+1}`,
+        name: name,
+        sku: `${form.sku || 'SKU'}-${name.replace(/[\s,]+/g, '-').toUpperCase()}-${index+1}`,
         barcode: generateEan13(),
         stock: 0,
         price: form.price,
@@ -725,16 +747,47 @@ export function AdminProducts() {
                     <label className="block text-sm font-bold mb-1">Subtítulo / Chamada Curta</label>
                     <Input value={form.subtitle || ''} onChange={e => setForm({ ...form, subtitle: e.target.value })} placeholder="Ex: O toque de elegância que você merece" />
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold mb-1">Categoria Principal *</label>
-                    <select 
-                      className="w-full h-10 px-3 rounded-md border border-slate-600 bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                      value={form.categoryId || ''}
-                      onChange={e => setForm({ ...form, categoryId: e.target.value })}
-                    >
-                      <option value="">Selecione...</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                  <div className="md:col-span-2 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                    <label className="block text-sm font-bold mb-3 flex items-center gap-2">
+                       <Layers size={16} className="text-red-500" />
+                       Categorias Diversas e Funcionalidades (Seleção Múltipla)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                       {categories.map(c => {
+                         const isSelected = form.categoryIds?.includes(c.id);
+                         return (
+                           <button
+                             key={c.id}
+                             type="button"
+                             onClick={() => {
+                               const currentIds = form.categoryIds || [];
+                               const newIds = isSelected 
+                                 ? currentIds.filter(id => id !== c.id)
+                                 : [...currentIds, c.id];
+                               
+                               setForm({ 
+                                 ...form, 
+                                 categoryIds: newIds,
+                                 // Keep categoryId for legacy compatibility (first one)
+                                 categoryId: newIds[0] || ''
+                               });
+                             }}
+                             className={cn(
+                               "px-3 py-1.5 rounded-full text-xs font-bold transition-all border",
+                               isSelected 
+                                 ? "bg-red-600 text-white border-red-500 shadow-md scale-105" 
+                                 : "bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500"
+                             )}
+                           >
+                             {c.name}
+                             {isSelected && <Check size={12} className="inline ml-1" />}
+                           </button>
+                         );
+                       })}
+                    </div>
+                    {(!form.categoryIds || form.categoryIds.length === 0) && (
+                      <p className="text-[10px] text-red-500 mt-2 font-bold animate-pulse">(!) Selecione ao menos uma categoria para o produto.</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-bold mb-1">Marca / Fabricante</label>
@@ -1289,7 +1342,11 @@ export function AdminProducts() {
         if (filters.stockStatus === 'low_stock' && (stock <= 0 || stock > minStock)) return false;
 
         // Category Filter
-        if (filters.categoryId !== 'all' && p.categoryId !== filters.categoryId) return false;
+        if (filters.categoryId !== 'all') {
+          const inCategories = p.categoryIds?.includes(filters.categoryId);
+          const isLegacyCat = p.categoryId === filters.categoryId;
+          if (!inCategories && !isLegacyCat) return false;
+        }
 
         // Status Filter
         if (filters.status === 'active' && !p.active) return false;

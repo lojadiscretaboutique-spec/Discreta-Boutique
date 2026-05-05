@@ -68,10 +68,29 @@ export const stockMovementService = {
       await addDoc(collection(db, 'stockMovements'), movementData);
 
       // 4. Update the related product's/variant's stock directly
-      await updateDoc(targetRef, {
+      const updatePayload: any = {
         stock: newStock,
         updatedAt: serverTimestamp()
-      });
+      };
+
+      // Se for entrada de estoque e o novo estoque for positivo, ativa o produto/variação automaticamente
+      if (data.type === 'in' && newStock > 0) {
+        updatePayload.active = true;
+        
+        // Se for uma variação, garantir que o produto pai também seja ativado
+        if (data.variantId) {
+          try {
+            await updateDoc(doc(db, 'products', data.productId), { 
+              active: true,
+              updatedAt: serverTimestamp() 
+            });
+          } catch (error) {
+            console.warn("Não foi possível ativar o produto pai automaticamente:", error);
+          }
+        }
+      }
+
+      await updateDoc(targetRef, updatePayload);
 
       // 5. Audit Log
       await auditLogService.logAction('Registrar', 'stock_movement', data.productId, { 

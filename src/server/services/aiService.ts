@@ -101,8 +101,9 @@ class AIService {
     return [];
   }
 
-  async generateProductContent(nome: string, categoria: string, retries = 2): Promise<z.infer<typeof ProductContentSchema>> {
-    const cacheKey = `product_${nome}_${categoria}`;
+  async generateProductContent(nome: string, categoria: string | string[], retries = 2): Promise<z.infer<typeof ProductContentSchema>> {
+    const catStr = Array.isArray(categoria) ? categoria.join(', ') : categoria;
+    const cacheKey = `product_${nome}_${catStr}`;
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
@@ -111,7 +112,10 @@ class AIService {
       Sua missão é criar o conteúdo mais COMPLETO, SEDUTOR e PERSUASIVO possível para o seguinte produto:
       
       Produto: "${nome}"
-      Categoria: "${categoria}"
+      Categorias/Funcionalidades Relacionadas: "${catStr}"
+      
+      IMPORTANTE: Este produto pertence a MÚLTIPLAS categorias e possui diversas funcionalidades. 
+      Certifique-se de que a descrição e os metadados abranjam todos os aspectos mencionados nestas categorias: ${catStr}.
       
       A Discreta Boutique não vende apenas objetos; ela vende experiências, autoconhecimento, prazer e elegância. 
       O conteúdo deve ser impecável, profissional e despertar desejo imediato.
@@ -128,9 +132,9 @@ class AIService {
       3. descricao_longa: Um texto extenso e estruturado. Use <p> para parágrafos e <ul>/<li> para benefícios. Inclua uma seção "Por que você vai amar:" e outra "Especificações premium:".
       4. meta_title: Máximo 60 caracteres. Foco em cliques.
       5. meta_description: Máximo 155 caracteres. Deve conter uma promessa forte e "Entrega Segura e 100% Discreta".
-      6. palavras_chave: 10 a 15 termos SEO de alta relevância (técnicos e de desejo).
-      7. sinonimos: 5 a 10 termos alternativos para busca interna (incluso nomes populares e variações).
-      8. termos_busca: Frases que os clientes digitariam no Google para achar este produto específico.
+      6. palavras_chave: 15 a 25 termos SEO de alta relevância (técnicos, de desejo e nicho). Deve incluir termos de todas as categorias: ${catStr}.
+      7. sinonimos: 10 a 15 termos alternativos para busca interna (incluso nomes populares, variações e gírias discretas).
+      8. termos_busca: 10 Frases que os clientes digitariam no Google para achar este produto específico considerando todas as suas funcionalidades.
 
       IMPORTANTE: A resposta deve ser estritamente um objeto JSON válido.
     `;

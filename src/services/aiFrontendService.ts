@@ -21,7 +21,7 @@ export const aiFrontendService = {
   /**
    * Generates product content (descriptions, meta tags, etc.) via backend (OpenAI)
    */
-  async generateProductContent(nome: string, categoria: string): Promise<GeneratedProductContent> {
+  async generateProductContent(nome: string, categoria: string | string[]): Promise<GeneratedProductContent> {
     const response = await fetch('/api/ia/gerar-produto', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

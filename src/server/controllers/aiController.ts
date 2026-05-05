@@ -6,7 +6,7 @@ import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc,
 
 const GenerateProductInput = z.object({
   nome: z.string().min(3).max(100),
-  categoria: z.string().min(3).max(50)
+  categoria: z.union([z.string().min(3).max(100), z.array(z.string())])
 });
 
 const GenerateCategoryInput = z.object({

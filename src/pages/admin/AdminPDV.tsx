@@ -544,7 +544,9 @@ export function AdminPDV() {
     }
 
     const currentStock = variant ? (variant.stock || 0) : (product.stock || 0);
-    if (currentStock <= 0) {
+    const allowBackorder = product.allowBackorder;
+
+    if (currentStock <= 0 && !allowBackorder) {
       setStockWarningModal({
         productName: variant ? `${product.name} - ${variant.name}` : product.name,
         stock: currentStock

@@ -24,6 +24,7 @@ export interface Product {
   shortDescription?: string;
   fullDescription?: string;
   categoryId: string;
+  categoryIds?: string[];
   subcategory?: string;
   brand?: string;
   collection?: string;
@@ -297,7 +298,7 @@ export const productService = {
       const updateData: any = {};
       const allowedFields = [
         'name', 'subtitle', 'active', 'featured', 'newRelease', 
-        'categoryId', 'brand', 'shortDescription', 'fullDescription',
+        'categoryId', 'categoryIds', 'brand', 'shortDescription', 'fullDescription',
         'price', 'costPrice', 'promoPrice', 'sku', 'gtin', 'unit',
         'stock', 'minStock', 'controlStock', 'allowBackorder',
         'hasVariants', 'images', 'fashion', 'cosmetics', 'delivery',

@@ -250,10 +250,9 @@ export function MovEstoque() {
                 notes: fNotes,
             });
 
-            // Auto-activate product if it was inactive and it's an entry
+            // Auto-activate message
             if (!prod.active && reasonObj.type === 'in') {
-                await productService.updateProduct(prod.id!, { active: true }, productVariants);
-                toast("Produto reativado automaticamente devido à entrada de saldo.");
+                toast("O produto e suas variações foram reativados devido à entrada de saldo.");
             }
 
             toast("Movimentação de estoque salva com sucesso!");
