@@ -51,6 +51,19 @@ export function AdminCaixa() {
   const [sessionTransactions, setSessionTransactions] = useState<CashTransaction[]>([]);
   const [loadingSessionTrans, setLoadingSessionTrans] = useState(false);
 
+  // Derived state for current session totals by method
+  const methodTotals = transactions.reduce((acc, t) => {
+    const method = t.paymentMethod || 'Dinheiro';
+    if (!acc[method]) acc[method] = 0;
+    if (t.type === 'entrada') acc[method] = roundTo2(acc[method] + t.amount);
+    else acc[method] = roundTo2(acc[method] - t.amount);
+    return acc;
+  }, {} as Record<string, number>);
+  
+  if (currentSession) {
+    methodTotals['Dinheiro'] = roundTo2((methodTotals['Dinheiro'] || 0) + (currentSession.initialBalance || 0));
+  }
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -64,9 +77,17 @@ export function AdminCaixa() {
           const transList = await cashService.listTransactions(current.id);
           setTransactions(transList);
           
-          // Calculate expected balance
-          const expected = roundTo2(current.initialBalance + (current.totalInputs || 0) - (current.totalOutputs || 0));
-          setClosingBalance(expected.toString());
+          // Calculate expected cash balance (only Dinheiro method)
+          const mTotals = transList.reduce((acc, t) => {
+            const method = t.paymentMethod || 'Dinheiro';
+            if (!acc[method]) acc[method] = 0;
+            if (t.type === 'entrada') acc[method] = roundTo2(acc[method] + t.amount);
+            else acc[method] = roundTo2(acc[method] - t.amount);
+            return acc;
+          }, {} as Record<string, number>);
+          
+          const expectedCash = roundTo2((mTotals['Dinheiro'] || 0) + (current.initialBalance || 0));
+          setClosingBalance(expectedCash.toString());
       } else {
           setTransactions([]);
       }
@@ -469,17 +490,6 @@ export function AdminCaixa() {
 
                 {/* FECHAMENTO DE CAIXA */}
                 {(() => {
-                  const methodTotals = transactions.reduce((acc, t) => {
-                    const method = t.paymentMethod || 'Dinheiro';
-                    if (!acc[method]) acc[method] = 0;
-                    if (t.type === 'entrada') acc[method] = roundTo2(acc[method] + t.amount);
-                    else acc[method] = roundTo2(acc[method] - t.amount);
-                    return acc;
-                  }, {} as Record<string, number>);
-                  
-                  // O saldo inicial entra no cálculo do Dinheiro (físico)
-                  methodTotals['Dinheiro'] = roundTo2((methodTotals['Dinheiro'] || 0) + (currentSession.initialBalance || 0));
-
                   return (
                     <div className="bg-slate-900 rounded-2xl p-6 shadow-lg text-white space-y-4">
                       <h3 className="font-bold flex items-center gap-2">
@@ -500,11 +510,35 @@ export function AdminCaixa() {
 
                       <div className="space-y-4 pt-2 border-t border-slate-800">
                         <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-400 italic">Total Esperado (Geral):</span>
+                            <span className="text-slate-400 italic">Total Esperado (Dinheiro):</span>
                             <span className="font-black text-emerald-400">
+                              {formatCurrency(methodTotals['Dinheiro'] || 0)}
+                            </span>
+                        </div>
+
+                        {parseFloat(closingBalance) > 0 && (
+                          <div className="flex justify-between items-center text-sm py-1 border-y border-slate-800/50 dashed">
+                              <span className="text-slate-400">Resultado de Caixa:</span>
+                              {(() => {
+                                 const expectedCash = methodTotals['Dinheiro'] || 0;
+                                 const physicalCash = parseFloat(closingBalance) || 0;
+                                 const diff = roundTo2(physicalCash - expectedCash);
+                                 return (
+                                   <span className={`font-black ${diff === 0 ? 'text-slate-400' : diff > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                                     {diff === 0 ? 'Conferido' : diff > 0 ? `Sobra: ${formatCurrency(diff)}` : `Falta: ${formatCurrency(Math.abs(diff))}`}
+                                   </span>
+                                 );
+                              })()}
+                          </div>
+                        )}
+
+                        <div className="flex justify-between items-center text-[10px] opacity-60">
+                            <span className="text-slate-400">Total Esperado (Geral):</span>
+                            <span className="">
                               {formatCurrency(roundTo2(currentSession.initialBalance + (currentSession.totalInputs || 0) - (currentSession.totalOutputs || 0)))}
                             </span>
                         </div>
+                        
                         <div>
                             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Saldo Final em Dinheiro (Físico)</label>
                             <div className="relative">
@@ -652,11 +686,27 @@ export function AdminCaixa() {
                     <p className="text-lg font-black text-white">{formatCurrency(selectedSession.finalBalance || 0)}</p>
                  </div>
                   <div className="p-4 rounded-xl bg-slate-800 border">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Diferença</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Resultado em Dinheiro</p>
                     {(() => {
-                        const exp = roundTo2(selectedSession.initialBalance + (selectedSession.totalInputs || 0) - (selectedSession.totalOutputs || 0));
-                        const d = roundTo2((selectedSession.finalBalance || 0) - exp);
-                        return <p className={`text-lg font-black ${d >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatCurrency(d)}</p>
+                        const methodTotals = sessionTransactions.reduce((acc, t) => {
+                          const method = t.paymentMethod || 'Dinheiro';
+                          if (!acc[method]) acc[method] = 0;
+                          if (t.type === 'entrada') acc[method] = roundTo2(acc[method] + t.amount);
+                          else acc[method] = roundTo2(acc[method] - t.amount);
+                          return acc;
+                        }, {} as Record<string, number>);
+                        
+                        const expectedCash = roundTo2((methodTotals['Dinheiro'] || 0) + (selectedSession.initialBalance || 0));
+                        const d = roundTo2((selectedSession.finalBalance || 0) - expectedCash);
+                        
+                        return (
+                          <div className="flex flex-col">
+                            <p className={`text-lg font-black ${d >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              {d === 0 ? 'OK' : d > 0 ? `+${formatCurrency(d)}` : formatCurrency(d)}
+                            </p>
+                            <p className="text-[9px] text-slate-500">Exp. Din: {formatCurrency(expectedCash)}</p>
+                          </div>
+                        );
                     })()}
                  </div>
               </div>

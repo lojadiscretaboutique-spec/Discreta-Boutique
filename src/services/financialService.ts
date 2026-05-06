@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, query, orderBy, where, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDocs, getDoc, setDoc, updateDoc, deleteDoc, query, orderBy, where, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { auditLogService } from './auditLogService';
 import { cashService } from './cashService';
@@ -80,17 +80,20 @@ export const financialService = {
             const q = query(collection(db, 'cashTransactions'), where('financialId', '==', docId));
             const snap = await getDocs(q);
             
+            const finSnap = await getDoc(doc(db, 'financial_transactions', docId));
+            const fullData = { ...finSnap.data(), ...data } as FinancialTransaction;
+
             const cashData = {
                 sessionId: session.id!,
-                type: data.type === 'income' ? 'entrada' : 'saida' as any,
-                category: data.category || 'FINANCEIRO',
-                amount: data.amount!,
-                description: `[FIN] ${data.description}`,
-                paymentMethod: data.paymentMethod || 'Outro',
-                userId: data.userId || 'system',
+                type: fullData.type === 'income' ? 'entrada' : 'saida' as any,
+                category: fullData.category || 'FINANCEIRO',
+                amount: fullData.amount || 0,
+                description: `[FIN] ${fullData.description}`,
+                paymentMethod: fullData.paymentMethod || 'Outro',
+                userId: fullData.userId || 'system',
                 source: 'loja_fisica' as any,
                 financialId: docId,
-                orderId: data.orderId
+                orderId: fullData.orderId || null
             };
 
             if (snap.empty) {
