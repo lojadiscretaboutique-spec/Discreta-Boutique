@@ -83,12 +83,12 @@ export const financialService = {
             const cashData = {
                 sessionId: session.id!,
                 type: data.type === 'income' ? 'entrada' : 'saida' as any,
-                category: 'FINANCEIRO',
+                category: data.category || 'FINANCEIRO',
                 amount: data.amount!,
                 description: `[FIN] ${data.description}`,
                 paymentMethod: data.paymentMethod || 'Outro',
                 userId: data.userId || 'system',
-                source: 'ajuste' as any,
+                source: 'loja_fisica' as any,
                 financialId: docId,
                 orderId: data.orderId
             };
@@ -99,8 +99,8 @@ export const financialService = {
                 await cashService.updateTransaction(snap.docs[0].id, cashData);
             }
         }
-    } else if (payload.status === 'pending') {
-        // Se mudou para pendente, apagamos do caixa se existir
+    } else if (payload.status === 'pending' || !shouldSyncToCash) {
+        // Se mudou para pendente (ou não deve sincronizar), apagamos do caixa se existir
         const q = query(collection(db, 'cashTransactions'), where('financialId', '==', docId));
         const snap = await getDocs(q);
         if (!snap.empty) {

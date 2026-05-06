@@ -133,6 +133,7 @@ export function AdminFinancial() {
     setSubmitting(true);
     try {
       const payload = { ...form, userId: user?.uid, isManual: true };
+      
       if (payload.status === 'paid' && !payload.paymentDate) {
         payload.paymentDate = new Date().toISOString().split('T')[0];
       }
@@ -304,7 +305,7 @@ export function AdminFinancial() {
                     </td>
                     <td className="px-6 py-3">
                         <div className="flex justify-center gap-2">
-                           {t.status === 'pending' && (
+                            {t.status === 'pending' && (
                              <button 
                                onClick={async () => {
                                  const session = await cashService.getCurrentSession();
@@ -316,7 +317,8 @@ export function AdminFinancial() {
                                    ...t, 
                                    status: 'paid', 
                                    paymentDate: new Date().toISOString().split('T')[0],
-                                   userId: user?.uid
+                                   userId: user?.uid,
+                                   isManual: true // Garante sincronização com caixa
                                  }).then(loadData);
                                }}
                                className="p-1.5 bg-green-50 text-green-600 hover:bg-green-100 rounded-lg transition-colors border border-green-200 shadow-sm"
