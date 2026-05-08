@@ -9,7 +9,6 @@ import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
 import { getRankingHybrid } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
-import { aiFrontendService } from '../../services/aiFrontendService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
 import { useFeedback } from '../../contexts/FeedbackContext';
@@ -27,7 +26,6 @@ export function CatalogPage() {
   const [selectedCat, setSelectedCat] = useState<string>(qCat || 'all');
   const [loading, setLoading] = useState(true);
   const [interpreting, setInterpreting] = useState(false);
-  const [queryEmbedding, setQueryEmbedding] = useState<number[] | undefined>(undefined);
   const [aiSuggestion, setAiSuggestion] = useState<{
     searchId: string;
     mensagem: string;
@@ -63,16 +61,11 @@ export function CatalogPage() {
     setInterpreting(true);
     try {
       // Parallelize AI interpretation and Embedding generation
-      const [aiResponse, embedding] = await Promise.all([
-        fetch('/api/ia/interpretar-busca', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ busca: searchTerm })
-        }),
-        aiFrontendService.generateEmbedding(searchTerm) // Ensure this is also cached locally in service if you wish
-      ]);
-
-      setQueryEmbedding(embedding);
+      const aiResponse = await fetch('/api/ia/interpretar-busca', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ busca: searchTerm })
+      });
 
       if (!aiResponse.ok) {
         if (aiResponse.status === 429) {
@@ -103,8 +96,7 @@ export function CatalogPage() {
       
       // Save to cache
       searchCache.current[cacheKey] = {
-         aiSuggestion: suggestion,
-         embedding
+         aiSuggestion: suggestion
       };
 
     } catch (error: any) {
@@ -271,11 +263,11 @@ export function CatalogPage() {
     }
 
     // Sort by stock status (out of stock last) and combined hybrid score
-    const ranked = getRankingHybrid(result, aiSuggestion, queryEmbedding);
+    const ranked = getRankingHybrid(result, aiSuggestion);
     
     setFiltered(ranked);
     setCurrentPage(1); // Reset to page 1 unconditionally when filtering
-  }, [search, selectedCat, products, categories, aiSuggestion, queryEmbedding]);
+  }, [search, selectedCat, products, categories, aiSuggestion]);
 
   const rootCategories = categories.filter(c => c.level === 0 || !c.parentId);
   const getSubcategories = (parentId: string) => categories.filter(c => c.parentId === parentId);

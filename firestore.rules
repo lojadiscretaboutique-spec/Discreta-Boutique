@@ -190,6 +190,16 @@ service cloud.firestore {
       allow read, create, update, delete: if true;
     }
 
+    match /ai_curation/{doc} {
+      allow read: if true;
+      allow write: if isMasterAdmin() || can('dashboard', 'editar');
+    }
+
+    match /ai_query_cache/{doc} {
+      allow read, create, update: if true;
+      allow delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

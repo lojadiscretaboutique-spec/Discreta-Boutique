@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { aiService } from '../services/aiService.js';
 import { productService } from '../../services/productService.js';
 import { z } from 'zod';
-import { db, auth } from '../../lib/firebase.js';
+import { db } from '../../lib/firebase.js';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, updateDoc, increment } from 'firebase/firestore';
 
 const GenerateProductInput = z.object({
@@ -62,31 +62,58 @@ const normalizeQuery = (text: string) => {
 export const interpretSearch = async (req: Request, res: Response) => {
   try {
     const { busca } = InterpretSearchInput.parse(req.body);
+    const normalizedBusca = normalizeQuery(busca);
+    const cacheId = "ai_" + normalizedBusca.replace(/\s+/g, '_').substring(0, 50);
+
+    try {
+      const { getDoc, doc } = await import('firebase/firestore');
+      const cacheRef = doc(db, 'ai_query_cache', cacheId);
+      const cacheSnap = await getDoc(cacheRef);
+      if (cacheSnap.exists()) {
+        const cachedData = cacheSnap.data();
+        if (cachedData.timestamp && (Date.now() - cachedData.timestamp.toMillis()) < 1000 * 60 * 60 * 24 * 7) {
+           return res.json({
+             searchId: cachedData.id,
+             interpretacao: cachedData.interpretacao,
+             produtos: cachedData.produtos
+           });
+        }
+      }
+    } catch(e) {
+      console.warn('[SEARCH][CACHE_READ_ERROR]', e);
+    }
 
     let interpretacao: any = null;
-    let searchId: string | null = null;
+    let searchId = cacheId;
 
-    // 1. Chamar IA para interpretação e HUNT (Busca Semântica Direta)
-    const [interpretScore, aiSelection] = await Promise.all([
-      aiService.interpretSearch(busca),
-      (async () => {
-        const productsRef = collection(db, 'products');
-        const snap = await getDocs(query(productsRef, where('active', '==', true), limit(150)));
-        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        return aiService.huntProducts(busca, all);
-      })()
-    ]);
+    let interpretScore = {
+      termo_busca: busca,
+      categoria: 'Outros',
+      intencao: '',
+      caracteristicas: [],
+      sinonimos: [],
+      termos_relacionados: [],
+      mensagem_personalizada: ''
+    };
+
+    try {
+       // AbortController support doesn't exist out of the box in our aiService without changes,
+       // We'll use Promise.race
+       interpretScore = await Promise.race([
+          aiService.interpretSearch(busca),
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('AI Timeout')), 6000))
+       ]) as any;
+    } catch (e) {
+       console.warn('[SEARCH][AI_TIMEOUT]', e);
+    }
 
     interpretacao = interpretScore;
-    searchId = "ai_" + Date.now(); 
 
-    // Salvar a busca para aprendizado contínuo
     try {
       await addDoc(collection(db, 'intelligent_searches'), {
         id: searchId,
         termo: busca,
         interpretacao: interpretacao,
-        resultados_count: aiSelection.rankedIds.length,
         timestamp: serverTimestamp(),
         cliques: 0,
         conversoes: 0
@@ -94,26 +121,25 @@ export const interpretSearch = async (req: Request, res: Response) => {
     } catch (e) {
       console.warn('[SEARCH][SAVE_ERROR]', e);
     }
+
     const productsRef = collection(db, 'products');
     const productsSnap = await getDocs(query(productsRef, where('active', '==', true), limit(300)));
     let allProducts = productsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
 
-    // 3. Cruzar resultados da IA com objetos reais
-    let finalResults = aiSelection.rankedIds
-      .map(id => allProducts.find(p => p.id === id))
-      .filter(p => !!p) as any[];
+    const termsToSearch = [
+        ...(interpretacao.caracteristicas || []),
+        ...(interpretacao.sinonimos || []),
+        ...(interpretacao.termos_relacionados || []),
+        interpretacao.categoria,
+        busca.toLowerCase()
+    ].filter(Boolean);
 
-    // 4. Se a IA falhou ou retornou poucos resultados, fallback inteligente
-    if (finalResults.length < 3) {
-      const fallbackResults = allProducts.map(p => {
+    let finalResults = allProducts.map(p => {
         let matchScore = 0;
-        const name = (p.name || "").toLowerCase();
-        const description = (p.description || "").toLowerCase();
-        const nameInfo = (name + " " + description).toLowerCase();
-
-        // Match por características extraídas pela IA
-        interpretacao.caracteristicas?.forEach((f: string) => { 
-          if (nameInfo.includes(f.toLowerCase())) matchScore += 20; 
+        const searchStr = `${p.name} ${p.shortDescription} ${(p.seo?.keywords || []).join(' ')} ${(p.searchTerms || []).join(' ')} ${(p.ai_synonyms || []).join(' ')}`.toLowerCase();
+        
+        termsToSearch.forEach((term: string) => { 
+          if (term && searchStr.includes(term.toLowerCase())) matchScore += 20; 
         });
 
         const cliques = p.stats?.clicks || 0;
@@ -121,27 +147,11 @@ export const interpretSearch = async (req: Request, res: Response) => {
         const finalScore = (cliques * 0.5) + (compras * 2) + (matchScore * 50);
 
         return { ...p, relevance: finalScore };
-      }).filter(p => p.relevance > 0);
+    }).filter(p => p.relevance > 0);
 
-      fallbackResults.sort((a, b) => b.relevance - a.relevance);
-      
-      // Adicionar fallbacks aos resultados sem duplicar
-      fallbackResults.forEach(fp => {
-        if (!finalResults.find(r => r.id === fp.id)) {
-          finalResults.push(fp);
-        }
-      });
-    }
+    finalResults.sort((a, b) => b.relevance - a.relevance);
 
-    // Sobrescrever mensagem personalizada se a IA de Hunt retornou uma melhor
-    if (aiSelection.mensagem) {
-      interpretacao.mensagem_personalizada = aiSelection.mensagem;
-    }
-    if (aiSelection.curadoria) {
-      interpretacao.termo_busca = aiSelection.curadoria;
-    }
-
-    res.json({
+    const payload = {
       searchId,
       interpretacao,
       produtos: finalResults.slice(0, 40).map(p => ({
@@ -152,7 +162,19 @@ export const interpretSearch = async (req: Request, res: Response) => {
         category: p.categoryId || p.category || '',
         relevance: p.relevance || 100
       }))
-    });
+    };
+
+    try {
+      const { setDoc, doc } = await import('firebase/firestore');
+      await setDoc(doc(db, 'ai_query_cache', searchId), {
+        ...payload,
+        timestamp: serverTimestamp()
+      });
+    } catch(e) {
+      console.warn('Cache save err:', e);
+    }
+
+    res.json(payload);
   } catch (error: any) {
     console.error(`[SEARCH][FATAL_ERROR]`, error.message);
     res.status(500).json({ error: "Falha na geração OpenAI (Busca)" });

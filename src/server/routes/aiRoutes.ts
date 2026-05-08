@@ -37,6 +37,14 @@ router.post('/sugerir-complementos', storeAiLimiter, aiController.suggestCartCom
 router.post('/sugestao-produto', storeAiLimiter, aiController.suggestRelatedProducts);
 router.post('/bot-consulta', storeAiLimiter, aiController.botConsult);
 router.post('/generate-home-curadoria', adminAiLimiter, aiController.generateHomeCuratory);
+
+// CRON SCHEDULER ENDPOINT (No rate limit, protected by API Key or accessible only by Cron)
+router.all('/cron/update-home', async (req, res) => {
+   // Para usar com GCP Cloud Scheduler, passe a secret no header
+   // if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) return res.status(401).send('Unauthorized');
+   return aiController.generateHomeCuratory(req, res);
+});
+
 router.post('/analisar-catalogo', adminAiLimiter, aiController.analyzeCatalog);
 router.post('/enriquecer-produto', adminAiLimiter, aiController.enrichProduct);
 router.post('/gerar-embedding', adminAiLimiter, aiController.generateEmbedding);
