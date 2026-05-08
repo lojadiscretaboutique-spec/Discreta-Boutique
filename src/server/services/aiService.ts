@@ -48,10 +48,16 @@ class AIService {
   private categoriesCache: { data: string[], expiry: number } = { data: [], expiry: 0 };
 
   constructor() {
-    console.log("AI SERVICE: Verificando configuração OPENAI...");
-    console.log("OPENAI KEY EXISTS:", !!process.env.OPENAI_API_KEY);
+    console.log("-----------------------------------------");
+    console.log("AI SERVICE: Verificando configuração...");
+    const keyExists = !!process.env.OPENAI_API_KEY;
+    console.log("OPENAI KEY EXISTS:", keyExists);
+    if (!keyExists) {
+      console.warn("[CRITICAL] OPENAI_API_KEY NÃO ENCONTRADA! As funcionalidades de IA serão desativadas.");
+    }
+    console.log("-----------------------------------------");
     
-    if (process.env.OPENAI_API_KEY) {
+    if (keyExists) {
       this.openai = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY
       });
@@ -81,8 +87,9 @@ class AIService {
 
   private getClient() {
     if (!this.openai) {
-      console.error("OPENAI KEY MISSING ON REQUEST");
-      throw new Error('Falha na geração OpenAI: OPENAI_API_KEY não configurada no servidor.');
+      const errorMsg = 'Configuração Ausente: A chave OPENAI_API_KEY não foi configurada no servidor (Secrets). Por favor, adicione a chave no painel de configurações para habilitar as funções de IA.';
+      console.error(`[AI][CONFIG_ERROR] ${errorMsg}`);
+      throw new Error(errorMsg);
     }
     return this.openai;
   }

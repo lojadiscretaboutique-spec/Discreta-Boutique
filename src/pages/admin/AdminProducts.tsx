@@ -6,7 +6,7 @@ import {
   Plus, Edit2, Trash2, X, Upload, Save, ArrowLeft, 
   Info, DollarSign, Layers, Shirt, Droplets, Image as ImageIcon, 
   Search, Check, Sparkles, CheckSquare, Square, Eye, EyeOff, Package, PackageX,
-  Filter, ChevronDown, ChevronUp
+  Filter, ChevronDown, ChevronUp, AlertCircle, Loader2
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -114,7 +114,10 @@ export function AdminProducts() {
     return ean + ((10 - (sum % 10)) % 10).toString();
   };
 
-  const [bulkAiLoading, setBulkAiLoading] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ total: 0, processed: 0, updated: 0, skipped: 0, logs: [] as string[] });
+  const [isBulkRunning, setIsBulkRunning] = useState(false);
+  const [forceRegen, setForceRegen] = useState(false);
 
   const handleAIContent = async () => {
     const hasCategory = form.categoryId || (form.categoryIds && form.categoryIds.length > 0);
@@ -181,102 +184,132 @@ export function AdminProducts() {
     }
   };
 
-  const handleBulkAIContent = async () => {
-    if (selectedIds.length === 0) return;
+  const handleBulkSEO = async () => {
+    let targetIds = selectedIds;
+    const isScan = targetIds.length === 0;
+
+    if (isScan) {
+      // Scan for products without SEO by intelligence:
+      // - No metaTitle or no metaDescription
+      // - Have min 1 image
+      // - Active
+      // - In stock (or has variants)
+      const pending = products.filter(p => {
+        const hasSEO = !!p.seo?.metaTitle && !!p.seo?.metaDescription && !!p.shortDescription;
+        const hasRequirement = (p.images?.length || 0) > 0 && p.active && (p.stock > 0 || p.hasVariants || p.allowBackorder);
+        return !hasSEO && hasRequirement;
+      });
+      targetIds = pending.map(p => p.id!);
+      
+      if (targetIds.length === 0) {
+        toast("Nenhum produto pendente de SEO encontrado nos critérios (Ativo, com estoque e com imagem).", "info");
+        return;
+      }
+    }
 
     const ok = await confirm({
-      title: 'Gerar Descrições com IA em Massa',
-      message: `Deseja gerar automaticamente descrições otimizadas para os ${selectedIds.length} produtos selecionados? As descrições atuais serão substituídas pelas novas geradas pela IA.`,
-      confirmText: 'Gerar em Massa',
+      title: 'SEO Inteligente OpenAI',
+      message: `Deseja processar ${targetIds.length} produtos? A IA irá gerar automaticamente Títulos, Descrições e Tags SEO. ${forceRegen ? "Modo Sobrescrever ATIVADO." : ""}`,
+      confirmText: 'Iniciar Geração',
       variant: 'info'
     });
 
     if (!ok) return;
 
-    setBulkAiLoading(true);
-    let successCount = 0;
-    let failCount = 0;
+    setIsBulkRunning(true);
+    setIsBulkModalOpen(true);
+    setBulkProgress({ total: targetIds.length, processed: 0, updated: 0, skipped: 0, logs: ["Iniciando motor OpenAI..."] });
 
-    try {
-      for (let i = 0; i < selectedIds.length; i++) {
-        const id = selectedIds[i];
-        try {
-          // 1. Get current full product data
-          const detail = await productService.getProduct(id);
-          if (!detail) {
-            failCount++;
-            continue;
-          }
+    for (let i = 0; i < targetIds.length; i++) {
+        const id = targetIds[i];
+        const p = products.find(prod => prod.id === id);
+        if (!p) continue;
 
-          const { product, variants: productVariants } = detail;
-          
-          // Obter nomes de todas as categorias selecionadas
-          const selectedCatNames = (product.categoryIds && product.categoryIds.length > 0)
-            ? categories.filter(c => product.categoryIds?.includes(c.id)).map(c => c.name)
-            : [categories.find(c => c.id === product.categoryId)?.name || product.categoryId || 'Geral'];
-
-          // 2. Call OpenAI Service via Backend
-          const data = await aiFrontendService.generateProductContent(product.name, selectedCatNames, product.fullDescription);
-          const enrichment = await aiFrontendService.enrichProduct(product.name, data.descricao_longa || product.fullDescription || '');
-
-          const combinedKeywords = [...new Set([...(data.palavras_chave || []), ...(enrichment.keywords || [])])];
-          const combinedSynonyms = [...new Set([...(data.sinonimos || []), ...(enrichment.synonyms || [])])];
-          const combinedSearchTerms = [...new Set([...(data.termos_busca || []), ...(enrichment.searchTerms || [])])];
-
-          const embeddingText = `
-            ${product.name} 
-            ${data.titulo} 
-            ${data.descricao_curta} 
-            ${selectedCatNames.join(' ')}
-            ${data.descricao_longa.replace(/<[^>]*>/g, '')} 
-            ${combinedKeywords.join(' ')} 
-            ${combinedSynonyms.join(' ')} 
-            ${combinedSearchTerms.join(' ')}
-          `.trim();
-          
-          const embedding = await aiFrontendService.generateEmbedding(embeddingText);
-
-          // 3. Update the product with new content
-          const updatedProduct: Partial<Product> = {
-            subtitle: data.titulo || product.subtitle,
-            shortDescription: data.descricao_curta || product.shortDescription,
-            fullDescription: data.descricao_longa || product.fullDescription,
-            ai_keywords: combinedKeywords,
-            ai_synonyms: combinedSynonyms,
-            searchTerms: combinedSearchTerms,
-            embedding: embedding,
-            seo: {
-              ...(product.seo || { slug: generateSlug(product.name), condition: 'new' as const }),
-              metaTitle: data.meta_title || product.seo?.metaTitle,
-              metaDescription: data.meta_description || product.seo?.metaDescription,
-              keywords: combinedKeywords
-            }
-          };
-
-          await productService.updateProduct(id, updatedProduct, productVariants);
-          successCount++;
-          
-          // Feedback a cada item (opcional mas bom para o usuário)
-          if (selectedIds.length > 3) {
-             toast(`Processando: ${i + 1}/${selectedIds.length}...`, 'info');
-          }
-        } catch (err) {
-          console.error(`Error processing product ${id}:`, err);
-          failCount++;
+        // Double check SEO state if in scan mode and not forcing
+        const hasSEO = !!p.seo?.metaTitle && !!p.seo?.metaDescription && !!p.shortDescription;
+        if (hasSEO && !forceRegen && isScan) {
+           setBulkProgress(prev => ({
+             ...prev,
+             processed: i + 1,
+             skipped: prev.skipped + 1,
+             logs: [`[PULADO] ${p.name}: Já possui SEO configurado.`, ...prev.logs.slice(0, 49)]
+           }));
+           continue;
         }
-      }
 
-      toast(`Processamento concluído: ${successCount} produtos atualizados com IA. ${failCount > 0 ? `${failCount} falhas.` : ''}`, successCount > 0 ? 'success' : 'error');
-      if (successCount > 0) {
-        loadData();
-        setSelectedIds([]);
-      }
-    } catch (error) {
-      console.error(error);
-      toast("Ocorreu um erro ao processar a IA em lote.", 'error');
-    } finally {
-      setBulkAiLoading(false);
+        try {
+            // Get full details (for categories names)
+            const detail = await productService.getProduct(id);
+            if (!detail) throw new Error("Detalhes não encontrados");
+
+            const { product, variants: productVariants } = detail;
+            const selectedCatNames = (product.categoryIds && product.categoryIds.length > 0)
+              ? categories.filter(c => product.categoryIds?.includes(c.id)).map(c => c.name)
+              : [categories.find(c => c.id === product.categoryId)?.name || 'Geral'];
+
+            // 1. Generate Content
+            const data = await aiFrontendService.generateProductContent(product.name, selectedCatNames, product.fullDescription);
+            
+            // 2. Enrich
+            const enrichment = await aiFrontendService.enrichProduct(product.name, data.descricao_longa || product.fullDescription || '');
+
+            const combinedKeywords = [...new Set([...(data.palavras_chave || []), ...(enrichment.keywords || [])])];
+            const combinedSynonyms = [...new Set([...(data.sinonimos || []), ...(enrichment.synonyms || [])])];
+            const combinedSearchTerms = [...new Set([...(data.termos_busca || []), ...(enrichment.searchTerms || [])])];
+
+            const embeddingText = `
+              ${product.name} 
+              ${data.titulo} 
+              ${data.descricao_curta} 
+              ${selectedCatNames.join(' ')}
+              ${(data.descricao_longa || '').replace(/<[^>]*>/g, '')} 
+              ${combinedKeywords.join(' ')} 
+              ${combinedSynonyms.join(' ')} 
+              ${combinedSearchTerms.join(' ')}
+            `.trim();
+            
+            const embedding = await aiFrontendService.generateEmbedding(embeddingText);
+
+            // 3. Update
+            const updatedProduct: Partial<Product> = {
+              subtitle: data.titulo || product.subtitle,
+              shortDescription: data.descricao_curta || product.shortDescription,
+              fullDescription: data.descricao_longa || product.fullDescription,
+              ai_keywords: combinedKeywords,
+              ai_synonyms: combinedSynonyms,
+              searchTerms: combinedSearchTerms,
+              embedding: embedding,
+              seo: {
+                ...(product.seo || { slug: generateSlug(product.name), condition: 'new' as const }),
+                metaTitle: data.meta_title || product.seo?.metaTitle,
+                metaDescription: data.meta_description || product.seo?.metaDescription,
+                keywords: combinedKeywords
+              }
+            };
+
+            await productService.updateProduct(id, updatedProduct, productVariants);
+
+            setBulkProgress(prev => ({
+              ...prev,
+              processed: i + 1,
+              updated: prev.updated + 1,
+              logs: [`[SUCESSO] ${p.name}: SEO e Conteúdo atualizados.`, ...prev.logs.slice(0, 49)]
+            }));
+
+            // Rate limit safety
+            await new Promise(resolve => setTimeout(resolve, 600));
+        } catch (err: any) {
+            setBulkProgress(prev => ({
+              ...prev,
+              processed: i + 1,
+              logs: [`[ERRO] ${p.name}: ${err.message || 'Erro desconhecido'}`, ...prev.logs.slice(0, 49)]
+            }));
+        }
     }
+
+    setIsBulkRunning(false);
+    toast("Processamento de SEO em massa concluído!", 'success');
+    loadData();
   };
 
 
@@ -1396,6 +1429,12 @@ export function AdminProducts() {
           <p className="text-slate-400">Gerencie seu inventário, variações e mídia em um só lugar.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button 
+            onClick={handleBulkSEO}
+            className="bg-red-600 hover:bg-red-700 shadow-xl shadow-red-950/20"
+          >
+            <Sparkles size={18} className="mr-2" /> SEO em Massa
+          </Button>
           {canCreate && (
             <Button onClick={handleNew} className="bg-slate-950 hover:bg-slate-800 shadow-xl shadow-slate-200">
                <Plus size={18} className="mr-2" /> Novo Produto
@@ -1435,16 +1474,16 @@ export function AdminProducts() {
                  <div className="flex items-center gap-2 pr-4 border-r border-slate-700">
                    <span className="text-red-500 font-black">{selectedIds.length} Selecionados:</span>
                    <button 
-                     onClick={handleBulkAIContent} 
-                     disabled={bulkAiLoading}
+                     onClick={handleBulkSEO} 
+                     disabled={isBulkRunning}
                      className={cn(
                        "p-1.5 rounded transition-colors flex items-center gap-1",
-                       bulkAiLoading ? "text-slate-500 bg-slate-800" : "hover:bg-slate-700 text-purple-400 font-black uppercase text-[10px]"
+                       isBulkRunning ? "text-slate-500 bg-slate-800" : "hover:bg-slate-700 text-purple-400 font-black uppercase text-[10px]"
                      )} 
-                     title="Gerar Descrições com IA em Massa"
+                     title="Gerar Conteúdo SEO com IA em Massa"
                    >
-                     <Sparkles size={14} className={bulkAiLoading ? "animate-pulse" : ""} />
-                     {bulkAiLoading ? 'Processando IA...' : 'IA'}
+                     <Sparkles size={14} className={isBulkRunning ? "animate-pulse" : ""} />
+                     {isBulkRunning ? 'Processando IA...' : 'SEO IA'}
                    </button>
                    <button onClick={() => handleBulkAction('activate')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Tornar Ativos"><Package size={14} /></button>
                    <button onClick={() => handleBulkAction('deactivate')} className="p-1.5 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Tornar Indisponíveis"><PackageX size={14} /></button>
@@ -1732,6 +1771,126 @@ export function AdminProducts() {
           </div>
         )}
       </div>
+      {/* MODAL IA BULK SEO */}
+      {isBulkModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <header className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-800/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-600 rounded-lg shadow-lg shadow-red-900/20">
+                  <Sparkles size={20} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">SEO Inteligente de Produtos</h2>
+                  <p className="text-xs text-slate-400">Otimização automática via OpenAI GPT-4o</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => !isBulkRunning && setIsBulkModalOpen(false)}
+                disabled={isBulkRunning}
+                className="p-2 hover:bg-slate-700 rounded-full text-slate-400 transition-colors disabled:opacity-50"
+              >
+                <X size={20} />
+              </button>
+            </header>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {!isBulkRunning && bulkProgress.processed === 0 ? (
+                <>
+                  <div className="space-y-4">
+                    <p className="text-sm text-slate-300 font-medium">Configurações de Geração:</p>
+                    
+                    <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-2xl border border-slate-700">
+                      <div className="flex items-center gap-3">
+                        <AlertCircle size={20} className="text-yellow-500" />
+                        <div>
+                          <p className="font-bold text-sm text-slate-200">Forçar regeneração completa</p>
+                          <p className="text-xs text-slate-400">Sobrescrever conteúdos e SEO já existentes.</p>
+                        </div>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={forceRegen} 
+                        onChange={e => setForceRegen(e.target.checked)}
+                        className="w-5 h-5 accent-red-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-blue-900/10 border border-blue-900/30 rounded-2xl">
+                    <p className="text-xs text-blue-400 leading-relaxed text-center">
+                      Este processo utilizará a inteligência artificial para analisar o nome e categorias de cada produto para gerar um copy luxuoso e metadados otimizados.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-6 py-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-400">Progresso de Otimização</span>
+                      <span className="font-bold text-white">{Math.round((bulkProgress.processed / bulkProgress.total) * 100)}%</span>
+                    </div>
+                    <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                      <div 
+                        className="h-full bg-red-600 transition-all duration-500 rounded-full"
+                        style={{ width: `${(bulkProgress.processed / bulkProgress.total) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex justify-between text-[10px] uppercase tracking-wider font-bold">
+                       <span className="text-slate-400">{bulkProgress.processed} de {bulkProgress.total} produtos</span>
+                       <div className="flex gap-4">
+                         <span className="text-green-500">{bulkProgress.updated} atualizados</span>
+                         <span className="text-yellow-500">{bulkProgress.skipped} pulados</span>
+                       </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Atividade da IA</p>
+                    <div className="bg-black/40 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[11px] border border-slate-800 custom-scrollbar">
+                      {bulkProgress.logs.map((log, idx) => (
+                        <div key={idx} className={cn(
+                          "py-1 border-b border-white/5 last:border-0",
+                          log.includes('[ERRO]') ? "text-red-400" : 
+                          log.includes('[SUCESSO]') ? "text-green-400" : 
+                          log.includes('[PULADO]') ? "text-yellow-400" : "text-slate-300"
+                        )}>
+                          {log}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {isBulkRunning && (
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="text-red-600 animate-spin" size={32} />
+                      <p className="text-xs text-slate-400 animate-pulse">A IA está escrevendo o conteúdo agora...</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <footer className="p-6 border-t border-slate-800 bg-slate-800/20 flex items-center justify-end gap-3">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsBulkModalOpen(false)}
+                disabled={isBulkRunning}
+              >
+                {isBulkRunning ? 'Processando...' : (bulkProgress.processed > 0 ? 'Fechar' : 'Cancelar')}
+              </Button>
+              {!isBulkRunning && bulkProgress.processed === 0 && (
+                <Button 
+                  className="bg-red-600 hover:bg-red-700 shadow-lg shadow-red-900/20"
+                  onClick={handleBulkSEO}
+                >
+                  <Sparkles size={18} className="mr-2" /> Iniciar SEO Inteligente
+                </Button>
+              )}
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

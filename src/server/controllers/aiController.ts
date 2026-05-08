@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { aiService } from '../services/aiService.js';
+import { productService } from '../../services/productService.js';
 import { z } from 'zod';
 import { db, auth } from '../../lib/firebase.js';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, updateDoc, increment } from 'firebase/firestore';
