@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useNavigate } from 'react-router-dom';
 import { Package, ShoppingCart, Users, ChevronLeft, ChevronRight, CreditCard, Plus, Minus } from 'lucide-react';
@@ -64,9 +64,10 @@ export function HomePage() {
       // --- CURADORIA IA ---
       let curadoria: any = null;
       try {
-        const resAi = await fetch('/api/ia/home-curadoria');
-        if (resAi.ok) {
-          curadoria = await resAi.json();
+        const docRef = doc(db, 'ai_curation', 'home');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          curadoria = docSnap.data();
           if (curadoria.fraseImpacto) setAiFrase(curadoria.fraseImpacto);
         }
       } catch (e) {

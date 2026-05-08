@@ -36,7 +36,7 @@ router.post('/registrar-clique', storeAiLimiter, aiController.trackClick);
 router.post('/sugerir-complementos', storeAiLimiter, aiController.suggestCartComplements);
 router.post('/sugestao-produto', storeAiLimiter, aiController.suggestRelatedProducts);
 router.post('/bot-consulta', storeAiLimiter, aiController.botConsult);
-router.get('/home-curadoria', storeAiLimiter, aiController.homeCuratory);
+router.post('/generate-home-curadoria', adminAiLimiter, aiController.generateHomeCuratory);
 router.post('/analisar-catalogo', adminAiLimiter, aiController.analyzeCatalog);
 router.post('/enriquecer-produto', adminAiLimiter, aiController.enrichProduct);
 router.post('/gerar-embedding', adminAiLimiter, aiController.generateEmbedding);

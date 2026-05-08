@@ -356,13 +356,29 @@ export const suggestRelatedProducts = async (req: Request, res: Response) => {
   }
 };
 
-export const homeCuratory = async (req: Request, res: Response) => {
+export const generateHomeCuratory = async (req: Request, res: Response) => {
   try {
     const productsRef = collection(db, 'products');
-    const snap = await getDocs(query(productsRef, where('active', '==', true), limit(200)));
+    const snap = await getDocs(query(productsRef, where('active', '==', true), limit(300))); // get enough to curate
     const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    
+    // Call AI to generate curation
     const result = await aiService.homeCuratory(all);
-    res.json(result);
+    
+    // Save to Firestore 'ai_curation/home'
+    const docRef = doc(db, 'ai_curation', 'home');
+    await updateDoc(docRef, { ...result, updatedAt: serverTimestamp() }).catch(async (e) => {
+        // if not exists, create
+        if (e.code === 'not-found') {
+          await addDoc(collection(db, 'ai_curation'), { ...result, id: 'home', updatedAt: serverTimestamp() });
+        } else {
+           // use setDoc to be safe
+           const { setDoc } = await import('firebase/firestore');
+           await setDoc(docRef, { ...result, updatedAt: serverTimestamp() }, { merge: true });
+        }
+    });
+
+    res.json({ success: true, result });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -383,7 +399,7 @@ export const aiController = {
   generateCategory,
   interpretSearch,
   trackClick,
-  homeCuratory,
+  generateHomeCuratory,
   analyzeCatalog,
   botConsult,
   suggestCartComplements,

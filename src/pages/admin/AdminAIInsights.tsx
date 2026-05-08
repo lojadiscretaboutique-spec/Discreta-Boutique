@@ -6,14 +6,32 @@ import {
 } from 'recharts';
 import { 
   Brain, Search, TrendingUp, Sparkles, AlertCircle, 
-  Clock, Filter, ShieldCheck, Zap
+  Clock, Filter, ShieldCheck, Zap, RefreshCw
 } from 'lucide-react';
+import { useFeedback } from '../../contexts/FeedbackContext';
 
 const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
 export default function AdminAIInsights() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const { toast } = useFeedback();
+  const [generatingCuration, setGeneratingCuration] = useState(false);
+
+  const handleGenerateHomeCuration = async () => {
+    try {
+      setGeneratingCuration(true);
+      const res = await fetch('/api/ia/generate-home-curadoria', { method: 'POST' });
+      if (!res.ok) throw new Error('Falha ao gerar curadoria');
+      toast("Curadoria da Home gerada e salva com sucesso!", "success");
+    } catch (err) {
+      console.error(err);
+      toast("Erro ao gerar curadoria da Home.", "error");
+    } finally {
+      setGeneratingCuration(false);
+    }
+  };
 
   useEffect(() => {
     async function fetchLogs() {
@@ -68,8 +86,18 @@ export default function AdminAIInsights() {
           </h1>
           <p className="text-zinc-500 font-medium">Entenda o comportamento e desejos ocultos dos seus clientes.</p>
         </div>
-        <div className="flex bg-zinc-900 border border-zinc-800 p-1 rounded-xl">
-          <button className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-bold uppercase transition-all">Últimos 100 Logs</button>
+        <div className="flex gap-2">
+          <button 
+            onClick={handleGenerateHomeCuration} 
+            disabled={generatingCuration}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 rounded-xl text-xs font-bold uppercase transition-all disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={generatingCuration ? "animate-spin" : ""} />
+            {generatingCuration ? "Atualizando..." : "Gerar Curadoria (Manual)"}
+          </button>
+          <div className="flex bg-zinc-900 border border-zinc-800 p-1 rounded-xl">
+            <button className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-bold uppercase transition-all">Últimos 100 Logs</button>
+          </div>
         </div>
       </div>
 

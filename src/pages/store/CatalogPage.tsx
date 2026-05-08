@@ -41,12 +41,23 @@ export function CatalogPage() {
   const itemsPerPage = 40;
   const { toast } = useFeedback();
 
+  const searchCache = useRef<Record<string, any>>({});
+
   const handleSmartSearch = async (forcedSearch?: string) => {
     const searchTerm = forcedSearch || search;
     if (!searchTerm.trim()) return;
 
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
+    }
+    
+    // Check local cache
+    const cacheKey = searchTerm.toLowerCase().trim();
+    if (searchCache.current[cacheKey]) {
+        const cached = searchCache.current[cacheKey];
+        setAiSuggestion(cached.aiSuggestion);
+        setQueryEmbedding(cached.embedding);
+        return;
     }
 
     setInterpreting(true);
@@ -58,12 +69,17 @@ export function CatalogPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ busca: searchTerm })
         }),
-        aiFrontendService.generateEmbedding(searchTerm)
+        aiFrontendService.generateEmbedding(searchTerm) // Ensure this is also cached locally in service if you wish
       ]);
 
       setQueryEmbedding(embedding);
 
-      if (!aiResponse.ok) throw new Error('Falha na resposta da IA');
+      if (!aiResponse.ok) {
+        if (aiResponse.status === 429) {
+          throw new Error('Limite de requisições excedido.');
+        }
+        throw new Error('Falha na resposta da IA');
+      }
 
       const data = await aiResponse.json();
 
@@ -73,19 +89,27 @@ export function CatalogPage() {
         return;
       }
 
-      setAiSuggestion({
-        searchId: data.searchId,
-        mensagem: data.interpretacao.mensagem_personalizada || '',
-        curadoria: data.interpretacao.termo_busca || '',
-        caracteristicas: data.interpretacao.caracteristicas || [],
-        termos_relacionados: data.interpretacao.termos_relacionados || [],
-        sinonimos: data.interpretacao.sinonimos || [],
+      const suggestion = {
+        searchId: data.searchId || Date.now().toString(),
+        mensagem: data.interpretacao?.mensagem_personalizada || '',
+        curadoria: data.interpretacao?.termo_busca || '',
+        caracteristicas: data.interpretacao?.caracteristicas || [],
+        termos_relacionados: data.interpretacao?.termos_relacionados || [],
+        sinonimos: data.interpretacao?.sinonimos || [],
         rankedProducts: data.produtos
-      });
+      };
 
-    } catch (error) {
+      setAiSuggestion(suggestion);
+      
+      // Save to cache
+      searchCache.current[cacheKey] = {
+         aiSuggestion: suggestion,
+         embedding
+      };
+
+    } catch (error: any) {
       console.error('Falha na busca inteligente:', error);
-      toast("Busca inteligente indisponível no momento.", "warning");
+      toast(error.message || "Busca inteligente indisponível no momento.", "warning");
     } finally {
       setInterpreting(false);
     }
