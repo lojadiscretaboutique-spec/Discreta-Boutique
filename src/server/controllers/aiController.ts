@@ -138,15 +138,7 @@ export const interpretSearch = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error(`[SEARCH][FATAL_ERROR]`, error.message);
-    res.json({
-      fallback: true,
-      searchId: null,
-      interpretacao: { 
-        termo_busca: req.body.busca || '', 
-        mensagem_personalizada: 'Estamos preparando o melhor para você...' 
-      },
-      produtos: []
-    });
+    res.status(500).json({ error: "Falha na geração OpenAI (Busca)" });
   }
 };
 

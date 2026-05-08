@@ -1640,8 +1640,14 @@ export function AdminProducts() {
                         {prod.stock || 0} <span className="text-[10px] font-normal uppercase opacity-40 ml-1">{prod.unit}</span>
                      </td>
                      <td className="px-6 py-4">
-                        <div className="font-bold text-white">{formatCurrency(prod.price)}</div>
-                        {prod.promoPrice && prod.promoPrice > 0 && <div className="text-[10px] text-red-600 font-black line-through opacity-40">{formatCurrency(prod.price)}</div>}
+                        {prod.promoPrice && prod.promoPrice > 0 ? (
+                           <>
+                             <div className="font-bold text-emerald-400">{formatCurrency(prod.promoPrice)}</div>
+                             <div className="text-[10px] text-slate-500 font-black line-through opacity-60">{formatCurrency(prod.price)}</div>
+                           </>
+                        ) : (
+                           <div className="font-bold text-white">{formatCurrency(prod.price)}</div>
+                        )}
                      </td>
                      <td className="px-6 py-4">
                        {prod.hasVariants ? (

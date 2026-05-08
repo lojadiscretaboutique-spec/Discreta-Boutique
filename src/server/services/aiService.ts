@@ -1,6 +1,5 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import OpenAI from 'openai';
 import { z } from 'zod';
-
 
 const ProductContentSchema = z.object({
   titulo: z.string().max(100),
@@ -41,10 +40,21 @@ const CategoryContentSchema = z.object({
 });
 
 class AIService {
-  private aiInfo: GoogleGenAI | null = null;
+  private openai: OpenAI | null = null;
   private cache = new Map<string, { data: any; expiry: number }>();
   private CACHE_TTL = 3600000; // 1 hora
   private categoriesCache: { data: string[], expiry: number } = { data: [], expiry: 0 };
+
+  constructor() {
+    console.log("AI SERVICE: Verificando configuração OPENAI...");
+    console.log("OPENAI KEY EXISTS:", !!process.env.OPENAI_API_KEY);
+    
+    if (process.env.OPENAI_API_KEY) {
+      this.openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+    }
+  }
 
   private async getValidCategories(): Promise<string[]> {
     if (Date.now() < this.categoriesCache.expiry && this.categoriesCache.data.length > 0) {
@@ -68,16 +78,12 @@ class AIService {
   }
 
   private getClient() {
-    if (!this.aiInfo) {
-      const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY; // fallback if they defined OPENAI_API_KEY and we migrated
-      if (!apiKey) {
-        throw new Error('GEMINI_API_KEY não configurada no servidor.');
-      }
-      this.aiInfo = new GoogleGenAI({ apiKey });
+    if (!this.openai) {
+      console.error("OPENAI KEY MISSING ON REQUEST");
+      throw new Error('Falha na geração OpenAI: OPENAI_API_KEY não configurada no servidor.');
     }
-    return this.aiInfo;
+    return this.openai;
   }
-
 
   private getFromCache(key: string) {
     const cached = this.cache.get(key);
@@ -107,6 +113,8 @@ class AIService {
     const cacheKey = `product_${nome}_${catStr}`;
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
+
+    console.log(`[AI] Gerando conteúdo para produto: ${nome}`);
 
     const prompt = `
       Você é o copywriter sênior e estrategista de SEO número 1 do Brasil, especializado em e-commerce de luxo e boutiques eróticas premium como a Discreta Boutique.
@@ -142,62 +150,45 @@ class AIService {
 
     try {
       const client = this.getClient();
-      const response = await client.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: {
-          systemInstruction: 'Você é um assistente de IA especialista em e-commerce erótico de luxo. Suas descrições são poéticas, seguras e convertem em vendas.',
-          responseMimeType: 'application/json',
-          temperature: 0.7
-        }
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'Você é um assistente de IA especialista em e-commerce erótico de luxo. Suas descrições são poéticas, seguras e convertem em vendas. Retorne APENAS JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.7
       });
 
-      const rawContent = response.text || '{}';
+      const rawContent = response.choices[0].message.content || '{}';
+      console.log("[AI] OpenAI Response status: success");
+      
       let parsed;
       try {
         parsed = JSON.parse(rawContent);
-        // Normalização preventiva
         if (parsed.palavras_chave) {
           parsed.palavras_chave = this.normalizeArray(parsed.palavras_chave);
         }
       } catch (e) {
         console.error('[AI][PRODUCT][JSON_PARSE_ERROR]', rawContent);
-        throw e;
+        throw new Error("Falha na geração OpenAI: Erro ao parsear JSON de resposta");
       }
 
       const result = ProductContentSchema.safeParse(parsed);
       if (!result.success) {
         console.error('[AI][PRODUCT][VALIDATION_ERROR]', result.error.format());
-        // Fallback robusto se a validação falhar
-        const fallback = {
-          titulo: (parsed.titulo || nome).substring(0, 100),
-          descricao_curta: parsed.descricao_curta || `Conheça o novo ${nome}, uma escolha sofisticada para seu bem-estar.`,
-          descricao_longa: parsed.descricao_longa || `O ${nome} foi desenvolvido com materiais de alta qualidade para proporcionar momentos inesquecíveis.`,
-          meta_title: (parsed.meta_title || `${nome} | Discreta Boutique`).substring(0, 100),
-          meta_description: (parsed.meta_description || `Compre ${nome} na Discreta Boutique. Entrega discreta e rápida.`).substring(0, 200),
-          palavras_chave: this.normalizeArray(parsed.palavras_chave).length > 0 ? this.normalizeArray(parsed.palavras_chave) : [nome, categoria]
-        };
-        this.setCache(cacheKey, fallback);
-        return fallback;
+        throw new Error("Falha na geração OpenAI: Resposta não condiz com o schema esperado");
       }
 
       this.setCache(cacheKey, result.data);
       return result.data;
-    } catch (error) {
+    } catch (error: any) {
       if (retries > 0) {
-        console.warn(`[AI] Retentando geração de conteúdo (Restantes: ${retries})`);
+        console.warn(`[AI] Retentando geração de conteúdo (Restantes: ${retries}). Erro: ${error.message}`);
         return this.generateProductContent(nome, categoria, retries - 1);
       }
       console.error('Erro na OpenAI (generateProductContent):', error);
-      // Fallback final drástico se tudo falhar
-      return {
-        titulo: nome,
-        descricao_curta: `Descrição elegante para ${nome}.`,
-        descricao_longa: `Detalhes completos sobre o produto ${nome}.`,
-        meta_title: nome,
-        meta_description: `Confira ${nome} em nossa boutique.`,
-        palavras_chave: [nome, categoria]
-      };
+      throw new Error(`Falha na geração OpenAI: ${error.message}`);
     }
   }
 
@@ -213,8 +204,10 @@ class AIService {
       c: p.categoryId || p.category,
       k: p.palavras_chave || [],
       d: (p.description || p.shortDescription || "").substring(0, 160),
-      t: { c: p.stats?.clicks || 0, v: p.stats?.purchases || 0 } // Termômetros: cliques e vendas
+      t: { c: p.stats?.clicks || 0, v: p.stats?.purchases || 0 }
     }));
+
+    console.log(`[AI] Realizando busca semântica para: ${query}`);
 
     const prompt = `
       Você é o Especialista de Vendas da Discreta Boutique. Sua missão é selecionar e ranquear os MELHORES produtos do catálogo para a busca do cliente.
@@ -241,22 +234,26 @@ class AIService {
 
     try {
       const client = this.getClient();
-      const response = await client.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: { responseMimeType: 'application/json', temperature: 0.1 }
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é um selecionador de produtos especializado em e-commerce. Retorne APENAS JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.1
       });
 
-      const parsed = JSON.parse(response.text || '{}');
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
       return {
         rankedIds: Array.isArray(parsed.rankedIds) ? parsed.rankedIds : [],
         mensagem: parsed.mensagem || "Selecionamos os itens perfeitos para seu desejo.",
         curadoria: parsed.curadoria || "Resultados da Busca",
         caracteristicas: Array.isArray(parsed.caracteristicas) ? parsed.caracteristicas : []
       };
-    } catch (error) {
-      console.error('[AI][HUNT_ERROR]', error);
-      return { rankedIds: [], mensagem: "Buscando o melhor para você...", curadoria: "Busca", caracteristicas: [] };
+    } catch (error: any) {
+      console.error('[AI][HUNT_ERROR]', error.message);
+      throw new Error(`Falha na geração OpenAI (Hunt): ${error.message}`);
     }
   }
 
@@ -283,152 +280,103 @@ class AIService {
         t: { c: p.stats?.clicks || 0, v: p.stats?.purchases || 0 }
       }));
 
+    console.log(`[AI] Sugerindo produtos relacionados para: ${targetProduct.name}`);
+
     const prompt = `
       Como Consultora Especialista da Discreta Boutique, seu objetivo é sugerir produtos que COMPLEMENTEM ou sejam EXCELENTES ALTERNATIVAS ao produto que o cliente está vendo agora.
-
-      PRODUTO ATUAL:
-      ${JSON.stringify(compactTarget)}
-
-      CATÁLOGO DE CANDIDATOS (Dê preferência a itens que combinem com o estilo ou categoria do atual):
-      ${JSON.stringify(candidates.slice(0, 50))}
-
-      CRITÉRIOS DE SELEÇÃO:
-      1. Afinidade Semântica: Se é um vibrador de coelho, sugira outros vibradores premium ou géis estimulantes.
-      2. Cross-Selling: Sugira acessórios que melhorem a experiência (ex: lubrificantes para brinquedos).
-      3. Upselling/Popularidade: Itens com bons "Termômetros" (vendas v e cliques c) têm prioridade se forem relevantes.
-      4. Decida a quantidade ideal (entre 4 e 12 itens).
-
+      PRODUTO ATUAL: ${JSON.stringify(compactTarget)}
+      CATÁLOGO DE CANDIDATOS: ${JSON.stringify(candidates.slice(0, 50))}
       RETORNE APENAS JSON:
       {
         "rankedIds": ["id1", "id2", "..."],
-        "mensagem": "Uma frase elegante de convite (máx 80 caracteres) conectando o item atual com as sugestões"
+        "mensagem": "Uma frase elegante de convite (máx 80 caracteres)"
       }
     `;
 
     try {
       const client = this.getClient();
-      const response = await client.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: { responseMimeType: 'application/json', temperature: 0.2 }
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é um consultor de e-commerce erótico. Retorne APENAS JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.2
       });
 
-      const parsed = JSON.parse(response.text || '{}');
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
       return {
         rankedIds: Array.isArray(parsed.rankedIds) ? parsed.rankedIds : [],
         mensagem: parsed.mensagem || "Você também pode gostar destas escolhas exclusivas:"
       };
-    } catch (error) {
-      console.error('[AI][SUGGEST_ERROR]', error);
-      return { rankedIds: [], mensagem: "Descubra mais opções exclusivas:" };
+    } catch (error: any) {
+      console.error('[AI][SUGGEST_ERROR]', error.message);
+      throw new Error(`Falha na geração OpenAI (Suggest): ${error.message}`);
     }
   }
 
   async interpretSearch(query: string, retries = 1): Promise<z.infer<typeof SearchInterpretationSchema>> {
-    // 1. Pré-processamento: normalizar, remover pontuação e frases de preenchimento
-    const normalizedQuery = query
-      .toLowerCase()
-      .replace(/[?!.;,]/g, '')
-      .replace(/qual o melhor|quero algo para|você tem|onde encontro|preciso de/g, '')
-      .trim();
+    const normalizedQuery = query.toLowerCase().trim();
     
     if (!normalizedQuery) {
-      return SearchInterpretationSchema.parse({ termo_busca: query });
+      throw new Error("Falha na geração OpenAI: Termo de busca vazio");
     }
 
     const cacheKey = `search_v2_${normalizedQuery}`;
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
+    console.log(`[AI] Interpretando busca: ${query}`);
+
     const validCategories = await this.getValidCategories();
     const prompt = `
-      Você é um motor de busca semântico para a Discreta Boutique (E-commerce de Bem-estar Íntimo).
-      Sua tarefa é extrair a INTENÇÃO e ATRIBUTOS da busca do usuário.
-
+      Você é um motor de busca semântico para a Discreta Boutique.
       BUSCA DO USUÁRIO: "${query}"
-
-      REGRAS DE EXTRAÇÃO:
-      1. NUNCA responda com texto livre. A saída deve ser APENAS um objeto json válido.
-      2. NUNCA sugira produtos específicos ou IDs.
-
-      ÁREAS DE CRIATIVIDADE (Use sua inteligência para extrair/inferir):
-      - Características técnicas (ex: "recarregável", "silicone", "vibrante", "texturizado")
-      - Sinônimos apropriados para a busca (amplie a pesquisa com termos contextuais)
-      - Intenção do usuário (ex: "pesquisa", "curiosidade", "compra_imediata", "presente")
-
-      ÁREAS DE CONTROLE RÍGIDO (NÃO seja criativo aqui):
-      - Categoria: VOCÊ DEVE ESCOLHER APENAS UMA DAS CATEGORIAS A SEGUIR: ${validCategories.join(", ")}.
-      - Se a busca for genérica OU você não tiver certeza de qual categoria se encaixa perfeitamente, retorne "Outros".
-      - NUNCA crie novas categorias. Se o termo não se encaixar em uma das categorias listadas, a resposta obrigatória é "Outros".
-
-      Sua resposta deve ser um objeto JSON válido.
-
-      FORMATO DE RETORNO:
+      CATEGORIAS VÁLIDAS: ${validCategories.join(", ")}.
+      RETORNE APENAS JSON NO FORMATO:
       {
-        "termo_busca": "versão limpa e técnica da busca",
-        "categoria": "nome da categoria (ex: Vibradores, Lingeries)",
-        "intencao": "objetivo do usuário",
-        "caracteristicas": ["atributo1", "atributo2"],
-        "sinonimos": ["sinonimo1", "sinonimo2"],
-        "termos_relacionados": ["termo1", "termo2"],
+        "termo_busca": "versão limpa",
+        "categoria": "nome da categoria ou Outros",
+        "intencao": "objetivo",
+        "caracteristicas": [],
+        "sinonimos": [],
+        "termos_relacionados": [],
         "nivel_usuario": "iniciante|intermediario|avancado",
-        "mensagem_personalizada": "Mensagem acolhedora de até 120 caracteres"
+        "mensagem_personalizada": "até 120 chars"
       }
     `;
+
     try {
       const client = this.getClient();
-      const response = await client.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: { responseMimeType: 'application/json', temperature: 0.3 }
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é um motor de busca semântico. Retorne APENAS JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3
       });
 
-      const rawContent = response.text || '{}';
-      const parsed = JSON.parse(rawContent);
-
-      // Normalização preventiva
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
       if (parsed.caracteristicas) parsed.caracteristicas = this.normalizeArray(parsed.caracteristicas);
       if (parsed.sinonimos) parsed.sinonimos = this.normalizeArray(parsed.sinonimos);
       if (parsed.termos_relacionados) parsed.termos_relacionados = this.normalizeArray(parsed.termos_relacionados);
       
-      // Validação de Categoria
       if (parsed.categoria && !validCategories.includes(parsed.categoria)) {
-        console.warn('[AI][SEARCH][INVALID_CATEGORY_DETECTED]', {
-          original: parsed.categoria,
-          substituindo_por: 'Outros'
-        });
         parsed.categoria = 'Outros';
       }
       
       const result = SearchInterpretationSchema.safeParse(parsed);
-      if (!result.success) {
-        console.error('[AI][SEARCH][VALIDATION_ERROR]', result.error.format());
-        const fallback = {
-          termo_busca: parsed.termo_busca || normalizedQuery,
-          categoria: parsed.categoria || '',
-          intencao: parsed.intencao || 'pesquisa',
-          caracteristicas: this.normalizeArray(parsed.caracteristicas),
-          nivel_usuario: parsed.nivel_usuario || 'intermediario',
-          sinonimos: this.normalizeArray(parsed.sinonimos),
-          termos_relacionados: this.normalizeArray(parsed.termos_relacionados),
-          produtos_recomendados: [],
-          sugestao_curadoria: '',
-          mensagem_personalizada: parsed.mensagem_personalizada || 'Estamos preparando o melhor para você...'
-        };
-        this.setCache(cacheKey, fallback);
-        return fallback;
-      }
+      if (!result.success) throw new Error("Schema inválido");
 
       this.setCache(cacheKey, result.data);
       return result.data;
-    } catch (error) {
-      if (retries > 0) {
-        return this.interpretSearch(query, retries - 1);
-      }
-      return SearchInterpretationSchema.parse({
-        termo_busca: normalizedQuery,
-        mensagem_personalizada: 'Explorando nossa coleção para você...'
-      });
+    } catch (error: any) {
+      if (retries > 0) return this.interpretSearch(query, retries - 1);
+      console.error('[AI][INTERPRET_ERROR]', error.message);
+      throw new Error(`Falha na geração OpenAI (Interpret): ${error.message}`);
     }
   }
 
@@ -438,126 +386,91 @@ class AIService {
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
+    console.log(`[AI] Sugerindo complementos para carrinho: ${productsStr}`);
+
     const prompt = `
-      Você é um especialista sênior em Mix de Produtos e Cross-Sell para a Discreta Boutique.
-      Analise os itens no carrinho e sugira uma categoria ou tipo de produto complementar que elevaria a experiência do cliente para o próximo nível.
-      
-      PRODUTOS NO CARRINHO: "${productsStr}"
-      
-      OBJETIVO:
-      Sugerir algo que o usuário AINDA NÃO tem no carrinho e que faz todo sentido lógico e sensorial.
-      Seja variado nas sugestões. Não sugira sempre o básico (lubrificante). Pense em massageadores, velas, acessórios de toque, etc.
-      
-      REGRAS DE RETORNO (json):
+      Especialista em Mix de Produtos para Discreta Boutique.
+      CARRINHO: "${productsStr}"
+      RETORNE APENAS JSON:
       {
-        "foco_complemento": "Um único termo técnico para busca no catálogo (ex: massageador, óleo, aromatizante, acessório)",
-        "caracteristicas": ["3 a 5 palavras-chave para refinar a busca no banco de dados"],
-        "motivo": "Uma frase curta e elegante (máx 150 chars) explicando o benefício da combinação"
+        "foco_complemento": "termo técnico",
+        "caracteristicas": [],
+        "motivo": "frase curta"
       }
     `;
 
     try {
       const client = this.getClient();
-      const response = await client.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: { responseMimeType: 'application/json', temperature: 0.8 }
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é um especialista em cross-sell. Retorne APENAS JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.8
       });
 
-      const rawContent = response.text || '{}';
-      let parsed;
-      try {
-        parsed = JSON.parse(rawContent);
-        if (parsed.caracteristicas) parsed.caracteristicas = this.normalizeArray(parsed.caracteristicas);
-      } catch (e) {
-        console.error('[AI][JSON_PARSE_ERROR]', rawContent);
-        throw e;
-      }
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      if (parsed.caracteristicas) parsed.caracteristicas = this.normalizeArray(parsed.caracteristicas);
 
       const result = CartSuggestionSchema.safeParse(parsed);
-      if (!result.success) {
-        console.error('[AI][VALIDATION_ERROR]', result.error.format());
-        return {
-          foco_complemento: 'higiene',
-          caracteristicas: ['limpeza', 'cuidado'],
-          motivo: 'Essenciais para sua rotina de bem-estar.'
-        };
-      }
+      if (!result.success) throw new Error("Schema inválido");
 
-      // Cache mais curto para sugestões de carrinho (15 min em vez de 1 hora)
-      this.cache.set(cacheKey, {
-        data: result.data,
-        expiry: Date.now() + (1000 * 60 * 15)
-      });
+      this.setCache(cacheKey, result.data);
       return result.data;
-    } catch (error) {
-      console.error('Erro na OpenAI (suggestComplements):', error);
-      return {
-        foco_complemento: 'higiene',
-        caracteristicas: ['antibactericida'],
-        motivo: 'Mantenha seus itens sempre prontos para uso com segurança.'
-      };
+    } catch (error: any) {
+      console.error('Erro na OpenAI (suggestComplements):', error.message);
+      throw new Error(`Falha na geração OpenAI (Complements): ${error.message}`);
     }
   }
 
   async generateEmbedding(text: string): Promise<number[]> {
     try {
+      console.log(`[AI] Gerando embedding para texto de tamanho: ${text.length}`);
       const client = this.getClient();
-      const response = await client.models.embedContent({
-        model: 'gemini-embedding-2-preview',
-        contents: text,
+      const response = await client.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text,
       });
-      return response.embeddings?.[0]?.values || [];
-    } catch (error) {
-      console.error('[AI][EMBEDDING_ERROR]', error);
-      return [];
+      return response.data[0].embedding;
+    } catch (error: any) {
+      console.error('[AI][EMBEDDING_ERROR]', error.message);
+      throw new Error(`Falha na geração OpenAI (Embedding): ${error.message}`);
     }
   }
 
   async enrichProduct(title: string, description: string): Promise<{keywords: string[], synonyms: string[], searchTerms: string[]}> {
+    console.log(`[AI] Enriquecendo produto: ${title}`);
     const prompt = `
-      Você é o maior especialista em SEO e Inteligência de busca para o segmento Adulto Premium da América Latina.
-      Analise o produto "${title}" e sua descrição para gerar inteligência de busca.
-      
+      Especialista SEO Adulto Premium.
       PRODUTO: "${title}"
       DESCRIÇÃO: "${description}"
-
-      REGRAS PARA CADA CAMPO:
-      1. keywords: Termos de cauda curta e longa altamente relevantes. Inclua o nome da categoria provável.
-      2. synonyms: Como pessoas de diferentes perfis chamariam este produto? (Incluso termos formais, casuais e discretos).
-      3. searchTerms: Pense na dor ou desejo do cliente (Ex: "como apimentar a relação", "vibrador silencioso", "algema que não machuca").
-
-      Gere uma lista rica e exaustiva para cada campo.
-      
-      Retorne estritamente um objeto JSON:
-      {
-        "keywords": ["..."],
-        "synonyms": ["..."],
-        "searchTerms": ["..."]
-      }
+      RETORNE APENAS JSON:
+      { "keywords": [], "synonyms": [], "searchTerms": [] }
     `;
 
     try {
       const client = this.getClient();
-      const response = await client.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: {
-          systemInstruction: 'Você é um estrategista de SEO sênior focado em busca semântica para e-commerce premium.',
-          responseMimeType: 'application/json',
-          temperature: 0.5
-        }
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'Você é um estrategista de SEO. Retorne APENAS JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.5
       });
 
-      const parsed = JSON.parse(response.text || '{}');
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
       return {
         keywords: this.normalizeArray(parsed.keywords),
         synonyms: this.normalizeArray(parsed.synonyms),
         searchTerms: this.normalizeArray(parsed.searchTerms)
       };
-    } catch (error) {
-      console.error('[AI][ENRICH_ERROR]', error);
-      return { keywords: [], synonyms: [], searchTerms: [] };
+    } catch (error: any) {
+      console.error('[AI][ENRICH_ERROR]', error.message);
+      throw new Error(`Falha na geração OpenAI (Enrich): ${error.message}`);
     }
   }
 
@@ -566,77 +479,39 @@ class AIService {
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
+    console.log(`[AI] Gerando conteúdo para categoria: ${nome}`);
+
     const prompt = `
-      Você é um copywriter sênior especialista em branding e SEO para e-commerce de luxo e boutiques eróticas premium como a Discreta Boutique.
-      Sua missão é gerar o conteúdo estratégico e ENCANTADOR para a categoria de produtos "${nome}".
-
-      DIRETRIZES DE ESTILO E QUALIDADE:
-      - Tom de voz: Sofisticado, elegante, sensual (sem ser vulgar) e altamente persuasivo.
-      - Foco: Despertar o desejo, elevar a autoestima e prometer experiências inesquecíveis.
-      - Proibição: NUNCA use termos vulgares, explícitos, gírias de baixo calão ou descrições pornográficas.
-
-      INSTRUÇÕES PARA OS CAMPOS:
-      1. descricao: Uma introdução sedutora e curta (1-2 frases) que funciona como o "slogan" da categoria.
-      2. conteudo_seo: Um texto LONGO, ELABORADO e ESTRUTURADO (mínimo 300 palavras). 
-         - Inicie contextualizando o papel desses produtos no prazer e bem-estar.
-         - Crie parágrafos envolventes que expliquem o que o cliente encontrará na coleção.
-         - Utilize gatilhos mentais de exclusividade, elegância e segurança.
-         - Finalize reforçando a qualidade e o sigilo absoluto na entrega.
-      3. meta_title: Título perfeito para Google (máx 60 caracteres). Deve ser impactante.
-      4. meta_description: Texto altamente persuasivo para cliques no Google (máx 155 caracteres), mencionando "Entrega 100% Discreta".
-      5. palavras_chave: Forneça uma lista EXAUSTIVA de 15 a 20 termos relevantes (tags), incluindo variações de busca, nomes técnicos e termos conceituais.
-
-      IMPORTANTE: A resposta deve ser estritamente um objeto JSON válido.
+      Copywriter Luxo Discreta Boutique.
+      CATEGORIA: "${nome}"
+      RETORNE APENAS JSON:
+      { "descricao": "", "conteudo_seo": "", "meta_title": "", "meta_description": "", "palavras_chave": [] }
     `;
 
     try {
       const client = this.getClient();
-      const response = await client.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: { responseMimeType: 'application/json', temperature: 0.7 }
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'Você é um copywriter de luxo. Retorne APENAS JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.7
       });
 
-      const rawContent = response.text || '{}';
-      let parsed;
-      try {
-        parsed = JSON.parse(rawContent);
-        if (parsed.palavras_chave) parsed.palavras_chave = this.normalizeArray(parsed.palavras_chave);
-      } catch (e) {
-        console.error('[AI][CATEGORY][JSON_PARSE_ERROR]', rawContent);
-        throw e;
-      }
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      if (parsed.palavras_chave) parsed.palavras_chave = this.normalizeArray(parsed.palavras_chave);
 
       const result = CategoryContentSchema.safeParse(parsed);
-      if (!result.success) {
-        console.error('[AI][CATEGORY][VALIDATION_ERROR]', result.error.format());
-        const fallback = {
-          descricao: parsed.descricao || `Explore nossa categoria de ${nome}.`,
-          conteudo_seo: parsed.conteudo_seo || `A categoria ${nome} oferece produtos exclusivos selecionados para sua satisfação.`,
-          meta_title: (parsed.meta_title || `${nome} - Discreta Boutique`).substring(0, 100),
-          meta_description: (parsed.meta_description || `Tudo o que você procura em ${nome} está aqui.`).substring(0, 200),
-          palavras_chave: this.normalizeArray(parsed.palavras_chave).length > 0 ? this.normalizeArray(parsed.palavras_chave) : [nome]
-        };
-        this.setCache(cacheKey, fallback);
-        return fallback;
-      }
+      if (!result.success) throw new Error("Schema inválido");
 
       this.setCache(cacheKey, result.data);
       return result.data;
-    } catch (error) {
-      if (retries > 0) {
-        console.warn(`[AI] Retentando geração de conteúdo de categoria (Restantes: ${retries})`);
-        return this.generateCategoryContent(nome, retries - 1);
-      }
-      console.error('Erro na OpenAI (generateCategoryContent):', error);
-      // Fallback final
-      return {
-        descricao: `Coleção especial de ${nome}.`,
-        conteudo_seo: `Descubra os melhores produtos da categoria ${nome}.`,
-        meta_title: nome,
-        meta_description: `Variedade premium em ${nome}.`,
-        palavras_chave: [nome]
-      };
+    } catch (error: any) {
+      if (retries > 0) return this.generateCategoryContent(nome, retries - 1);
+      console.error('Erro na OpenAI (generateCategoryContent):', error.message);
+      throw new Error(`Falha na geração OpenAI (Category): ${error.message}`);
     }
   }
 }
