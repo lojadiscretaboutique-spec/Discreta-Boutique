@@ -1,0 +1,27 @@
+src/pages/admin/AdminLogin.tsx:            <img src={settings.logoUrl} alt={settings.storeName} className="h-16 w-auto object-contain mb-2" />
+src/pages/admin/AdminPDV.tsx:                               <img src={mainImg || undefined} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/pages/admin/AdminPDV.tsx:                         <img src={cart[cart.length - 1].imageUrl || undefined} alt="Último item" className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
+src/pages/admin/AdminPDV.tsx:                    {item.imageUrl ? <img src={item.imageUrl || undefined} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-full h-full flex items-center justify-center"><Package size={20} /></div>}
+src/pages/admin/AdminCategories.tsx:                            src={form.image.url || undefined} 
+src/pages/admin/AdminCategories.tsx:                            src={form.banner.url || undefined} 
+src/pages/admin/AdminCategories.tsx:                      src={category.image.url || undefined} 
+src/pages/admin/AdminCategories.tsx:                  src={sub.image.url || undefined} 
+src/pages/admin/AdminProducts.tsx:                           {v.imageUrl ? <img src={v.imageUrl} className="w-full h-full object-cover" /> : <ImageIcon size={24} className="text-slate-300" />}
+src/pages/admin/AdminProducts.tsx:                               <img src={img.url || undefined} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/pages/admin/AdminProducts.tsx:                          src={img.url || undefined} 
+src/pages/admin/AdminProducts.tsx:                                  src={prod.images[0].url || undefined} 
+src/pages/admin/AdminBanners.tsx:                  <img src={banner.imageUrl || undefined} alt={banner.title} className="w-full h-48 md:h-64 object-cover" />
+src/pages/admin/AdminConfig.tsx:                      <img src={config.logoUrl || undefined} alt="Logo preview" className="w-full h-full object-contain" />
+src/pages/store/HomePage.tsx:                      src={banners[currentBanner].imageUrl || undefined} 
+src/pages/store/HomePage.tsx:                      src={banners[currentBanner].imageUrl || undefined} 
+src/pages/store/HomePage.tsx:                          src={cat.image.url || undefined} 
+src/pages/store/HomePage.tsx:            src={mainImage || undefined} 
+src/pages/store/CatalogPage.tsx:            src={image || undefined} 
+src/pages/store/CartPage.tsx:                              <img src={item.imageUrl || undefined} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+src/pages/store/CartPage.tsx:                                    <img src={p.imageUrl || undefined} alt={p.name} className="w-full h-full object-cover group-hover/item:scale-110 transition-transform duration-700" />
+src/pages/store/ProductPage.tsx:                   src={currentImage || undefined} 
+src/pages/store/ProductPage.tsx:                     <img src={img.url || undefined} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/pages/store/ProductPage.tsx:                      src={p.imageUrl} 
+src/layouts/AdminLayout.tsx:                  <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+src/components/PwaInstallBanner.tsx:                    src={settings.logoUrl || "/logo.png"} 
+src/App.tsx:            src={settings.logoUrl}

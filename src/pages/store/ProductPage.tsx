@@ -339,7 +339,7 @@ export function ProductPage() {
                 >
                   <div className="aspect-[3/4] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 mb-4 relative">
                     <img 
-                      src={p.imageUrl} 
+                      src={p.imageUrl || undefined} 
                       alt={p.name} 
                       className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 grayscale-[0.5] group-hover:grayscale-0"
                       referrerPolicy="no-referrer"

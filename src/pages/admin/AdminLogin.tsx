@@ -98,7 +98,7 @@ export function AdminLogin() {
       <div className="max-w-md w-full bg-slate-900 rounded-xl shadow-xl border border-slate-800 overflow-hidden">
         <div className="bg-black py-8 text-center flex flex-col items-center gap-2">
           {settings.logoUrl ? (
-            <img src={settings.logoUrl} alt={settings.storeName} className="h-16 w-auto object-contain mb-2" />
+            <img src={settings.logoUrl || undefined} alt={settings.storeName} className="h-16 w-auto object-contain mb-2" />
           ) : (
             <span className="text-red-600 font-black text-3xl tracking-tighter italic">DISCRETA</span>
           )}
