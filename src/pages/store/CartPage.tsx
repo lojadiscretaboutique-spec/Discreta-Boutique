@@ -536,7 +536,8 @@ export function CartPage() {
           name: i.name + (i.variantName ? ` - ${i.variantName}` : ''),
           price: i.price,
           quantity: i.quantity,
-          sku: i.sku || ''
+          sku: i.sku || '',
+          searchId: i.searchId || null
         })),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

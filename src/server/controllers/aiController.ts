@@ -6,17 +6,20 @@ import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc,
 
 const GenerateProductInput = z.object({
   nome: z.string().min(3).max(100),
-  categoria: z.union([z.string().min(3).max(100), z.array(z.string())])
+  categoria: z.union([z.string().min(3).max(100), z.array(z.string())]),
+  descricao: z.string().optional()
 });
 
 const GenerateCategoryInput = z.object({
-  nome: z.string().min(3).max(100)
+  nome: z.string().min(3).max(100),
+  slug: z.string().optional(),
+  existingDesc: z.string().optional()
 });
 
 export const generateProduct = async (req: Request, res: Response) => {
   try {
-    const { nome, categoria } = GenerateProductInput.parse(req.body);
-    const result = await aiService.generateProductContent(nome, categoria);
+    const { nome, categoria, descricao } = GenerateProductInput.parse(req.body);
+    const result = await aiService.generateProductContent(nome, categoria, descricao);
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -25,8 +28,8 @@ export const generateProduct = async (req: Request, res: Response) => {
 
 export const generateCategory = async (req: Request, res: Response) => {
   try {
-    const { nome } = GenerateCategoryInput.parse(req.body);
-    const result = await aiService.generateCategoryContent(nome);
+    const { nome, slug, existingDesc } = GenerateCategoryInput.parse(req.body);
+    const result = await aiService.generateCategoryContent(nome, slug, existingDesc);
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -76,7 +79,20 @@ export const interpretSearch = async (req: Request, res: Response) => {
     interpretacao = interpretScore;
     searchId = "ai_" + Date.now(); 
 
-    // 2. Mapear os produtos escolhidos pela IA
+    // Salvar a busca para aprendizado contínuo
+    try {
+      await addDoc(collection(db, 'intelligent_searches'), {
+        id: searchId,
+        termo: busca,
+        interpretacao: interpretacao,
+        resultados_count: aiSelection.rankedIds.length,
+        timestamp: serverTimestamp(),
+        cliques: 0,
+        conversoes: 0
+      });
+    } catch (e) {
+      console.warn('[SEARCH][SAVE_ERROR]', e);
+    }
     const productsRef = collection(db, 'products');
     const productsSnap = await getDocs(query(productsRef, where('active', '==', true), limit(300)));
     let allProducts = productsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
@@ -145,10 +161,20 @@ export const interpretSearch = async (req: Request, res: Response) => {
 export const trackClick = async (req: Request, res: Response) => {
   try {
     const { searchId, productId } = TrackClickInput.parse(req.body);
-    await updateDoc(doc(db, 'intelligent_searches', searchId), { cliques: increment(1) });
-    await updateDoc(doc(db, 'products', productId), { 'stats.clicks': increment(1) });
+    
+    // Buscar o documento da busca pelo ID customizado
+    const qSearch = query(collection(db, 'intelligent_searches'), where('id', '==', searchId), limit(1));
+    const snap = await getDocs(qSearch);
+    if (!snap.empty) {
+      await updateDoc(snap.docs[0].ref, { cliques: increment(1) });
+    }
+
+    // Atualizar o produto
+    await productService.trackInteraction(productId, 'click', searchId);
+    
     res.json({ success: true });
   } catch (error) {
+    console.error('[TRACK_CLICK_ERROR]', error);
     res.status(400).json({ error: 'Erro ao registrar clique' });
   }
 };
@@ -329,11 +355,35 @@ export const suggestRelatedProducts = async (req: Request, res: Response) => {
   }
 };
 
+export const homeCuratory = async (req: Request, res: Response) => {
+  try {
+    const productsRef = collection(db, 'products');
+    const snap = await getDocs(query(productsRef, where('active', '==', true), limit(200)));
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const result = await aiService.homeCuratory(all);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const analyzeCatalog = async (req: Request, res: Response) => {
+  try {
+    const { products, categories } = req.body;
+    const result = await aiService.analyzeCatalog(products, categories);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const aiController = {
   generateProduct,
   generateCategory,
   interpretSearch,
   trackClick,
+  homeCuratory,
+  analyzeCatalog,
   botConsult,
   suggestCartComplements,
   suggestRelatedProducts,

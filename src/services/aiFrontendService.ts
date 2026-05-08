@@ -10,10 +10,10 @@ export interface GeneratedProductContent {
 }
 
 export interface GeneratedCategoryContent {
-  descricao: string;
-  conteudo_seo: string;
-  meta_title: string;
-  meta_description: string;
+  descricao_curta: string;
+  descricao_completa: string;
+  meta_titulo: string;
+  meta_descricao: string;
   palavras_chave: string[];
 }
 
@@ -21,11 +21,11 @@ export const aiFrontendService = {
   /**
    * Generates product content (descriptions, meta tags, etc.) via backend (OpenAI)
    */
-  async generateProductContent(nome: string, categoria: string | string[]): Promise<GeneratedProductContent> {
+  async generateProductContent(nome: string, categoria: string | string[], descricao?: string): Promise<GeneratedProductContent> {
     const response = await fetch('/api/ia/gerar-produto', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome, categoria })
+      body: JSON.stringify({ nome, categoria, descricao })
     });
 
     if (!response.ok) {
@@ -39,11 +39,11 @@ export const aiFrontendService = {
   /**
    * Generates category content via backend (OpenAI)
    */
-  async generateCategoryContent(nome: string): Promise<GeneratedCategoryContent> {
+  async generateCategoryContent(nome: string, slug?: string, existingDesc?: string): Promise<GeneratedCategoryContent> {
     const response = await fetch('/api/ia/gerar-categoria', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome })
+      body: JSON.stringify({ nome, slug, existingDesc })
     });
 
     if (!response.ok) {

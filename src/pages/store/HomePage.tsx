@@ -30,6 +30,7 @@ export function HomePage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [currentBanner, setCurrentBanner] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [aiFrase, setAiFrase] = useState("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -60,13 +61,45 @@ export function HomePage() {
         (!p.controlStock || p.allowBackorder || p.stock > 0)
       );
 
+      // --- CURADORIA IA ---
+      let curadoria: any = null;
+      try {
+        const resAi = await fetch('/api/ia/home-curadoria');
+        if (resAi.ok) {
+          curadoria = await resAi.json();
+          if (curadoria.fraseImpacto) setAiFrase(curadoria.fraseImpacto);
+        }
+      } catch (e) {
+        console.warn('IA Home Curatory fails:', e);
+      }
+
       const usedIds = new Set<string>();
       
-      const lancamentos = getLancamentos(visibleProducts, usedIds);
-      const destaques = getDestaques(visibleProducts, usedIds);
-      const maisVendidos = getMaisVendidos(visibleProducts, usedIds);
-      const emAlta = getEmAlta(visibleProducts, usedIds);
-      const recomendados = getRecomendados(visibleProducts, usedIds);
+      let lancamentos, destaques, maisVendidos, emAlta, recomendados;
+
+      if (curadoria) {
+        const pickAi = (ids: string[]) => ids.map(id => visibleProducts.find(p => p.id === id)).filter(p => !!p && !usedIds.has(p.id!)) as Product[];
+        
+        lancamentos = pickAi(curadoria.lancamentos);
+        lancamentos.forEach(p => usedIds.add(p.id!));
+
+        destaques = pickAi(curadoria.destaques);
+        destaques.forEach(p => usedIds.add(p.id!));
+
+        maisVendidos = pickAi(curadoria.maisVendidos);
+        maisVendidos.forEach(p => usedIds.add(p.id!));
+
+        emAlta = pickAi(curadoria.emAlta);
+        emAlta.forEach(p => usedIds.add(p.id!));
+
+        recomendados = getRecomendados(visibleProducts, usedIds);
+      } else {
+        lancamentos = getLancamentos(visibleProducts, usedIds);
+        destaques = getDestaques(visibleProducts, usedIds);
+        maisVendidos = getMaisVendidos(visibleProducts, usedIds);
+        emAlta = getEmAlta(visibleProducts, usedIds);
+        recomendados = getRecomendados(visibleProducts, usedIds);
+      }
 
       // Fill fallbacks if needed
       [lancamentos, destaques, maisVendidos, emAlta, recomendados].forEach(sec => {
@@ -203,9 +236,9 @@ export function HomePage() {
              <motion.h1 
                initial={{ opacity: 0, scale: 0.9 }}
                animate={{ opacity: 1, scale: 1 }}
-               className="text-6xl md:text-9xl font-black italic tracking-tighter uppercase mb-4 opacity-10"
+               className="text-4xl md:text-6xl font-black italic tracking-tighter uppercase mb-4 text-white relative z-20 px-4 drop-shadow-2xl"
              >
-               DISCRETA
+               {aiFrase || "DISCRETA"}
              </motion.h1>
           </div>
         )}

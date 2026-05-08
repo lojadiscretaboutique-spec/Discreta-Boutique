@@ -11,6 +11,7 @@ export interface CartItem {
   imageUrl?: string;
   variantId?: string;
   variantName?: string;
+  searchId?: string;
 }
 
 interface CartStore {

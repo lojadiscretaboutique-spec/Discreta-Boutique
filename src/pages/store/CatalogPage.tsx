@@ -572,7 +572,8 @@ export function CatalogPage() {
                     >
                       <ProductGridCard 
                         product={p} 
-                        onItemClick={() => trackProductClick(p.id)}
+                        onItemClick={() => trackProductClick(p.id!)}
+                        searchId={aiSuggestion?.searchId}
                       />
                     </motion.div>
                   ))}
@@ -631,7 +632,7 @@ export function CatalogPage() {
   );
 }
 
-function ProductGridCard({ product, onItemClick }: { product: Product, onItemClick?: () => void }) {
+function ProductGridCard({ product, onItemClick, searchId }: { product: Product, onItemClick?: () => void, searchId?: string }) {
   const image = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
   const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
@@ -655,7 +656,8 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
         sku: product.sku,
         imageUrl: image || '',
         variantId: undefined,
-        variantName: undefined
+        variantName: undefined,
+        searchId: searchId
       });
       // Track conversion
       productService.trackInteraction(product.id!, 'conversion');
@@ -665,7 +667,7 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
   
   return (
     <Link 
-      to={`/produto/${product.seo?.slug || product.id}`} 
+      to={`/produto/${product.seo?.slug || product.id}${searchId ? `?sid=${searchId}` : ''}`} 
       onClick={() => onItemClick?.()}
       className={cn(
         "group relative bg-zinc-950/40 rounded-[2.5rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-700 h-full",

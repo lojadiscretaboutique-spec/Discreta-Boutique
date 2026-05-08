@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { doc, getDoc, DocumentData } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { productService } from '../../services/productService';
 
 export function SuccessPage() {
   const location = useLocation();
@@ -25,7 +26,17 @@ export function SuccessPage() {
         try {
           const d = await getDoc(doc(db, 'orders', finalId));
           if (d.exists()) {
-            setOrderData(d.data());
+            const data = d.data();
+            setOrderData(data);
+            
+            // Track conversions for AI learning
+            if (data.items && Array.isArray(data.items)) {
+              data.items.forEach((item: any) => {
+                if (item.productId && (item.searchId || item.id)) {
+                   productService.trackInteraction(item.productId, 'conversion', item.searchId);
+                }
+              });
+            }
           }
         } catch (err) {
           console.error(err);

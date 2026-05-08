@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCartStore } from '../../store/cartStore';
@@ -11,6 +11,8 @@ import { motion } from 'motion/react';
 
 export function ProductPage() {
   const { slug } = useParams();
+  const [searchParams] = useSearchParams();
+  const searchId = searchParams.get('sid') || undefined;
   const navigate = useNavigate();
   const [product, setProduct] = useState<Product | null>(null);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -41,7 +43,7 @@ export function ProductPage() {
         }
 
         if (productData) {
-          productService.trackInteraction(productData.id!, 'view');
+          productService.trackInteraction(productData.id!, 'view', searchId);
           setProduct(productData);
           
           // Carregar Sugestões da IA
@@ -124,7 +126,8 @@ export function ProductPage() {
       sku: selectedVariant?.sku || product.sku,
       imageUrl: currentImage,
       variantId: selectedVariant?.id,
-      variantName: selectedVariant?.name
+      variantName: selectedVariant?.name,
+      searchId
     });
     
     // Track conversion

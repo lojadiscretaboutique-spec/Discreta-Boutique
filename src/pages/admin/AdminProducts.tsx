@@ -131,7 +131,7 @@ export function AdminProducts() {
         : [categories.find(c => c.id === form.categoryId)?.name || form.categoryId];
       
       // 1. Generate text content (descriptions, meta tags)
-      const data = await aiFrontendService.generateProductContent(form.name, selectedCatNames);
+      const data = await aiFrontendService.generateProductContent(form.name, selectedCatNames, form.fullDescription);
 
       // 2. Enrich with SEO keywords and synonyms using OpenAI
       const enrichment = await aiFrontendService.enrichProduct(form.name, data.descricao_longa || form.fullDescription || '');
@@ -216,7 +216,7 @@ export function AdminProducts() {
             : [categories.find(c => c.id === product.categoryId)?.name || product.categoryId || 'Geral'];
 
           // 2. Call OpenAI Service via Backend
-          const data = await aiFrontendService.generateProductContent(product.name, selectedCatNames);
+          const data = await aiFrontendService.generateProductContent(product.name, selectedCatNames, product.fullDescription);
           const enrichment = await aiFrontendService.enrichProduct(product.name, data.descricao_longa || product.fullDescription || '');
 
           const combinedKeywords = [...new Set([...(data.palavras_chave || []), ...(enrichment.keywords || [])])];

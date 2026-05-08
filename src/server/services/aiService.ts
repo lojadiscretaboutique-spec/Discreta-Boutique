@@ -1,5 +1,7 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 const ProductContentSchema = z.object({
   titulo: z.string().max(100),
@@ -32,10 +34,10 @@ const CartSuggestionSchema = z.object({
 });
 
 const CategoryContentSchema = z.object({
-  descricao: z.string(),
-  conteudo_seo: z.string(),
-  meta_title: z.string().max(100),
-  meta_description: z.string().max(200),
+  descricao_curta: z.string(),
+  descricao_completa: z.string(),
+  meta_titulo: z.string().max(100),
+  meta_descricao: z.string().max(200),
   palavras_chave: z.array(z.string())
 });
 
@@ -108,13 +110,14 @@ class AIService {
     return [];
   }
 
-  async generateProductContent(nome: string, categoria: string | string[], retries = 2): Promise<z.infer<typeof ProductContentSchema>> {
+  async generateProductContent(nome: string, categoria: string | string[], existingDescription?: string, retries = 2): Promise<z.infer<typeof ProductContentSchema>> {
     const catStr = Array.isArray(categoria) ? categoria.join(', ') : categoria;
-    const cacheKey = `product_${nome}_${catStr}`;
+    const cacheKey = `product_v2_${nome}_${catStr}_${existingDescription ? existingDescription.substring(0, 50) : ''}`;
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
     console.log(`[AI] Gerando conteúdo para produto: ${nome}`);
+    const startTime = Date.now();
 
     const prompt = `
       Você é o copywriter sênior e estrategista de SEO número 1 do Brasil, especializado em e-commerce de luxo e boutiques eróticas premium como a Discreta Boutique.
@@ -122,8 +125,9 @@ class AIService {
       
       Produto: "${nome}"
       Categorias/Funcionalidades Relacionadas: "${catStr}"
+      ${existingDescription ? `\nCONTEXTO ADICIONAL (Descrição Atual): "${existingDescription}"` : ''}
       
-      IMPORTANTE: Este produto pertence a MÚLTIPLAS categorias e possui diversas funcionalidades. 
+      IMPORTANTE: ${existingDescription ? 'Utilize a descrição atual como base de contexto, mas REESCREVA para torná-la luxuosa, sedutora e otimizada para SEO.' : 'Este produto pertence a MÚLTIPLAS categorias e possui diversas funcionalidades.'}
       Certifique-se de que a descrição e os metadados abranjam todos os aspectos mencionados nestas categorias: ${catStr}.
       
       A Discreta Boutique não vende apenas objetos; ela vende experiências, autoconhecimento, prazer e elegância. 
@@ -161,7 +165,8 @@ class AIService {
       });
 
       const rawContent = response.choices[0].message.content || '{}';
-      console.log("[AI] OpenAI Response status: success");
+      const duration = Date.now() - startTime;
+      console.log(`[AI] OpenAI Response status: success (${duration}ms). Tokens: ${response.usage?.total_tokens || 'N/A'}`);
       
       let parsed;
       try {
@@ -185,7 +190,7 @@ class AIService {
     } catch (error: any) {
       if (retries > 0) {
         console.warn(`[AI] Retentando geração de conteúdo (Restantes: ${retries}). Erro: ${error.message}`);
-        return this.generateProductContent(nome, categoria, retries - 1);
+        return this.generateProductContent(nome, categoria, existingDescription, retries - 1);
       }
       console.error('Erro na OpenAI (generateProductContent):', error);
       throw new Error(`Falha na geração OpenAI: ${error.message}`);
@@ -202,33 +207,47 @@ class AIService {
       id: p.id,
       n: p.name,
       c: p.categoryId || p.category,
-      k: p.palavras_chave || [],
-      d: (p.description || p.shortDescription || "").substring(0, 160),
-      t: { c: p.stats?.clicks || 0, v: p.stats?.purchases || 0 }
+      k: p.palavras_chave || p.tags || [],
+      d: (p.description || p.shortDescription || p.subtitle || "").substring(0, 160),
+      t: { c: p.cliques || 0, v: p.conversoes || 0, s: p.score || 0 }
     }));
 
     console.log(`[AI] Realizando busca semântica para: ${query}`);
+    const startTime = Date.now();
+
+    // Buscar métricas de buscas recentes para dar contexto de tendência
+    let trendContext = "";
+    try {
+      const searchesRef = collection(db, 'intelligent_searches');
+      const qTrends = query(searchesRef, orderBy('cliques', 'desc'), limit(10));
+      const trendSnap = await getDocs(qTrends);
+      const topTerms = trendSnap.docs.map(d => d.data().termo);
+      if (topTerms.length > 0) {
+        trendContext = `TENDÊNCIAS RECENTES (O que outros estão buscando): ${topTerms.join(', ')}`;
+      }
+    } catch (e) {}
 
     const prompt = `
       Você é o Especialista de Vendas da Discreta Boutique. Sua missão é selecionar e ranquear os MELHORES produtos do catálogo para a busca do cliente.
       
       BUSCA DO CLIENTE: "${query}"
+      ${trendContext ? `\nCONTEXTO DE TENDÊNCIA: ${trendContext}` : ''}
       
-      CATÁLOGO DISPONÍVEL (ID, Nome, Categoria, Keywords, Descrição, Termômetros[Clique/Venda]):
-      ${JSON.stringify(compactProducts.slice(0, 80))} 
+      CATÁLOGO DISPONÍVEL (ID, Nome, Categoria, Keywords, Descrição, Stats[Cliques c/Vendas v/Relevância s]):
+      ${JSON.stringify(compactProducts.slice(0, 100))} 
       
       REGRAS DE OURO:
-      1. Entenda a INTENÇÃO real (ex: "presente romântico", "aliviar tpm", "primeira vez").
-      2. Priorize o match SEMÂNTICO (o que o produto faz) sobre o nome exato.
-      3. Use os "Termômetros": Produtos com mais vendas (v) e cliques (c) devem ter leve prioridade se forem relevantes.
-      4. Selecione no máximo 20 produtos, em ordem decrescente de relevância.
+      1. Entenda a INTENÇÃO real (ex: "presente romântico", "primeira vez", "algo para casal").
+      2. Pense em SINÔNIMOS e contextos (ex: "discreto" pode ser um item pequeno ou silencioso).
+      3. Use os Stats: Produtos com mais relevância (s) e vendas (v) devem ter prioridade se houver match semântico.
+      4. Selecione no máximo 24 produtos, em ordem decrescente de relevância.
       
       RETORNE APENAS JSON:
       {
         "rankedIds": ["id1", "id2"],
-        "mensagem": "Uma frase curta (máx 100 caracteres) sedutora e técnica explicando por que escolheu esses itens",
-        "curadoria": "Um título para a coleção (ex: Seleção Especial para Momentos A Dois)",
-        "caracteristicas": ["3 palavras-chave que definem esse resultado"]
+        "mensagem": "Uma frase elegante e técnica explicando por que escolheu esses itens",
+        "curadoria": "Um título para a coleção",
+        "caracteristicas": ["3 tags representativas"]
       }
     `;
 
@@ -245,15 +264,101 @@ class AIService {
       });
 
       const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      const duration = Date.now() - startTime;
+      console.log(`[AI] OpenAI Hunt status: success (${duration}ms). Tokens: ${response.usage?.total_tokens || 'N/A'}`);
+
       return {
         rankedIds: Array.isArray(parsed.rankedIds) ? parsed.rankedIds : [],
         mensagem: parsed.mensagem || "Selecionamos os itens perfeitos para seu desejo.",
-        curadoria: parsed.curadoria || "Resultados da Busca",
+        curadoria: parsed.curadoria || "Sua Seleção Exclusiva",
         caracteristicas: Array.isArray(parsed.caracteristicas) ? parsed.caracteristicas : []
       };
     } catch (error: any) {
       console.error('[AI][HUNT_ERROR]', error.message);
       throw new Error(`Falha na geração OpenAI (Hunt): ${error.message}`);
+    }
+  }
+
+  async analyzeCatalog(products: any[], categories: any[]): Promise<any> {
+    console.log(`[AI] Categorizing and Analyzing Catalog...`);
+    
+    const compactProducts = products.map(p => ({
+      id: p.id,
+      name: p.name,
+      cat: p.categoryId,
+      v: p.conversoes || 0,
+      c: p.cliques || 0
+    }));
+
+    const prompt = `
+      Você é um Consultor de Merchandising E-commerce Gênial.
+      Analise o catálogo da Discreta Boutique e sugira melhorias na ORGANIZAÇÃO.
+      
+      CATEGORIAS ATUAIS: ${JSON.stringify(categories.map(c => ({ id: c.id, nome: c.name })))}
+      PRODUTOS E PERFORMANCE: ${JSON.stringify(compactProducts.slice(0, 100))}
+      
+      SUA TAREFA:
+      1. Identifique categorias que estão "bombando" (muitas vendas/cliques).
+      2. Identifique produtos que podem estar na categoria errada ou que precisam de uma nova categoria (ex: "Mais Vendidos", "Kits de Luxo").
+      3. Sugira 3 estratégias de agrupamento para aumentar conversão.
+      
+      RETORNE APENAS JSON:
+      {
+        "insights": ["insight 1", "insight 2"],
+        "sugestoesCategorias": [{"nome": "Nova Categoria", "motivo": "...", "produtosIds": ["id1"]}],
+        "rankingCategorias": ["catId1", "catId2"]
+      }
+    `;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é um consultor de e-commerce focado em análise de dados e conversão.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' }
+      });
+
+      return JSON.parse(response.choices[0].message.content || '{}');
+    } catch (error: any) {
+      console.error('[AI][CATALOG_ANALYSIS_ERROR]', error.message);
+      return { insights: ["Foque em itens de alto clique para aumentar conversão."], sugestoesCategorias: [], rankingCategorias: [] };
+    }
+  }
+
+  async botConsult(pergunta: string, context?: any): Promise<string> {
+    console.log(`[AI] Bot Consult: ${pergunta}`);
+    
+    const prompt = `
+      Você é a Especialista Discreta, a assistente virtual de uma boutique erótica de luxo.
+      Seu tom é elegante, educado, empoderador e informativo. 
+      Nunca seja vulgar. Use discrição e segurança como pilares.
+      
+      PERGUNTA DO CLIENTE: "${pergunta}"
+      CONTEXTO: ${JSON.stringify(context || {})}
+      
+      Responda de forma curta (máx 3 parágrafos). 
+      Se o cliente perguntar sobre produtos, sugira que ele use a busca inteligente do site.
+      Se ele perguntar sobre entrega, diga que é 100% discreta, sem nome da loja na caixa.
+    `;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é a Especialista Discreta. Elegante, empoderadora e técnica.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7
+      });
+
+      return response.choices[0].message.content || "Olá! Como posso ajudar você hoje em sua jornada de descoberta?";
+    } catch (error: any) {
+      console.error('[AI][BOT_ERROR]', error.message);
+      return "Desculpe, estou com uma pequena instabilidade agora. Mas saiba que nossa entrega é discreta e estamos aqui para você!";
     }
   }
 
@@ -474,18 +579,32 @@ class AIService {
     }
   }
 
-  async generateCategoryContent(nome: string, retries = 2): Promise<z.infer<typeof CategoryContentSchema>> {
-    const cacheKey = `category_${nome}`;
+  async generateCategoryContent(nome: string, slug?: string, existingDesc?: string, retries = 2): Promise<z.infer<typeof CategoryContentSchema>> {
+    const cacheKey = `category_v2_${nome}_${slug || ''}`;
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
-    console.log(`[AI] Gerando conteúdo para categoria: ${nome}`);
+    console.log(`[AI] Gerando conteúdo SEO para categoria: ${nome}`);
+    const startTime = Date.now();
 
     const prompt = `
-      Copywriter Luxo Discreta Boutique.
-      CATEGORIA: "${nome}"
-      RETORNE APENAS JSON:
-      { "descricao": "", "conteudo_seo": "", "meta_title": "", "meta_description": "", "palavras_chave": [] }
+      Você é um Especialista em SEO e Copywriter de Luxo para a Discreta Boutique.
+      Sua missão é gerar conteúdo de alta performance para a categoria: "${nome}".
+      
+      CONTEXTO:
+      Slug: "${slug || ''}"
+      Descrição Atual (se houver): "${existingDesc || ''}"
+      
+      RETORNE APENAS JSON NO FORMATO:
+      {
+        "descricao_curta": "Texto comercial, objetivo e direto para o topo da página (máx 3 frases).",
+        "descricao_completa": "Texto rico em SEO, persuasivo, humanizado e focado em conversão. Use uma linguagem luxuosa e segura (máx 3 parágrafos).",
+        "meta_titulo": "Título forte para Google (máx 60 chars) com alto CTR.",
+        "meta_descricao": "Descrição persuasiva para Google (máx 155 chars) terminando com 'Entrega 100% Discreta'.",
+        "palavras_chave": ["pelo menos 15 a 20 tags incluindo sinônimos e termos de busca relacionados"]
+      }
+      
+      IMPORTANTE: A Discreta Boutique é elegante e empoderadora. Evite qualquer tipo de vulgaridade.
     `;
 
     try {
@@ -493,25 +612,100 @@ class AIService {
       const response = await client.chat.completions.create({
         model: 'gpt-4o',
         messages: [
-          { role: 'system', content: 'Você é um copywriter de luxo. Retorne APENAS JSON.' },
+          { role: 'system', content: 'Você é um estrategista de SEO de luxo. Retorne APENAS JSON.' },
           { role: 'user', content: prompt }
         ],
         response_format: { type: 'json_object' },
         temperature: 0.7
       });
 
-      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      const rawContent = response.choices[0].message.content || '{}';
+      const duration = Date.now() - startTime;
+      console.log(`[AI] OpenAI Category SEO status: success (${duration}ms). Tokens: ${response.usage?.total_tokens || 'N/A'}`);
+
+      const parsed = JSON.parse(rawContent);
       if (parsed.palavras_chave) parsed.palavras_chave = this.normalizeArray(parsed.palavras_chave);
 
       const result = CategoryContentSchema.safeParse(parsed);
-      if (!result.success) throw new Error("Schema inválido");
+      if (!result.success) {
+         console.error('[AI][CATEGORY][VALIDATION_ERROR]', result.error.format());
+         throw new Error("Schema inválido");
+      }
 
       this.setCache(cacheKey, result.data);
       return result.data;
     } catch (error: any) {
-      if (retries > 0) return this.generateCategoryContent(nome, retries - 1);
+      if (retries > 0) return this.generateCategoryContent(nome, slug, existingDesc, retries - 1);
       console.error('Erro na OpenAI (generateCategoryContent):', error.message);
       throw new Error(`Falha na geração OpenAI (Category): ${error.message}`);
+    }
+  }
+
+  async homeCuratory(products: any[]): Promise<{ 
+    destaques: string[], 
+    lancamentos: string[], 
+    maisVendidos: string[],
+    emAlta: string[],
+    fraseImpacto: string
+  }> {
+    const compactProducts = products.map(p => ({
+      id: p.id,
+      n: p.name,
+      c: p.categoryId || p.category,
+      t: { c: p.cliques || 0, v: p.conversoes || 0, s: p.score || 0 },
+      feat: p.featured,
+      new: p.newRelease
+    }));
+
+    console.log(`[AI] Gerando curadoria inteligente para Home Page`);
+    const startTime = Date.now();
+
+    const prompt = `
+      Você é o Diretor Criativo da Discreta Boutique. 
+      Sua tarefa é organizar a vitrine virtual para maximizar a conversão e o desejo.
+      
+      PRODUTOS DISPONÍVEIS:
+      ${JSON.stringify(compactProducts.slice(0, 150))}
+      
+      REGRAS:
+      1. destaques: Selecione 8 a 12 produtos que têm alto score (s) ou são 'feat'.
+      2. lancamentos: Selecione 8 a 12 produtos que são 'new' ou têm IDs recentes (maiores).
+      3. maisVendidos: Selecione 8 a 12 produtos com maiores (v).
+      4. emAlta: Selecione 8 a 12 produtos com muito (c) mas poucos (v) - potencial de virar tendência.
+      5. fraseImpacto: Uma frase luxuosa para o banner principal.
+      
+      RETORNE APENAS JSON:
+      {
+        "destaques": [], "lancamentos": [], "maisVendidos": [], "emAlta": [], "fraseImpacto": ""
+      }
+    `;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é um diretor de e-commerce de luxo. Retorne APENAS JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      const duration = Date.now() - startTime;
+      console.log(`[AI] OpenAI Home Curatory status: success (${duration}ms)`);
+
+      return {
+        destaques: Array.isArray(parsed.destaques) ? parsed.destaques : [],
+        lancamentos: Array.isArray(parsed.lancamentos) ? parsed.lancamentos : [],
+        maisVendidos: Array.isArray(parsed.maisVendidos) ? parsed.maisVendidos : [],
+        emAlta: Array.isArray(parsed.emAlta) ? parsed.emAlta : [],
+        fraseImpacto: parsed.fraseImpacto || "O Despertar do Prazer em sua Forma Mais Pura."
+      };
+    } catch (error: any) {
+      console.error('[AI][HOME_CURATORY_ERROR]', error.message);
+      return { destaques: [], lancamentos: [], maisVendidos: [], emAlta: [], fraseImpacto: "A sua Boutique Discreta." };
     }
   }
 }

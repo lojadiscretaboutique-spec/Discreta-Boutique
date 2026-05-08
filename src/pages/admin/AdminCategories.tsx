@@ -7,7 +7,7 @@ import {
   Info, Layers, Image as ImageIcon, Search, 
   Check, ChevronRight, Copy, Eye, EyeOff, Tag, 
   Globe, Settings2, Palette, Layout, Download,
-  Sparkles
+  Sparkles, X, AlertCircle, Loader2
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -59,6 +59,11 @@ export function AdminCategories() {
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState<'image' | 'banner' | null>(null);
   const [generatingAI, setGeneratingAI] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkMode, setBulkMode] = useState<'missing' | 'all'>('missing');
+  const [forceRegen, setForceRegen] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ total: 0, processed: 0, updated: 0, skipped: 0, logs: [] as string[] });
+  const [isBulkRunning, setIsBulkRunning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportCSV = () => {
@@ -330,14 +335,14 @@ export function AdminCategories() {
 
     setGeneratingAI(true);
     try {
-      const data = await aiFrontendService.generateCategoryContent(form.name);
+      const data = await aiFrontendService.generateCategoryContent(form.name, form.slug, form.description);
       
       setForm(prev => ({
         ...prev,
-        description: data.conteudo_seo || prev.description,
-        shortDescription: data.descricao || prev.shortDescription,
-        seoTitle: data.meta_title || prev.seoTitle,
-        seoDescription: data.meta_description || prev.seoDescription,
+        description: data.descricao_completa || prev.description,
+        shortDescription: data.descricao_curta || prev.shortDescription,
+        seoTitle: data.meta_titulo || prev.seoTitle,
+        seoDescription: data.meta_descricao || prev.seoDescription,
         seoKeywords: data.palavras_chave.join(', ') || prev.seoKeywords
       }));
 
@@ -348,6 +353,66 @@ export function AdminCategories() {
     } finally {
       setGeneratingAI(false);
     }
+  };
+
+
+  const handleBulkSEO = async () => {
+    const targetCats = bulkMode === 'all' ? categories : categories.filter(c => !c.seoTitle || !c.seoDescription || !c.shortDescription);
+    
+    if (targetCats.length === 0) {
+      toast("Nenhuma categoria pendente de SEO encontrada.", "info");
+      return;
+    }
+
+    setIsBulkRunning(true);
+    setBulkProgress({ total: targetCats.length, processed: 0, updated: 0, skipped: 0, logs: ["Iniciando processamento em massa..."] });
+
+    for (let i = 0; i < targetCats.length; i++) {
+      const cat = targetCats[i];
+      const hasSEO = !!cat.seoTitle && !!cat.seoDescription && !!cat.shortDescription && !!cat.description;
+      
+      if (hasSEO && !forceRegen) {
+        setBulkProgress(prev => ({
+          ...prev,
+          processed: i + 1,
+          skipped: prev.skipped + 1,
+          logs: [`[IGNORADA] ${cat.name}: Já possui SEO completo.`, ...prev.logs]
+        }));
+        continue;
+      }
+
+      try {
+        const data = await aiFrontendService.generateCategoryContent(cat.name, cat.slug, cat.description);
+        
+        await categoryService.updateCategory(cat.id, {
+          shortDescription: data.descricao_curta || cat.shortDescription,
+          description: data.descricao_completa || cat.description,
+          seoTitle: data.meta_titulo || cat.seoTitle,
+          seoDescription: data.meta_descricao || cat.seoDescription,
+          seoKeywords: data.palavras_chave.join(', ') || cat.seoKeywords
+        });
+
+        setBulkProgress(prev => ({
+          ...prev,
+          processed: i + 1,
+          updated: prev.updated + 1,
+          logs: [`[ATUALIZADA] ${cat.name}: Conteúdo SEO gerado com sucesso.`, ...prev.logs]
+        }));
+
+        // Rate limit protection
+        await new Promise(resolve => setTimeout(resolve, 800));
+      } catch (err: any) {
+        setBulkProgress(prev => ({
+          ...prev,
+          processed: i + 1,
+          logs: [`[ERRO] ${cat.name}: ${err.message}`, ...prev.logs]
+        }));
+      }
+    }
+
+    setIsBulkRunning(false);
+    toast("Processamento em massa concluído!", "success");
+    loadData();
   };
 
 
@@ -780,6 +845,12 @@ export function AdminCategories() {
               >
                 <Download size={18} className="mr-2" /> Exportar
               </Button>
+              <Button 
+                onClick={() => setIsBulkModalOpen(true)}
+                className="bg-red-600 hover:bg-red-700 shadow-xl shadow-red-950/20"
+              >
+                <Sparkles size={18} className="mr-2" /> SEO em Massa
+              </Button>
               <Button onClick={handleNew} className="bg-slate-950 hover:bg-slate-800 shadow-xl shadow-slate-200">
                 <Plus size={18} className="mr-2" /> Nova Categoria
               </Button>
@@ -866,6 +937,148 @@ export function AdminCategories() {
           </table>
         </div>
       </div>
+
+      {/* MODAL IA BULK SEO */}
+      {isBulkModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <header className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-800/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-600 rounded-lg shadow-lg shadow-red-900/20">
+                  <Sparkles size={20} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">SEO Inteligente em Massa</h2>
+                  <p className="text-xs text-slate-400">Otimização automática de categorias via OpenAI</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => !isBulkRunning && setIsBulkModalOpen(false)}
+                disabled={isBulkRunning}
+                className="p-2 hover:bg-slate-700 rounded-full text-slate-400 transition-colors disabled:opacity-50"
+              >
+                <X size={20} />
+              </button>
+            </header>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {!isBulkRunning ? (
+                <>
+                  <div className="space-y-4">
+                    <p className="text-sm text-slate-300 font-medium">Configurações de Geração:</p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <button 
+                        onClick={() => setBulkMode('missing')}
+                        className={cn(
+                          "p-4 border rounded-2xl flex flex-col items-center gap-2 transition-all",
+                          bulkMode === 'missing' ? "bg-red-950/20 border-red-600 text-red-500" : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600"
+                        )}
+                      >
+                        <Search size={24} />
+                        <span className="font-bold text-sm text-center">Apenas Categorias sem SEO</span>
+                      </button>
+                      
+                      <button 
+                        onClick={() => setBulkMode('all')}
+                        className={cn(
+                          "p-4 border rounded-2xl flex flex-col items-center gap-2 transition-all",
+                          bulkMode === 'all' ? "bg-red-950/20 border-red-600 text-red-500" : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600"
+                        )}
+                      >
+                        <Layers size={24} />
+                        <span className="font-bold text-sm text-center">Todas as Categorias</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-2xl border border-slate-700">
+                      <div className="flex items-center gap-3">
+                        <AlertCircle size={20} className="text-yellow-500" />
+                        <div>
+                          <p className="font-bold text-sm text-slate-200">Forçar regeneração completa</p>
+                          <p className="text-xs text-slate-400">Sobrescrever conteúdos já existentes.</p>
+                        </div>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={forceRegen} 
+                        onChange={e => setForceRegen(e.target.checked)}
+                        className="w-5 h-5 accent-red-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-blue-900/10 border border-blue-900/30 rounded-2xl">
+                    <p className="text-xs text-blue-400 leading-relaxed text-center">
+                      Este processo utilizará a API da OpenAI para analisar cada categoria e gerar descrições, títulos e tags otimizados. Dependendo do número de categorias, pode levar alguns minutos.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-6 py-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-400">Progresso Geral</span>
+                      <span className="font-bold text-white">{Math.round((bulkProgress.processed / bulkProgress.total) * 100)}%</span>
+                    </div>
+                    <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                      <div 
+                        className="h-full bg-red-600 transition-all duration-500 rounded-full"
+                        style={{ width: `${(bulkProgress.processed / bulkProgress.total) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex justify-between text-[10px] uppercase tracking-wider font-bold">
+                       <span className="text-slate-400">{bulkProgress.processed} de {bulkProgress.total} processadas</span>
+                       <div className="flex gap-4">
+                         <span className="text-green-500">{bulkProgress.updated} atualizadas</span>
+                         <span className="text-yellow-500">{bulkProgress.skipped} ignoradas</span>
+                       </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Logs de Atividade</p>
+                    <div className="bg-black/40 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[11px] border border-slate-800 custom-scrollbar">
+                      {bulkProgress.logs.map((log, idx) => (
+                        <div key={idx} className={cn(
+                          "py-1 border-b border-white/5 last:border-0",
+                          log.includes('[ERRO]') ? "text-red-400" : 
+                          log.includes('[ATUALIZADA]') ? "text-green-400" : 
+                          log.includes('[IGNORADA]') ? "text-yellow-400" : "text-slate-300"
+                        )}>
+                          {log}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="text-red-600 animate-spin" size={32} />
+                    <p className="text-xs text-slate-400 animate-pulse">Aguarde, a inteligência artificial está processando...</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <footer className="p-6 border-t border-slate-800 bg-slate-800/20 flex items-center justify-end gap-3">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsBulkModalOpen(false)}
+                disabled={isBulkRunning}
+              >
+                {isBulkRunning ? 'Processando...' : 'Cancelar'}
+              </Button>
+              <Button 
+                className="bg-red-600 hover:bg-red-700 shadow-lg shadow-red-900/20"
+                onClick={handleBulkSEO}
+                disabled={isBulkRunning}
+              >
+                {isBulkRunning ? 'Gerando Conteúdo...' : 'Iniciar Geração em Massa'}
+              </Button>
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
