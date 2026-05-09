@@ -276,7 +276,9 @@ export const productService = {
       if (product.hasVariants) {
         let totalVariantStock = 0;
         variants.forEach(v => {
-          totalVariantStock += (Number(v.stock) || 0);
+          if (v.active) {
+            totalVariantStock += (Number(v.stock) || 0);
+          }
         });
         pData.stock = totalVariantStock;
       }
@@ -337,7 +339,9 @@ export const productService = {
       if (updateData.hasVariants && variants) {
         let totalVariantStock = 0;
         variants.forEach(v => {
-          totalVariantStock += (Number(v.stock) || 0);
+          if (v.active) {
+            totalVariantStock += (Number(v.stock) || 0);
+          }
         });
         updateData.stock = totalVariantStock;
       }

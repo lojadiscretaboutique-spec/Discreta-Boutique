@@ -14,7 +14,7 @@ import { useCartStore } from '../../store/cartStore';
 import { useFeedback } from '../../contexts/FeedbackContext';
 
 export function CatalogPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const qCat = searchParams.get('categoria');
   const qSearch = searchParams.get('q');
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -30,10 +30,12 @@ export function CatalogPage() {
     searchId: string;
     mensagem: string;
     curadoria: string;
+    categoria?: string;
+    subcategorias_sugeridas?: string[];
     caracteristicas?: string[];
     termos_relacionados?: string[];
     sinonimos?: string[];
-    rankedProducts?: any[];
+    intencao?: string;
   } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
@@ -41,9 +43,48 @@ export function CatalogPage() {
 
   const searchCache = useRef<Record<string, any>>({});
 
+  const updateCategoryParam = (catValue: string | 'all', clearSearch = true) => {
+    const newParams = new URLSearchParams(searchParams);
+    
+    // Clear search and AI suggestions when specifically choosing a category
+    if (clearSearch) {
+      setSearch('');
+      setAiSuggestion(null);
+      newParams.delete('q');
+    }
+
+    if (catValue === 'all') {
+      newParams.delete('categoria');
+    } else {
+      // Find the slug for this ID if we're passing an ID, or vice versa
+      // But here we receive from the buttons which use IDs (mostly)
+      // Actually, it's safer to check what we have
+      const cat = categories.find(c => c.id === catValue || c.slug === catValue);
+      if (cat) {
+        newParams.set('categoria', cat.slug || cat.id);
+      } else {
+        newParams.set('categoria', catValue);
+      }
+    }
+    setSearchParams(newParams);
+    
+    // Also update local state for immediate feedback
+    if (catValue === 'all') {
+      setSelectedCat('all');
+    } else {
+      const found = categories.find(c => c.id === catValue || c.slug === catValue);
+      if (found) setSelectedCat(found.id);
+    }
+  };
+
   const handleSmartSearch = async (forcedSearch?: string) => {
-    const searchTerm = forcedSearch || search;
-    if (!searchTerm.trim()) return;
+    let searchTerm = typeof forcedSearch === 'string' ? forcedSearch : search;
+    
+    if (!searchTerm || typeof searchTerm !== 'string' || !searchTerm.trim()) return;
+
+    // Reset categories to "All" to ensure search covers the entire catalog
+    setSelectedCat('all');
+    updateCategoryParam('all', false);
 
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -54,7 +95,6 @@ export function CatalogPage() {
     if (searchCache.current[cacheKey]) {
         const cached = searchCache.current[cacheKey];
         setAiSuggestion(cached.aiSuggestion);
-        setQueryEmbedding(cached.embedding);
         return;
     }
 
@@ -86,12 +126,15 @@ export function CatalogPage() {
         searchId: data.searchId || Date.now().toString(),
         mensagem: data.interpretacao?.mensagem_personalizada || '',
         curadoria: data.interpretacao?.termo_busca || '',
+        categoria: data.interpretacao?.categoria,
+        subcategorias_sugeridas: data.interpretacao?.subcategorias_sugeridas || [],
         caracteristicas: data.interpretacao?.caracteristicas || [],
         termos_relacionados: data.interpretacao?.termos_relacionados || [],
         sinonimos: data.interpretacao?.sinonimos || [],
-        rankedProducts: data.produtos
+        intencao: data.interpretacao?.intencao
       };
 
+      console.log('[CATALOG][AI_REASONING]', data.interpretacao);
       setAiSuggestion(suggestion);
       
       // Save to cache
@@ -134,58 +177,98 @@ export function CatalogPage() {
   useEffect(() => {
     async function loadData() {
       try {
+        const CACHE_VERSION = 'v2'; // To force clear old incorrect stock sums
         const now = Date.now();
         const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 
         let catsData: Category[] = [];
-        const cachedCats = sessionStorage.getItem('catalog_cats');
-        const catTime = sessionStorage.getItem('catalog_cats_time');
+        const cachedCats = sessionStorage.getItem(`catalog_cats_${CACHE_VERSION}`);
+        const catTime = sessionStorage.getItem(`catalog_cats_time_${CACHE_VERSION}`);
         
         if (cachedCats && catTime && now - parseInt(catTime) < CACHE_TTL) {
           catsData = JSON.parse(cachedCats);
         } else {
           const cSnap = await getDocs(query(collection(db, 'categories'), orderBy('name')));
           catsData = cSnap.docs.map(d => ({id: d.id, ...d.data()} as Category));
-          sessionStorage.setItem('catalog_cats', JSON.stringify(catsData));
-          sessionStorage.setItem('catalog_cats_time', now.toString());
+          try {
+            // Save minimized version to avoid quota issues
+            const minimizedCats = catsData.map(c => ({
+              id: c.id,
+              name: c.name,
+              slug: c.slug,
+              parentId: c.parentId,
+              level: c.level
+            }));
+            sessionStorage.setItem(`catalog_cats_${CACHE_VERSION}`, JSON.stringify(minimizedCats));
+            sessionStorage.setItem(`catalog_cats_time_${CACHE_VERSION}`, now.toString());
+          } catch (e) {
+            // Silently fail if quota exceeded
+          }
         }
         setCategories(catsData);
         
         let prods: Product[] = [];
-        const cachedProducts = sessionStorage.getItem('catalog_products');
-        const prodTime = sessionStorage.getItem('catalog_products_time');
+        const cachedProducts = sessionStorage.getItem(`catalog_products_${CACHE_VERSION}`);
+        const prodTime = sessionStorage.getItem(`catalog_products_time_${CACHE_VERSION}`);
 
         if (cachedProducts && prodTime && now - parseInt(prodTime) < CACHE_TTL) {
-          prods = JSON.parse(cachedProducts);
-        } else {
+          try {
+            prods = JSON.parse(cachedProducts);
+          } catch (e) {
+            console.warn('Failed to parse cached products', e);
+          }
+        }
+
+        if (prods.length === 0) {
           const pSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true)));
           prods = pSnap.docs.map(d => ({id: d.id, ...d.data()} as Product));
           
-          await Promise.all(prods.filter(p => p.hasVariants).map(async (p) => {
-            try {
-              const vSnap = await getDocs(collection(db, `products/${p.id}/variants`));
-              let sumStock = 0;
-              vSnap.docs.forEach(d => {
-                 sumStock += (Number(d.data().stock) || 0);
-              });
-              p.stock = sumStock;
-            } catch (e) {}
-          }));
-
-          sessionStorage.setItem('catalog_products', JSON.stringify(prods));
-          sessionStorage.setItem('catalog_products_time', now.toString());
+          // Optimization: Removed per-product variant stock fetch. 
+          // We trust the 'stock' field which is synced in admin.
+          
+          try {
+            // Minimize product data for session storage more aggressively
+            const minimizedProds = prods.map(p => ({
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              promoPrice: p.promoPrice,
+              images: p.images?.slice(0, 1), // Only first image for cache
+              categoryId: p.categoryId,
+              stock: p.stock,
+              controlStock: p.controlStock,
+              allowBackorder: p.allowBackorder,
+              extras: p.extras,
+              seo: { keywords: p.seo?.keywords },
+              ai_keywords: p.ai_keywords,
+              ai_synonyms: p.ai_synonyms,
+              searchTerms: p.searchTerms,
+              newRelease: p.newRelease,
+              hasVariants: p.hasVariants,
+              sku: p.sku
+            }));
+            
+            const serialized = JSON.stringify(minimizedProds);
+            // Only save if under a reasonable limit for sessionStorage (usually 5MB total, but let's be safe per item)
+            if (serialized.length < 4 * 1024 * 1024) { 
+               sessionStorage.setItem(`catalog_products_${CACHE_VERSION}`, serialized);
+               sessionStorage.setItem(`catalog_products_time_${CACHE_VERSION}`, now.toString());
+            }
+          } catch (e) {
+            console.warn('[CATALOG][CACHE] Quota exceeded or failure. Reverting to memory-only for this session.');
+          }
         }
 
-        // Filter products: be more permissive if strict rules result in empty catalog
-        let visibleProds = prods.filter(p => 
-          (p.images && p.images.length > 0) && 
+        // Filter products: Strictly active (from query), with stock AND at least one image
+        // RELAXED: Support products without images with placeholders, but prefer those with images.
+        // Actually, user wants ALL products.
+        const visibleProds = prods.filter(p => 
+          p.active !== false &&
+          (!p.controlStock || p.allowBackorder || (Number(p.stock) || 0) > 0) &&
           (!p.extras || p.extras.showInCatalog !== false)
         );
 
-        // Fallback: If no products have images, show all active products
-        if (visibleProds.length === 0 && prods.length > 0) {
-          visibleProds = prods.filter(p => !p.extras || p.extras.showInCatalog !== false);
-        }
+        console.log(`[CATALOG][LOAD] Total Loaded: ${prods.length} | Visible: ${visibleProds.length}`);
 
         // Identify which categories have at least one visible product
         const categoryIdsWithProducts = new Set<string>();
@@ -205,6 +288,19 @@ export function CatalogPage() {
         const visibleCats = catsData.filter(c => categoryIdsWithProducts.has(c.id));
 
         setCategories(visibleCats);
+
+        // Resolve category slug or ID from URL
+        if (qCat && qCat !== 'all') {
+          const found = catsData.find(c => c.id === qCat || c.slug === qCat);
+          if (found) {
+            setSelectedCat(found.id);
+          } else {
+            setSelectedCat('all');
+          }
+        } else {
+          setSelectedCat('all');
+        }
+
         setProducts(visibleProds);
         setFiltered(visibleProds);
       } catch (error) {
@@ -226,47 +322,135 @@ export function CatalogPage() {
       return ids;
     };
 
-    let result = products;
+    let result = [...products];
+    const startTime = Date.now();
+
+    // 1. Filtro de Categoria (Hierárquico)
     if (selectedCat !== 'all') {
       const allCategoryIds = getAllChildCategoryIds(selectedCat);
       result = result.filter(p => p.categoryId && allCategoryIds.includes(p.categoryId));
+      console.log(`[FILTER][CATEGORY] Found ${result.length} products for cat ${selectedCat}`);
     }
+
+    // 2. Filtro de Busca (Híbrido) - Só filtra drasticamente se o usuário estiver em "Todas as Categorias"
+    // Caso contrário (categoria selecionada), o termo de busca age como um filtro secundário ou apenas ranking.
     if (search.trim()) {
-      const s = search.toLowerCase();
+      const searchTerm = search.toLowerCase();
+      const words = searchTerm.split(/\s+/).filter(w => w.length > 2);
       
-      if (aiSuggestion && aiSuggestion.rankedProducts) {
-        // Se temos um resultado ranqueado da IA, usamos ele
-        // Mapeamos os IDs retornados pelo backend para os objetos de produto carregados no front
-        const rankedIds = aiSuggestion.rankedProducts.map(rp => rp.id);
-        const rankedResult = rankedIds
-          .map(id => products.find(p => p.id === id))
-          .filter(p => !!p) as Product[];
-        
-        if (rankedResult.length > 0) {
-          result = rankedResult;
-        } else {
-          result = result.filter(p => p.name.toLowerCase().includes(s) || p.description?.toLowerCase().includes(s));
-        }
-      } else {
-        // Busca tradicional mais permissiva (divide por palavras)
-        const words = s.split(/\s+/).filter(w => w.length > 2);
-        if (words.length > 0) {
+      if (selectedCat === 'all') {
+        if (aiSuggestion) {
+          // Busca Semântica Expandida (Inteligente)
+          const terms = [
+            ...aiSuggestion.caracteristicas || [],
+            ...aiSuggestion.sinonimos || [],
+            ...aiSuggestion.termos_relacionados || [],
+            aiSuggestion.curadoria,
+            searchTerm
+          ].map(t => t.toLowerCase()).filter(Boolean);
+
+          const suggestedCatIds: string[] = [];
+          if (aiSuggestion.categoria && aiSuggestion.categoria !== 'Outros') {
+            const found = categories.find(c => c.name.toLowerCase() === aiSuggestion.categoria?.toLowerCase());
+            if (found) suggestedCatIds.push(...getAllChildCategoryIds(found.id));
+          }
+
           result = result.filter(p => {
             const name = p.name.toLowerCase();
-            const desc = (p.description || "").toLowerCase();
-            return words.some(word => name.includes(word) || desc.includes(word)) || name.includes(s);
+            const desc = (p.description || p.shortDescription || p.fullDescription || "").toLowerCase();
+            const pTags = [
+              ...(p.seo?.keywords || []),
+              ...(p.tags || []),
+              ...(p.ai_keywords || []),
+              ...(p.ai_synonyms || []),
+              ...(p.searchTerms || []),
+              ...(p.palavras_chave || []),
+              ...(p.sinonimos || [])
+            ].map(t => typeof t === 'string' ? t.toLowerCase() : '');
+            const sku = (p.sku || "").toLowerCase();
+            
+            const catMatch = p.categoryId && suggestedCatIds.includes(p.categoryId);
+            const termMatch = terms.some(t => 
+              name.includes(t) || 
+              desc.includes(t) || 
+              pTags.some(tag => tag.includes(t)) ||
+              sku.includes(t)
+            );
+
+            return catMatch || termMatch;
+          });
+
+          console.log('%c[IA][REASONING]', 'color: #ff0000; font-weight: bold;', {
+            intencao: aiSuggestion.intencao,
+            keywords: terms,
+            categoria_sugerida: aiSuggestion.categoria,
+            resultados: result.length
           });
         } else {
-          result = result.filter(p => p.name.toLowerCase().includes(s) || p.description?.toLowerCase().includes(s));
+          // Busca Tradicional Filtrante (Fuzzy)
+          const words = searchTerm.split(/\s+/).filter(w => w.length > 2);
+          result = result.filter(p => {
+            const name = p.name.toLowerCase();
+            const desc = (p.description || p.shortDescription || p.fullDescription || "").toLowerCase();
+            const sku = (p.sku || "").toLowerCase();
+            const pTags = [
+              ...(p.seo?.keywords || []),
+              ...(p.tags || []),
+              ...(p.ai_keywords || []),
+              ...(p.ai_synonyms || []),
+              ...(p.searchTerms || []),
+              ...(p.palavras_chave || []),
+              ...(p.sinonimos || [])
+            ].map(t => typeof t === 'string' ? t.toLowerCase() : '');
+
+            if (words.length > 0) {
+              return words.every(word => 
+                name.includes(word) || 
+                desc.includes(word) || 
+                sku.includes(word) || 
+                pTags.some(t => t.includes(word))
+              ) || name.includes(searchTerm);
+            }
+            return name.includes(searchTerm) || desc.includes(searchTerm) || sku.includes(searchTerm) || pTags.some(t => t.includes(searchTerm));
+          });
+          console.log(`[FILTER][TRADITIONAL] Query: "${searchTerm}" | Found: ${result.length}`);
+        }
+      } else {
+        // Categoria Selecionada Manualmente: O usuário quer ver TUDO da categoria.
+        // Aplicamos apenas um filtro de texto básico se houver busca, para não ser confuso,
+        // mas mantemos o foco na categoria (regras do usuário).
+        if (words.length > 0) {
+           result = result.filter(p => {
+             const name = p.name.toLowerCase();
+             const desc = (p.description || p.shortDescription || p.fullDescription || "").toLowerCase();
+             const pTags = [
+                ...(p.seo?.keywords || []),
+                ...(p.tags || []),
+                ...(p.ai_keywords || []),
+                ...(p.ai_synonyms || []),
+                ...(p.searchTerms || []),
+                ...(p.palavras_chave || []),
+                ...(p.sinonimos || [])
+             ].map(t => typeof t === 'string' ? t.toLowerCase() : '');
+
+             return words.some(word => 
+               name.includes(word) || 
+               desc.includes(word) || 
+               pTags.some(t => t.includes(word))
+             ) || name.includes(searchTerm);
+           });
+           console.log(`[FILTER][CATEGORY_CONTEXT] Mode: Deep Category Search | Result: ${result.length}`);
         }
       }
     }
 
-    // Sort by stock status (out of stock last) and combined hybrid score
+    // 3. Ranking Híbrido Final (Base + AI Match)
     const ranked = getRankingHybrid(result, aiSuggestion);
     
+    console.log(`[CATALOG][FILTER_COMPLETE] ${ranked.length} results | Time: ${Date.now() - startTime}ms`);
+    
     setFiltered(ranked);
-    setCurrentPage(1); // Reset to page 1 unconditionally when filtering
+    setCurrentPage(1);
   }, [search, selectedCat, products, categories, aiSuggestion]);
 
   const rootCategories = categories.filter(c => c.level === 0 || !c.parentId);
@@ -316,7 +500,7 @@ export function CatalogPage() {
                 }}
               />
               <button 
-                onClick={handleSmartSearch}
+                onClick={() => handleSmartSearch()}
                 disabled={interpreting || !search.trim()}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl disabled:opacity-0 disabled:scale-95 transition-all shadow-lg shadow-red-900/20"
                 title="Analisar Pedido"
@@ -332,7 +516,7 @@ export function CatalogPage() {
             {/* Root Categories Horizontal Scroll */}
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-0.5">
               <button 
-                onClick={() => setSelectedCat('all')}
+                onClick={() => updateCategoryParam('all')}
                 className={cn(
                   "whitespace-nowrap px-3.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border",
                   selectedCat === 'all' 
@@ -345,11 +529,11 @@ export function CatalogPage() {
               {rootCategories.map(c => (
                 <button 
                   key={c.id}
-                  onClick={() => setSelectedCat(c.id)}
+                  onClick={() => updateCategoryParam(c.id)}
                   className={cn(
                     "whitespace-nowrap px-3.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border",
                     activeRootId === c.id 
-                      ? "bg-white text-black border-white shadow-sm" 
+                      ? "bg-white text-red-600 border-white shadow-sm" 
                       : "bg-zinc-900/50 text-zinc-500 border-zinc-800/50 hover:border-zinc-700"
                   )}
                 >
@@ -368,7 +552,7 @@ export function CatalogPage() {
                   className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 py-1 border-t border-zinc-900/30 pt-2"
                 >
                   <button 
-                    onClick={() => setSelectedCat(activeRootId)}
+                    onClick={() => updateCategoryParam(activeRootId!)}
                     className={cn(
                       "whitespace-nowrap px-3 py-1 rounded-md text-[8px] font-bold uppercase tracking-widest transition-all",
                       selectedCat === activeRootId 
@@ -381,7 +565,7 @@ export function CatalogPage() {
                   {activeSubcategories.map(sub => (
                     <button 
                       key={sub.id}
-                      onClick={() => setSelectedCat(sub.id)}
+                      onClick={() => updateCategoryParam(sub.id)}
                       className={cn(
                         "whitespace-nowrap px-3 py-1 rounded-md text-[8px] font-bold uppercase tracking-widest transition-all",
                         selectedCat === sub.id 
@@ -407,7 +591,10 @@ export function CatalogPage() {
           </p>
           {(selectedCat !== 'all' || search) && (
             <button 
-              onClick={() => { setSelectedCat('all'); setSearch(''); }}
+              onClick={() => { 
+                updateCategoryParam('all');
+                setSearch(''); 
+              }}
               className="text-[10px] font-black text-red-500 uppercase tracking-[2px] hover:underline flex items-center gap-1"
             >
               <X size={12} /> Limpar
@@ -551,7 +738,7 @@ export function CatalogPage() {
                   className="rounded-2xl border-zinc-700 hover:bg-zinc-900 font-black px-12 py-7 h-auto uppercase tracking-widest text-[11px] transition-all bg-zinc-950/80"
                   onClick={() => { 
                     setSearch(''); 
-                    setSelectedCat('all');
+                    updateCategoryParam('all');
                     setAiSuggestion(null);
                   }}
                 >

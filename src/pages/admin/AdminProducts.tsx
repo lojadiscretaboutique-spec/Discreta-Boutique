@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { collection, getDocs, orderBy, query, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { aiFrontendService } from '../../services/aiFrontendService';
@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { formatCurrency, cn } from '../../lib/utils';
 import { productService, Product, ProductVariant } from '../../services/productService';
+import { Category } from '../../services/categoryService';
 import { PLACEHOLDER_IMAGE } from '../../lib/utils';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
@@ -37,7 +38,7 @@ export function AdminProducts() {
   const canDelete = hasPermission('produtos', 'excluir');
   
   // Categories (to be loaded from DB)
-  const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [categorySearch, setCategorySearch] = useState('');
 
   // Form State
@@ -416,8 +417,8 @@ export function AdminProducts() {
       const pData = await productService.listProducts();
       setProducts(pData);
       
-      const cSnap = await getDocs(query(collection(db, 'categories'), orderBy('name')));
-      setCategories(cSnap.docs.map(d => ({ id: d.id, name: d.data().name })));
+      const cSnap = await getDocs(query(collection(db, 'categories'), orderBy('sortOrder', 'asc')));
+      setCategories(cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
     } catch (e: unknown) {
       console.error(e);
     } finally {
@@ -696,6 +697,26 @@ export function AdminProducts() {
     setTempAttrs([]);
   };
 
+  const groupedCategories = useMemo(() => {
+    const roots = categories.filter(c => !c.parentId);
+    const search = categorySearch.toLowerCase();
+    
+    return roots.map(root => {
+      const children = categories.filter(c => c.parentId === root.id);
+      const matchingChildren = children.filter(c => c.name.toLowerCase().includes(search));
+      const rootMatches = root.name.toLowerCase().includes(search);
+      
+      if (!rootMatches && matchingChildren.length === 0) return null;
+      
+      return {
+        ...root,
+        rootMatches,
+        matchingChildren: matchingChildren.length > 0 ? matchingChildren : [],
+        allChildren: children
+      };
+    }).filter(Boolean);
+  }, [categories, categorySearch]);
+
   const tabs: {id: FormSection, label: string, icon: React.ElementType}[] = [
     { id: 'general', label: 'Geral', icon: Info },
     { id: 'price', label: 'Preço/Estoque', icon: DollarSign },
@@ -796,38 +817,47 @@ export function AdminProducts() {
                         className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-1 focus:ring-red-500 outline-none"
                       />
                     </div>
-                    <div className="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto p-2 bg-slate-900/50 rounded-lg border border-slate-800">
-                       {categories
-                         .filter(c => c.name.toLowerCase().includes(categorySearch.toLowerCase()))
-                         .map(c => {
-                         const isSelected = form.categoryIds?.includes(c.id);
+                    <div className="flex flex-col gap-4 max-h-[400px] overflow-y-auto p-2 bg-slate-900/50 rounded-lg border border-slate-800">
+                       {groupedCategories.map((root: any) => {
+                         const search = categorySearch.toLowerCase();
                          return (
-                           <button
-                             key={c.id}
-                             type="button"
-                             onClick={() => {
-                               const currentIds = form.categoryIds || [];
-                               const newIds = isSelected 
-                                 ? currentIds.filter(id => id !== c.id)
-                                 : [...currentIds, c.id];
-                               
-                               setForm({ 
-                                 ...form, 
-                                 categoryIds: newIds,
-                                 // Keep categoryId for legacy compatibility (first one)
-                                 categoryId: newIds[0] || ''
-                               });
-                             }}
-                             className={cn(
-                               "px-3 py-1.5 rounded-full text-xs font-bold transition-all border",
-                               isSelected 
-                                 ? "bg-red-600 text-white border-red-500 shadow-md scale-105" 
-                                 : "bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500"
-                             )}
-                           >
-                             {c.name}
-                             {isSelected && <Check size={12} className="inline ml-1" />}
-                           </button>
+                           <div key={root.id} className="space-y-2 pb-2 last:pb-0 border-b border-slate-800 last:border-0">
+                             <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest px-1">{root.name}</p>
+                             <div className="flex flex-wrap gap-2">
+                               {[root, ...root.allChildren].map((c: any) => {
+                                 if (search && !c.name.toLowerCase().includes(search)) return null;
+                                 
+                                 const isSelected = form.categoryIds?.includes(c.id);
+                                 return (
+                                   <button
+                                     key={c.id}
+                                     type="button"
+                                     onClick={() => {
+                                       const currentIds = form.categoryIds || [];
+                                       const newIds = isSelected 
+                                         ? currentIds.filter(id => id !== c.id)
+                                         : [...currentIds, c.id];
+                                       
+                                       setForm({ 
+                                         ...form, 
+                                         categoryIds: newIds,
+                                         categoryId: newIds[0] || ''
+                                       });
+                                     }}
+                                     className={cn(
+                                       "px-3 py-1.5 rounded-full text-[11px] font-bold transition-all border",
+                                       isSelected 
+                                         ? "bg-red-600 text-white border-red-500 shadow-md" 
+                                         : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500"
+                                     )}
+                                   >
+                                     {c.name}
+                                     {isSelected && <Check size={10} className="inline ml-1" />}
+                                   </button>
+                                 );
+                               })}
+                             </div>
+                           </div>
                          );
                        })}
                     </div>

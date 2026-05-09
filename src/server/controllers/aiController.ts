@@ -63,8 +63,9 @@ export const interpretSearch = async (req: Request, res: Response) => {
   try {
     const { busca } = InterpretSearchInput.parse(req.body);
     const normalizedBusca = normalizeQuery(busca);
-    const cacheId = "ai_" + normalizedBusca.replace(/\s+/g, '_').substring(0, 50);
+    const cacheId = "ai_meta_" + normalizedBusca.replace(/\s+/g, '_').substring(0, 50);
 
+    // 1. Tentar Buscar no Cache de Interpretação
     try {
       const { getDoc, doc } = await import('firebase/firestore');
       const cacheRef = doc(db, 'ai_query_cache', cacheId);
@@ -72,10 +73,10 @@ export const interpretSearch = async (req: Request, res: Response) => {
       if (cacheSnap.exists()) {
         const cachedData = cacheSnap.data();
         if (cachedData.timestamp && (Date.now() - cachedData.timestamp.toMillis()) < 1000 * 60 * 60 * 24 * 7) {
+           console.log(`[SEARCH][CACHE_HIT] ${busca}`);
            return res.json({
-             searchId: cachedData.id,
-             interpretacao: cachedData.interpretacao,
-             produtos: cachedData.produtos
+             searchId: cachedData.id || cacheId,
+             interpretacao: cachedData.interpretacao
            });
         }
       }
@@ -83,10 +84,8 @@ export const interpretSearch = async (req: Request, res: Response) => {
       console.warn('[SEARCH][CACHE_READ_ERROR]', e);
     }
 
-    let interpretacao: any = null;
-    let searchId = cacheId;
-
-    let interpretScore = {
+    // 2. Chamar IA para interpretar a intenção (Sem pedir produtos)
+    let interpretacao: any = {
       termo_busca: busca,
       categoria: 'Outros',
       intencao: '',
@@ -97,21 +96,18 @@ export const interpretSearch = async (req: Request, res: Response) => {
     };
 
     try {
-       // AbortController support doesn't exist out of the box in our aiService without changes,
-       // We'll use Promise.race
-       interpretScore = await Promise.race([
+       interpretacao = await Promise.race([
           aiService.interpretSearch(busca),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('AI Timeout')), 6000))
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('AI Timeout')), 10000))
        ]) as any;
     } catch (e) {
-       console.warn('[SEARCH][AI_TIMEOUT]', e);
+       console.warn('[SEARCH][AI_TIMEOUT/ERROR]', e);
     }
 
-    interpretacao = interpretScore;
-
+    // 3. Registrar a busca para analytics (Opcional)
     try {
       await addDoc(collection(db, 'intelligent_searches'), {
-        id: searchId,
+        id: cacheId,
         termo: busca,
         interpretacao: interpretacao,
         timestamp: serverTimestamp(),
@@ -122,62 +118,26 @@ export const interpretSearch = async (req: Request, res: Response) => {
       console.warn('[SEARCH][SAVE_ERROR]', e);
     }
 
-    const productsRef = collection(db, 'products');
-    const productsSnap = await getDocs(query(productsRef, where('active', '==', true), limit(300)));
-    let allProducts = productsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-
-    const termsToSearch = [
-        ...(interpretacao.caracteristicas || []),
-        ...(interpretacao.sinonimos || []),
-        ...(interpretacao.termos_relacionados || []),
-        interpretacao.categoria,
-        busca.toLowerCase()
-    ].filter(Boolean);
-
-    let finalResults = allProducts.map(p => {
-        let matchScore = 0;
-        const searchStr = `${p.name} ${p.shortDescription} ${(p.seo?.keywords || []).join(' ')} ${(p.searchTerms || []).join(' ')} ${(p.ai_synonyms || []).join(' ')}`.toLowerCase();
-        
-        termsToSearch.forEach((term: string) => { 
-          if (term && searchStr.includes(term.toLowerCase())) matchScore += 20; 
-        });
-
-        const cliques = p.stats?.clicks || 0;
-        const compras = p.stats?.purchases || 0;
-        const finalScore = (cliques * 0.5) + (compras * 2) + (matchScore * 50);
-
-        return { ...p, relevance: finalScore };
-    }).filter(p => p.relevance > 0);
-
-    finalResults.sort((a, b) => b.relevance - a.relevance);
-
     const payload = {
-      searchId,
-      interpretacao,
-      produtos: finalResults.slice(0, 40).map(p => ({
-        id: p.id,
-        name: p.name,
-        price: p.price,
-        image: (p.images && p.images.length > 0) ? (p.images.find((i:any) => i.isMain)?.url || p.images[0].url) : (p.imageUrl || p.image || ''),
-        category: p.categoryId || p.category || '',
-        relevance: p.relevance || 100
-      }))
+      searchId: cacheId,
+      interpretacao
     };
 
+    // 4. Salvar no Cache
     try {
       const { setDoc, doc } = await import('firebase/firestore');
-      await setDoc(doc(db, 'ai_query_cache', searchId), {
+      await setDoc(doc(db, 'ai_query_cache', cacheId), {
         ...payload,
         timestamp: serverTimestamp()
       });
     } catch(e) {
-      console.warn('Cache save err:', e);
+      console.warn('[SEARCH][CACHE_SAVE_ERROR]', e);
     }
 
     res.json(payload);
   } catch (error: any) {
     console.error(`[SEARCH][FATAL_ERROR]`, error.message);
-    res.status(500).json({ error: "Falha na geração OpenAI (Busca)" });
+    res.status(500).json({ error: "Falha na interpretação da busca" });
   }
 };
 

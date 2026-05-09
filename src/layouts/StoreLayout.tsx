@@ -134,7 +134,7 @@ export function StoreLayout() {
               <div className="flex flex-col space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2">Shopping</h3>
                 {categories.map(cat => (
-                  <Link key={cat.id} to={`/catalogo?categoria=${cat.id}`} className="text-zinc-500 hover:text-red-500 text-sm transition-colors">
+                  <Link key={cat.id} to={`/catalogo?categoria=${cat.slug || cat.id}`} className="text-zinc-500 hover:text-red-500 text-sm transition-colors">
                     {cat.name}
                   </Link>
                 ))}

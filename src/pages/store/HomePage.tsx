@@ -44,7 +44,7 @@ export function HomePage() {
       // Assegurar o estoque de produtos com variações para que os cálculos reflitam o estado real das filhas
       await Promise.all(allActiveProducts.filter(p => p.hasVariants).map(async (p) => {
         try {
-          const vSnap = await getDocs(collection(db, `products/${p.id}/variants`));
+          const vSnap = await getDocs(query(collection(db, `products/${p.id}/variants`), where('active', '==', true)));
           let sumStock = 0;
           vSnap.docs.forEach(d => {
              sumStock += (Number(d.data().stock) || 0);
@@ -58,7 +58,7 @@ export function HomePage() {
       const visibleProducts = allActiveProducts.filter(p => 
         p.images && p.images.length > 0 && 
         (!p.extras || p.extras.showInCatalog !== false) &&
-        (!p.controlStock || p.allowBackorder || p.stock > 0)
+        (!p.controlStock || p.allowBackorder || (Number(p.stock) || 0) > 0)
       );
 
       // --- CURADORIA IA ---
@@ -267,7 +267,7 @@ export function HomePage() {
                 categories.map(cat => (
                   <Link 
                     key={cat.id} 
-                    to={`/catalogo?categoria=${cat.id}`} 
+                    to={`/catalogo?categoria=${cat.slug || cat.id}`} 
                     className="group flex flex-col items-center shrink-0 w-32 md:w-44"
                   >
                     {/* Circular Image Container */}

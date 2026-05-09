@@ -17,6 +17,7 @@ const ProductContentSchema = z.object({
 const SearchInterpretationSchema = z.object({
   termo_busca: z.string().default(''),
   categoria: z.string().optional().default(''),
+  subcategorias_sugeridas: z.array(z.string()).optional().default([]),
   intencao: z.string().optional().default(''),
   caracteristicas: z.array(z.string()).optional().default([]),
   nivel_usuario: z.string().optional().default('intermediario'),
@@ -435,7 +436,7 @@ class AIService {
       throw new Error("Falha na geração OpenAI: Termo de busca vazio");
     }
 
-    const cacheKey = `search_v2_${normalizedQuery}`;
+    const cacheKey = `search_v3_${normalizedQuery}`;
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
@@ -443,19 +444,31 @@ class AIService {
 
     const validCategories = await this.getValidCategories();
     const prompt = `
-      Você é um motor de busca semântico para a Discreta Boutique.
+      Você é a inteligência de interpretação linguística e semântica da Discreta Boutique.
+      Sua missão é extrair a REAL INTENÇÃO do cliente para que nosso sistema possa buscar no banco de dados real.
+
+      REGRAS ABSOLUTAS:
+      1. VOCÊ JAMAIS ESCOLHE OU RETORNA PRODUTOS. VOCÊ APENAS GERA METADADOS PARA O MOTOR DE BUSCA.
+      2. CATEGORIA: Identifique qual das categorias abaixo melhor se encaixa no desejo do usuário.
+         Categorias Válidas: ${validCategories.join(", ")}.
+      3. TAGS SEO: Gere uma lista de 15 a 20 palavras-chave (tags) que caracterizam o produto ideal para o usuário.
+      4. SINÔNIMOS E VARIAÇÕES: Pense em termos técnicos, discretos, populares e até gírias do nicho.
+      5. MENSAGEM: Uma frase curta, elegante e acolhedora de recepção (máx 120 caracteres).
+      6. INTENÇÃO: Explique brevemente o que o usuário está procurando (ex: "Busca por intensificação de prazer anal com foco em iniciantes").
+
       BUSCA DO USUÁRIO: "${query}"
-      CATEGORIAS VÁLIDAS: ${validCategories.join(", ")}.
+
       RETORNE APENAS JSON NO FORMATO:
       {
-        "termo_busca": "versão limpa",
-        "categoria": "nome da categoria ou Outros",
-        "intencao": "objetivo",
-        "caracteristicas": [],
-        "sinonimos": [],
-        "termos_relacionados": [],
+        "termo_busca": "termo purificado para o motor de busca",
+        "categoria": "nome exato da categoria acima ou 'Outros'",
+        "subcategorias_sugeridas": ["3 a 5 subcategorias ou sub-nichos específicos"],
+        "intencao": "explicação da intenção detectada",
+        "caracteristicas": ["características físicas, sensoriais ou técnicas (ex: 'recarregável', 'toque aveludado', 'lubrificação íntima')"],
+        "sinonimos": ["lista extensiva de sinônimos"],
+        "termos_relacionados": ["termos complementares que expandem a busca"],
         "nivel_usuario": "iniciante|intermediario|avancado",
-        "mensagem_personalizada": "até 120 chars"
+        "mensagem_personalizada": "frase de acolhimento elegante"
       }
     `;
 
@@ -464,27 +477,25 @@ class AIService {
       const response = await client.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: 'Você é um motor de busca semântico. Retorne APENAS JSON.' },
+          { role: 'system', content: 'Você é um motor de busca semântico especializado em e-commerce sensorial de luxo. Sua função é interpretar intenção e expandir termos para busca em banco de dados. Retorne APENAS JSON.' },
           { role: 'user', content: prompt }
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.3
+        temperature: 0.2
       });
 
       const parsed = JSON.parse(response.choices[0].message.content || '{}');
       if (parsed.caracteristicas) parsed.caracteristicas = this.normalizeArray(parsed.caracteristicas);
       if (parsed.sinonimos) parsed.sinonimos = this.normalizeArray(parsed.sinonimos);
       if (parsed.termos_relacionados) parsed.termos_relacionados = this.normalizeArray(parsed.termos_relacionados);
+      if (parsed.subcategorias_sugeridas) parsed.subcategorias_sugeridas = this.normalizeArray(parsed.subcategorias_sugeridas);
       
       if (parsed.categoria && !validCategories.includes(parsed.categoria)) {
         parsed.categoria = 'Outros';
       }
       
-      const result = SearchInterpretationSchema.safeParse(parsed);
-      if (!result.success) throw new Error("Schema inválido");
-
-      this.setCache(cacheKey, result.data);
-      return result.data;
+      this.setCache(cacheKey, parsed);
+      return parsed;
     } catch (error: any) {
       if (retries > 0) return this.interpretSearch(query, retries - 1);
       console.error('[AI][INTERPRET_ERROR]', error.message);

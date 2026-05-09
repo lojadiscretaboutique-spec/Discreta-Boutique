@@ -5,24 +5,68 @@ import { formatCurrency, cn, roundTo2, formatVariantName } from '../../lib/utils
 import { Link, useNavigate } from 'react-router-dom';
 import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles, Search } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { serverTimestamp } from 'firebase/firestore';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { customerService } from '../../services/customerService';
 import { stockMovementService } from '../../services/stockMovementService';
 import { deliveryAreaService, State, City, DeliveryArea } from '../../services/deliveryAreaService';
 import { settingsService, PaymentSettings, MercadoPagoSettings, OperatingHoursSettings } from '../../services/settingsService';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 
 export function CartPage() {
   const { items, updateQuantity, removeItem, clearCart, total } = useCartStore();
-  const { currentCustomer } = useCustomerAuthStore();
+  const { currentCustomer, setCustomer } = useCustomerAuthStore();
   const navigate = useNavigate();
   const { toast } = useFeedback();
+
+  const handleUpdateQuantity = async (id: string, productId: string, variantId: string | undefined, currentQty: number, newQty: number) => {
+    if (newQty <= 0) {
+      updateQuantity(id, 0);
+      return;
+    }
+
+    if (newQty > currentQty) {
+      setLoading(true);
+      try {
+        let targetRef;
+        if (variantId) {
+          targetRef = doc(db, `products/${productId}/variants/${variantId}`);
+        } else {
+          targetRef = doc(db, 'products', productId);
+        }
+
+        const snap = await getDoc(targetRef);
+        if (!snap.exists()) {
+          toast("Produto não encontrado no estoque.", "error");
+          return;
+        }
+
+        const stock = snap.data().stock || 0;
+        if (newQty > stock) {
+          toast(`Saldo insuficiente! Estoque atual: ${stock}`, "error");
+          return;
+        }
+
+        updateQuantity(id, newQty);
+      } catch (error) {
+        console.error("Erro ao verificar estoque:", error);
+        toast("Erro ao verificar disponibilidade no estoque.", "error");
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      updateQuantity(id, newQty);
+    }
+  };
   
-  const [step, setStep] = useState(1);
-  const [paymentMode, setPaymentMode] = useState<'entrega' | 'retirada' | 'online'>('entrega');
+  // NEW CHECKOUT STEPS
+  type CheckoutStep = 'IDENTIFICACAO' | 'RESUMO' | 'RECEBIMENTO' | 'ENDERECO' | 'AGENDAMENTO' | 'PAGAMENTO';
+  const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>('IDENTIFICACAO');
+  
+  const [receiveMethod, setReceiveMethod] = useState<'entrega' | 'retirada' | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>('');
   
   // Settings
@@ -178,12 +222,12 @@ export function CartPage() {
 
   // Computed Totals
   const subTotal = roundTo2(total());
-  const deliveryFee = roundTo2(currentArea ? (currentArea.freteGratisAcima && subTotal >= currentArea.freteGratisAcima ? 0 : currentArea.taxaEntrega) : 0);
+  const deliveryFee = roundTo2(receiveMethod === 'entrega' && currentArea ? (currentArea.freteGratisAcima && subTotal >= currentArea.freteGratisAcima ? 0 : currentArea.taxaEntrega) : 0);
   const orderTotal = roundTo2(subTotal + deliveryFee);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [step]);
+  }, [checkoutStep]);
 
   useEffect(() => {
     if (mpSettings?.publicKey && mpSettings.active) {
@@ -256,7 +300,7 @@ export function CartPage() {
 
   // Preload from customer storage if we have one
   useEffect(() => {
-    if (currentCustomer && whatsapp === '') {
+    if (currentCustomer) {
       setName(currentCustomer.nome || '');
       setWhatsapp(currentCustomer.whatsapp || '');
       setHasLookedUp(true);
@@ -271,8 +315,82 @@ export function CartPage() {
          setReferencia(currentCustomer.enderecoObj.referencia || '');
       }
       lastSearchedPhone.current = currentCustomer.whatsapp.replace(/\D/g, '');
+      
+      // If identified, normally we go to RESUMO unless specifically navigating steps
+      if (checkoutStep === 'IDENTIFICACAO') {
+        setCheckoutStep('RESUMO');
+      }
     }
-  }, [currentCustomer, whatsapp]);
+  }, [currentCustomer]);
+
+  // Handle auto-login/identification logic
+  const handleIdentification = async (e?: any) => {
+    if (e?.preventDefault) e.preventDefault();
+    
+    const cleanPhone = whatsapp.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      toast("Informe um WhatsApp válido.", "warning");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const existing = await customerService.getCustomerByWhatsapp(cleanPhone);
+      
+      if (existing) {
+        setCustomer({
+          id: existing.id!,
+          nome: existing.nome,
+          whatsapp: existing.whatsapp,
+          email: existing.email,
+          enderecoObj: existing.endereco ? {
+            rua: existing.endereco.rua,
+            numero: existing.endereco.numero,
+            bairro: existing.endereco.bairro,
+            cidade: existing.endereco.cidade,
+            estado: existing.endereco.estado,
+            complemento: existing.endereco.complemento || '',
+            referencia: existing.endereco.referencia,
+          } : undefined
+        });
+        toast(`Bem-vindo(a) de volta, ${existing.nome.split(' ')[0]}!`, "success");
+        setCheckoutStep('RESUMO');
+      } else {
+        if (!isNewCustomer) {
+          setIsNewCustomer(true);
+          setLoading(false);
+          return;
+        }
+
+        if (!name) {
+          toast("Por favor, informe seu nome ou apelido.", "warning");
+          setLoading(false);
+          return;
+        }
+
+        // Create new customer
+        const newId = await customerService.registerFromCheckout({
+          nome: name,
+          whatsapp: cleanPhone,
+          status: 'ativo'
+        });
+        setCustomer({
+          id: newId,
+          nome: name,
+          whatsapp: cleanPhone
+        });
+        toast("Cadastro realizado com sucesso!", "success");
+        setCheckoutStep('RESUMO');
+      }
+    } catch (err) {
+      console.error("Auth error:", err);
+      toast("Erro ao processar identificação.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [isNewCustomer, setIsNewCustomer] = useState(false);
 
   // Sync selected area derived from names instead of selection-ripple
   useEffect(() => {
@@ -334,6 +452,7 @@ export function CartPage() {
           if (cust) {
             toast(`Olá ${cust.nome.split(' ')[0]}, localizamos seu cadastro!`, 'success');
             setName(cust.nome);
+            setIsNewCustomer(false);
             if (cust.email) setEmail(cust.email);
             
             if (cust.endereco) {
@@ -348,7 +467,8 @@ export function CartPage() {
             }
             if (cust.notes) setNotes(cust.notes);
           } else {
-            toast('Ainda não temos seu cadastro. Preencha seus dados para continuar!', 'info');
+            setIsNewCustomer(true);
+            toast('Ainda não temos seu cadastro. Informe seu nome para continuar!', 'info');
             // Clear fields for new registration if it wasn't pre-filled by a different lookup
             setName('');
             setEmail('');
@@ -428,6 +548,9 @@ export function CartPage() {
       return false;
     }
     
+    // Se for retirada, não valida endereço
+    if (receiveMethod === 'retirada') return true;
+
     const normState = normalizeStr(stateName);
     const normCity = normalizeStr(cityName);
     const normArea = normalizeStr(areaName);
@@ -470,23 +593,29 @@ export function CartPage() {
       return;
     }
 
-    const normState = normalizeStr(stateName);
-    const normCity = normalizeStr(cityName);
-    const normArea = normalizeStr(areaName);
+    let addressObj: any = null;
+    let validArea: any = null;
+    let fullAddressString = "Retirada na Loja";
 
-    const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
-    const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
-    const validArea = dbAreas.find(a => 
-      (normalizeStr(a.stateName) === normalizeStr(validState?.sigla || '') || normalizeStr(a.stateName) === normalizeStr(validState?.nome || '')) &&
-      normalizeStr(a.cityName) === normalizeStr(validCity?.nome || '') &&
-      normalizeStr(a.bairro) === normArea
-    );
+    if (receiveMethod === 'entrega') {
+      const normState = normalizeStr(stateName);
+      const normCity = normalizeStr(cityName);
+      const normArea = normalizeStr(areaName);
 
-    if (!validState || !validCity || !validArea) return;
-    
-    setLoading(true);
-    try {
-      const addressObj = { 
+      const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
+      const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
+      validArea = dbAreas.find(a => 
+        (normalizeStr(a.stateName) === normalizeStr(validState?.sigla || '') || normalizeStr(a.stateName) === normalizeStr(validState?.nome || '')) &&
+        normalizeStr(a.cityName) === normalizeStr(validCity?.nome || '') &&
+        normalizeStr(a.bairro) === normArea
+      );
+
+      if (!validState || !validCity || !validArea) {
+        toast("Erro ao validar endereço.", "error");
+        return;
+      }
+
+      addressObj = { 
         estado: validState.sigla, 
         cidade: validCity.nome, 
         bairro: validArea.bairro, 
@@ -495,7 +624,11 @@ export function CartPage() {
         complemento, 
         referencia 
       };
-      
+      fullAddressString = `${rua}, ${numero} - ${validArea.bairro}, ${validCity.nome}/${validState.sigla}. Ref: ${referencia}`;
+    }
+    
+    setLoading(true);
+    try {
       const customerId = await customerService.registerFromCheckout({
           nome: name,
           whatsapp: whatsapp,
@@ -503,8 +636,6 @@ export function CartPage() {
           endereco: addressObj,
           status: 'ativo'
       });
-
-      const exactNow = serverTimestamp();
 
       const selectedMethodConfig = paymentSettings?.methods.find(m => m.id === paymentMethod);
       const isCash = selectedMethodConfig?.label.toLowerCase().includes('dinheiro') || selectedMethodConfig?.id === 'cash';
@@ -518,15 +649,16 @@ export function CartPage() {
         customerId,
         customerName: name,
         customerWhatsapp: whatsapp,
-        customerAddress: `${rua}, ${numero} - ${validArea.bairro}, ${validCity.nome}/${validState.sigla}. Ref: ${referencia}`,
+        customerAddress: fullAddressString,
         fullAddress: addressObj,
+        receiveMethod: receiveMethod,
         scheduledDate: selectedDate,
         scheduledTime: selectedSlot,
         notes: finalNotes,
         subTotal: subTotal,
-        deliveryFee: deliveryFee,
-        total: orderTotal,
-        deliveryAreaId: validArea.id,
+        deliveryFee: receiveMethod === 'entrega' ? deliveryFee : 0,
+        total: receiveMethod === 'entrega' ? orderTotal : subTotal,
+        deliveryAreaId: validArea?.id || null,
         paymentMethod: paymentMethod,
         status: 'NOVO',
         type: 'online',
@@ -597,11 +729,17 @@ export function CartPage() {
   };
 
   const steps = [
-    { title: 'Carrinho', id: 1 },
-    { title: 'Identificação', id: 2 },
-    { title: 'Agendamento', id: 3 },
-    { title: 'Pagamento', id: 4 },
+    { title: 'Identificação', id: 'IDENTIFICACAO' as CheckoutStep },
+    { title: 'Sacola', id: 'RESUMO' as CheckoutStep },
+    { title: 'Recebimento', id: 'RECEBIMENTO' as CheckoutStep },
+    { title: 'Endereço', id: 'ENDERECO' as CheckoutStep },
+    { title: 'Agendamento', id: 'AGENDAMENTO' as CheckoutStep },
+    { title: 'Pagamento', id: 'PAGAMENTO' as CheckoutStep },
   ];
+
+  // Helper to check if a step is "active" or "completed"
+  const getStepIndex = (sId: CheckoutStep) => steps.findIndex(s => s.id === sId);
+  const currentStepIndex = getStepIndex(checkoutStep);
 
   const handleMpSubmit = async ({ formData }: any) => {
     if (!createdOrderId) return;
@@ -674,125 +812,224 @@ export function CartPage() {
 
   return (
     <div className="flex-1 bg-black text-white min-h-screen pb-20">
-      {/* Header / Tabs */}
+      {/* Header / Progress bar */}
       <div className="bg-zinc-950 border-b border-zinc-900 sticky top-16 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between gap-2">
-            {steps.map((s, idx) => (
-              <div key={s.id} className="flex-1 flex items-center">
-                <button 
-                  onClick={() => s.id < step && setStep(s.id)}
-                  disabled={s.id > step}
-                  className={cn(
-                    "flex flex-col items-center gap-2 transition-all duration-300",
-                    s.id === step ? "text-red-500" : s.id < step ? "text-zinc-300" : "text-zinc-700"
+        <div className="max-w-7xl mx-auto px-4 py-3 overflow-x-auto no-scrollbar">
+          <div className="flex items-center justify-between gap-1 min-w-[500px] py-1">
+            {steps.filter(s => receiveMethod === 'retirada' ? s.id !== 'ENDERECO' : true).map((s, idx, filteredSteps) => {
+              const sIdx = getStepIndex(s.id);
+              const isActive = s.id === checkoutStep;
+              const isPast = sIdx < currentStepIndex;
+
+              return (
+                <div key={s.id} className="flex-1 flex items-center">
+                  <button 
+                    onClick={() => isPast && setCheckoutStep(s.id)}
+                    disabled={!isPast && !isActive}
+                    className={cn(
+                      "flex flex-col items-center gap-1.5 transition-all duration-300",
+                      isActive ? "text-red-500" : isPast ? "text-zinc-300" : "text-zinc-700"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black border-2 transition-all",
+                      isActive ? "bg-red-600 border-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.4)]" : 
+                      isPast ? "bg-zinc-800 border-zinc-700 text-white" : "bg-transparent border-zinc-800"
+                    )}>
+                      {idx + 1}
+                    </div>
+                    <span className="text-[8px] font-black uppercase tracking-widest">{s.title}</span>
+                  </button>
+                  {idx < filteredSteps.length - 1 && (
+                    <div className={cn(
+                      "h-[1px] flex-1 mx-2",
+                      isPast ? "bg-red-600" : "bg-zinc-800"
+                    )}></div>
                   )}
-                >
-                  <div className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border-2 transition-all",
-                    s.id === step ? "bg-red-600 border-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]" : 
-                    s.id < step ? "bg-zinc-800 border-zinc-700 text-white" : "bg-transparent border-zinc-800"
-                  )}>
-                    {s.id}
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-widest hidden sm:block">{s.title}</span>
-                </button>
-                {idx < steps.length - 1 && (
-                  <div className={cn(
-                    "h-[1px] flex-1 mx-4 sm:mx-8",
-                    s.id < step ? "bg-red-600" : "bg-zinc-800"
-                  )}></div>
-                )}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8 lg:py-12 pb-40">
-        <div className="flex flex-col gap-12 max-w-4xl mx-auto w-full">
+      <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 lg:py-8 pb-40">
+        <div className="flex flex-col gap-6 sm:gap-8 max-w-4xl mx-auto w-full">
           
           <div className="w-full">
-            <div className="flex justify-between border-b border-zinc-800 mb-8 sm:mb-12 overflow-x-auto no-scrollbar">
-              <button 
-                onClick={() => setStep(1)} 
-                className={cn(
-                  "pb-4 px-6 text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap", 
-                  step === 1 ? "border-b-2 border-red-600 text-white" : "text-zinc-600 hover:text-zinc-400"
-                )}
-              >
-                1. Sacola
-              </button>
-              <button 
-                onClick={() => setStep(2)} 
-                className={cn(
-                  "pb-4 px-6 text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap", 
-                  step === 2 ? "border-b-2 border-red-600 text-white" : "text-zinc-600 hover:text-zinc-400"
-                )}
-              >
-                2. Entrega
-              </button>
-              <button 
-                onClick={() => items.length > 0 && name && setStep(3)} 
-                disabled={items.length === 0 || !name}
-                className={cn(
-                  "pb-4 px-6 text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap", 
-                  step === 3 ? "border-b-2 border-red-600 text-white" : "text-zinc-600 hover:text-zinc-400 disabled:opacity-30"
-                )}
-              >
-                3. Agendamento
-              </button>
-              <button 
-                onClick={() => items.length > 0 && name && selectedSlot && setStep(4)} 
-                disabled={items.length === 0 || !name || !selectedSlot}
-                className={cn(
-                  "pb-4 px-6 text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap", 
-                  step === 4 ? "border-b-2 border-red-600 text-white" : "text-zinc-600 hover:text-zinc-400 disabled:opacity-30"
-                )}
-              >
-                4. Pagamento
-              </button>
-            </div>
-
             <AnimatePresence mode="wait">
-              {step === 1 && (
+              {checkoutStep === 'IDENTIFICACAO' && (
                 <motion.div 
-                  key="step1"
+                  key="identificacao"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="space-y-8"
+                >
+                  <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 sm:p-10 shadow-2xl text-center">
+                    <div className="w-16 h-16 bg-red-600/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                      <Search size={28} />
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter text-white mb-2">Identificação</h2>
+                    <p className="text-zinc-500 text-xs sm:text-sm font-medium mb-8 max-w-sm mx-auto">
+                      Para continuar sua compra, precisamos saber quem você é.
+                    </p>
+
+                    <form onSubmit={handleIdentification} className="max-w-sm mx-auto space-y-4">
+                      <div className="space-y-3">
+                        <div className="relative">
+                          <label className="block text-[10px] font-black mb-2 uppercase tracking-[3px] text-zinc-500 text-left px-2">WhatsApp *</label>
+                          <input 
+                            required 
+                            type="tel"
+                            value={whatsapp} 
+                            onChange={e => setWhatsapp(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-3 text-white focus:ring-2 focus:ring-red-600 transition-all font-black text-lg sm:text-xl"
+                            placeholder="(00) 00000-0000" 
+                          />
+                        </div>
+                        {isNewCustomer && (
+                          <motion.div 
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="relative"
+                          >
+                            <label className="block text-[10px] font-black mb-2 uppercase tracking-[3px] text-zinc-500 text-left px-2">Como podemos te chamar? *</label>
+                            <input 
+                              required 
+                              value={name} 
+                              onChange={e => setName(e.target.value)}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-3 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-base sm:text-lg"
+                              placeholder="Seu Nome ou Apelido" 
+                            />
+                          </motion.div>
+                        )}
+                      </div>
+                    </form>
+                  </div>
+                </motion.div>
+              )}
+
+              {checkoutStep === 'RESUMO' && (
+                <motion.div 
+                  key="resumo"
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
                   className="space-y-8"
                 >
-                  <div className="bg-zinc-900 rounded-[2.5rem] border border-zinc-800 shadow-2xl overflow-hidden">
-                    <ul className="divide-y divide-zinc-800">
-                      {items.map((item) => (
-                        <li key={item.id} className="p-6 sm:p-8 flex flex-col sm:flex-row gap-6 sm:items-center group">
-                          <div className="w-20 h-20 sm:w-24 sm:h-24 bg-zinc-800 rounded-3xl overflow-hidden shrink-0 border border-zinc-700">
-                            {item.imageUrl ? (
-                              <img src={item.imageUrl || undefined} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-zinc-600 text-[10px] text-center uppercase font-bold px-2">Sem Imagem</div>
+                  {/* Items List */}
+                  <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden">
+                    <div className="p-4 sm:p-6 border-b border-zinc-800 bg-zinc-950/50 flex items-center justify-between">
+                      <h2 className="text-lg font-black uppercase italic tracking-tighter">Sua Sacola</h2>
+                      <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">{items.length} ITENS</span>
+                    </div>
+                    <ul className="divide-y divide-zinc-800/50">
+                      <AnimatePresence initial={false}>
+                        {items.map((item) => (
+                        <motion.li 
+                          key={item.id} 
+                          layout
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          className="p-5 sm:p-7 flex flex-col gap-5 group relative hover:bg-zinc-800/40 transition-all duration-500"
+                        >
+                          {/* Item Header: Title & Variations spanning the width */}
+                          <div className="w-full flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 border-b border-zinc-800/30 pb-3">
+                            <h3 className="font-medium text-[10px] sm:text-[11px] text-zinc-400 uppercase tracking-[0.15em] leading-relaxed group-hover:text-red-500 transition-colors duration-300">
+                              {item.name}
+                            </h3>
+                            {item.variantName && (
+                              <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest italic sm:text-right">
+                                {formatVariantName(item.variantName)}
+                              </span>
                             )}
                           </div>
-                          <div className="flex-1">
-                            <h3 className="font-bold text-lg text-zinc-100 uppercase tracking-tight">{item.name}</h3>
-                            {item.variantName && <p className="text-xs font-bold text-red-500 uppercase tracking-widest mt-1">{formatVariantName(item.variantName)}</p>}
-                            <div className="font-black text-xl text-white mt-1">{formatCurrency(item.price)}</div>
+
+                          <div className="flex flex-row gap-5 sm:gap-8 items-center">
+                            {/* Product Image with glass effect on quantity tag */}
+                            <div className="w-20 h-20 sm:w-28 sm:h-28 bg-zinc-950 rounded-[1.5rem] overflow-hidden shrink-0 border border-zinc-800 shadow-2xl relative group/img">
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl || undefined} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 ease-out" />
+                              ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 to-black border border-zinc-800">
+                                  <Sparkles size={18} className="text-zinc-800 mb-1 animate-pulse" />
+                                  <span className="text-[8px] font-black tracking-widest text-zinc-700 uppercase">Premium</span>
+                                </div>
+                              )}
+                              {/* Quantity Badge for Mobile */}
+                              {item.quantity > 1 && (
+                                <div className="absolute top-2 right-2 bg-red-600/90 backdrop-blur-md text-white w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shadow-lg sm:hidden border border-white/20">
+                                  {item.quantity}
+                                </div>
+                              )}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover/img:opacity-100 transition-opacity duration-500" />
+                            </div>
+                            
+                            {/* Product Info */}
+                            <div className="flex-1 min-w-0 py-1 flex flex-col justify-center">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex flex-col">
+                                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-0.5">Preço Unitário</span>
+                                  <span className="font-black text-lg sm:text-2xl text-white tracking-tighter">
+                                    {formatCurrency(item.price)}
+                                  </span>
+                                </div>
+                                
+                                {item.quantity > 1 && (
+                                  <div className="h-8 w-[1px] bg-zinc-800/50 hidden sm:block mx-1" />
+                                ) }
+                                {item.quantity > 1 && (
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-0.5">Subtotal Item</span>
+                                    <span className="text-[11px] sm:text-[13px] font-black text-red-500 uppercase tracking-widest bg-red-500/5 px-2 py-0.5 rounded-md border border-red-500/10">
+                                      {formatCurrency(item.price * item.quantity)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Actions & Quantity Selector */}
+                            <div className="flex flex-col items-end gap-5 shrink-0">
+                              <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-2xl border border-zinc-800 shadow-2xl relative overflow-hidden group/controls">
+                                <div className="absolute inset-x-0 bottom-0 h-[2px] bg-red-600 transform scale-x-0 group-hover/controls:scale-x-100 transition-transform duration-500" />
+                                
+                                <button 
+                                  onClick={() => handleUpdateQuantity(item.id, item.productId, item.variantId, item.quantity, item.quantity - 1)} 
+                                  className="w-10 h-10 flex items-center justify-center text-zinc-500 hover:text-white rounded-xl hover:bg-zinc-800 transition-all active:scale-90 group/minus"
+                                  title="Diminuir"
+                                >
+                                  <Minus size={18} className="group-hover/minus:scale-110 transition-transform" />
+                                </button>
+                                
+                                <div className="w-8 flex flex-col items-center">
+                                  <span className="text-[8px] font-black text-zinc-600 uppercase tracking-tighter mb-0.5">Qtd</span>
+                                  <span className="font-black text-base text-white">{item.quantity}</span>
+                                </div>
+                                
+                                <button 
+                                  onClick={() => handleUpdateQuantity(item.id, item.productId, item.variantId, item.quantity, item.quantity + 1)} 
+                                  className="w-10 h-10 flex items-center justify-center text-zinc-500 hover:text-white rounded-xl hover:bg-zinc-800 transition-all active:scale-90 group/plus"
+                                  title="Aumentar"
+                                >
+                                  <Plus size={18} className="group-hover/plus:scale-110 transition-transform" />
+                                </button>
+                              </div>
+                              
+                              <button 
+                                onClick={() => removeItem(item.id)} 
+                                className="flex items-center gap-2 px-3 py-2 rounded-xl text-zinc-700 hover:text-red-500 hover:bg-red-500/5 transition-all duration-300 group/remove border border-transparent hover:border-red-500/10"
+                              >
+                                <Trash2 size={16} className="group-hover/remove:rotate-12 transition-transform duration-300" />
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-0 group-hover/remove:opacity-100 transition-opacity hidden sm:inline">Excluir Item</span>
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-4 bg-zinc-950 p-1.5 rounded-full border border-zinc-800 w-max">
-                            <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-8 h-8 flex items-center justify-center text-zinc-500 hover:text-white rounded-full hover:bg-zinc-800">
-                              <Minus size={16} />
-                            </button>
-                            <span className="w-6 text-center font-black text-sm">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-8 h-8 flex items-center justify-center text-zinc-500 hover:text-white rounded-full hover:bg-zinc-800">
-                              <Plus size={16} />
-                            </button>
-                          </div>
-                          <button onClick={() => removeItem(item.id)} className="w-10 h-10 flex items-center justify-center text-zinc-600 hover:text-red-500 rounded-full border border-zinc-800">
-                            <Trash2 size={18} />
-                          </button>
-                        </li>
-                      ))}
+                        </motion.li>
+                        ))}
+                      </AnimatePresence>
                     </ul>
                   </div>
 
@@ -880,204 +1117,189 @@ export function CartPage() {
                       <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">IA analisando seu carrinho...</p>
                     </div>
                   )}
-                  <Link to="/catalogo" className="inline-flex items-center text-[10px] font-black uppercase tracking-widest text-zinc-700 hover:text-red-500 transition-colors">
-                    <Plus size={14} className="mr-2" /> Escolher mais itens
-                  </Link>
-                </motion.div>
-              )}
-
-              {step === 2 && (
-                <motion.div 
-                  key="step2"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  className="space-y-12"
-                >
-                  <div className="bg-zinc-900 rounded-[2.5rem] border border-zinc-800 p-8 sm:p-12 shadow-2xl relative overflow-hidden">
-                    {/* Splash Screen Consulting Overlay */}
-                    <AnimatePresence>
-                      {lookingUp && (
-                        <motion.div 
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center"
-                        >
-                          <motion.div 
-                            animate={{ 
-                              scale: [1, 1.1, 1],
-                              opacity: [0.5, 1, 0.5] 
-                            }}
-                            transition={{ 
-                              duration: 2, 
-                              repeat: Infinity,
-                              ease: "easeInOut"
-                            }}
-                            className="w-24 h-24 bg-red-600/20 text-red-500 rounded-full flex items-center justify-center mb-8"
-                          >
-                            <Search size={48} />
-                          </motion.div>
-                          <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white mb-3">Consultando Cadastro</h3>
-                          <div className="flex items-center gap-3">
-                            <div className="w-2 h-2 bg-red-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                            <div className="w-2 h-2 bg-red-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                            <div className="w-2 h-2 bg-red-600 rounded-full animate-bounce"></div>
-                          </div>
-                          <p className="text-zinc-500 text-[10px] font-black uppercase tracking-[4px] mt-6">Buscando seus dados na Discreta Boutique</p>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    <div className="max-w-md mx-auto mb-12">
-                      <label className="block text-[10px] font-black mb-3 uppercase tracking-[3px] text-zinc-500 text-center">Informe seu WhatsApp para começar *</label>
-                      <div className="relative">
-                        <input 
-                          required type="tel" value={whatsapp} 
-                          className={cn(
-                            "w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-black text-2xl text-center",
-                            lookingUp && "opacity-50"
-                          )}
-                          onChange={e => setWhatsapp(e.target.value)} 
-                          placeholder="(00) 00000-0000" 
-                        />
-                      </div>
-                    </div>
-
-                    <div className={cn("space-y-8 transition-all duration-700", (!hasLookedUp || lookingUp) ? "max-h-0 opacity-0 overflow-hidden pointer-events-none" : "max-h-[2000px] opacity-100")}>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 pt-8 border-t border-zinc-800">
-                        <div>
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-[3px] text-zinc-500">Nome Completo *</label>
-                          <input 
-                            required value={name} 
-                            disabled={lookingUp}
-                            className={cn(
-                               "w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-lg",
-                               lookingUp && "opacity-50"
-                            )}
-                            onChange={e => setName(e.target.value)} 
-                            placeholder="Seu nome" 
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-[3px] text-zinc-500">E-mail (Opcional)</label>
-                          <input 
-                            value={email} 
-                            disabled={lookingUp}
-                            className={cn(
-                               "w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-5 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-lg",
-                               lookingUp && "opacity-50"
-                            )}
-                            onChange={e => setEmail(e.target.value)} 
-                            placeholder="seu@email.com" 
-                          />
-                        </div>
-                      </div>
-
-                      <h3 className="text-sm font-black uppercase tracking-[4px] text-zinc-100 flex items-center gap-3">
-                        <div className="w-2 h-2 bg-red-600 rounded-full shadow-[0_0_10px_rgba(220,38,38,0.6)]"></div>
-                        Endereço para entrega
-                      </h3>
-                      
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
-                        <div>
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Estado *</label>
-                          <input 
-                            required 
-                            list="estados-sugestoes" 
-                            value={stateName} 
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white uppercase font-bold" 
-                            onChange={e => setStateName(e.target.value.toUpperCase())} 
-                            onBlur={handleStateBlur}
-                            placeholder="UF (Ex: CE)" 
-                          />
-                          <datalist id="estados-sugestoes">
-                            {dbStates.map(state => (
-                              <option key={state.id} value={state.sigla}>{state.nome}</option>
-                            ))}
-                          </datalist>
-                        </div>
-                        <div className="col-span-1 sm:col-span-2">
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Cidade *</label>
-                          <input 
-                            required 
-                            list="cidades-sugestoes" 
-                            value={cityName} 
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" 
-                            onChange={e => setCityName(e.target.value)} 
-                            onBlur={handleCityBlur}
-                            placeholder="Selecione sua cidade" 
-                          />
-                          <datalist id="cidades-sugestoes">
-                            {availableCities.map(city => (
-                              <option key={city.id} value={city.nome} />
-                            ))}
-                          </datalist>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Bairro *</label>
-                          <input 
-                            required 
-                            list="bairros-sugestoes" 
-                            value={areaName} 
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" 
-                            onChange={e => setAreaName(e.target.value)} 
-                            onBlur={handleAreaBlur}
-                            placeholder="Selecione seu bairro" 
-                          />
-                          <datalist id="bairros-sugestoes">
-                            {availableBairros.map(bairro => (
-                              <option key={bairro.id} value={bairro.bairro} />
-                            ))}
-                          </datalist>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Rua / Avenida *</label>
-                          <input required value={rua} onChange={e => setRua(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" placeholder="Nome da rua" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-6">
-                        <div>
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Número *</label>
-                          <input required value={numero} onChange={e => setNumero(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" placeholder="Nº" />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Ponto de Referência *</label>
-                          <input required value={referencia} onChange={e => setReferencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" placeholder="Ex: Próximo à padaria..." />
-                        </div>
-                      </div>
-
-                      <div className="col-span-full">
-                        <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Complemento (Opcional)</label>
-                        <input value={complemento} onChange={e => setComplemento(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold" placeholder="Apto, Bloco, etc" />
-                      </div>
-                    </div>
+                  <div className="flex flex-col sm:flex-row gap-4 pt-10">
+                    <Button variant="outline" asChild size="lg" className="flex-1 py-8 text-xs font-black uppercase tracking-widest rounded-2xl border-zinc-800 hover:bg-zinc-800">
+                      <Link to="/catalogo">Escolher mais itens</Link>
+                    </Button>
+                    <Button 
+                      onClick={() => setCheckoutStep('RECEBIMENTO')} 
+                      size="lg" 
+                      className="flex-[2] py-8 text-lg font-black italic uppercase tracking-widest rounded-2xl shadow-xl shadow-red-600/20"
+                    >
+                      Como deseja receber? <ArrowRight size={20} className="ml-2" />
+                    </Button>
                   </div>
                 </motion.div>
               )}
 
-              {step === 3 && (
+              {checkoutStep === 'RECEBIMENTO' && (
                 <motion.div 
-                  key="step3"
-                  initial={{ opacity: 0, x: -20 }}
+                  key="recebimento"
+                  initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
+                  exit={{ opacity: 0, x: -20 }}
                   className="space-y-12"
                 >
-                  <div className="bg-zinc-900 rounded-[2.5rem] border border-zinc-800 p-8 sm:p-12 shadow-2xl">
-                    <h3 className="text-xl font-black uppercase tracking-[4px] text-zinc-100 mb-8 flex items-center gap-3">
-                      <div className="w-2 h-2 bg-red-600 rounded-full"></div>
-                      Quando deseja receber seu pedido?
+                  <div className="text-center space-y-3">
+                    <h2 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter text-white">Como deseja receber?</h2>
+                    <p className="text-zinc-500 text-xs sm:text-sm font-medium">Selecione o método de entrega de sua preferência.</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-2xl mx-auto">
+                    <button
+                      onClick={() => {
+                        setReceiveMethod('entrega');
+                        setCheckoutStep('ENDERECO');
+                      }}
+                      className="group relative flex flex-col items-center justify-center p-8 sm:p-10 bg-zinc-900 border-2 border-zinc-800 hover:border-red-600 rounded-[2rem] transition-all duration-500"
+                    >
+                      <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mb-4 group-hover:bg-red-600 transition-colors">
+                        <motion.div whileHover={{ x: [0, 5, -5, 0] }}>
+                          <ArrowRight size={20} />
+                        </motion.div>
+                      </div>
+                      <span className="text-xl sm:text-2xl font-black italic uppercase tracking-tighter text-white">Entregar em Casa</span>
+                      <p className="text-zinc-500 text-[10px] mt-2 uppercase font-bold tracking-widest">Enviamos para você</p>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setReceiveMethod('retirada');
+                        setCheckoutStep('AGENDAMENTO');
+                      }}
+                      className="group relative flex flex-col items-center justify-center p-8 sm:p-10 bg-zinc-900 border-2 border-zinc-800 hover:border-red-600 rounded-[2rem] transition-all duration-500"
+                    >
+                      <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mb-4 group-hover:bg-red-600 transition-colors">
+                        <ClockIcon size={20} />
+                      </div>
+                      <span className="text-xl sm:text-2xl font-black italic uppercase tracking-tighter text-white">Receber na Loja</span>
+                      <p className="text-zinc-500 text-[10px] mt-2 uppercase font-bold tracking-widest">Você busca na loja</p>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {checkoutStep === 'ENDERECO' && (
+                <motion.div 
+                  key="endereco"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="space-y-12"
+                >
+                  <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 sm:p-10 shadow-2xl relative overflow-hidden">
+                    <h3 className="text-lg font-black uppercase tracking-[3px] text-zinc-100 mb-6 flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-red-600 rounded-full"></div>
+                      Endereço de Entrega
+                    </h3>
+                    
+                    <div className="space-y-4 sm:space-y-6">
+                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Estado *</label>
+                          <input 
+                            required 
+                            list="estados-sugestoes" 
+                            value={stateName} 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white uppercase font-bold text-sm" 
+                            onChange={e => setStateName(e.target.value.toUpperCase())} 
+                            onBlur={handleStateBlur}
+                            placeholder="UF" 
+                          />
+                        </div>
+                        <div className="col-span-1 sm:col-span-2">
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Cidade *</label>
+                          <input 
+                            required 
+                            list="cidades-sugestoes" 
+                            value={cityName} 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" 
+                            onChange={e => setCityName(e.target.value)} 
+                            onBlur={handleCityBlur}
+                            placeholder="Sua cidade" 
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Bairro *</label>
+                          <input 
+                            required 
+                            list="bairros-sugestoes" 
+                            value={areaName} 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" 
+                            onChange={e => setAreaName(e.target.value)} 
+                            onBlur={handleAreaBlur}
+                            placeholder="Seu bairro" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Rua / Avenida *</label>
+                          <input required value={rua} onChange={e => setRua(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" placeholder="Nome da rua" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Número *</label>
+                          <input required value={numero} onChange={e => setNumero(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" placeholder="Nº" />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Ponto de Referência *</label>
+                          <input required value={referencia} onChange={e => setReferencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" placeholder="Ex: Próximo à padaria..." />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Complemento (Opcional)</label>
+                        <input value={complemento} onChange={e => setComplemento(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" placeholder="Apto, Bloco, etc" />
+                      </div>
+
+                      <Button 
+                        onClick={() => {
+                          if (validateIdentification()) {
+                            setCheckoutStep('AGENDAMENTO');
+                          }
+                        }}
+                        size="lg" 
+                        className="w-full py-6 text-base font-black italic uppercase tracking-widest rounded-2xl"
+                      >
+                        Agendar Entrega <Calendar size={18} className="ml-2" />
+                      </Button>
+                    </div>
+
+                    <datalist id="estados-sugestoes">
+                      {dbStates.map(state => <option key={state.id} value={state.sigla}>{state.nome}</option>)}
+                    </datalist>
+                    <datalist id="cidades-sugestoes">
+                      {availableCities.map(city => <option key={city.id} value={city.nome} />)}
+                    </datalist>
+                    <datalist id="bairros-sugestoes">
+                      {availableBairros.map(bairro => <option key={bairro.id} value={bairro.bairro} />)}
+                    </datalist>
+                  </div>
+                </motion.div>
+              )}
+
+              {checkoutStep === 'AGENDAMENTO' && (
+                <motion.div 
+                  key="agendamento"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="space-y-12"
+                >
+                  <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 sm:p-10 shadow-2xl">
+                    <h3 className="text-lg font-black uppercase tracking-[3px] text-zinc-100 mb-6 flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-red-600 rounded-full"></div>
+                      Agendamento do Pedido
                     </h3>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-                      <div className="space-y-4">
-                        <label className="block text-[10px] font-black uppercase tracking-[3px] text-zinc-500">Selecione uma Data</label>
-                        <div className="grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 mb-6 sm:mb-8">
+                      <div className="space-y-3">
+                        <label className="block text-[9px] font-black uppercase tracking-[3px] text-zinc-500">Selecione uma Data</label>
+                        <div className="grid grid-cols-1 gap-2">
                           {getAvailableDays().map((day) => (
                             <button
                               key={day.date}
@@ -1086,181 +1308,114 @@ export function CartPage() {
                                 setSelectedSlot('');
                               }}
                               className={cn(
-                                "flex items-center justify-between px-6 py-5 rounded-2xl border-2 transition-all group",
+                                "flex items-center justify-between px-5 py-3.5 rounded-xl border-2 transition-all group",
                                 selectedDate === day.date
                                   ? "bg-red-600 border-red-600 text-white shadow-lg"
                                   : "bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
                               )}
                             >
-                              <div className="flex items-center gap-3">
-                                <Calendar size={20} className={cn(selectedDate === day.date ? "text-white" : "text-zinc-600 group-hover:text-red-500")} />
-                                <span className="font-bold text-lg">{day.label}</span>
+                              <div className="flex items-center gap-2.5">
+                                <Calendar size={18} className={cn(selectedDate === day.date ? "text-white" : "text-zinc-600 group-hover:text-red-500")} />
+                                <span className="font-bold text-base">{day.label}</span>
                               </div>
                               <div className={cn(
-                                "w-6 h-6 rounded-full border-2 flex items-center justify-center",
+                                "w-5 h-5 rounded-full border-2 flex items-center justify-center",
                                 selectedDate === day.date ? "border-white bg-white/20" : "border-zinc-800"
                               )}>
-                                {selectedDate === day.date && <div className="w-2 h-2 bg-white rounded-full" />}
+                                {selectedDate === day.date && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                               </div>
                             </button>
                           ))}
-                          {getAvailableDays().length === 0 && (
-                            <div className="p-6 bg-zinc-950/50 border border-dashed border-zinc-800 rounded-2xl text-center">
-                              <p className="text-zinc-500 text-sm font-medium">Nenhuma data disponível para entrega no momento.</p>
-                            </div>
-                          )}
                         </div>
                       </div>
 
-                      <div className="space-y-4">
-                        <label className="block text-[10px] font-black uppercase tracking-[3px] text-zinc-500">Horário Disponível</label>
-                        {generateSlots(selectedDate).length > 0 ? (
-                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                                {generateSlots(selectedDate).map(slot => (
-                                    <button
-                                        key={slot}
-                                        onClick={() => setSelectedSlot(slot)}
-                                        className={cn(
-                                            "py-3 rounded-xl border font-bold text-xs transition-all",
-                                            selectedSlot === slot 
-                                            ? "bg-red-600 border-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]" 
-                                            : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                                        )}
-                                    >
-                                        {slot}
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="p-4 bg-zinc-950/50 border border-zinc-800 rounded-2xl text-center">
-                                <p className="text-xs text-zinc-500 font-bold italic">Não há horários disponíveis para esta data.</p>
-                            </div>
-                        )}
+                      <div className="space-y-3">
+                        <label className="block text-[9px] font-black uppercase tracking-[3px] text-zinc-500">Horário Disponível</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {generateSlots(selectedDate).map(slot => (
+                            <button
+                                key={slot}
+                                onClick={() => setSelectedSlot(slot)}
+                                className={cn(
+                                    "py-2.5 rounded-xl border font-bold text-[10px] transition-all",
+                                    selectedSlot === slot 
+                                    ? "bg-red-600 border-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.4)]" 
+                                    : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700"
+                                )}
+                            >
+                                {slot}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
-
-                    {selectedSlot && (
-                        <div className="bg-red-600/10 border border-red-600/20 p-6 rounded-3xl flex items-center gap-4 animate-in fade-in zoom-in-95 duration-500">
-                            <ClockIcon className="text-red-500 shrink-0" size={24} />
-                            <div>
-                                <p className="text-xs font-bold text-zinc-300">Você selecionou a entrega para às <span className="text-red-500 font-black">{selectedSlot}h</span> do dia <span className="font-black text-white">{selectedDate.split('-').reverse().join('/')}</span>.</p>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-red-600 mt-1">Aviso: Você poderá receber seu pedido até 60min antes do horário desejado.</p>
-                            </div>
-                        </div>
-                    )}
                   </div>
                 </motion.div>
               )}
 
-              {step === 4 && (
+              {checkoutStep === 'PAGAMENTO' && (
                 <motion.div 
-                  key="step4"
-                  initial={{ opacity: 0, x: -20 }}
+                  key="pagamento"
+                  initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
+                  exit={{ opacity: 0, x: -20 }}
                   className="space-y-12"
                 >
-                  <div className="bg-zinc-900 rounded-[2.5rem] border border-zinc-800 p-8 sm:p-12 shadow-2xl">
-                    <h3 className="text-xl font-black uppercase tracking-[4px] text-zinc-100 mb-8 flex items-center gap-3">
-                      <div className="w-2 h-2 bg-red-600 rounded-full"></div>
-                      Como deseja receber?
-                    </h3>
-
-                    <div className="grid grid-cols-2 gap-4 mb-12">
-                      <button
-                        onClick={() => setPaymentMode('entrega')}
-                        className={cn(
-                          "flex flex-col items-center p-6 rounded-3xl border-2 transition-all",
-                          paymentMode === 'entrega' 
-                          ? "bg-red-600/10 border-red-600 text-white shadow-[0_0_30px_rgba(220,38,38,0.1)]" 
-                          : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                        )}
-                      >
-                        <span className="text-lg font-black italic tracking-tighter mb-1 uppercase">Entregar em Casa</span>
-                      </button>
-                      <button
-                        onClick={() => setPaymentMode('retirada')}
-                        className={cn(
-                          "flex flex-col items-center p-6 rounded-3xl border-2 transition-all",
-                          paymentMode === 'retirada' 
-                          ? "bg-red-600/10 border-red-600 text-white shadow-[0_0_30px_rgba(220,38,38,0.1)]" 
-                          : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                        )}
-                      >
-                        <span className="text-lg font-black italic tracking-tighter mb-1 uppercase">Retirar na Loja</span>
-                      </button>
-                    </div>
-
-                    <h3 className="text-xl font-black uppercase tracking-[4px] text-zinc-100 mb-8 flex items-center gap-3">
-                      <div className="w-2 h-2 bg-red-600 rounded-full"></div>
+                  <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 sm:p-10 shadow-2xl">
+                    <h3 className="text-lg font-black uppercase tracking-[3px] text-zinc-100 mb-6 flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-red-600 rounded-full"></div>
                       Forma de Pagamento
                     </h3>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {paymentSettings && paymentSettings.methods
-                        .filter(m => paymentMode === 'entrega' ? m.enabledDelivery : m.enabledPickup)
-                        .map(method => {
-                          const isSelected = paymentMethod === method.id;
-                          return (
-                            <button
-                              key={method.id}
-                              onClick={() => setPaymentMethod(method.id)}
-                              className={cn(
-                                "flex flex-col items-start p-6 rounded-3xl border-2 transition-all text-left",
-                                isSelected 
-                                ? "bg-red-600/10 border-red-600 text-white shadow-[0_0_30px_rgba(220,38,38,0.1)]" 
-                                : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                              )}
-                            >
-                              <span className="text-xl font-black italic tracking-tighter mb-1 uppercase">{method.label}</span>
-                              <span className="text-[10px] font-black uppercase tracking-widest opacity-60 text-current italic">Disponível</span>
-                            </button>
-                          );
-                        })
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+                      {paymentSettings?.methods
+                        .filter(m => receiveMethod === 'entrega' ? m.enabledDelivery : m.enabledPickup)
+                        .map(method => (
+                          <button
+                            key={method.id}
+                            onClick={() => setPaymentMethod(method.id)}
+                            className={cn(
+                              "flex flex-col items-start p-5 rounded-2xl border-2 transition-all text-left",
+                              paymentMethod === method.id 
+                              ? "bg-red-600/10 border-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.1)]" 
+                              : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700"
+                            )}
+                          >
+                            <span className="text-lg font-black italic tracking-tighter mb-0.5 uppercase">{method.label}</span>
+                            <span className="text-[9px] font-black uppercase tracking-widest opacity-60 italic">Disponível</span>
+                          </button>
+                        ))
                       }
-                      {!paymentSettings && <p className="text-zinc-600 italic">Carregando opções...</p>}
                     </div>
 
-                    <AnimatePresence>
-                      {paymentSettings?.methods.find(m => m.id === paymentMethod)?.label.toLowerCase().includes('dinheiro') && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="mt-6 space-y-4 overflow-hidden"
-                        >
-                          <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Troco para quanto?</label>
-                          <input 
-                            type="number"
-                            className="w-full sm:w-1/2 bg-zinc-950 border border-zinc-800 rounded-2xl px-6 py-4 text-white font-bold focus:ring-2 focus:ring-red-600"
-                            value={trocoPara} 
-                            onChange={e => setTrocoPara(e.target.value)} 
-                            onBlur={e => setTrocoPara(e.target.value ? roundTo2(parseFloat(e.target.value)).toString() : '')}
-                            placeholder="Ex: 50 ou 100 (Deixe em branco se não precisar)"
-                          />
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                    {paymentSettings?.methods.find(m => m.id === paymentMethod)?.label.toLowerCase().includes('dinheiro') && (
+                      <div className="mb-6 space-y-3">
+                        <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Troco para quanto?</label>
+                        <input 
+                          type="number"
+                          className="w-full sm:w-1/2 bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-3 text-white font-bold text-sm"
+                          value={trocoPara} 
+                          onChange={e => setTrocoPara(e.target.value)} 
+                          placeholder="Ex: 50 ou 100"
+                        />
+                      </div>
+                    )}
 
-                    <div className="mt-12 space-y-4">
-                      <label className="block text-[10px] font-black mb-3 uppercase tracking-widest text-zinc-500">Algum detalhe especial?</label>
+                    <div className="space-y-3">
+                      <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Observações do Pedido</label>
                       <textarea 
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-3xl px-6 py-6 text-white font-bold min-h-[100px] focus:ring-2 focus:ring-red-600"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-5 py-5 text-white font-bold min-h-[80px] text-sm"
                         value={notes} 
                         onChange={e => setNotes(e.target.value)} 
-                        placeholder="Ex: Não tocar o interfone, embalagem neutra..."
+                        placeholder="Algo que devemos saber?"
                       />
                     </div>
-                  </div>
 
-                  <div className="flex flex-col items-center gap-4 text-zinc-600 p-8 border border-zinc-900 rounded-[2.5rem] bg-zinc-950/50">
-                    <span className="text-[10px] font-black uppercase tracking-[4px] flex items-center gap-2">
-                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                       Ambiente Oficial e Seguro
-                    </span>
-                    <p className="text-[10px] text-center font-bold px-4 leading-relaxed uppercase opacity-40">
-                      Seu pedido será entregue em embalagem lacrada sem qualquer identificação de sexshop.
-                    </p>
+                    <Button 
+                      className="hidden"
+                    >
+                      Finalizar Pedido
+                    </Button>
                   </div>
                 </motion.div>
               )}
@@ -1268,82 +1423,92 @@ export function CartPage() {
           </div>
 
           {/* Checkout Summary - Now Below Content */}
-          <div className="w-full">
-            <div className="bg-zinc-900 rounded-[3rem] border border-zinc-800 p-8 sm:p-12 shadow-2xl">
-              <h2 className="text-xl font-black tracking-tighter uppercase italic mb-8 flex items-center justify-between">
-                Resumo do Pedido
-                <span className="text-xs text-zinc-600 tracking-widest not-italic">{items.length} itens no total</span>
-              </h2>
+          {(checkoutStep === 'RESUMO' || checkoutStep === 'PAGAMENTO') && (
+            <div className="w-full">
+              <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 sm:p-10 shadow-2xl">
+                <h2 className="text-lg font-black tracking-tighter uppercase italic mb-6 flex items-center justify-between">
+                  Resumo do Pedido
+                  <span className="text-[10px] text-zinc-600 tracking-widest not-italic">{items.length} itens</span>
+                </h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center py-8 border-y border-zinc-800 mb-8">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center text-zinc-500">
-                    <span className="text-[10px] font-black uppercase tracking-widest">Subtotal:</span>
-                    <span className="font-bold text-white">{formatCurrency(subTotal)}</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center py-6 border-y border-zinc-800 mb-6">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-zinc-500">
+                      <span className="text-[9px] font-black uppercase tracking-widest">Subtotal:</span>
+                      <span className="font-bold text-sm text-white">{formatCurrency(subTotal)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-zinc-500">
+                      <span className="text-[9px] font-black uppercase tracking-widest">Entrega:</span>
+                      <span className="font-bold text-sm text-white">
+                        {selectedAreaId ? (deliveryFee === 0 ? <span className="text-green-500 font-black">GRÁTIS</span> : formatCurrency(deliveryFee)) : '--'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center text-zinc-500">
-                    <span className="text-[10px] font-black uppercase tracking-widest">Entrega:</span>
-                    <span className="font-bold text-white">
-                      {selectedAreaId ? (deliveryFee === 0 ? <span className="text-green-500 font-black">GRÁTIS</span> : formatCurrency(deliveryFee)) : '--'}
-                    </span>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[9px] font-black uppercase tracking-[3px] text-zinc-500 mb-1">Valor Final:</span>
+                    <span className="text-4xl font-black text-red-500 tracking-tighter">{formatCurrency(orderTotal)}</span>
                   </div>
-                </div>
-                <div className="flex flex-col items-end">
-                  <span className="text-[10px] font-black uppercase tracking-[4px] text-zinc-500 mb-1">Valor Final:</span>
-                  <span className="text-5xl font-black text-red-500 tracking-tighter">{formatCurrency(orderTotal)}</span>
                 </div>
               </div>
-              {/* Buttons removed from here as they are now fixed at the bottom */}
             </div>
-          </div>
+          )}
         </div>
       </div>
 
       {/* Fixed Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 w-full bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 p-4 sm:p-6 z-[60] lg:z-50 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
-        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="hidden sm:flex flex-col">
-            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Total do Pedido</span>
-            <span className="text-2xl font-black text-red-500 tracking-tighter italic">{formatCurrency(orderTotal)}</span>
+      <div className="fixed bottom-0 left-0 w-full bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 p-3 sm:p-4 z-[60] lg:z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+          <div className="flex sm:flex-col items-center sm:items-start justify-between w-full sm:w-auto px-4 sm:px-0">
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500 sm:mb-1">Total:</span>
+            <span className="text-xl sm:text-2xl font-black text-red-500 tracking-tighter italic">{formatCurrency(orderTotal)}</span>
           </div>
           
-          <div className="w-full sm:w-auto min-w-[280px]">
-            {step === 1 && (
+          <div className="w-full sm:w-auto min-w-[260px] sm:min-w-[280px]">
+            {checkoutStep === 'IDENTIFICACAO' && (
               <Button 
-                onClick={() => setStep(2)}
-                className="w-full h-16 sm:h-14 px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
+                onClick={handleIdentification}
+                disabled={loading || !whatsapp || (isNewCustomer && !name)}
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-30"
               >
-                Seguir para Entrega <ArrowRight className="ml-2 w-5 h-5" />
+                {loading ? 'Processando...' : 'Continuar'} <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             )}
 
-            {step === 2 && (
+            {checkoutStep === 'RESUMO' && (
               <Button 
-                disabled={!hasLookedUp || lookingUp}
-                onClick={() => validateIdentification() && setStep(3)}
-                className="w-full h-16 sm:h-14 px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-30"
+                onClick={() => setCheckoutStep('RECEBIMENTO')}
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all"
               >
-                Agendar Entrega <ArrowRight className="ml-2 w-5 h-5" />
+                Como deseja receber? <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             )}
 
-            {step === 3 && (
+            {checkoutStep === 'ENDERECO' && (
+              <Button 
+                onClick={() => validateIdentification() && setCheckoutStep('AGENDAMENTO')}
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all"
+              >
+                Agendar Entrega <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
+              </Button>
+            )}
+
+            {checkoutStep === 'AGENDAMENTO' && (
               <Button 
                 disabled={!selectedSlot}
-                onClick={() => setStep(4)}
-                className="w-full h-16 sm:h-14 px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-50"
+                onClick={() => setCheckoutStep('PAGAMENTO')}
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-50"
               >
-                Escolher Pagamento <ArrowRight className="ml-2 w-5 h-5" />
+                Escolher Pagamento <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             )}
 
-            {step === 4 && (
+            {checkoutStep === 'PAGAMENTO' && (
               <Button 
                 disabled={loading || !paymentMethod}
                 onClick={handleCheckout}
-                className="w-full h-16 sm:h-14 px-12 bg-green-600 hover:bg-green-700 text-white font-black rounded-full text-sm uppercase tracking-[2px] shadow-xl transition-all"
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 bg-green-600 hover:bg-green-700 text-white font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all"
               >
-                {loading ? 'Processando...' : (paymentMode === 'retirada' ? 'Finalizar e aguardar retirada' : 'Finalizar e Receber em Casa')}
+                {loading ? 'Processando...' : (receiveMethod === 'retirada' ? 'Finalizar e Retirar' : 'Finalizar Pedido')}
               </Button>
             )}
           </div>

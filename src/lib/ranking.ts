@@ -29,37 +29,58 @@ export const getMatchScore = (p: Product, aiSuggestion: any) => {
     let score = 0;
     const name = p.name.toLowerCase();
     const desc = `${(p.shortDescription || "").toLowerCase()} ${(p.fullDescription || "").toLowerCase()}`;
-    const keywords = (p.ai_keywords || []).join(' ').toLowerCase();
-    const synonyms = (p.ai_synonyms || []).join(' ').toLowerCase();
+    const pTags = (p.seo?.keywords || []).map(t => t.toLowerCase());
     
     if (!aiSuggestion) {
       return 0;
     }
 
     const mainTerm = aiSuggestion.curadoria?.toLowerCase() || "";
-    const caracteristicas = aiSuggestion.caracteristicas || [];
-    const sinonimosSugeridos = aiSuggestion.sinonimos || [];
-    
-    // Core term matching
-    if (name.includes(mainTerm)) score += 5;
-    if (keywords.includes(mainTerm)) score += 3;
-    if (synonyms.includes(mainTerm)) score += 2;
-    if (desc.includes(mainTerm)) score += 1;
+    const sugestaoCat = aiSuggestion.categoria?.toLowerCase() || "";
+    const caracteristicas = (aiSuggestion.caracteristicas || []).map((c: string) => c.toLowerCase());
+    const sinonimosSugeridos = (aiSuggestion.sinonimos || []).map((s: string) => s.toLowerCase());
+    const subcats = (aiSuggestion.subcategorias_sugeridas || []).map((s: string) => s.toLowerCase());
 
-    // Features matching
-    caracteristicas.forEach((c: string) => {
-      const ct = c.toLowerCase();
-      if (name.includes(ct)) score += 3;
-      if (keywords.includes(ct)) score += 2;
-      if (desc.includes(ct)) score += 1;
+    // 1. Categoria e Subcategoria sugeridas pela IA (Boost máximo)
+    if (sugestaoCat && sugestaoCat !== 'outros') {
+       if (pTags.includes(sugestaoCat)) score += 15;
+    }
+    
+    // Boost específico para subcategorias encontradas no nome ou tags
+    subcats.forEach((sub: string) => {
+      if (name.includes(sub)) score += 20; // Prioridade máxima: Subcategoria
+      if (pTags.includes(sub)) score += 18;
     });
 
-    // Synonyms suggestion matching
-    sinonimosSugeridos.forEach((s: string) => {
-      const st = s.toLowerCase();
-      if (name.includes(st)) score += 2;
-      if (keywords.includes(st)) score += 1;
-      if (synonyms.includes(st)) score += 1;
+    // 2. Tags e Keywords (Boost alto)
+    pTags.forEach(tag => {
+       const t = tag.toLowerCase();
+       if (mainTerm.includes(t) || t.includes(mainTerm)) score += 25;
+       caracteristicas.forEach(c => {
+         if (t.includes(c.toLowerCase())) score += 15;
+       });
+       sinonimosSugeridos.forEach(s => {
+         if (t.includes(s.toLowerCase())) score += 10;
+       });
+    });
+
+    // 3. Core term matching no Nome (Boost médio-alto)
+    if (name.includes(mainTerm)) score += 15;
+    
+    // 4. Features e Sinônimos no Nome e Atributos (Boost médio)
+    caracteristicas.forEach((ct: string) => {
+      const feature = ct.toLowerCase();
+      if (name.includes(feature)) score += 12;
+      if (pTags.some(t => t.toLowerCase().includes(feature))) score += 8;
+      if (desc.includes(feature)) score += 5;
+    });
+
+    // 5. Descrição (Boost baixo)
+    if (desc.includes(mainTerm)) score += 5;
+    sinonimosSugeridos.forEach((st: string) => {
+      const syn = st.toLowerCase();
+      if (name.includes(syn)) score += 10;
+      if (desc.includes(syn)) score += 4;
     });
     
     return score;
