@@ -3,11 +3,11 @@ import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
-import { Search, X, Minus, Plus, Sparkles, Frown, Loader2 } from 'lucide-react';
+import { Search, X, Minus, Plus, Frown, Loader2 } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
-import { getRankingHybrid } from '../../lib/ranking';
+import { getRankingProfissional } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
@@ -25,31 +25,16 @@ export function CatalogPage() {
   const [search, setSearch] = useState(qSearch || '');
   const [selectedCat, setSelectedCat] = useState<string>(qCat || 'all');
   const [loading, setLoading] = useState(true);
-  const [interpreting, setInterpreting] = useState(false);
-  const [aiSuggestion, setAiSuggestion] = useState<{
-    searchId: string;
-    mensagem: string;
-    curadoria: string;
-    categoria?: string;
-    subcategorias_sugeridas?: string[];
-    caracteristicas?: string[];
-    termos_relacionados?: string[];
-    sinonimos?: string[];
-    intencao?: string;
-  } | null>(null);
+  const [searching, setSearching] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
-  const { toast } = useFeedback();
-
-  const searchCache = useRef<Record<string, any>>({});
 
   const updateCategoryParam = (catValue: string | 'all', clearSearch = true) => {
     const newParams = new URLSearchParams(searchParams);
     
-    // Clear search and AI suggestions when specifically choosing a category
+    // Clear search when specifically choosing a category
     if (clearSearch) {
       setSearch('');
-      setAiSuggestion(null);
       newParams.delete('q');
     }
 
@@ -77,99 +62,31 @@ export function CatalogPage() {
     }
   };
 
-  const handleSmartSearch = async (forcedSearch?: string) => {
-    let searchTerm = typeof forcedSearch === 'string' ? forcedSearch : search;
+  const handleRealSearch = async (forcedSearch?: string) => {
+    const searchTerm = typeof forcedSearch === 'string' ? forcedSearch : search;
     
-    if (!searchTerm || typeof searchTerm !== 'string' || !searchTerm.trim()) return;
+    if (!searchTerm?.trim()) return;
 
     // Reset categories to "All" to ensure search covers the entire catalog
     setSelectedCat('all');
     updateCategoryParam('all', false);
 
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('q', searchTerm.trim());
+    setSearchParams(newParams);
+
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
     
-    // Check local cache
-    const cacheKey = searchTerm.toLowerCase().trim();
-    if (searchCache.current[cacheKey]) {
-        const cached = searchCache.current[cacheKey];
-        setAiSuggestion(cached.aiSuggestion);
-        return;
-    }
-
-    setInterpreting(true);
-    try {
-      // Parallelize AI interpretation and Embedding generation
-      const aiResponse = await fetch('/api/ia/interpretar-busca', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ busca: searchTerm })
-      });
-
-      if (!aiResponse.ok) {
-        if (aiResponse.status === 429) {
-          throw new Error('Limite de requisições excedido.');
-        }
-        throw new Error('Falha na resposta da IA');
-      }
-
-      const data = await aiResponse.json();
-
-      if (data.fallback) {
-        toast("Busca inteligente indisponível. Usando busca tradicional.", "info");
-        setAiSuggestion(null);
-        return;
-      }
-
-      const suggestion = {
-        searchId: data.searchId || Date.now().toString(),
-        mensagem: data.interpretacao?.mensagem_personalizada || '',
-        curadoria: data.interpretacao?.termo_busca || '',
-        categoria: data.interpretacao?.categoria,
-        subcategorias_sugeridas: data.interpretacao?.subcategorias_sugeridas || [],
-        caracteristicas: data.interpretacao?.caracteristicas || [],
-        termos_relacionados: data.interpretacao?.termos_relacionados || [],
-        sinonimos: data.interpretacao?.sinonimos || [],
-        intencao: data.interpretacao?.intencao
-      };
-
-      console.log('[CATALOG][AI_REASONING]', data.interpretacao);
-      setAiSuggestion(suggestion);
-      
-      // Save to cache
-      searchCache.current[cacheKey] = {
-         aiSuggestion: suggestion
-      };
-
-    } catch (error: any) {
-      console.error('Falha na busca inteligente:', error);
-      toast(error.message || "Busca inteligente indisponível no momento.", "warning");
-    } finally {
-      setInterpreting(false);
-    }
+    setSearching(true);
+    // Simular um pequeno delay para feedback visual de busca profissional
+    setTimeout(() => {
+      setSearching(false);
+    }, 400);
   };
 
-  useEffect(() => {
-    if (qSearch && products.length > 0) {
-      handleSmartSearch(qSearch);
-    }
-  }, [qSearch, products.length]);
-
   const trackProductClick = async (productId: string) => {
-    // Register for AI (if applicable)
-    if (aiSuggestion?.searchId) {
-      try {
-        await fetch('/api/ia/registrar-clique', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ searchId: aiSuggestion.searchId, productId })
-        });
-      } catch (e) {
-        console.warn('Erro ao registrar clique (AI):', e);
-      }
-    }
-
     // Register for overall ranking
     productService.trackInteraction(productId, 'click');
   };
@@ -332,126 +249,17 @@ export function CatalogPage() {
       console.log(`[FILTER][CATEGORY] Found ${result.length} products for cat ${selectedCat}`);
     }
 
-    // 2. Filtro de Busca (Híbrido) - Só filtra drasticamente se o usuário estiver em "Todas as Categorias"
-    // Caso contrário (categoria selecionada), o termo de busca age como um filtro secundário ou apenas ranking.
+    // 2. Filtro de Busca (Profissional)
     if (search.trim()) {
-      const searchTerm = search.toLowerCase();
-      const words = searchTerm.split(/\s+/).filter(w => w.length > 2);
-      
-      if (selectedCat === 'all') {
-        if (aiSuggestion) {
-          // Busca Semântica Expandida (Inteligente)
-          const terms = [
-            ...aiSuggestion.caracteristicas || [],
-            ...aiSuggestion.sinonimos || [],
-            ...aiSuggestion.termos_relacionados || [],
-            aiSuggestion.curadoria,
-            searchTerm
-          ].map(t => t.toLowerCase()).filter(Boolean);
-
-          const suggestedCatIds: string[] = [];
-          if (aiSuggestion.categoria && aiSuggestion.categoria !== 'Outros') {
-            const found = categories.find(c => c.name.toLowerCase() === aiSuggestion.categoria?.toLowerCase());
-            if (found) suggestedCatIds.push(...getAllChildCategoryIds(found.id));
-          }
-
-          result = result.filter(p => {
-            const name = p.name.toLowerCase();
-            const desc = (p.description || p.shortDescription || p.fullDescription || "").toLowerCase();
-            const pTags = [
-              ...(p.seo?.keywords || []),
-              ...(p.tags || []),
-              ...(p.ai_keywords || []),
-              ...(p.ai_synonyms || []),
-              ...(p.searchTerms || []),
-              ...(p.palavras_chave || []),
-              ...(p.sinonimos || [])
-            ].map(t => typeof t === 'string' ? t.toLowerCase() : '');
-            const sku = (p.sku || "").toLowerCase();
-            
-            const catMatch = p.categoryId && suggestedCatIds.includes(p.categoryId);
-            const termMatch = terms.some(t => 
-              name.includes(t) || 
-              desc.includes(t) || 
-              pTags.some(tag => tag.includes(t)) ||
-              sku.includes(t)
-            );
-
-            return catMatch || termMatch;
-          });
-
-          console.log('%c[IA][REASONING]', 'color: #ff0000; font-weight: bold;', {
-            intencao: aiSuggestion.intencao,
-            keywords: terms,
-            categoria_sugerida: aiSuggestion.categoria,
-            resultados: result.length
-          });
-        } else {
-          // Busca Tradicional Filtrante (Fuzzy)
-          const words = searchTerm.split(/\s+/).filter(w => w.length > 2);
-          result = result.filter(p => {
-            const name = p.name.toLowerCase();
-            const desc = (p.description || p.shortDescription || p.fullDescription || "").toLowerCase();
-            const sku = (p.sku || "").toLowerCase();
-            const pTags = [
-              ...(p.seo?.keywords || []),
-              ...(p.tags || []),
-              ...(p.ai_keywords || []),
-              ...(p.ai_synonyms || []),
-              ...(p.searchTerms || []),
-              ...(p.palavras_chave || []),
-              ...(p.sinonimos || [])
-            ].map(t => typeof t === 'string' ? t.toLowerCase() : '');
-
-            if (words.length > 0) {
-              return words.every(word => 
-                name.includes(word) || 
-                desc.includes(word) || 
-                sku.includes(word) || 
-                pTags.some(t => t.includes(word))
-              ) || name.includes(searchTerm);
-            }
-            return name.includes(searchTerm) || desc.includes(searchTerm) || sku.includes(searchTerm) || pTags.some(t => t.includes(searchTerm));
-          });
-          console.log(`[FILTER][TRADITIONAL] Query: "${searchTerm}" | Found: ${result.length}`);
-        }
-      } else {
-        // Categoria Selecionada Manualmente: O usuário quer ver TUDO da categoria.
-        // Aplicamos apenas um filtro de texto básico se houver busca, para não ser confuso,
-        // mas mantemos o foco na categoria (regras do usuário).
-        if (words.length > 0) {
-           result = result.filter(p => {
-             const name = p.name.toLowerCase();
-             const desc = (p.description || p.shortDescription || p.fullDescription || "").toLowerCase();
-             const pTags = [
-                ...(p.seo?.keywords || []),
-                ...(p.tags || []),
-                ...(p.ai_keywords || []),
-                ...(p.ai_synonyms || []),
-                ...(p.searchTerms || []),
-                ...(p.palavras_chave || []),
-                ...(p.sinonimos || [])
-             ].map(t => typeof t === 'string' ? t.toLowerCase() : '');
-
-             return words.some(word => 
-               name.includes(word) || 
-               desc.includes(word) || 
-               pTags.some(t => t.includes(word))
-             ) || name.includes(searchTerm);
-           });
-           console.log(`[FILTER][CATEGORY_CONTEXT] Mode: Deep Category Search | Result: ${result.length}`);
-        }
-      }
+      result = getRankingProfissional(result, search, categories);
+      console.log(`[CATALOG][PROFESSIONAL_SEARCH] Found ${result.length} matches for "${search}"`);
     }
 
-    // 3. Ranking Híbrido Final (Base + AI Match)
-    const ranked = getRankingHybrid(result, aiSuggestion);
+    console.log(`[CATALOG][FILTER_COMPLETE] ${result.length} results | Time: ${Date.now() - startTime}ms`);
     
-    console.log(`[CATALOG][FILTER_COMPLETE] ${ranked.length} results | Time: ${Date.now() - startTime}ms`);
-    
-    setFiltered(ranked);
+    setFiltered(result);
     setCurrentPage(1);
-  }, [search, selectedCat, products, categories, aiSuggestion]);
+  }, [search, selectedCat, products, categories]);
 
   const rootCategories = categories.filter(c => c.level === 0 || !c.parentId);
   const getSubcategories = (parentId: string) => categories.filter(c => c.parentId === parentId);
@@ -478,37 +286,36 @@ export function CatalogPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-black text-white min-h-screen">
-      {/* Header / Search Area - AI Assistant */}
+      {/* Header / Search Area - Professional Search */}
       <section className="bg-zinc-950 border-b border-zinc-900 pt-6 pb-4 px-4 sticky top-14 md:top-16 z-30 backdrop-blur-md bg-black/95">
         <div className="max-w-7xl mx-auto space-y-4">
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-red-500 mb-1 ml-1">
-              <Sparkles size={16} />
-              <h2 className="text-sm font-black uppercase tracking-tight">Especialista IA: O que você deseja hoje?</h2>
+            <div className="flex items-center gap-2 text-zinc-400 mb-1 ml-1">
+              <Search size={16} />
+              <h2 className="text-sm font-black uppercase tracking-tight">O que você está procurando?</h2>
             </div>
             <div className="relative group w-full">
-              <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-red-600/40 group-focus-within:text-red-500 transition-colors" size={18} />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-red-500 transition-colors" size={18} />
               <Input 
                 ref={searchInputRef}
                 type="text"
-                placeholder="Ex: Quero algo para usar a dois e sair da rotina..." 
-                className="w-full bg-zinc-900/80 border-red-900/30 text-white pl-12 pr-14 py-6 rounded-2xl focus:ring-1 focus:ring-red-600/50 font-medium placeholder:text-zinc-600 transition-all text-sm shadow-inner"
+                placeholder="Busque por produtos, categorias ou desejos..." 
+                className="w-full bg-zinc-900/80 border-zinc-800 text-white pl-12 pr-14 py-6 rounded-2xl focus:ring-1 focus:ring-red-600/50 font-medium placeholder:text-zinc-600 transition-all text-sm shadow-inner"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSmartSearch();
+                  if (e.key === 'Enter') handleRealSearch();
                 }}
               />
               <button 
-                onClick={() => handleSmartSearch()}
-                disabled={interpreting || !search.trim()}
+                onClick={() => handleRealSearch()}
+                disabled={searching || !search.trim()}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl disabled:opacity-0 disabled:scale-95 transition-all shadow-lg shadow-red-900/20"
-                title="Analisar Pedido"
+                title="Pesquisar"
               >
-                <Search size={16} className={interpreting ? "animate-pulse" : ""} />
+                <Search size={16} className={searching ? "animate-pulse" : ""} />
               </button>
             </div>
-            <p className="text-xs text-zinc-500 font-medium ml-2">Descreva sua vontade. Nossa IA encontrará a seleção perfeita para você.</p>
           </div>
 
           {/* Category Navigation - More Compact */}
@@ -604,65 +411,7 @@ export function CatalogPage() {
 
         {/* Product Grid - Optimized Columns */}
         <main className="w-full">
-          {/* AI Recommendation Banner */}
-          <AnimatePresence>
-            {aiSuggestion && (
-              <motion.div 
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="mb-8 p-6 rounded-2xl bg-gradient-to-br from-red-600/30 via-zinc-900 to-zinc-950 border border-red-600/20 relative overflow-hidden"
-              >
-                <div className="absolute -top-10 -right-10 text-red-500/5 rotate-12">
-                  <Sparkles size={200} />
-                </div>
-                <div className="relative z-10">
-                  <div className="flex items-center gap-2 text-red-400 mb-3">
-                    <div className="bg-red-600 p-1 rounded-md">
-                      <Sparkles size={12} className="text-white" />
-                    </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white/90">Sugestão Discreta</span>
-                  </div>
-                  
-                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                    <div>
-                      <h2 className="text-xl md:text-2xl font-black text-white mb-2 leading-tight">
-                        {aiSuggestion.curadoria}
-                      </h2>
-                      <p className="text-zinc-400 text-sm max-w-2xl font-medium leading-relaxed italic">
-                        "{aiSuggestion.mensagem}"
-                      </p>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="ghost"
-                        className="text-white hover:text-white text-[10px] uppercase font-bold px-4"
-                        onClick={() => { setAiSuggestion(null); setSearch(''); setSelectedCat('all'); }}
-                      >
-                        Limpar
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        className="bg-white !text-zinc-950 hover:bg-zinc-100 rounded-full text-[10px] uppercase font-black px-6 shadow-sm flex-shrink-0"
-                        onClick={() => {
-                          const grid = document.getElementById('products-grid');
-                          if (grid) {
-                            grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }
-                        }}
-                      >
-                        Descobrir
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {interpreting ? (
+          {searching ? (
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }}
@@ -671,32 +420,23 @@ export function CatalogPage() {
             >
               <motion.div 
                 animate={{ 
-                  scale: [1, 1.1, 1],
-                  rotate: [0, 5, -5, 0]
+                  scale: [1, 1.05, 1],
                 }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                 className="relative mb-12"
               >
-                <div className="absolute inset-0 bg-red-600/30 blur-[60px] rounded-full animate-pulse"></div>
-                <div className="w-32 h-32 bg-zinc-900 border-4 border-red-900/50 rounded-full flex items-center justify-center text-red-500 relative z-10 shadow-[0_0_50px_rgba(220,38,38,0.3)]">
-                  <Sparkles size={64} className="animate-pulse" />
+                <div className="absolute inset-0 bg-red-600/10 blur-[60px] rounded-full animate-pulse"></div>
+                <div className="w-24 h-24 bg-zinc-900 border-2 border-zinc-800 rounded-full flex items-center justify-center text-red-500 relative z-10">
+                  <Search size={40} className="animate-pulse" />
                 </div>
-                <motion.div 
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-                  className="absolute -inset-4 border border-dashed border-red-600/20 rounded-full"
-                />
               </motion.div>
               
-              <h3 className="text-white font-black text-3xl md:text-4xl mb-4 tracking-tighter">
-                Sua Experiência Personalizada está Quase Pronta...
+              <h3 className="text-white font-black text-2xl md:text-3xl mb-4 tracking-tighter uppercase">
+                Buscando no Catálogo...
               </h3>
-              <p className="text-zinc-400 font-medium text-lg max-w-md leading-relaxed">
-                Nossa IA está mergulhando em nosso catálogo exclusivo para encontrar as melhores opções baseadas em seu desejo agora.
-              </p>
-              <div className="mt-12 flex items-center gap-3 text-red-500/60 font-black uppercase tracking-[0.2em] text-[10px]">
+              <div className="flex items-center gap-3 text-red-500 font-black uppercase tracking-[0.2em] text-[10px]">
                 <Loader2 className="animate-spin" size={14} />
-                Processando intenção
+                Localizando produtos reais
               </div>
             </motion.div>
           ) : loading ? (
@@ -724,12 +464,12 @@ export function CatalogPage() {
                 </div>
               </motion.div>
               
-              <h3 className="text-white font-black text-2xl md:text-3xl mb-4 tracking-tighter px-6">
-                Ops! Não encontramos o que você deseja...
+              <h3 className="text-white font-black text-2xl md:text-3xl mb-4 tracking-tighter px-6 uppercase">
+                Produtos Não Encontrados
               </h3>
               
               <p className="text-zinc-500 font-bold text-base md:text-lg mb-8 max-w-xl mx-auto leading-relaxed px-8">
-                Pode ser que você precise de um pouco mais de detalhes na sua busca. Tente descrever sua vontade com mais palavras para nossa IA te ajudar melhor!
+                Tente buscar por termos mais genéricos ou verifique se a categoria selecionada possui o item que você procura.
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4 px-6 w-full justify-center">
@@ -739,24 +479,15 @@ export function CatalogPage() {
                   onClick={() => { 
                     setSearch(''); 
                     updateCategoryParam('all');
-                    setAiSuggestion(null);
                   }}
                 >
                   <X size={14} className="mr-2" /> Limpar Filtros
-                </Button>
-                <Button 
-                  className="rounded-2xl bg-red-600 hover:bg-red-500 font-black px-12 py-7 h-auto uppercase tracking-widest text-[11px] transition-all shadow-lg shadow-red-900/20"
-                  onClick={() => { 
-                    searchInputRef.current?.focus();
-                  }}
-                >
-                  <Search size={14} className="mr-2" /> Tentar Outra Busca
                 </Button>
               </div>
 
               <div className="mt-12 p-4 bg-zinc-900/30 rounded-2xl border border-zinc-800/50 max-w-xs">
                 <p className="text-[10px] text-zinc-600 font-medium italic">
-                  Dica: Busque por sensações, momentos ou tipos específicos de produtos (ex: "vibrador recarregável potente").
+                  Dica: Busque pelo nome do produto ou pela categoria (ex: "vibradores", "algemas").
                 </p>
               </div>
             </motion.div>
@@ -776,7 +507,6 @@ export function CatalogPage() {
                       <ProductGridCard 
                         product={p} 
                         onItemClick={() => trackProductClick(p.id!)}
-                        searchId={aiSuggestion?.searchId}
                       />
                     </motion.div>
                   ))}
@@ -835,7 +565,7 @@ export function CatalogPage() {
   );
 }
 
-function ProductGridCard({ product, onItemClick, searchId }: { product: Product, onItemClick?: () => void, searchId?: string }) {
+function ProductGridCard({ product, onItemClick }: { product: Product, onItemClick?: () => void }) {
   const image = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
   const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
@@ -859,8 +589,7 @@ function ProductGridCard({ product, onItemClick, searchId }: { product: Product,
         sku: product.sku,
         imageUrl: image || '',
         variantId: undefined,
-        variantName: undefined,
-        searchId: searchId
+        variantName: undefined
       });
       // Track conversion
       productService.trackInteraction(product.id!, 'conversion');
@@ -870,7 +599,7 @@ function ProductGridCard({ product, onItemClick, searchId }: { product: Product,
   
   return (
     <Link 
-      to={`/produto/${product.seo?.slug || product.id}${searchId ? `?sid=${searchId}` : ''}`} 
+      to={`/produto/${product.seo?.slug || product.id}`} 
       onClick={() => onItemClick?.()}
       className={cn(
         "group relative bg-zinc-950/40 rounded-[2.5rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-700 h-full",

@@ -1,4 +1,5 @@
 import { Product } from '../services/productService';
+import { normalizeSearchText, getWordVariations } from './utils';
 
 const getCreationDate = (createdAt?: Date | string | null | any) => {
     if (!createdAt) return new Date();
@@ -126,7 +127,7 @@ export const getRankingHybrid = (products: Product[], aiSuggestion: any, queryEm
     })
     .sort((a: any, b: any) => b._tempScore - a._tempScore)
     .map((p: any) => {
-        const { _tempScore: _score, ...pWithoutScore } = p;
+        const { _tempScore, ...pWithoutScore } = p;
         return pWithoutScore as Product;
     });
 };
@@ -152,4 +153,90 @@ export const fillFallback = (all: Product[], used: Set<string>, count: number) =
 
 export const getRankingBusca = (products: Product[], aiSuggestion: any): Product[] => {
     return getRankingHybrid(products, aiSuggestion);
+};
+
+export const getRankingProfissional = (products: Product[], queryText: string, categories: any[] = []): Product[] => {
+    if (!queryText.trim()) return products;
+
+    const normalizedQuery = normalizeSearchText(queryText);
+    const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
+    const queryVariations = queryWords.flatMap(w => getWordVariations(w));
+    const allSearchTerms = Array.from(new Set([...queryWords, ...queryVariations, normalizedQuery]));
+
+    console.log(`[SEARCH][RANKING] Query: "${queryText}" | Terms:`, allSearchTerms);
+
+    const startTime = Date.now();
+
+    const ranked = products.map(p => {
+        let score = 0;
+        const name = normalizeSearchText(p.name);
+        const desc = normalizeSearchText(`${p.shortDescription || ""} ${p.fullDescription || ""} ${p.subtitle || ""}`);
+        const subcat = normalizeSearchText(p.subcategory || "");
+        const catObj = categories.find(c => c.id === p.categoryId);
+        const catName = normalizeSearchText(catObj?.name || "");
+        
+        const tags = [
+            ...(p.tags || []),
+            ...(p.seo?.keywords || []),
+            ...(p.ai_keywords || []),
+            ...(p.searchTerms || []),
+            ...(p.palavras_chave || [])
+        ].map(t => normalizeSearchText(String(t)));
+
+        // 1. Nome exato ou parcial (Prioridade Máxima)
+        if (name === normalizedQuery) score += 500; // Match exato total
+        if (name.includes(normalizedQuery)) score += 100;
+        
+        queryWords.forEach(word => {
+            if (name.includes(word)) score += 20;
+        });
+
+        // 2. Subcategoria (+60)
+        if (subcat && allSearchTerms.some(t => subcat.includes(t) || t.includes(subcat))) {
+            score += 60;
+        }
+
+        // 3. Tags (+40)
+        tags.forEach(tag => {
+            if (allSearchTerms.some(t => tag.includes(t) || t.includes(tag))) {
+                score += 40;
+            }
+        });
+
+        // 4. Categoria (+20)
+        if (catName && allSearchTerms.some(t => catName.includes(t) || t.includes(catName))) {
+            score += 20;
+        }
+
+        // 5. Keywords/SEO (+20) - Já estamos olhando nas tags acima, mas podemos reforçar
+        // p.seo?.keywords.forEach(...)
+
+        // 6. Descrição (+10)
+        if (allSearchTerms.some(t => desc.includes(t))) {
+            score += 10;
+        }
+
+        // 7. Sku / Código Interno (Boost importante para busca técnica)
+        const sku = normalizeSearchText(p.sku || "");
+        const iCode = normalizeSearchText(p.internalCode || "");
+        if (normalizedQuery === sku || normalizedQuery === iCode) score += 200;
+
+        // Base score decay (recência e performance)
+        const base = getBaseScore(p) * 0.1; // Reduced weight for search context
+
+        return { ...p, _searchScore: score + base };
+    });
+
+    // Filtrar apenas os que possuem algum match (score > 0)
+    // Se a busca for vazia ou não houver match, retornamos o que foi passado (ou tratamos no CatalogPage)
+    const results = ranked
+        .filter(p => (p as any)._searchScore > 0.5) // 0.5 to allow tiny base scores if needed, but usually we want a match
+        .sort((a, b) => (b as any)._searchScore - (a as any)._searchScore)
+        .map(p => {
+            const { _searchScore, ...clean } = p as any;
+            return clean as Product;
+        });
+
+    console.log(`[SEARCH][RANKING] Found ${results.length} results in ${Date.now() - startTime}ms`);
+    return results;
 };

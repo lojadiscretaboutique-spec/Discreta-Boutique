@@ -43,3 +43,44 @@ export function formatVariantName(name: string): string {
   }
   return name;
 }
+
+/**
+ * Normalizes text for search: removes accents, lowercase, removes extra spaces.
+ */
+export function normalizeSearchText(text: string): string {
+  if (!text) return "";
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Remove accents
+    .trim()
+    .replace(/\s+/g, " "); // Single spaces
+}
+
+/**
+ * Generates variations (singular/plural) for a word.
+ * Very basic Portuguese rules.
+ */
+export function getWordVariations(word: string): string[] {
+  const w = normalizeSearchText(word);
+  if (w.length < 3) return [w];
+
+  const variations = new Set<string>();
+  variations.add(w);
+
+  // Simple plural -> singular / singular -> plural
+  if (w.endsWith("s")) {
+    variations.add(w.substring(0, w.length - 1));
+  } else {
+    variations.add(w + "s");
+  }
+
+  // Handle -ao / -oes
+  if (w.endsWith("ao")) {
+    variations.add(w.substring(0, w.length - 2) + "oes");
+  } else if (w.endsWith("oes")) {
+    variations.add(w.substring(0, w.length - 3) + "ao");
+  }
+
+  return Array.from(variations);
+}
