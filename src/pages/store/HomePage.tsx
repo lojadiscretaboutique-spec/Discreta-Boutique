@@ -315,19 +315,28 @@ export function HomePage() {
         ) : (
           <>
             {/* 1. LANÇAMENTOS */}
-            {sections.lancamentos.length > 0 && <ProductCarousel title="Lançamentos" products={sections.lancamentos} link="/catalogo" />}
+            {sections.lancamentos.length > 0 && <ProductCarousel title="Lançamentos" products={sections.lancamentos} link="/catalogo?secao=lancamentos" />}
             
             {/* 2. DESTAQUES */}
-            {sections.destaques.length > 0 && <ProductCarousel title="Destaques" products={sections.destaques} link="/catalogo" />}
+            {sections.destaques.length > 0 && <ProductCarousel title="Destaques" products={sections.destaques} link="/catalogo?secao=destaques" />}
             
             {/* 3. MAIS VENDIDOS */}
-            {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo" />}
+            {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo?secao=mais-vendidos" />}
+
+            {/* PROMOÇÕES */}
+            {sections.lancamentos.filter(p => p.onSale || (p.promoPrice && p.promoPrice < p.price)).length > 0 && (
+              <ProductCarousel 
+                title="Ofertas Imperdíveis" 
+                products={sections.lancamentos.filter(p => p.onSale || (p.promoPrice && p.promoPrice < p.price))} 
+                link="/catalogo?secao=promocoes" 
+              />
+            )}
 
             {/* 4. EM ALTA */}
-            {sections.emAlta.length > 0 && <ProductCarousel title="Em Alta" products={sections.emAlta} link="/catalogo" />}
+            {sections.emAlta.length > 0 && <ProductCarousel title="Em Alta" products={sections.emAlta} link="/catalogo?secao=em-alta" />}
 
             {/* 5. RECOMENDADOS */}
-            {sections.recomendados.length > 0 && <ProductCarousel title="Recomendados" products={sections.recomendados} link="/catalogo" />}
+            {sections.recomendados.length > 0 && <ProductCarousel title="Recomendados" products={sections.recomendados} link="/catalogo?secao=recomendados" />}
           </>
         )}
       </div>

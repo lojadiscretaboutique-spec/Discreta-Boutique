@@ -17,6 +17,9 @@ export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const qCat = searchParams.get('categoria');
   const qSearch = searchParams.get('q');
+  const qSection = searchParams.get('secao');
+  const qSubcat = searchParams.get('subcategoria');
+  const qCollection = searchParams.get('colecao');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -24,6 +27,9 @@ export function CatalogPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState(qSearch || '');
   const [selectedCat, setSelectedCat] = useState<string>(qCat || 'all');
+  const [selectedSection, setSelectedSection] = useState<string | null>(qSection);
+  const [selectedSubcat, setSelectedSubcat] = useState<string | null>(qSubcat);
+  const [selectedCollection, setSelectedCollection] = useState<string | null>(qCollection);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -32,7 +38,7 @@ export function CatalogPage() {
   const updateCategoryParam = (catValue: string | 'all', clearSearch = true) => {
     const newParams = new URLSearchParams(searchParams);
     
-    // Clear search when specifically choosing a category
+    // Clear search but keep other contextual filters
     if (clearSearch) {
       setSearch('');
       newParams.delete('q');
@@ -67,11 +73,17 @@ export function CatalogPage() {
     
     if (!searchTerm?.trim()) return;
 
-    // Reset categories to "All" to ensure search covers the entire catalog
+    // Reset categories and contextual filters to ensure search covers the entire catalog
     setSelectedCat('all');
-    updateCategoryParam('all', false);
+    setSelectedSection(null);
+    setSelectedSubcat(null);
+    setSelectedCollection(null);
 
     const newParams = new URLSearchParams(searchParams);
+    newParams.delete('categoria');
+    newParams.delete('secao');
+    newParams.delete('subcategoria');
+    newParams.delete('colecao');
     newParams.set('q', searchTerm.trim());
     setSearchParams(newParams);
 
@@ -91,6 +103,7 @@ export function CatalogPage() {
     productService.trackInteraction(productId, 'click');
   };
 
+  const isCategoriesEmpty = categories.length === 0;
   useEffect(() => {
     async function loadData() {
       try {
@@ -206,18 +219,27 @@ export function CatalogPage() {
 
         setCategories(visibleCats);
 
-        // Resolve category slug or ID from URL
-        if (qCat && qCat !== 'all') {
-          const found = catsData.find(c => c.id === qCat || c.slug === qCat);
-          if (found) {
-            setSelectedCat(found.id);
+        // Resolve params from URL
+        const resolveParams = () => {
+          const s = searchParams.get('secao');
+          const cat = searchParams.get('categoria');
+          const sub = searchParams.get('subcategoria');
+          const col = searchParams.get('colecao');
+
+          setSelectedSection(s);
+          setSelectedSubcat(sub);
+          setSelectedCollection(col);
+
+          if (cat && cat !== 'all') {
+            const found = catsData.find(c => c.id === cat || c.slug === cat);
+            if (found) setSelectedCat(found.id);
+            else setSelectedCat('all');
           } else {
             setSelectedCat('all');
           }
-        } else {
-          setSelectedCat('all');
-        }
+        };
 
+        resolveParams();
         setProducts(visibleProds);
         setFiltered(visibleProds);
       } catch (error) {
@@ -227,7 +249,7 @@ export function CatalogPage() {
       }
     }
     loadData();
-  }, [qCat]);
+  }, [searchParams, isCategoriesEmpty]); // Categories dependency is handled inside loadData but we need to re-run if params change
 
   useEffect(() => {
     const getAllChildCategoryIds = (catId: string): string[] => {
@@ -242,14 +264,69 @@ export function CatalogPage() {
     let result = [...products];
     const startTime = Date.now();
 
-    // 1. Filtro de Categoria (Hierárquico)
+    // 1. Filtro de Seção (Home Context)
+    if (selectedSection) {
+      const getCreationDate = (createdAt?: any) => {
+        if (!createdAt) return new Date();
+        if (createdAt instanceof Date) return createdAt;
+        if (typeof createdAt === 'object' && 'seconds' in (createdAt as any)) return new Date((createdAt as any).seconds * 1000);
+        return new Date(createdAt);
+      };
+
+      switch (selectedSection) {
+        case 'lancamentos':
+          // Lançamentos: 30 dias ou flag newRelease
+          const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+          result = result.filter(p => p.newRelease || getCreationDate(p.createdAt).getTime() > thirtyDaysAgo);
+          result.sort((a, b) => getCreationDate(b.createdAt).getTime() - getCreationDate(a.createdAt).getTime());
+          break;
+        case 'destaques':
+          result = result.filter(p => p.featured);
+          break;
+        case 'mais-vendidos':
+          result = result.filter(p => (p.conversoes || 0) > 0);
+          result.sort((a, b) => (b.conversoes || 0) - (a.conversoes || 0));
+          break;
+        case 'em-alta':
+          // Simple proxy for em alta in catalog
+          result = result.filter(p => (p.cliques || 0) > 10);
+          result.sort((a, b) => (b.cliques || 0) - (a.cliques || 0));
+          break;
+        case 'promocoes':
+          result = result.filter(p => p.onSale || (p.promoPrice && p.promoPrice < p.price));
+          break;
+        case 'recomendados':
+          // No recommended logic for catalog filter yet, just keep all
+          break;
+      }
+    }
+
+    // 2. Filtro de Coleção (Atributo manual)
+    if (selectedCollection) {
+      const col = selectedCollection.toLowerCase();
+      result = result.filter(p => 
+        (p as any).colecoes?.includes(col) || 
+        (p.tags || []).some(t => String(t).toLowerCase() === col)
+      );
+    }
+
+    // 3. Filtro de Subcategoria (Texto ou Atributo)
+    if (selectedSubcat) {
+      const sub = selectedSubcat.toLowerCase();
+      result = result.filter(p => 
+        String(p.subcategory || "").toLowerCase() === sub || 
+        (p as any).subcategoria?.toLowerCase() === sub
+      );
+    }
+
+    // 4. Filtro de Categoria (Hierárquico)
     if (selectedCat !== 'all') {
       const allCategoryIds = getAllChildCategoryIds(selectedCat);
       result = result.filter(p => p.categoryId && allCategoryIds.includes(p.categoryId));
       console.log(`[FILTER][CATEGORY] Found ${result.length} products for cat ${selectedCat}`);
     }
 
-    // 2. Filtro de Busca (Profissional)
+    // 5. Filtro de Busca (Profissional)
     if (search.trim()) {
       result = getRankingProfissional(result, search, categories);
       console.log(`[CATALOG][PROFESSIONAL_SEARCH] Found ${result.length} matches for "${search}"`);
@@ -259,7 +336,40 @@ export function CatalogPage() {
     
     setFiltered(result);
     setCurrentPage(1);
-  }, [search, selectedCat, products, categories]);
+  }, [search, selectedCat, selectedSection, selectedSubcat, selectedCollection, products, categories]);
+
+  const getContextTitle = () => {
+    if (search) return `Resultados para "${search}"`;
+    
+    let baseTitle = '';
+    if (selectedSection) {
+      const titles: any = {
+        'lancamentos': 'Lançamentos',
+        'destaques': 'Destaques',
+        'mais-vendidos': 'Mais Vendidos',
+        'em-alta': 'Em Alta',
+        'promocoes': 'Ofertas',
+        'recomendados': 'Recomendados'
+      };
+      baseTitle = titles[selectedSection] || 'Coleção';
+    } else if (selectedSubcat) {
+      baseTitle = selectedSubcat.charAt(0).toUpperCase() + selectedSubcat.slice(1);
+    } else if (selectedCollection) {
+      baseTitle = selectedCollection.charAt(0).toUpperCase() + selectedCollection.slice(1);
+    }
+
+    const cat = categories.find(c => c.id === selectedCat);
+    
+    if (baseTitle && cat) {
+      return `${baseTitle} > ${cat.name}`;
+    } else if (baseTitle) {
+      return `Explorando ${baseTitle}`;
+    } else if (cat) {
+      return `Produtos ${cat.name}`;
+    }
+    
+    return 'Nosso Catálogo';
+  };
 
   const rootCategories = categories.filter(c => c.level === 0 || !c.parentId);
   const getSubcategories = (parentId: string) => categories.filter(c => c.parentId === parentId);
@@ -391,16 +501,55 @@ export function CatalogPage() {
       </section>
 
       <div className="max-w-7xl mx-auto w-full px-4 py-8">
+        {/* Context Header */}
+        {(selectedSection || selectedSubcat || selectedCollection || (selectedCat !== 'all' && !search)) && (
+          <div className="mb-10 text-center md:text-left">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex flex-col md:flex-row md:items-center justify-between gap-4"
+            >
+              <div>
+                <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic text-white mb-2">
+                  {getContextTitle()}
+                </h1>
+                <div className="w-20 h-1.5 bg-red-600 rounded-full mb-4 mx-auto md:mx-0"></div>
+              </div>
+
+              <Button 
+                variant="ghost" 
+                size="sm"
+                className="text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-white border border-zinc-800 rounded-xl px-6"
+                onClick={() => {
+                  setSearchParams({});
+                  setSelectedCat('all');
+                  setSelectedSection(null);
+                  setSelectedSubcat(null);
+                  setSelectedCollection(null);
+                  setSearch('');
+                }}
+              >
+                Ver catálogo completo
+              </Button>
+            </motion.div>
+          </div>
+        )}
+
         {/* Results Info */}
         <div className="flex justify-between items-center mb-8">
           <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[2px]">
             {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}
           </p>
-          {(selectedCat !== 'all' || search) && (
+          {(selectedCat !== 'all' || search || selectedSection || selectedSubcat || selectedCollection) && (
             <button 
               onClick={() => { 
                 updateCategoryParam('all');
                 setSearch(''); 
+                setSelectedSection(null);
+                setSelectedSubcat(null);
+                setSelectedCollection(null);
+                const newParams = new URLSearchParams();
+                setSearchParams(newParams);
               }}
               className="text-[10px] font-black text-red-500 uppercase tracking-[2px] hover:underline flex items-center gap-1"
             >

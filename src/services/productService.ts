@@ -37,6 +37,8 @@ export interface Product {
   active: boolean;
   featured: boolean;
   newRelease: boolean;
+  onSale?: boolean;
+  colecoes?: string[];
 
   // 2. Preço e Estoque
   costPrice?: number;
