@@ -52,13 +52,25 @@ export function InventoryTab() {
   const downloadTemplate = async () => {
     try {
       setLoading(true);
-      const products = await productService.listProducts();
+      const [products, categories] = await Promise.all([
+        productService.listProducts(),
+        categoryService.listCategories()
+      ]);
+      const catMap = new Map();
+      categories.forEach(c => catMap.set(c.id, c.name));
       
       const rows: any[] = [];
       for (const p of products) {
         const imageUrl = p.images && p.images.length > 0 
            ? p.images.find(img => img.isMain)?.url || p.images[0].url
            : '';
+
+        let catsStr = p.categoryId || '';
+        if (p.categoryIds && p.categoryIds.length > 0) {
+          catsStr = p.categoryIds.map(id => catMap.get(id) || id).join(', ');
+        } else if (p.categoryId) {
+          catsStr = catMap.get(p.categoryId) || p.categoryId;
+        }
 
         const baseRow = {
           productId: p.id || '',
@@ -70,7 +82,7 @@ export function InventoryTab() {
           name: p.name || '',
           subtitle: p.subtitle || '',
           fullDescription: p.fullDescription || '',
-          categoryId: p.categoryId || '',
+          categoryId: catsStr,
           costPrice: p.costPrice || 0,
           price: p.price || 0,
           promoPrice: p.promoPrice || '',
@@ -411,25 +423,35 @@ export function InventoryTab() {
                  if (row.subtitle) updatePayload.subtitle = row.subtitle;
                  if (row.fullDescription) updatePayload.fullDescription = row.fullDescription;
                  
-                 if (row.categoryId) {
-                     const matchedCat = categories.find(c => c.name.toLowerCase() === row.categoryId!.toLowerCase() || c.id === row.categoryId);
-                     if (matchedCat) {
-                         updatePayload.categoryId = matchedCat.id;
-                     } else {
-                         const newCatId = await categoryService.createCategory({
-                             name: row.categoryId,
-                             slug: row.categoryId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
-                             parentId: null,
-                             level: 0,
-                             sortOrder: 0,
-                             isActive: true,
-                             isFeatured: false,
-                             showInMenu: true,
-                             showInHome: false,
-                             productCount: 0
-                         } as any);
-                         updatePayload.categoryId = newCatId;
-                         categories.push({ id: newCatId, name: row.categoryId } as any);
+                  if (row.categoryId) {
+                     const catNamesOrIds = row.categoryId.split(',').map((c: string) => c.trim()).filter(Boolean);
+                     const categoryIds: string[] = [];
+
+                     for (const catNameOrId of catNamesOrIds) {
+                         const matchedCat = categories.find(c => c.name.toLowerCase() === catNameOrId.toLowerCase() || c.id === catNameOrId);
+                         if (matchedCat) {
+                             categoryIds.push(matchedCat.id);
+                         } else {
+                             const newCatId = await categoryService.createCategory({
+                                 name: catNameOrId,
+                                 slug: catNameOrId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
+                                 parentId: null,
+                                 level: 0,
+                                 sortOrder: 0,
+                                 isActive: true,
+                                 isFeatured: false,
+                                 showInMenu: true,
+                                 showInHome: false,
+                                 productCount: 0
+                             } as any);
+                             categoryIds.push(newCatId);
+                             categories.push({ id: newCatId, name: catNameOrId } as any);
+                         }
+                     }
+
+                     if (categoryIds.length > 0) {
+                         updatePayload.categoryId = categoryIds[0];
+                         updatePayload.categoryIds = categoryIds;
                      }
                  }
 
@@ -531,25 +553,36 @@ export function InventoryTab() {
               const createWithVariants = rows.length > 1 || mainRow.variantName !== '';
               
               let resolvedCategoryId = defaultCategoryId;
+              let resolvedCategoryIds: string[] = [defaultCategoryId];
+
               if (mainRow.categoryId) {
-                  const matchedCat = categories.find(c => c.name.toLowerCase() === mainRow.categoryId!.toLowerCase() || c.id === mainRow.categoryId);
-                  if (matchedCat) {
-                      resolvedCategoryId = matchedCat.id;
-                  } else {
-                      const newCatId = await categoryService.createCategory({
-                          name: mainRow.categoryId,
-                          slug: mainRow.categoryId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
-                          parentId: null,
-                          level: 0,
-                          sortOrder: 0,
-                          isActive: true,
-                          isFeatured: false,
-                          showInMenu: true,
-                          showInHome: false,
-                          productCount: 0
-                      } as any);
-                      resolvedCategoryId = newCatId;
-                      categories.push({ id: newCatId, name: mainRow.categoryId } as any);
+                  const catNamesOrIds = mainRow.categoryId.split(',').map((c: string) => c.trim()).filter(Boolean);
+                  if (catNamesOrIds.length > 0) resolvedCategoryIds = [];
+
+                  for (const catNameOrId of catNamesOrIds) {
+                      const matchedCat = categories.find(c => c.name.toLowerCase() === catNameOrId.toLowerCase() || c.id === catNameOrId);
+                      if (matchedCat) {
+                          resolvedCategoryIds.push(matchedCat.id);
+                      } else {
+                          const newCatId = await categoryService.createCategory({
+                              name: catNameOrId,
+                              slug: catNameOrId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
+                              parentId: null,
+                              level: 0,
+                              sortOrder: 0,
+                              isActive: true,
+                              isFeatured: false,
+                              showInMenu: true,
+                              showInHome: false,
+                              productCount: 0
+                          } as any);
+                          resolvedCategoryIds.push(newCatId);
+                          categories.push({ id: newCatId, name: catNameOrId } as any);
+                      }
+                  }
+
+                  if (resolvedCategoryIds.length > 0) {
+                      resolvedCategoryId = resolvedCategoryIds[0];
                   }
               }
 
@@ -564,6 +597,7 @@ export function InventoryTab() {
                 costPrice: mainRow.costPrice || 0,
                 promoPrice: mainRow.promoPrice || 0,
                 categoryId: resolvedCategoryId,
+                categoryIds: resolvedCategoryIds,
                 active: mainRow.active,
                 featured: mainRow.featured,
                 newRelease: false,

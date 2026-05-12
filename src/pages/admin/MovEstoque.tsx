@@ -30,33 +30,6 @@ const REASONS = [
 
 const CHANNELS = ['N/A', 'Loja Física', 'Site Ecommerce', 'WhatsApp', 'Mercado Livre', 'Shopee', 'Delivery / App', 'Outro'];
 
-const getDateFromTimestamp = (ts: any) => {
-    try {
-        if (!ts) return new Date();
-        
-        // Firestore official Timestamp
-        if (typeof ts.toDate === 'function') {
-            const d = ts.toDate();
-            if (!isNaN(d.valueOf())) return d;
-        }
-        
-        // Firestore cached Timestamp
-        if (ts && typeof ts === 'object' && 'seconds' in ts) {
-            const d = new Date(ts.seconds * 1000);
-            if (!isNaN(d.valueOf())) return d;
-        }
-        
-        // Native Date or String/Number Fallback
-        const d = new Date(ts);
-        if (!isNaN(d.valueOf())) return d;
-        
-        // Ultimate fallback
-        return new Date();
-    } catch (e) {
-        return new Date();
-    }
-};
-
 export function MovEstoque() {
     const { toast } = useFeedback();
     const { hasPermission } = useAuthStore();

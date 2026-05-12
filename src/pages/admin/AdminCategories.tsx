@@ -281,6 +281,18 @@ export function AdminCategories() {
       return;
     }
 
+    // Check for duplicate name
+    const nameLower = form.name.trim().toLowerCase();
+    const isDuplicate = categories.some(c => 
+      c.name.trim().toLowerCase() === nameLower && 
+      c.id !== editingId
+    );
+
+    if (isDuplicate) {
+      toast("Já existe uma categoria com esse nome.", 'error');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const finalForm = {

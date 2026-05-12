@@ -18,7 +18,7 @@ import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
 
 // Sections IDs
-type FormSection = 'general' | 'price' | 'variants' | 'fashion' | 'cosmetics' | 'images' | 'seo';
+type FormSection = 'general' | 'categories' | 'price' | 'variants' | 'fashion' | 'cosmetics' | 'images' | 'seo';
 
 export function AdminProducts() {
   const { hasPermission } = useAuthStore();
@@ -528,19 +528,71 @@ export function AdminProducts() {
     }
 
     try {
+      let currentForm = { ...form };
+
+      // Auto generate AI content if SEO is missing
+      if (!currentForm.seo?.metaTitle || !currentForm.seo?.metaDescription) {
+        toast("Gerando SEO com Inteligência Artificial automaticamente...", 'info');
+        try {
+          const selectedCatNames = (currentForm.categoryIds && currentForm.categoryIds.length > 0)
+            ? categories.filter(c => currentForm.categoryIds?.includes(c.id)).map(c => c.name)
+            : [categories.find(c => c.id === currentForm.categoryId)?.name || currentForm.categoryId];
+          
+          const data = await aiFrontendService.generateProductContent(currentForm.name, selectedCatNames, currentForm.fullDescription);
+          const enrichment = await aiFrontendService.enrichProduct(currentForm.name, data.descricao_longa || currentForm.fullDescription || '');
+
+          const combinedKeywords = [...new Set([...(data.palavras_chave || []), ...(enrichment.keywords || [])])];
+          const combinedSynonyms = [...new Set([...(data.sinonimos || []), ...(enrichment.synonyms || [])])];
+          const combinedSearchTerms = [...new Set([...(data.termos_busca || []), ...(enrichment.searchTerms || [])])];
+
+          const embeddingText = `
+            ${currentForm.name} 
+            ${data.titulo} 
+            ${data.descricao_curta} 
+            ${selectedCatNames.join(' ')}
+            ${data.descricao_longa.replace(/<[^>]*>/g, '')} 
+            ${combinedKeywords.join(' ')} 
+            ${combinedSynonyms.join(' ')} 
+            ${combinedSearchTerms.join(' ')}
+          `.trim();
+          
+          const embedding = await aiFrontendService.generateEmbedding(embeddingText);
+
+          currentForm = {
+            ...currentForm,
+            subtitle: data.titulo || currentForm.subtitle,
+            shortDescription: data.descricao_curta || currentForm.shortDescription,
+            fullDescription: data.descricao_longa || currentForm.fullDescription,
+            ai_keywords: combinedKeywords,
+            ai_synonyms: combinedSynonyms,
+            searchTerms: combinedSearchTerms,
+            embedding: embedding,
+            seo: {
+              ...currentForm.seo!,
+              metaTitle: data.meta_title || currentForm.seo?.metaTitle,
+              metaDescription: data.meta_description || currentForm.seo?.metaDescription,
+              keywords: combinedKeywords.length > 0 ? combinedKeywords : currentForm.seo?.keywords
+            }
+          };
+        } catch (error) {
+          console.error("Erro na geração de IA automática:", error);
+          toast("Não foi possível gerar SEO automático. Salvando com os dados atuais.", "warning");
+        }
+      }
+
       const finalForm = {
-        ...form,
-        sku: form.sku || generateSku(),
-        gtin: form.hasVariants ? '' : (form.gtin || generateEan13()),
-        searchTerms: form.hasVariants ? finalVariants.map(v => `${v.name} ${v.barcode} ${v.sku}`.toLowerCase()) : [],
-        variantIdentifiers: form.hasVariants ? finalVariants.flatMap(v => [v.barcode, v.sku]).filter(Boolean) : [],
+        ...currentForm,
+        sku: currentForm.sku || generateSku(),
+        gtin: currentForm.hasVariants ? '' : (currentForm.gtin || generateEan13()),
+        searchTerms: currentForm.hasVariants ? finalVariants.map(v => `${v.name} ${v.barcode} ${v.sku}`.toLowerCase()) : (currentForm.searchTerms || []),
+        variantIdentifiers: currentForm.hasVariants ? finalVariants.flatMap(v => [v.barcode, v.sku]).filter(Boolean) : [],
         extras: {
-          ...form.extras,
-          showInCatalog: form.images.length > 0 ? (form.extras?.showInCatalog !== false) : false
+          ...currentForm.extras,
+          showInCatalog: currentForm.images.length > 0 ? (currentForm.extras?.showInCatalog !== false) : false
         },
         seo: {
-          ...form.seo!,
-          slug: form.seo?.slug || generateSlug(form.name)
+          ...currentForm.seo!,
+          slug: currentForm.seo?.slug || generateSlug(currentForm.name)
         }
       };
 
@@ -719,6 +771,7 @@ export function AdminProducts() {
 
   const tabs: {id: FormSection, label: string, icon: React.ElementType}[] = [
     { id: 'general', label: 'Geral', icon: Info },
+    { id: 'categories', label: 'Categorias', icon: Layers },
     { id: 'price', label: 'Preço/Estoque', icon: DollarSign },
     { id: 'variants', label: 'Variações', icon: Layers },
     ...(form.categoryId === 'moda' || form.categoryId === 'lingerie' || form.fashion?.pieceType ? [{ id: 'fashion' as FormSection, label: 'Moda', icon: Shirt }] : []),
@@ -802,70 +855,7 @@ export function AdminProducts() {
                     <label className="block text-sm font-bold mb-1">Subtítulo / Chamada Curta</label>
                     <Input value={form.subtitle || ''} onChange={e => setForm({ ...form, subtitle: e.target.value })} placeholder="Ex: O toque de elegância que você merece" />
                   </div>
-                  <div className="md:col-span-2 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-                    <label className="block text-sm font-bold mb-3 flex items-center gap-2">
-                       <Layers size={16} className="text-red-500" />
-                       Categorias Diversas e Funcionalidades (Seleção Múltipla)
-                    </label>
-                    <div className="mb-4 relative">
-                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                      <input
-                        type="text"
-                        placeholder="Pesquisar categoria..."
-                        value={categorySearch}
-                        onChange={(e) => setCategorySearch(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-1 focus:ring-red-500 outline-none"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-4 max-h-[400px] overflow-y-auto p-2 bg-slate-900/50 rounded-lg border border-slate-800">
-                       {groupedCategories.map((root: any) => {
-                         const search = categorySearch.toLowerCase();
-                         return (
-                           <div key={root.id} className="space-y-2 pb-2 last:pb-0 border-b border-slate-800 last:border-0">
-                             <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest px-1">{root.name}</p>
-                             <div className="flex flex-wrap gap-2">
-                               {[root, ...root.allChildren].map((c: any) => {
-                                 if (search && !c.name.toLowerCase().includes(search)) return null;
-                                 
-                                 const isSelected = form.categoryIds?.includes(c.id);
-                                 return (
-                                   <button
-                                     key={c.id}
-                                     type="button"
-                                     onClick={() => {
-                                       const currentIds = form.categoryIds || [];
-                                       const newIds = isSelected 
-                                         ? currentIds.filter(id => id !== c.id)
-                                         : [...currentIds, c.id];
-                                       
-                                       setForm({ 
-                                         ...form, 
-                                         categoryIds: newIds,
-                                         categoryId: newIds[0] || ''
-                                       });
-                                     }}
-                                     className={cn(
-                                       "px-3 py-1.5 rounded-full text-[11px] font-bold transition-all border",
-                                       isSelected 
-                                         ? "bg-red-600 text-white border-red-500 shadow-md" 
-                                         : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500"
-                                     )}
-                                   >
-                                     {c.name}
-                                     {isSelected && <Check size={10} className="inline ml-1" />}
-                                   </button>
-                                 );
-                               })}
-                             </div>
-                           </div>
-                         );
-                       })}
-                    </div>
-                    {(!form.categoryIds || form.categoryIds.length === 0) && (
-                      <p className="text-[10px] text-red-500 mt-2 font-bold animate-pulse">(!) Selecione ao menos uma categoria para o produto.</p>
-                    )}
-                  </div>
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-sm font-bold mb-1">Marca / Fabricante</label>
                     <Input value={form.brand || ''} onChange={e => setForm({ ...form, brand: e.target.value })} placeholder="Ex: Discreta Boutique" />
                   </div>
@@ -921,9 +911,82 @@ export function AdminProducts() {
                      <label htmlFor="featured" className="text-sm font-bold">Destaque</label>
                    </div>
                    <div className="flex items-center gap-2 bg-slate-800 p-3 rounded-lg border border-slate-700">
-                     <input type="checkbox" id="newRel" checked={form.newRelease} onChange={e => setForm({...form, newRelease: e.target.checked})} className="w-4 h-4 text-red-600 rounded" />
-                     <label htmlFor="newRel" className="text-sm font-bold">Lançamento</label>
+                     <input type="checkbox" id="newRelease" checked={form.newRelease} onChange={e => setForm({...form, newRelease: e.target.checked})} className="w-4 h-4 text-red-600 rounded" />
+                     <label htmlFor="newRelease" className="text-sm font-bold">Lançamento</label>
                    </div>
+                </div>
+              </div>
+            )}
+
+            {/* Categorias Tab */}
+            {activeTab === 'categories' && (
+              <div className="space-y-6 motion-safe:animate-in fade-in slide-in-from-right-2">
+                <h3 className="text-lg font-bold border-b pb-2">Seleção de Categorias</h3>
+                <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                  <label className="block text-sm font-bold mb-3 flex items-center gap-2">
+                     <Layers size={16} className="text-red-500" />
+                     Categorias Diversas e Funcionalidades (Seleção Múltipla)
+                  </label>
+                  <p className="text-xs text-slate-400 mb-4">
+                    Associe o produto a quantas categorias forem necessárias. As categorias definem onde o produto aparecerá no catálogo.
+                  </p>
+                  <div className="mb-4 relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input
+                      type="text"
+                      placeholder="Pesquisar categoria..."
+                      value={categorySearch}
+                      onChange={(e) => setCategorySearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-1 focus:ring-red-500 outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-4 max-h-[400px] overflow-y-auto p-2 bg-slate-900/50 rounded-lg border border-slate-800">
+                     {groupedCategories.map((root: any) => {
+                       const search = categorySearch.toLowerCase();
+                       return (
+                         <div key={root.id} className="space-y-2 pb-2 last:pb-0 border-b border-slate-800 last:border-0">
+                           <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest px-1">{root.name}</p>
+                           <div className="flex flex-wrap gap-2">
+                             {[root, ...root.allChildren].map((c: any) => {
+                               if (search && !c.name.toLowerCase().includes(search)) return null;
+                               
+                               const isSelected = form.categoryIds?.includes(c.id);
+                               return (
+                                 <button
+                                   key={c.id}
+                                   type="button"
+                                   onClick={() => {
+                                     const currentIds = form.categoryIds || [];
+                                     const newIds = isSelected 
+                                       ? currentIds.filter(id => id !== c.id)
+                                       : [...currentIds, c.id];
+                                     
+                                     setForm({ 
+                                       ...form, 
+                                       categoryIds: newIds,
+                                       categoryId: newIds[0] || ''
+                                     });
+                                   }}
+                                   className={cn(
+                                     "px-3 py-1.5 rounded-full text-[11px] font-bold transition-all border",
+                                     isSelected 
+                                       ? "bg-red-600 text-white border-red-500 shadow-md" 
+                                       : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500"
+                                   )}
+                                 >
+                                   {c.name}
+                                   {isSelected && <Check size={10} className="inline ml-1" />}
+                                 </button>
+                               );
+                             })}
+                           </div>
+                         </div>
+                       );
+                     })}
+                  </div>
+                  {(!form.categoryIds || form.categoryIds.length === 0) && (
+                    <p className="text-[10px] text-red-500 mt-2 font-bold animate-pulse">(!) Selecione ao menos uma categoria para o produto.</p>
+                  )}
                 </div>
               </div>
             )}

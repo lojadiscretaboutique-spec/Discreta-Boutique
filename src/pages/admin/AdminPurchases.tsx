@@ -486,7 +486,7 @@ export function AdminPurchases() {
 
                <div className="space-y-3">
                  {form.items.length === 0 && <div className="p-12 text-center text-slate-400 text-sm italic">Nenhum produto adicionado.</div>}
-                 {form.items.map((item, idx) => (
+                 {form.items.map((item, idx) => ({ item, idx })).reverse().map(({ item, idx }) => (
                    <div key={idx} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-800 p-4 rounded-2xl border border-slate-100">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-bold text-white truncate">{item.productName}</div>

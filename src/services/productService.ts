@@ -179,7 +179,13 @@ export const productService = {
     try {
       const q = query(collection(db, 'products'), orderBy('updatedAt', 'desc'));
       const snap = await getDocs(q);
-      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      return snap.docs.map(doc => {
+        const data = doc.data();
+        if (data.images && Array.isArray(data.images)) {
+          data.images.sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
+        }
+        return { id: doc.id, ...data } as Product;
+      });
     } catch (error: unknown) {
       console.error("Error listing products:", error);
       const err = error as { code?: string };
@@ -195,7 +201,11 @@ export const productService = {
       const docRef = doc(db, 'products', id);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
-        const product = { id: snap.id, ...snap.data() } as Product;
+        const data = snap.data();
+        if (data.images && Array.isArray(data.images)) {
+          data.images.sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
+        }
+        const product = { id: snap.id, ...data } as Product;
         // Load variants
         try {
           const vSnap = await getDocs(collection(db, `products/${id}/variants`));
