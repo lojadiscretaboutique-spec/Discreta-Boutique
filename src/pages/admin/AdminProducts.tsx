@@ -66,6 +66,7 @@ export function AdminProducts() {
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [suggestedMultiplier, setSuggestedMultiplier] = useState(2.5);
 
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
@@ -447,6 +448,7 @@ export function AdminProducts() {
         });
         setVariants(detail.variants);
         setEditingId(prod.id!);
+        setSuggestedMultiplier(2.5);
         setView('form');
         setActiveTab('general');
       }
@@ -467,6 +469,7 @@ export function AdminProducts() {
     setForm(initialProduct);
     setVariants([]);
     setEditingId(null);
+    setSuggestedMultiplier(2.5);
     setView('form');
     setActiveTab('general');
   };
@@ -1010,17 +1013,33 @@ export function AdminProducts() {
                   </div>
                 </div>
 
-                <div className="bg-slate-800 p-4 rounded-xl border flex flex-col md:flex-row gap-4 justify-between items-center">
+                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row gap-4 justify-between items-center">
                    <div>
                      <p className="text-sm font-bold text-slate-200">Margem de Lucro</p>
                      <p className="text-2xl font-black text-green-600">
                        {form.price && form.costPrice ? `${(((form.price - form.costPrice) / form.price) * 100).toFixed(1)}%` : '---'}
                      </p>
                    </div>
-                   <div className="w-px h-10 bg-slate-200 hidden md:block"></div>
+                   <div className="w-px h-10 bg-slate-700 hidden md:block"></div>
                    <div className="flex-1">
                      <p className="text-xs text-slate-400 mb-1">Lucro por Unidade</p>
                      <p className="font-bold text-white">{form.price && form.costPrice ? formatCurrency(form.price - form.costPrice) : '---'}</p>
+                   </div>
+                   <div className="w-px h-10 bg-slate-700 hidden md:block"></div>
+                   <div className="text-right flex flex-col items-end">
+                     <p className="text-xs text-slate-400 mb-1 flex items-center gap-1">
+                       Valor Sugerido (x 
+                       <input 
+                         type="number" 
+                         step="0.1" 
+                         min="1"
+                         className="w-12 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-center text-white" 
+                         value={suggestedMultiplier} 
+                         onChange={e => setSuggestedMultiplier(Number(e.target.value) || 2.5)} 
+                       />
+                       )
+                     </p>
+                     <p className="text-lg font-black text-blue-400">{form.costPrice ? formatCurrency(form.costPrice * suggestedMultiplier) : '---'}</p>
                    </div>
                 </div>
 
