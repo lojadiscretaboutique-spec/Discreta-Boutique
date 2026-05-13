@@ -9,6 +9,7 @@ import { getLancamentos, getDestaques, getMaisVendidos, getEmAlta, getRecomendad
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
+import { ImperdiveisCarousel } from '../../components/home/ImperdiveisCarousel';
 
 interface Banner {
   id: string;
@@ -25,8 +26,9 @@ export function HomePage() {
     destaques: Product[],
     maisVendidos: Product[],
     emAlta: Product[],
-    recomendados: Product[]
-  }>({ lancamentos: [], destaques: [], maisVendidos: [], emAlta: [], recomendados: [] });
+    recomendados: Product[],
+    ofertas: Product[]
+  }>({ lancamentos: [], destaques: [], maisVendidos: [], emAlta: [], recomendados: [], ofertas: [] });
   const [categories, setCategories] = useState<Category[]>([]);
   const [currentBanner, setCurrentBanner] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -41,23 +43,9 @@ export function HomePage() {
       const pSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true)));
       const allActiveProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
 
-      // Assegurar o estoque de produtos com variações para que os cálculos reflitam o estado real das filhas
-      await Promise.all(allActiveProducts.filter(p => p.hasVariants).map(async (p) => {
-        try {
-          const vSnap = await getDocs(query(collection(db, `products/${p.id}/variants`), where('active', '==', true)));
-          let sumStock = 0;
-          vSnap.docs.forEach(d => {
-             sumStock += (Number(d.data().stock) || 0);
-          });
-          p.stock = sumStock;
-        } catch (e) {
-          // ignore
-        }
-      }));
-
       const visibleProducts = allActiveProducts.filter(p => 
-        p.images && p.images.length > 0 && 
-        (!p.extras || p.extras.showInCatalog !== false) &&
+        (p.images && p.images.length > 0) && 
+        (p.extras?.showInCatalog !== false) &&
         (!p.controlStock || p.allowBackorder || (Number(p.stock) || 0) > 0)
       );
 
@@ -76,7 +64,10 @@ export function HomePage() {
 
       const usedIds = new Set<string>();
       
-      let lancamentos, destaques, maisVendidos, emAlta, recomendados;
+      let lancamentos, destaques, maisVendidos, emAlta, recomendados, ofertas;
+
+      // Ofertas (Todas as ofertas disponíveis para passar pela IA)
+      ofertas = visibleProducts.filter(p => !!p.onSale || (p.promoPrice && p.promoPrice < p.price));
 
       if (curadoria) {
         const pickAi = (ids: string[]) => ids.map(id => visibleProducts.find(p => p.id === id)).filter(p => !!p && !usedIds.has(p.id!)) as Product[];
@@ -107,7 +98,7 @@ export function HomePage() {
           if (sec.length < 8) sec.push(...fillFallback(visibleProducts, usedIds, 8 - sec.length));
       });
 
-      setSections({ lancamentos, destaques, maisVendidos, emAlta, recomendados });
+      setSections({ lancamentos, destaques, maisVendidos, emAlta, recomendados, ofertas });
 
       const cSnap = await getDocs(query(collection(db, 'categories'), where('isActive', '==', true)));
       const allCats = cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
@@ -323,14 +314,8 @@ export function HomePage() {
             {/* 3. MAIS VENDIDOS */}
             {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo?secao=mais-vendidos" />}
 
-            {/* PROMOÇÕES */}
-            {sections.lancamentos.filter(p => p.onSale || (p.promoPrice && p.promoPrice < p.price)).length > 0 && (
-              <ProductCarousel 
-                title="Ofertas Imperdíveis" 
-                products={sections.lancamentos.filter(p => p.onSale || (p.promoPrice && p.promoPrice < p.price))} 
-                link="/catalogo?secao=promocoes" 
-              />
-            )}
+            {/* OFERTAS IMPERDÍVEIS (IA POWERED) */}
+            <ImperdiveisCarousel products={sections.ofertas} loading={loading} />
 
             {/* 4. EM ALTA */}
             {sections.emAlta.length > 0 && <ProductCarousel title="Em Alta" products={sections.emAlta} link="/catalogo?secao=em-alta" />}

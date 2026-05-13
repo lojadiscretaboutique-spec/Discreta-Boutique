@@ -141,6 +141,8 @@ export function AdminLayout() {
         { name: 'Usuários', path: '/admin/usuarios', permission: 'users' },
         { name: 'Perfis de Acesso', path: '/admin/perfis', permission: 'roles' },
         { name: 'Logs / Auditoria', path: '/admin/logs', permission: 'logs' },
+        { name: 'Webhooks WhatsApp', path: '/admin/webhooks-logs', permission: 'logs' },
+        { name: 'Estoque Inteligente', path: '/admin/estoque-inteligente', permission: 'products' },
     ]},
     { name: 'Banners', path: '/admin/banners', icon: ImageIcon, permission: 'banners' },
     { name: 'Configurações', path: '/admin/config', icon: Settings, permission: 'settings' },

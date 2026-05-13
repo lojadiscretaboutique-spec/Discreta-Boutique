@@ -1,27 +1,26 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { fileURLToPath } from "url";
 import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import aiRoutes from './src/server/routes/aiRoutes.js';
 import { sendWebhook } from './src/server/services/botConversaService';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from './src/lib/firebase';
 // Note: We'll use the client SDK in the backend for simplicity since we're in a controlled environment,
 // but for high security, firebase-admin would be preferred if service account keys were available.
 // In this case, we use the credentials provided in the .env or via the service to demonstrate the flow.
 
-const __filename = fileURLToPath(import.meta.url);
-console.log(`Server environment ready: ${__filename}`);
+console.log(`Server environment ready`);
 
 async function startServer() {
   const app = express();
   app.set('trust proxy', 1);
-  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const PORT = 3000;
 
 
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   // AI Routes
   app.use('/api/ia', aiRoutes);
@@ -31,6 +30,10 @@ async function startServer() {
     try {
         console.log("✅ ROTA DE PEDIDO CHAMADA");
         const orderData = req.body;
+        
+        // Ensure dates are Firestore Timestamps rather than strings
+        orderData.createdAt = serverTimestamp();
+        orderData.updatedAt = serverTimestamp();
         
         // Save to DB (Listener will handle the webhook!)
         const docRef = await addDoc(collection(db, 'orders'), orderData);

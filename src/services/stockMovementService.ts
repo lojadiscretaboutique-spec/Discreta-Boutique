@@ -1,6 +1,7 @@
 import { collection, doc, serverTimestamp, getDocs, getDoc, updateDoc, query, orderBy, limit, addDoc, where, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { auditLogService } from './auditLogService';
+import { stockSyncService } from './stockSyncService';
 
 export interface NewStockMovement {
   id?: string;
@@ -95,13 +96,10 @@ export const stockMovementService = {
       // Sincronizar o estoque do pai se for uma entrada/saída de variação
       if (data.variantId) {
         try {
-          const parentInc = data.type === 'in' ? data.quantity : -data.quantity;
-          await updateDoc(doc(db, 'products', data.productId), {
-            stock: increment(parentInc),
-            updatedAt: serverTimestamp()
-          });
+          // Trigger a full sync instead of just increment to ensure real consistency
+          await stockSyncService.syncParentStock(data.productId);
         } catch (e) {
-          console.warn("Não foi possível atualizar o estoque total do produto pai:", e);
+          console.warn("Não foi possível sincronizar o estoque total do produto pai:", e);
         }
       }
 
@@ -145,6 +143,15 @@ export const stockMovementService = {
             stock: revertedStock,
             updatedAt: serverTimestamp()
           });
+
+          // Sincronizar o pai se houver variações envolvidas
+          if (m.variantId) {
+            try {
+              await stockSyncService.syncParentStock(m.productId);
+            } catch (e) {
+              console.warn("Erro ao sincronizar pai após estorno:", e);
+            }
+          }
         }
 
         await deleteDoc(movementDoc.ref);

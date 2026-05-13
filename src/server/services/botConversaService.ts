@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 const WEBHOOK_URL = process.env.BOTCONVERSA_WEBHOOK_URL;
 
@@ -12,13 +14,13 @@ interface Pedido {
 }
 
 function gerarMensagem(pedido: Pedido): string {
-    const nome = pedido.nome;
+    const nome = pedido.nome || 'Cliente';
     const pid = pedido.id ? pedido.id.slice(-6).toUpperCase() : '000000';
-    // Normalize status to uppercase and replace spaces with underscores for easier comparison
     const status = (pedido.status || '').toUpperCase().replace(/\s+/g, '_');
 
     switch (status) {
         case 'NOVO':
+        case 'RECEBIDO':
         case 'PENDENTE':
             let agendamento = '';
             if (pedido.scheduledDate) {
@@ -27,99 +29,127 @@ function gerarMensagem(pedido: Pedido): string {
                 agendamento = `*agendado para:* ${dataFormatada}${pedido.scheduledTime ? ` às ${pedido.scheduledTime}` : ''}`;
             }
 
-            return `Olá ${nome}! 💖
+            return `Olá ${nome}! 💖\n\nRecebemos seu pedido com sucesso ✨!\npedido: #${pid}\n\n${agendamento}\n\nJá iniciamos a preparação com todo o cuidado, atenção aos detalhes e total discrição — exatamente como você merece.\n\nEm breve você receberá novas atualizações.\n\nSe precisar de algo, estamos por aqui. 💬`;
+        
+        case 'PAGO':
+        case 'APROVADO':
+            return `Olá ${nome}! 💳✨\n\nConfirmamos o pagamento do seu pedido #${pid}.\n\nAgora ele segue para a fase de preparação final e embalagem discreta.\n\nVocê será notificado assim que ele sair para entrega ou estiver pronto para retirada. 💖`;
 
-Recebemos seu pedido com sucesso ✨!
-pedido: #${pid}
+        case 'PREPARANDO':
+            return `Olá ${nome}! ✨\n\nSeu pedido #${pid} está em fase de preparação!\n\nEstamos cuidando de cada detalhe com carinho e total discrição. 💖`;
 
-${agendamento}. 
-
-Já iniciamos a preparação com todo o cuidado, atenção aos detalhes e total discrição — exatamente como você merece.
-
-Em breve você receberá novas atualizações.
-
-Se precisar de algo, estamos por aqui. 💬`;
         case 'AGUARDANDO_RETIRADA':
         case 'PRONTO':
-            return `Olá ${nome}! ✨
-
-Seu pedido #${pid} já está pronto e disponível para retirada 📦
-
-Tudo foi preparado com cuidado e discrição para garantir a melhor experiência possível.
-
-Fique à vontade para retirar no horário combinado.
-
-Será um prazer te atender. 💖`;
+        case 'PRONTO_PARA_RETIRADA':
+            return `Olá ${nome}! ✨\n\nSeu pedido #${pid} já está pronto e disponível para retirada 📦\n\nTudo foi preparado com cuidado e discrição.\n\nFique à vontade para retirar no horário combinado. Será um prazer te atender. 💖`;
+        
         case 'SAIU_PARA_ENTREGA':
-            return `Olá ${nome}! 🚚
-
-Seu pedido #${pid} já está a caminho ✨
-
-Preparamos tudo com atenção aos detalhes e ele segue com total discrição até você.
-
-Agora é só aguardar…
-
-Em breve estará em suas mãos. 💖`;
+        case 'EM_TRANSPORTE':
+            return `Olá ${nome}! 🚚\n\nSeu pedido #${pid} já está a caminho ✨\n\nPreparamos tudo com atenção e ele segue com total discrição até você.\n\nAgora é só aguardar… em breve estará em suas mãos. 💖`;
+        
         case 'ENTREGUE':
-            return `Olá ${nome}! 💖
-
-Seu pedido #${pid} foi entregue com sucesso ✨
-
-Esperamos que cada detalhe tenha sido exatamente como você imaginou — ou até melhor.
-
-Na Discreta Boutique, acreditamos que experiências especiais começam nos pequenos cuidados… e continuam mesmo após a entrega.
-
-Se quiser explorar novas possibilidades ou precisar de algo, estaremos sempre por aqui — com a mesma atenção e discrição de sempre.
-
-Aproveite seu momento. 💎`;
+        case 'FINALIZADO':
+            return `Olá ${nome}! 💖\n\nSeu pedido #${pid} foi entregue com sucesso ✨\n\nEsperamos que cada detalhe tenha sido exatamente como você imaginou.\n\nNa Discreta Boutique, acreditamos que experiências especiais começam nos pequenos cuidados…\n\nAproveite seu momento. 💎`;
+        
         case 'CANCELADO':
-            return `Olá ${nome}! Seu pedido #${pid} foi CANCELADO. ❌
-
-Se houver alguma dúvida ou se quiser realizar uma nova escolha, nossa equipe está à disposição para te ajudar.
-
-Agradecemos o contato.`;
+            return `Olá ${nome}! Seu pedido #${pid} foi CANCELADO. ❌\n\nSe houver alguma dúvida ou se quiser realizar uma nova escolha, nossa equipe está à disposição.\n\nAgradecemos o contato.`;
+        
         default:
-            return `Olá ${nome}! O status do seu pedido #${pid} foi atualizado para: ${pedido.status}.`;
+            return `Olá ${nome}! Informamos que o status do seu pedido #${pid} foi atualizado para: *${pedido.status}*. ✨`;
     }
 }
 
 function formatarTelefone(telefone: string): string {
     if (!telefone) return '';
     let num = telefone.replace(/\D/g, '');
-    if (num.startsWith('55')) {
+    
+    // Se tiver menos de 10 dígitos, provavelmente está incompleto
+    if (num.length < 10) return '';
+
+    // Se já começar com 55 e tiver 12 ou 13 dígitos, mantém
+    if (num.startsWith('55') && (num.length === 12 || num.length === 13)) {
         return num;
     }
-    return `55${num}`;
+
+    // Se tiver 10 ou 11 dígitos (DDD + número), adiciona 55
+    if (num.length === 10 || num.length === 11) {
+        return `55${num}`;
+    }
+
+    return num;
 }
 
-export async function sendWebhook(pedido: Pedido) {
+export async function sendWebhook(pedido: Pedido, attempts = 1) {
     if (!WEBHOOK_URL) {
         console.error("❌ ERRO BOTCONVERSA: Webhook URL não configurada");
         return;
     }
 
-    if (pedido.last_status_sent === pedido.status) {
-        console.log(`⚠️ Pedido ${pedido.id} já enviado com status ${pedido.status}. Ignorando.`);
+    const nome = pedido.nome || pedido.customerName || 'Cliente';
+    const telefoneBruto = pedido.telefone || pedido.customerWhatsapp || '';
+    const telefoneFormatado = formatarTelefone(telefoneBruto);
+
+    if (!telefoneFormatado) {
+        console.warn(`⚠️ Pedido ${pedido.id} sem telefone válido (${telefoneBruto}). Pulando webhook.`);
         return;
     }
 
-    const nome = pedido.nome || pedido.customerName || 'Cliente';
-    const telefone = pedido.telefone || pedido.customerWhatsapp || '';
-
     const payload = {
-        telefone: formatarTelefone(telefone),
+        telefone: telefoneFormatado,
         nome: nome,
         pedido_id: pedido.id,
         status: pedido.status,
         mensagem: gerarMensagem({ ...pedido, nome })
     };
 
-    console.log("🚀 ENVIANDO WEBHOOK", pedido.id, payload);
+    console.log(`🚀 [Attempt ${attempts}] ENVIANDO WEBHOOK`, pedido.id, payload);
 
     try {
-        const response = await axios.post(WEBHOOK_URL, payload);
-        console.log("📡 STATUS:", response.status);
+        const response = await axios.post(WEBHOOK_URL, payload, { timeout: 10000 });
+        
+        // Log Success
+        await addDoc(collection(db, 'webhook_logs'), {
+            orderId: pedido.id,
+            customerName: nome,
+            customerWhatsapp: telefoneFormatado,
+            status: pedido.status,
+            payload: payload,
+            response: {
+                status: response.status,
+                data: response.data
+            },
+            success: true,
+            attempts: attempts,
+            timestamp: serverTimestamp()
+        });
+
+        console.log(`✅ WEBHOOK ENVIADO: ${pedido.id} - Status: ${response.status}`);
+        return true;
     } catch (error: any) {
-        console.error("❌ ERRO BOTCONVERSA:", error.response?.data || error.message);
+        const errorMsg = error.response?.data || error.message;
+        console.error(`❌ ERRO WEBHOOK [Attempt ${attempts}]:`, errorMsg);
+
+        // Log Failure
+        await addDoc(collection(db, 'webhook_logs'), {
+            orderId: pedido.id,
+            customerName: nome,
+            customerWhatsapp: telefoneFormatado,
+            status: pedido.status,
+            payload: payload,
+            error: JSON.stringify(errorMsg),
+            success: false,
+            attempts: attempts,
+            timestamp: serverTimestamp()
+        });
+
+        // Retry logic (max 3 attempts)
+        if (attempts < 3) {
+            console.log(`🔄 Retrying in 5 seconds... (${attempts + 1}/3)`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            return sendWebhook(pedido, attempts + 1);
+        }
+        
+        return false;
     }
 }
+

@@ -1,6 +1,7 @@
 import { serverTimestamp, collection, doc, updateDoc, getDoc, getDocs, query, orderBy, writeBatch, where, increment, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
+import { stockSyncService } from './stockSyncService';
 
 export interface ProductVariant {
   id?: string;
@@ -313,6 +314,12 @@ export const productService = {
       }
 
       await batch.commit();
+
+      // Trigger sync after commit to ensure consistency
+      if (product.hasVariants) {
+        await stockSyncService.syncParentStock(productRef.id);
+      }
+
       return productRef.id;
     } catch (error) {
       console.error("Error creating product:", error);
@@ -380,6 +387,9 @@ export const productService = {
         });
         
         await batch.commit();
+
+        // Recalculate accurately after variants are committed
+        await stockSyncService.syncParentStock(id);
       }
 
       return id;

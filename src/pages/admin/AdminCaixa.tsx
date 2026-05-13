@@ -60,6 +60,9 @@ export function AdminCaixa() {
     return acc;
   }, {} as Record<string, number>);
   
+  const calculatedTotalInputs = roundTo2(transactions.filter(t => t.type === 'entrada').reduce((sum, t) => sum + t.amount, 0));
+  const calculatedTotalOutputs = roundTo2(transactions.filter(t => t.type === 'saida').reduce((sum, t) => sum + t.amount, 0));
+  
   if (currentSession) {
     methodTotals['Dinheiro'] = roundTo2((methodTotals['Dinheiro'] || 0) + (currentSession.initialBalance || 0));
   }
@@ -319,7 +322,7 @@ export function AdminCaixa() {
                             <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-2">Total Entradas</p>
                             <TrendingUp size={16} className="text-emerald-500" />
                         </div>
-                        <p className="text-2xl font-black text-emerald-700">+{formatCurrency(currentSession.totalInputs || 0)}</p>
+                        <p className="text-2xl font-black text-emerald-700">+{formatCurrency(calculatedTotalInputs)}</p>
                         <p className="text-[10px] text-emerald-500 mt-1 uppercase">Soma de recebimentos</p>
                     </div>
                     <div className="bg-rose-50 p-6 rounded-2xl border border-rose-100 shadow-sm">
@@ -327,7 +330,7 @@ export function AdminCaixa() {
                             <p className="text-xs font-bold text-rose-600 uppercase tracking-wider mb-2">Total Saídas</p>
                             <TrendingDown size={16} className="text-rose-500" />
                         </div>
-                        <p className="text-2xl font-black text-rose-700">-{formatCurrency(currentSession.totalOutputs || 0)}</p>
+                        <p className="text-2xl font-black text-rose-700">-{formatCurrency(calculatedTotalOutputs)}</p>
                         <p className="text-[10px] text-rose-500 mt-1 uppercase">Sangrias e despesas</p>
                     </div>
                 </div>
@@ -535,7 +538,7 @@ export function AdminCaixa() {
                         <div className="flex justify-between items-center text-[10px] opacity-60">
                             <span className="text-slate-400">Total Esperado (Geral):</span>
                             <span className="">
-                              {formatCurrency(roundTo2(currentSession.initialBalance + (currentSession.totalInputs || 0) - (currentSession.totalOutputs || 0)))}
+                              {formatCurrency(roundTo2(currentSession.initialBalance + calculatedTotalInputs - calculatedTotalOutputs))}
                             </span>
                         </div>
                         

@@ -43,6 +43,8 @@ const AdminCommissions = lazy(() => import('./pages/admin/financial/AdminCommiss
 const AdminIntegracao = lazy(() => import('./pages/admin/financial/AdminIntegracao').then(m => ({ default: m.AdminIntegracao })));
 const AdminPaymentMethods = lazy(() => import('./pages/admin/financial/AdminPaymentMethods').then(m => ({ default: m.AdminPaymentMethods })));
 const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours').then(m => ({ default: m.AdminOperatingHours })));
+const AdminWebhookLogs = lazy(() => import('./pages/admin/AdminWebhookLogs'));
+const AdminSmartStock = lazy(() => import('./pages/admin/AdminSmartStock'));
 
 // Loading Component (Splash Screen)
 function PageLoader() {
@@ -168,6 +170,8 @@ function AppContent() {
             </Route>
             <Route path="areas-entrega" element={<AdminDeliveryAreas />} />
             <Route path="horarios" element={<AdminOperatingHours />} />
+            <Route path="webhooks-logs" element={<AdminWebhookLogs />} />
+            <Route path="estoque-inteligente" element={<AdminSmartStock />} />
             <Route path="config" element={<AdminConfig />} />
           </Route>
         </Routes>

@@ -11,7 +11,6 @@ const adminAiLimiter = rateLimit({
   message: { error: 'Limite de geração de conteúdo atingido para esta hora.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || 'anonymous-admin',
   validate: { trustProxy: false }
 });
 
@@ -25,7 +24,6 @@ const storeAiLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || 'anonymous-store',
   validate: { trustProxy: false }
 });
 
@@ -36,7 +34,9 @@ router.post('/registrar-clique', storeAiLimiter, aiController.trackClick);
 router.post('/sugerir-complementos', storeAiLimiter, aiController.suggestCartComplements);
 router.post('/sugestao-produto', storeAiLimiter, aiController.suggestRelatedProducts);
 router.post('/bot-consulta', storeAiLimiter, aiController.botConsult);
+router.post('/ranquear-ofertas', storeAiLimiter, aiController.rankOffers);
 router.post('/generate-home-curadoria', adminAiLimiter, aiController.generateHomeCuratory);
+router.post('/strategic-report', adminAiLimiter, aiController.generateStrategicReport);
 
 // CRON SCHEDULER ENDPOINT (No rate limit, protected by API Key or accessible only by Cron)
 router.all('/cron/update-home', async (req, res) => {

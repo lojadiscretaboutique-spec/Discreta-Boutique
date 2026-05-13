@@ -694,7 +694,11 @@ class AIService {
       
       RETORNE APENAS JSON:
       {
-        "destaques": [], "lancamentos": [], "maisVendidos": [], "emAlta": [], "fraseImpacto": ""
+        "destaques": ["id1", "id2"],
+        "lancamentos": ["id3", "id4"],
+        "maisVendidos": ["id5", "id6"],
+        "emAlta": ["id7", "id8"],
+        "fraseImpacto": "Sua frase"
       }
     `;
 
@@ -726,6 +730,175 @@ class AIService {
       return { destaques: [], lancamentos: [], maisVendidos: [], emAlta: [], fraseImpacto: "A sua Boutique Discreta." };
     }
   }
+
+  async rankOffers(products: any[]): Promise<string[]> {
+    // Limitar para os primeiros 40 produtos para evitar payloads gigantes e garantir qualidade no ranking
+    const topProducts = products.slice(0, 40);
+    
+    const compactProducts = topProducts.map(p => ({
+      id: p.id,
+      n: (p.name || "").substring(0, 80), // Limitar nome para economizar tokens
+      p: p.price,
+      pp: p.promoPrice,
+      d: p.price > 0 ? (((p.price - (p.promoPrice || p.price)) / p.price * 100).toFixed(0) + '%') : '0%',
+      c: p.cliques || 0,
+      v: p.conversoes || 0,
+      s: p.score || 0
+    }));
+
+    console.log(`[AI] Ranquando ${compactProducts.length} ofertas para vitrine premium`);
+    const startTime = Date.now();
+
+    const prompt = `
+      Você é o Diretor de Merchandising da Discreta Boutique. 
+      Sua missão é RANQUEAR as melhores ofertas para uma vitrine premium de alta conversão.
+      
+      ITENS DISPONÍVEIS:
+      ${JSON.stringify(compactProducts)}
+      
+      REGRAS DE RANQUEAMENTO:
+      1. Priorize produtos com MAIOR PERCENTUAL DE DESCONTO.
+      2. Considere o apelo visual e luxo (pelo nome do produto).
+      3. Use Stats: Produtos com mais relevância (s) e vendas (v) devem subir no ranking.
+      4. Itens que parecem "Trend" ou "Must-have" devem ser destacados.
+      5. Retorne os IDs na ordem decrescente de prioridade visual.
+
+      IMPORTANTE: Retorne APENAS um objeto JSON no formato exatamente igual a:
+      {
+        "rankedIds": ["id1", "id2", "id3", ...]
+      }
+    `;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é um estrategista de vendas de e-commerce focado em Discreta Boutique. Retorne APENAS JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3,
+        max_tokens: 1000 // Suficiente para 40-50 IDs e evita respostas infinitas se a IA "alucinar"
+      });
+
+      const content = response.choices[0].message.content || '{"rankedIds": []}';
+      
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch (parseError) {
+        console.error('[AI][RANK_OFFERS][PARSE_ERROR] Tentando recuperar JSON...', content.substring(0, 100));
+        // Fallback simples se o JSON vier quebrado mas com o array visível
+        const match = content.match(/\[\s*".*?"\s*(,\s*".*?"\s*)*\]/);
+        if (match) {
+          parsed = { rankedIds: JSON.parse(match[0]) };
+        } else {
+          throw parseError;
+        }
+      }
+      
+      const rankedIds = Array.isArray(parsed) ? parsed : (parsed.rankedIds || parsed.ids || []);
+      
+      const duration = Date.now() - startTime;
+      console.log(`[AI] OpenAI Ranking status: success (${duration}ms)`);
+
+      return rankedIds;
+    } catch (error: any) {
+      console.error('[AI][RANK_OFFERS_ERROR]', error.message);
+      // Fallback para a ordem original do banco se a IA falhar
+      return products.map(p => p.id);
+    }
+  }
+
+  async generateStrategicReport(data: any): Promise<any> {
+    console.log(`[AI] Gerando Relatorio Estrategico (PROMPT MASTER - DISCRETA BOUTIQUE)`);
+    const startTime = Date.now();
+
+    const prompt = `
+PROMPT MASTER — CENTRAL DE INTELIGÊNCIA ESTRATÉGICA DA DISCRETA BOUTIQUE
+
+Você é a Central de Inteligência Estratégica da Discreta Boutique.
+Sua verdadeira função é atuar como diretor de inteligência comercial, analista de crescimento, estrategista de varejo, especialista em comportamento do consumidor, lucratividade, retenção e conversão.
+
+Sua missão é transformar dados reais em diagnósticos estratégicos, alertas críticos e decisões acionáveis.
+
+DADOS DO SISTEMA (E-COMMERCE E LOJA FÍSICA):
+${JSON.stringify({
+  catalogo: {
+    totalProdutos: data.stats.activeProducts,
+    amostraProdutos: data.products.slice(0, 80) // Amostra significativa
+  },
+  ecommerce: {
+    totalPedidosAnalisados: data.stats.totalOrders,
+    receitaEcommerce: data.totalRevenue,
+    ticketMedio: data.avgTicket,
+    amostraPedidos: data.ecommerceOrders.slice(0, 30)
+  },
+  lojaFisica: {
+    receitaFisica: data.totalPhysicalRevenue,
+    amostraVendas: data.physicalSales.slice(0, 30)
+  },
+  comportamentoBusca: data.searchLogs
+})}
+
+ESTRUTURA DE ANÁLISE OBRIGATÓRIA:
+1 — MÓDULO DE DIAGNÓSTICO EXECUTIVO: Resumo estratégico para diretoria.
+2 — MÓDULO DE OPORTUNIDADES: Descobrir produtos escondidos, combos, upsell e tendências.
+3 — MÓDULO DE ALERTAS CRÍTICOS: Quedas de conversão, estoque parado, prejuízos.
+4 — MÓDULO DE COMPORTAMENTO DO CLIENTE: Padrões de compra, recorrência e perfis (impulsivo, premium, etc).
+5 — MÓDULO DE DECISÕES E AÇÕES: O que fazer agora (reorganizar vitrine, alterar preço, criar kits).
+6 — MÓDULO PREDITIVO: Prever quedas, sazonalidade e sucessos futuros.
+7 — MÓDULO DE COMPARAÇÃO ESTRATÉGICA: Online vs Físico, mudanças de padrão.
+
+REGRA ABSOLUTA: NÃO mostre apenas números. Transforme dados em interpretação, impacto e ação recomendada.
+
+RETORNE APENAS JSON NO SEGUINTE FORMATO:
+{
+  "diagnostico_executivo": "Texto profundo e estratégico",
+  "principais_descobertas": ["Insight 1", "..."],
+  "oportunidades": [
+    { "titulo": "Nome", "descricao": "Por que e como" }
+  ],
+  "problemas_criticos": [
+    { "problema": "Nome", "gravidade": "Alta|Media|Baixa", "impacto": "Financeiro/Operacional", "acao": "Imediata" }
+  ],
+  "comportamento_cliente": {
+    "padrao_identificado": "Descrição do comportamento atual",
+    "perfis_dominantes": ["Perfil 1", "Perfil 2"]
+  },
+  "acoes_recomendadas": [
+    { "acao": "O que", "motivo": "Por que", "prioridade": "Alta|Media|Baixa", "impacto_esperado": "Resultado" }
+  ],
+  "previsoes": ["Previsão 1", "Previsão 2"],
+  "comparacao_estrategica": "Análise Online vs Físico ou Períodos",
+  "resumo_final": "Veredito executivo final"
+}
+`;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é a Inteligência Estratégica Discreta. Pense como um Diretor de e-commerce de luxo. Retorne APENAS JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      const duration = Date.now() - startTime;
+      console.log(`[AI] Strategic Report Generated: success (${duration}ms)`);
+
+      return parsed;
+    } catch (error: any) {
+      console.error('Erro no generateStrategicReport (AI):', error.message);
+      throw new Error(`Falha estratégica: ${error.message}`);
+    }
+  }
+
 }
 
 export const aiService = new AIService();

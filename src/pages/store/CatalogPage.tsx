@@ -11,7 +11,8 @@ import { getRankingProfissional } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
-import { useFeedback } from '../../contexts/FeedbackContext';
+import { catalogSectionsService, SECTION_METADATA, CatalogSection } from '../../services/catalogSectionsService';
+import { openaiOfferSorting } from '../../services/openaiOfferSorting';
 
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -32,6 +33,8 @@ export function CatalogPage() {
   const [selectedCollection, setSelectedCollection] = useState<string | null>(qCollection);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [rankingAi, setRankingAi] = useState(false);
+  const lastRankedSection = useRef<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
 
@@ -189,13 +192,12 @@ export function CatalogPage() {
           }
         }
 
-        // Filter products: Strictly active (from query), with stock AND at least one image
-        // RELAXED: Support products without images with placeholders, but prefer those with images.
-        // Actually, user wants ALL products.
+        // Filter products: Strictly active, with at least one image and showInCatalog marked
         const visibleProds = prods.filter(p => 
           p.active !== false &&
-          (!p.controlStock || p.allowBackorder || (Number(p.stock) || 0) > 0) &&
-          (!p.extras || p.extras.showInCatalog !== false)
+          (p.images && p.images.length > 0) &&
+          (p.extras?.showInCatalog !== false) &&
+          (!p.controlStock || p.allowBackorder || (Number(p.stock) || 0) > 0)
         );
 
         console.log(`[CATALOG][LOAD] Total Loaded: ${prods.length} | Visible: ${visibleProds.length}`);
@@ -252,6 +254,26 @@ export function CatalogPage() {
   }, [searchParams, isCategoriesEmpty]); // Categories dependency is handled inside loadData but we need to re-run if params change
 
   useEffect(() => {
+    async function rankSpecialSections() {
+      // Evitar re-ranqueamento se já foi feito para esta seção e o número de itens é o mesmo
+      const rankKey = `${selectedSection}-${filtered.length}`;
+      if (selectedSection === 'promocoes' && filtered.length > 0 && lastRankedSection.current !== rankKey) {
+        setRankingAi(true);
+        try {
+          const ranked = await openaiOfferSorting.rankOffers(filtered);
+          lastRankedSection.current = rankKey;
+          setFiltered(ranked);
+        } catch (e) {
+          console.warn('[AI_RANK_CATALOG_FAIL]', e);
+        } finally {
+          setRankingAi(false);
+        }
+      }
+    }
+    rankSpecialSections();
+  }, [selectedSection, filtered]); 
+
+  useEffect(() => {
     const getAllChildCategoryIds = (catId: string): string[] => {
       const children = categories.filter(c => c.parentId === catId);
       let ids = [catId];
@@ -266,38 +288,12 @@ export function CatalogPage() {
 
     // 1. Filtro de Seção (Home Context)
     if (selectedSection) {
-      const getCreationDate = (createdAt?: any) => {
-        if (!createdAt) return new Date();
-        if (createdAt instanceof Date) return createdAt;
-        if (typeof createdAt === 'object' && 'seconds' in (createdAt as any)) return new Date((createdAt as any).seconds * 1000);
-        return new Date(createdAt);
-      };
-
-      switch (selectedSection) {
-        case 'lancamentos':
-          // Lançamentos: 30 dias ou flag newRelease
-          const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-          result = result.filter(p => p.newRelease || getCreationDate(p.createdAt).getTime() > thirtyDaysAgo);
-          result.sort((a, b) => getCreationDate(b.createdAt).getTime() - getCreationDate(a.createdAt).getTime());
-          break;
-        case 'destaques':
-          result = result.filter(p => p.featured);
-          break;
-        case 'mais-vendidos':
-          result = result.filter(p => (p.conversoes || 0) > 0);
-          result.sort((a, b) => (b.conversoes || 0) - (a.conversoes || 0));
-          break;
-        case 'em-alta':
-          // Simple proxy for em alta in catalog
-          result = result.filter(p => (p.cliques || 0) > 10);
-          result.sort((a, b) => (b.cliques || 0) - (a.cliques || 0));
-          break;
-        case 'promocoes':
-          result = result.filter(p => p.onSale || (p.promoPrice && p.promoPrice < p.price));
-          break;
-        case 'recomendados':
-          // No recommended logic for catalog filter yet, just keep all
-          break;
+      result = catalogSectionsService.applySectionLogic(result, selectedSection as CatalogSection);
+      
+      // Se for recomendados, podemos tentar um ranqueamento IA se houver poucos itens
+      // ou apenas registrar que estamos em uma sessão especial.
+      if (selectedSection === 'recomendados' && result.length > 0) {
+        // AI logic could go here if needed, but for now we follow the centralized service
       }
     }
 
@@ -343,15 +339,8 @@ export function CatalogPage() {
     
     let baseTitle = '';
     if (selectedSection) {
-      const titles: any = {
-        'lancamentos': 'Lançamentos',
-        'destaques': 'Destaques',
-        'mais-vendidos': 'Mais Vendidos',
-        'em-alta': 'Em Alta',
-        'promocoes': 'Ofertas',
-        'recomendados': 'Recomendados'
-      };
-      baseTitle = titles[selectedSection] || 'Coleção';
+      const meta = SECTION_METADATA[selectedSection as CatalogSection];
+      baseTitle = meta?.title || 'Coleção';
     } else if (selectedSubcat) {
       baseTitle = selectedSubcat.charAt(0).toUpperCase() + selectedSubcat.slice(1);
     } else if (selectedCollection) {
@@ -503,34 +492,51 @@ export function CatalogPage() {
       <div className="max-w-7xl mx-auto w-full px-4 py-8">
         {/* Context Header */}
         {(selectedSection || selectedSubcat || selectedCollection || (selectedCat !== 'all' && !search)) && (
-          <div className="mb-10 text-center md:text-left">
+          <div className="mb-10">
             <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex flex-col md:flex-row md:items-center justify-between gap-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="relative p-8 md:p-12 rounded-[2rem] md:rounded-[4rem] overflow-hidden bg-zinc-950 border border-zinc-900 border-dashed"
             >
-              <div>
-                <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic text-white mb-2">
-                  {getContextTitle()}
-                </h1>
-                <div className="w-20 h-1.5 bg-red-600 rounded-full mb-4 mx-auto md:mx-0"></div>
-              </div>
+              {/* Decorative elements for sections */}
+              <div className="absolute top-0 right-0 w-64 h-64 bg-red-600/10 blur-[100px] -z-10 rounded-full" />
+              
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10 text-center md:text-left">
+                <div>
+                  {selectedSection && (
+                    <span className="inline-block bg-red-600 text-white text-[9px] font-black uppercase tracking-[3px] px-4 py-1.5 rounded-full mb-4 shadow-xl shadow-red-900/20">
+                      {SECTION_METADATA[selectedSection as CatalogSection]?.badge || 'Coleção'}
+                    </span>
+                  )}
+                  <h1 className="text-4xl md:text-7xl font-black uppercase tracking-tighter italic text-white mb-4 leading-[0.9]">
+                    {getContextTitle()}
+                  </h1>
+                  {selectedSection && (
+                    <p className="text-zinc-500 font-bold text-sm md:text-lg max-w-2xl leading-relaxed">
+                      {SECTION_METADATA[selectedSection as CatalogSection]?.description}
+                    </p>
+                  )}
+                  <div className="w-20 h-1.5 bg-red-600 rounded-full mt-6 mx-auto md:mx-0"></div>
+                </div>
 
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-white border border-zinc-800 rounded-xl px-6"
-                onClick={() => {
-                  setSearchParams({});
-                  setSelectedCat('all');
-                  setSelectedSection(null);
-                  setSelectedSubcat(null);
-                  setSelectedCollection(null);
-                  setSearch('');
-                }}
-              >
-                Ver catálogo completo
-              </Button>
+                <div className="flex justify-center md:justify-end">
+                  <Button 
+                    variant="outline" 
+                    size="lg"
+                    className="text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-white border-zinc-800 rounded-2xl px-8 py-7 h-auto bg-black/40 backdrop-blur-sm"
+                    onClick={() => {
+                      setSearchParams({});
+                      setSelectedCat('all');
+                      setSelectedSection(null);
+                      setSelectedSubcat(null);
+                      setSelectedCollection(null);
+                      setSearch('');
+                    }}
+                  >
+                    Ver catálogo completo
+                  </Button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}
@@ -557,6 +563,19 @@ export function CatalogPage() {
             </button>
           )}
         </div>
+
+        {rankingAi && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-3 py-4 mb-8 bg-red-600/5 border border-red-600/10 rounded-2xl px-6 animate-pulse"
+          >
+            <Loader2 className="animate-spin text-red-600" size={16} />
+            <span className="text-[10px] font-black uppercase tracking-[3px] text-red-600">
+              Inteligência Artificial otimizando vitrine...
+            </span>
+          </motion.div>
+        )}
 
         {/* Product Grid - Optimized Columns */}
         <main className="w-full">

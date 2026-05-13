@@ -23,6 +23,8 @@ export interface FinancialTransaction {
   createdAt?: any;
   updatedAt?: any;
   isManual?: boolean;
+  originalSaleAmount?: number;
+  additionalAmount?: number;
 }
 
 export const financialService = {
@@ -147,7 +149,7 @@ export const financialService = {
     // In a real ERP, these are often dynamic and mapped to a chart of accounts.
     // For simplicity, we'll provide standard ones or fetch distinct from DB.
     if (type === 'income') {
-      return ['Vendas', 'Serviços', 'Rendimentos', 'Outras Receitas'];
+      return ['Vendas', 'Serviços', 'Rendimentos', 'Acréscimos/Gorjetas', 'Outras Receitas'];
     } else {
       return ['Fornecedores', 'Impostos', 'Salários', 'Aluguel', 'Água/Luz/Internet', 'Marketing', 'Despesas Operacionais', 'Outras Despesas'];
     }

@@ -3,7 +3,7 @@ import { aiService } from '../services/aiService.js';
 import { productService } from '../../services/productService.js';
 import { z } from 'zod';
 import { db } from '../../lib/firebase.js';
-import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, updateDoc, increment } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, updateDoc, increment } from 'firebase/firestore';
 
 const GenerateProductInput = z.object({
   nome: z.string().min(3).max(100),
@@ -212,13 +212,14 @@ export const suggestCartComplements = async (req: Request, res: Response) => {
     const productsSnap = await getDocs(query(productsRef, where('active', '==', true), limit(200)));
     const allProducts = productsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
 
-    // Remover produtos que já estão no carrinho e aplicar filtros rigorosos
+    // Remover produtos que já estão no carrinho e aplicar filtros rigorosos (imagens, catálogo e estoque)
     const cartIds = items.map(i => i.id);
     let candidateProducts = allProducts.filter(p => {
       const isNotIdInCart = !cartIds.includes(p.id);
-      const hasImage = (p.images && p.images.length > 0 && p.images.some((img: any) => img.url)) || p.imageUrl || p.image;
-      const hasStock = p.manageStock === false || (p.stock && p.stock > 0);
-      return isNotIdInCart && p.active === true && hasImage && hasStock;
+      const hasImage = p.images && p.images.length > 0;
+      const showsInCatalog = p.extras?.showInCatalog !== false;
+      const hasStock = p.allowBackorder || !p.controlStock || (Number(p.stock) > 0);
+      return isNotIdInCart && p.active === true && hasImage && showsInCatalog && hasStock;
     });
 
     // Fallback: se o filtro rigoroso remover TUDO, relaxamos para mostrar produtos Ativos (mesmo sem estoque/imagem)
@@ -309,7 +310,13 @@ export const suggestRelatedProducts = async (req: Request, res: Response) => {
     if (targetSnap.empty) return res.status(404).json({ error: 'Produto não encontrado' });
 
     const targetProduct = { id: targetSnap.docs[0].id, ...targetSnap.docs[0].data() };
-    const allProducts = catalogSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const allProducts = catalogSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }) as any)
+      .filter(p => 
+        p.active === true && 
+        (p.images && p.images.length > 0) && 
+        (p.extras?.showInCatalog !== false)
+      );
 
     // 2. Chamar IA para seleção inteligente
     const aiRecommendation = await aiService.suggestRelatedProducts(targetProduct, allProducts);
@@ -342,26 +349,16 @@ export const generateHomeCuratory = async (req: Request, res: Response) => {
   try {
     const productsRef = collection(db, 'products');
     const snap = await getDocs(query(productsRef, where('active', '==', true), limit(300))); // get enough to curate
-    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const all = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }) as any)
+      .filter(p => (p.images && p.images.length > 0) && (p.extras?.showInCatalog !== false));
     
     // Call AI to generate curation
     const result = await aiService.homeCuratory(all);
-    
-    // Save to Firestore 'ai_curation/home'
-    const docRef = doc(db, 'ai_curation', 'home');
-    await updateDoc(docRef, { ...result, updatedAt: serverTimestamp() }).catch(async (e) => {
-        // if not exists, create
-        if (e.code === 'not-found') {
-          await addDoc(collection(db, 'ai_curation'), { ...result, id: 'home', updatedAt: serverTimestamp() });
-        } else {
-           // use setDoc to be safe
-           const { setDoc } = await import('firebase/firestore');
-           await setDoc(docRef, { ...result, updatedAt: serverTimestamp() }, { merge: true });
-        }
-    });
 
     res.json({ success: true, result });
   } catch (error: any) {
+    console.error("Erro no generateHomeCuratory:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -376,16 +373,49 @@ export const analyzeCatalog = async (req: Request, res: Response) => {
   }
 };
 
+export const generateStrategicReport = async (req: Request, res: Response) => {
+  try {
+    const { data } = req.body;
+    if (!data) {
+      return res.status(400).json({ error: 'Dados para análise não fornecidos' });
+    }
+
+    // Call AI Service with the data sent from the client
+    const result = await aiService.generateStrategicReport(data);
+    
+    res.json({ success: true, result });
+  } catch (error: any) {
+    console.error("Erro fatal no generateStrategicReport:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const rankOffers = async (req: Request, res: Response) => {
+  try {
+    const { products } = req.body;
+    if (!products || !Array.isArray(products)) {
+      return res.status(400).json({ error: 'Lista de produtos não informada' });
+    }
+    const rankedIds = await aiService.rankOffers(products);
+    res.json(rankedIds);
+  } catch (error: any) {
+    console.error('[AI][RANK_OFFERS_CONTROLLER_ERROR]', error.message);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const aiController = {
   generateProduct,
   generateCategory,
   interpretSearch,
   trackClick,
   generateHomeCuratory,
+  generateStrategicReport,
   analyzeCatalog,
   botConsult,
   suggestCartComplements,
   suggestRelatedProducts,
   enrichProduct,
-  generateEmbedding
+  generateEmbedding,
+  rankOffers
 };

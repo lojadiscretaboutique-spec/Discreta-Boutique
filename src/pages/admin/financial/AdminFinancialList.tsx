@@ -289,8 +289,16 @@ export function AdminFinancial() {
                        <span className="bg-slate-950 border border-slate-700 px-2 py-1 rounded text-xs">{t.category}</span>
                     </td>
                     <td className="px-6 py-4 text-slate-300 whitespace-normal break-words max-w-[150px]">{t.contact || '-'}</td>
-                    <td className={cn("px-6 py-4 text-right font-black whitespace-nowrap", t.type === 'income' ? 'text-green-600' : 'text-red-600')}>
-                       {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
+                    <td className={cn("px-6 py-4 text-right whitespace-nowrap")}>
+                      <div className={cn("font-black", t.type === 'income' ? 'text-green-600' : 'text-red-600')}>
+                        {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
+                      </div>
+                      {t.additionalAmount && t.additionalAmount > 0 && (
+                        <div className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">
+                          Venda: {formatCurrency(t.originalSaleAmount || 0)} <br/>
+                          Acrésc: {formatCurrency(t.additionalAmount)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 flex justify-center mt-1">
                        {t.status === 'paid' ? (

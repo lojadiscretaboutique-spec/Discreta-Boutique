@@ -1078,17 +1078,23 @@ export function AdminProducts() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-slate-800 rounded-xl border">
                    <div>
                      <label className="block text-sm font-bold mb-1 flex items-center justify-between">
-                       Estoque Atual
-                       <span className="text-[10px] text-slate-400 font-normal ml-2">(Apenas conferência)</span>
+                       {form.hasVariants ? "Estoque Total (Variações)" : "Estoque Atual"}
+                       <span className="text-[10px] text-slate-400 font-normal ml-2">
+                         {form.hasVariants ? "(Soma automática)" : "(Apenas conferência)"}
+                       </span>
                      </label>
                      <Input 
                         type="number" 
                         value={form.stock ?? 0} 
                         disabled 
-                        title="O estoque deve ser gerenciado através do módulo Movimentação de Estoque." 
+                        title={form.hasVariants ? "O estoque é a soma de todas as variações ativas." : "O estoque deve ser gerenciado através do módulo Movimentação de Estoque."} 
                         className="bg-slate-950 cursor-not-allowed text-slate-400 font-semibold"
                      />
-                     <p className="text-[10px] text-red-500 mt-1 leading-tight">Use o módulo "Mov. Estoque" para dar entrada/saída.</p>
+                     <p className="text-[10px] text-red-500 mt-1 leading-tight">
+                       {form.hasVariants 
+                         ? "O estoque principal é sincronizado automaticamente com as variações." 
+                         : 'Use o módulo "Mov. Estoque" para dar entrada/saída.'}
+                     </p>
                    </div>
                    <div>
                      <label className="block text-sm font-bold mb-1">Estoque Mínimo (Alerta)</label>

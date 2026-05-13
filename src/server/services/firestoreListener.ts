@@ -41,15 +41,22 @@ export function setupOrderListener() {
                     }
                 }
 
-                console.log(`[FirestoreListener] Processando evento de pedido para botconversa: ${order.id}`);
+                console.log(`[FirestoreListener] Processando evento de pedido para botconversa: ${order.id} - Status: ${order.status}`);
                 try {
-                   await sendWebhook(order);
-                   // Marca no firestore que a notificação teste status foi enviada!
-                   await updateDoc(doc(db, 'orders', order.id), {
-                       last_status_sent: orderData.status
-                   });
+                   // Adicionando um pequeno delay para garantir que os dados do pedido estejam estáveis
+                   await new Promise(resolve => setTimeout(resolve, 2000));
+                   
+                   const success = await sendWebhook(order);
+                   
+                   if (success) {
+                       // Marca no firestore que o status atual foi enviado
+                       await updateDoc(doc(db, 'orders', order.id), {
+                           last_status_sent: order.status,
+                           webhook_last_sent: new Date().toISOString()
+                       });
+                   }
                 } catch(e) {
-                   console.error("Erro ao notificar no listener", e);
+                   console.error(`[FirestoreListener] Erro ao notificar pedido ${order.id}:`, e);
                 }
             }
         });

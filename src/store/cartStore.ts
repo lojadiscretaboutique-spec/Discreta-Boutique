@@ -21,6 +21,7 @@ interface CartStore {
   updateQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
   total: () => number;
+  loadOrder: (order: any) => void;
 }
 
 export const useCartStore = create<CartStore>()(
@@ -50,6 +51,20 @@ export const useCartStore = create<CartStore>()(
         }),
       clearCart: () => set({ items: [] }),
       total: () => get().items.reduce((acc, item) => acc + item.price * item.quantity, 0),
+      loadOrder: (order: any) => {
+        const cartItems: CartItem[] = order.items.map((item: any) => ({
+          id: item.variantId ? `${item.productId}-${item.variantId}` : item.productId,
+          productId: item.productId,
+          variantId: item.variantId,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          sku: item.sku,
+          imageUrl: item.imageUrl,
+          variantName: item.variantName
+        }));
+        set({ items: cartItems });
+      }
     }),
     {
       name: 'discreta-cart',
