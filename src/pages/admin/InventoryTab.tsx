@@ -65,11 +65,11 @@ export function InventoryTab() {
            ? p.images.find(img => img.isMain)?.url || p.images[0].url
            : '';
 
-        let catsStr = p.categoryId || '';
+        let catsStr = '';
         if (p.categoryIds && p.categoryIds.length > 0) {
-          catsStr = p.categoryIds.map(id => catMap.get(id) || id).join(', ');
+          catsStr = p.categoryIds.join(', ');
         } else if (p.categoryId) {
-          catsStr = catMap.get(p.categoryId) || p.categoryId;
+          catsStr = p.categoryId;
         }
 
         const baseRow = {
