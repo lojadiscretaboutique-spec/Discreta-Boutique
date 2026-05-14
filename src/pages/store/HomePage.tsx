@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, memo } from 'react';
+import { ResponsiveImage } from '../../components/ui/ResponsiveImage';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useNavigate } from 'react-router-dom';
@@ -34,12 +35,21 @@ export function HomePage() {
   const [loading, setLoading] = useState(true);
   const [aiFrase, setAiFrase] = useState("");
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadCriticalData = useCallback(async () => {
     try {
+      // Load Banners first to show Hero
       const bSnap = await getDocs(query(collection(db, 'banners'), where('active', '==', true)));
       setBanners(bSnap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
+      
+      setLoading(false); // Hero is ready
+    } catch (e) {
+      console.error(e);
+      setLoading(false);
+    }
+  }, []);
 
+  const loadDeferredData = useCallback(async () => {
+    try {
       const pSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true)));
       const allActiveProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
 
@@ -137,17 +147,15 @@ export function HomePage() {
       });
 
       setCategories(categoriesWithImages);
-
-    } catch (error) {
-      console.error("Error loading home:", error);
-    } finally {
-      setLoading(false);
+    } catch(e) {
+      console.error(e);
     }
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadCriticalData();
+    loadDeferredData();
+  }, [loadCriticalData, loadDeferredData]);
 
   // Auto-play banners
   useEffect(() => {
@@ -418,7 +426,7 @@ function ProductCarousel({ title, products, link, loading }: { title: string, pr
   );
 }
 
-function ProductItemCard({ product }: { product: Product }) {
+const ProductItemCard = memo(({ product }: { product: Product }) => {
   const mainImage = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
   const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
@@ -458,14 +466,13 @@ function ProductItemCard({ product }: { product: Product }) {
     >
       <div className="aspect-[3/4] relative bg-white overflow-hidden group-hover:bg-zinc-50 transition-colors duration-500">
         {mainImage ? (
-          <img 
-            src={mainImage || undefined} 
+          <ResponsiveImage 
+            src={mainImage} 
             alt={product.name} 
             className={cn(
               "w-full h-full object-cover transition-transform duration-1000 ease-out",
               !isOut && "group-hover:scale-105"
             )}
-            referrerPolicy="no-referrer"
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-zinc-800 text-[10px] font-black uppercase tracking-widest text-center px-4 italic">Sem Imagem</div>
@@ -555,7 +562,7 @@ function ProductItemCard({ product }: { product: Product }) {
       </div>
     </Link>
   );
-}
+});
 
 function SkeletonCard() {
   return (

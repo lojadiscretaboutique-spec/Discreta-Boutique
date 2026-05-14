@@ -73,7 +73,16 @@ export default defineConfig({
     target: 'es2020',
     minify: 'esbuild',
     sourcemap: false,
-    chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom', 'zustand'],
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+          ui: ['lucide-react', 'motion'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 500,
   },
   server: {
     port: 3000,
