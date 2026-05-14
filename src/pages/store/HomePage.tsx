@@ -10,6 +10,7 @@ import { getLancamentos, getDestaques, getMaisVendidos, getEmAlta, getRecomendad
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
+import { HeroBanner } from '../../components/ui/HeroBanner';
 import { ImperdiveisCarousel } from '../../components/home/ImperdiveisCarousel';
 
 interface Banner {
@@ -183,22 +184,10 @@ export function HomePage() {
               >
                 {banners[currentBanner].linkUrl ? (
                   <Link to={banners[currentBanner].linkUrl} className="block h-full w-full cursor-pointer">
-                    <img 
-                      src={banners[currentBanner].imageUrl || undefined} 
-                      alt="" 
-                      className="w-full h-full object-cover shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]"
-                      referrerPolicy="no-referrer"
-                    />
+                    <HeroBanner banner={banners[currentBanner]} isEager={currentBanner === 0} />
                   </Link>
                 ) : (
-                  <div className="h-full w-full">
-                    <img 
-                      src={banners[currentBanner].imageUrl || undefined} 
-                      alt="" 
-                      className="w-full h-full object-cover shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
+                  <HeroBanner banner={banners[currentBanner]} isEager={currentBanner === 0} />
                 )}
               </motion.div>
             </AnimatePresence>

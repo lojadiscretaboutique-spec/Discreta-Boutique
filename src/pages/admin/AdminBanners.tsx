@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
+import imageCompression from 'browser-image-compression';
 
 interface Banner {
   id: string;
@@ -85,8 +86,21 @@ export function AdminBanners() {
     
     setSubmitting(true);
     try {
-      const fileRef = ref(storage, `banners/${Date.now()}_${imageFile.name}`);
-      await uploadBytes(fileRef, imageFile);
+      const options = {
+        maxSizeMB: 0.15, // 150kb target
+        maxWidthOrHeight: 1080, // Optimized width for mobile premium screens
+        useWebWorker: true,
+        fileType: 'image/webp',
+        initialQuality: 0.95,
+      };
+      
+      const compressedBlob = await imageCompression(imageFile, options);
+      const optimizedFile = new File([compressedBlob], `${imageFile.name.split('.')[0]}.webp`, {
+        type: 'image/webp',
+      });
+
+      const fileRef = ref(storage, `banners/${Date.now()}_${optimizedFile.name}`);
+      await uploadBytes(fileRef, optimizedFile);
       const imageUrl = await getDownloadURL(fileRef);
 
       await addDoc(collection(db, 'banners'), {
@@ -103,7 +117,7 @@ export function AdminBanners() {
       setImageFile(null);
       setIsActive(true);
       loadData();
-      toast("Banner salvo com sucesso!");
+      toast("Banner otimizado e salvo com sucesso!");
     } catch(err) {
       console.error(err);
       toast("Erro ao salvar banner", 'error');
