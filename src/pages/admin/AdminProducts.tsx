@@ -138,9 +138,112 @@ export function AdminProducts() {
   };
 
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
+  const [bulkCategoryAction, setBulkCategoryAction] = useState<'add' | 'remove'>('add');
+  const [bulkSelectedCategoryIds, setBulkSelectedCategoryIds] = useState<string[]>([]);
   const [bulkProgress, setBulkProgress] = useState({ total: 0, processed: 0, updated: 0, skipped: 0, logs: [] as string[] });
   const [isBulkRunning, setIsBulkRunning] = useState(false);
-  const [forceRegen, setForceRegen] = useState(false);
+  
+  // Single Product Category Management
+  const [isSingleCategoryModalOpen, setIsSingleCategoryModalOpen] = useState(false);
+  const [targetProduct, setTargetProduct] = useState<Product | null>(null);
+  const [targetCategoryIds, setTargetCategoryIds] = useState<string[]>([]);
+
+  const handleSingleCategoryUpdate = async () => {
+    if (!targetProduct) return;
+    setLoading(true);
+    try {
+      const ref = doc(db, 'products', targetProduct.id!);
+      await writeBatch(db).update(ref, {
+        categoryIds: targetCategoryIds,
+        categoryId: targetCategoryIds[0] || '',
+        updatedAt: serverTimestamp()
+      }).commit();
+      
+      toast("Categorias atualizadas com sucesso!");
+      setIsSingleCategoryModalOpen(false);
+      loadData();
+    } catch (e: any) {
+      console.error(e);
+      toast(`Erro ao atualizar categorias: ${e.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBulkCategory = async () => {
+    if (selectedIds.length === 0 || bulkSelectedCategoryIds.length === 0) return;
+
+    setIsBulkRunning(true);
+    setBulkProgress({ total: selectedIds.length, processed: 0, updated: 0, skipped: 0, logs: ["Iniciando processamento em lote..."] });
+    setIsBulkModalOpen(true);
+
+    try {
+        const CHUNK_SIZE = 450; // Safety margin for Firestore's 500 limit
+        let processedCount = 0;
+
+        for (let i = 0; i < selectedIds.length; i += CHUNK_SIZE) {
+            const chunk = selectedIds.slice(i, i + CHUNK_SIZE);
+            const batch = writeBatch(db);
+            let updatedInBatch = 0;
+
+            for (const id of chunk) {
+                const product = products.find(p => p.id === id);
+                if (!product) continue;
+
+                const ref = doc(db, 'products', id);
+                let currentCategoryIds = [...(product.categoryIds || [])];
+                let changed = false;
+
+                if (bulkCategoryAction === 'add') {
+                    bulkSelectedCategoryIds.forEach(catId => {
+                        if (!currentCategoryIds.includes(catId)) {
+                            currentCategoryIds.push(catId);
+                            changed = true;
+                        }
+                    });
+                } else {
+                    const originalLength = currentCategoryIds.length;
+                    currentCategoryIds = currentCategoryIds.filter(id => !bulkSelectedCategoryIds.includes(id));
+                    if (currentCategoryIds.length !== originalLength) changed = true;
+                }
+
+                if (changed) {
+                    batch.update(ref, { 
+                        categoryIds: currentCategoryIds,
+                        categoryId: currentCategoryIds[0] || '', // Fallback for legacy compatibility
+                        updatedAt: serverTimestamp() 
+                    });
+                    updatedInBatch++;
+                }
+            }
+
+            if (updatedInBatch > 0) {
+                await batch.commit();
+            }
+
+            processedCount += chunk.length;
+            setBulkProgress(prev => ({
+                ...prev,
+                processed: processedCount,
+                updated: prev.updated + updatedInBatch,
+                logs: [`Processados ${processedCount} de ${selectedIds.length} produtos...`, ...prev.logs.slice(0, 10)]
+            }));
+        }
+
+        toast(`Categorização concluída. ${selectedIds.length} produtos processados.`);
+        setIsBulkCategoryModalOpen(false);
+        setIsBulkModalOpen(false);
+        setBulkSelectedCategoryIds([]);
+        setSelectedIds([]);
+        loadData();
+    } catch (e: any) {
+        console.error("Bulk categorization error:", e);
+        toast(`Erro na categorização: ${e.message}`, 'error');
+    } finally {
+        setIsBulkRunning(false);
+    }
+  };
 
   const handleAIContent = async () => {
     const hasCategory = form.categoryId || (form.categoryIds && form.categoryIds.length > 0);
@@ -1652,6 +1755,15 @@ export function AdminProducts() {
                {selectedIds.length > 0 && (
                  <div className="flex items-center gap-2 pr-4 border-r border-slate-700">
                    <span className="text-red-500 font-black">{selectedIds.length} Selecionados:</span>
+                   <div className="relative group">
+                     <button className="flex items-center gap-1 text-[10px] uppercase font-black bg-slate-800 hover:bg-slate-700 p-1.5 rounded transition-colors text-slate-300">
+                       Categorias <ChevronDown size={12} />
+                     </button>
+                     <div className="absolute top-full right-0 mt-1 w-40 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-20 hidden group-hover:block">
+                       <button onClick={() => { setBulkCategoryAction('add'); setIsBulkCategoryModalOpen(true); }} className="block w-full text-left px-4 py-3 text-xs font-bold hover:bg-slate-800">Adicionar</button>
+                       <button onClick={() => { setBulkCategoryAction('remove'); setIsBulkCategoryModalOpen(true); }} className="block w-full text-left px-4 py-3 text-xs font-bold hover:bg-slate-800 text-red-500">Remover</button>
+                     </div>
+                   </div>
                    <button 
                      onClick={handleBulkSEO} 
                      disabled={isBulkRunning}
@@ -1877,6 +1989,19 @@ export function AdminProducts() {
                      <td className="px-6 py-4">
                         <div className="flex justify-center gap-2">
                            {canEdit && (
+                             <button 
+                               onClick={() => {
+                                 setTargetProduct(prod);
+                                 setTargetCategoryIds(prod.categoryIds || (prod.categoryId ? [prod.categoryId] : []));
+                                 setIsSingleCategoryModalOpen(true);
+                               }} 
+                               className="p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 hover:text-red-600 hover:border-red-600 transition-all shadow-sm"
+                               title="Gerenciar Categorias"
+                             >
+                                <Layers size={16} />
+                             </button>
+                           )}
+                           {canEdit && (
                              <button onClick={() => handleEdit(prod)} className="p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 hover:text-red-600 hover:border-red-600 transition-all shadow-sm">
                                <Edit2 size={16} />
                              </button>
@@ -1950,6 +2075,51 @@ export function AdminProducts() {
           </div>
         )}
       </div>
+      {/* MODAL SINGLE CATEGORY */}
+      {isSingleCategoryModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+            <header className="p-6 border-b border-slate-800 bg-slate-800/50 flex items-center justify-between">
+               <div>
+                  <h2 className="text-lg font-bold text-white uppercase text-[14px]">Gerenciar Categorias</h2>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase">{targetProduct?.name}</p>
+               </div>
+               <button onClick={() => setIsSingleCategoryModalOpen(false)} className="text-slate-500 hover:text-white"><X size={20}/></button>
+            </header>
+            <div className="p-6 flex flex-col gap-4">
+              <label className="text-xs font-bold text-slate-400">Marque as categorias deste produto</label>
+              <div className="max-h-80 overflow-y-auto bg-slate-800 border border-slate-700 rounded-lg p-2 space-y-2 custom-scrollbar">
+                {groupedCategories.map((root: any) => (
+                  <div key={root.id}>
+                    <p className="text-[10px] font-black uppercase text-slate-500 bg-slate-950 p-2 mb-1 sticky top-0 rounded">{root.name}</p>
+                    {[root, ...root.allChildren].sort((a,b) => a.name.localeCompare(b.name)).map((c: any) => (
+                       <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-slate-700 rounded cursor-pointer transition-colors group">
+                          <input 
+                            type="checkbox" 
+                            checked={targetCategoryIds.includes(c.id)}
+                            onChange={(e) => {
+                               if (e.target.checked) setTargetCategoryIds([...targetCategoryIds, c.id]);
+                               else setTargetCategoryIds(targetCategoryIds.filter(id => id !== c.id));
+                            }}
+                            className="w-4 h-4 accent-red-600"
+                          />
+                          <span className={cn("text-xs transition-colors", targetCategoryIds.includes(c.id) ? "text-red-500 font-bold" : "text-slate-400")}>{c.name}</span>
+                       </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <footer className="p-6 border-t border-slate-800 flex gap-3 bg-slate-800/20">
+              <Button variant="outline" className="flex-1" onClick={() => setIsSingleCategoryModalOpen(false)}>Cancelar</Button>
+              <Button className="flex-1 bg-red-600 hover:bg-red-700" onClick={handleSingleCategoryUpdate} disabled={loading}>
+                {loading ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </footer>
+          </div>
+        </div>
+      )}
+
       {/* MODAL IA BULK SEO */}
       {isBulkModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
@@ -2066,6 +2236,47 @@ export function AdminProducts() {
                   <Sparkles size={18} className="mr-2" /> Iniciar SEO Inteligente
                 </Button>
               )}
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL BULK CATEGORY */}
+      {isBulkCategoryModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+            <header className="p-6 border-b border-slate-800 bg-slate-800/50">
+               <h2 className="text-lg font-bold text-white">{bulkCategoryAction === 'add' ? 'Adicionar' : 'Remover'} Categoria</h2>
+            </header>
+            <div className="p-6 flex flex-col gap-4">
+              <label className="text-xs font-bold text-slate-400">Selecione as Categorias</label>
+              <div className="max-h-60 overflow-y-auto bg-slate-800 border border-slate-700 rounded-lg p-2 space-y-2">
+                {groupedCategories.map((root: any) => (
+                  <div key={root.id}>
+                    <p className="text-[10px] font-black uppercase text-slate-500 bg-slate-900 p-1 mb-1">{root.name}</p>
+                    {[root, ...root.allChildren].sort((a,b) => a.name.localeCompare(b.name)).map((c: any) => (
+                       <label key={c.id} className="flex items-center gap-2 p-1.5 hover:bg-slate-700 rounded cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={bulkSelectedCategoryIds.includes(c.id)}
+                            onChange={(e) => {
+                               if (e.target.checked) setBulkSelectedCategoryIds([...bulkSelectedCategoryIds, c.id]);
+                               else setBulkSelectedCategoryIds(bulkSelectedCategoryIds.filter(id => id !== c.id));
+                            }}
+                            className="accent-red-600"
+                          />
+                          <span className="text-xs text-slate-300">{c.name}</span>
+                       </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <footer className="p-6 border-t border-slate-800 flex gap-3">
+              <Button variant="outline" onClick={() => setIsBulkCategoryModalOpen(false)}>Cancelar</Button>
+              <Button onClick={handleBulkCategory} disabled={isBulkRunning || bulkSelectedCategoryIds.length === 0}>
+                {isBulkRunning ? 'Processando...' : 'Confirmar'}
+              </Button>
             </footer>
           </div>
         </div>

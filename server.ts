@@ -6,8 +6,65 @@ import { MercadoPagoConfig, Preference } from 'mercadopago';
 import aiRoutes from './src/server/routes/aiRoutes.js';
 import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
-import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from './src/lib/firebase';
+import admin from 'firebase-admin';
+import firebaseConfig from './firebase-applet-config.json';
+
+const EXPECTED_PROJECT_ID = "gen-lang-client-0000764233";
+
+// Forced Environment Variables to prevent fallback to internal AI Studio projects
+process.env.GOOGLE_CLOUD_PROJECT = EXPECTED_PROJECT_ID;
+process.env.GCLOUD_PROJECT = EXPECTED_PROJECT_ID;
+
+// Strict validation of project ID
+if (firebaseConfig.projectId !== EXPECTED_PROJECT_ID) {
+  console.error(`❌ CRITICAL: Project ID mismatch in config! Found ${firebaseConfig.projectId}, expected ${EXPECTED_PROJECT_ID}`);
+  process.exit(1);
+}
+
+// Initialize firebase-admin explicitly
+let adminApp: admin.app.App;
+if (!admin.apps.length) {
+  console.log("🔥 [Firebase Admin] Initializing explicitly for project:", EXPECTED_PROJECT_ID);
+  
+  const credential = admin.credential.applicationDefault();
+  if (!credential) {
+    console.error("❌ CRITICAL: Firebase Admin credentials not found! Ensure Service Account is properly configured.");
+    process.exit(1);
+  }
+
+  adminApp = admin.initializeApp({
+    credential,
+    projectId: EXPECTED_PROJECT_ID,
+    storageBucket: firebaseConfig.storageBucket,
+  }, 'discreta-boutique-admin');
+} else {
+  adminApp = admin.app('discreta-boutique-admin');
+}
+
+const adminDb = adminApp.firestore();
+
+// Logging as requested
+console.log("✅ [Firebase Admin] Firebase Project:", adminApp.options.projectId);
+console.log("📦 [Firebase Admin] Firestore Initialized for Project:", adminApp.options.projectId);
+
+// Verify connection
+(async () => {
+  try {
+     // Basic check to ensure we are using the correct credentials and project
+     console.log("⏳ [Firestore Admin] Verifying connection...");
+     // Using a timeout for the verification check to prevent blocking startup indefinitely if network issues occur
+     const snapshot = await adminDb.collection('settings').limit(1).get();
+     console.log("⭐ [Firestore Admin] Connection Verified. Project:", adminApp.options.projectId);
+  } catch (e: any) {
+     console.error("❌ [Firestore Admin] Connection Warning:", e.message);
+     if (e.message && e.message.includes('ais-us-east1-')) {
+       console.error("🛑 CRITICAL FAILURE: System is still trying to connect to internal AI Studio project!");
+     }
+  }
+})();
+
 // Note: We'll use the client SDK in the backend for simplicity since we're in a controlled environment,
 // but for high security, firebase-admin would be preferred if service account keys were available.
 // In this case, we use the credentials provided in the .env or via the service to demonstrate the flow.

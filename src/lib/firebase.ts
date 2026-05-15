@@ -19,16 +19,24 @@ interface FirebaseAppConfig {
 
 const typedConfig = firebaseConfig as FirebaseAppConfig;
 
+// Strict Project ID Enforcement
+const EXPECTED_PROJECT_ID = "gen-lang-client-0000764233";
+if (typedConfig.projectId !== EXPECTED_PROJECT_ID) {
+  throw new Error(`CRITICAL: Firebase Project ID Mismatch. Found: ${typedConfig.projectId}, Expected: ${EXPECTED_PROJECT_ID}`);
+}
+
 // Initialize Firebase
+console.log("🔥 [Firebase Client] Initializing with Project:", typedConfig.projectId);
 const app = initializeApp(typedConfig);
 
 // Initialize Firestore with settings for better stability in sandboxed environments
-// If we use firebaseConfig.firestoreDatabaseId it might point to a named database 
-// where rules are not being deployed by the system. Defaulting to (default).
 export const db = initializeFirestore(app, {
   databaseId: typedConfig.firestoreDatabaseId || '(default)',
   experimentalForceLongPolling: true,
 });
+
+console.log("📍 [Firebase Client] App Project ID:", app.options.projectId);
+console.log("📦 [Firestore Client] Initialized Database:", typedConfig.firestoreDatabaseId || '(default)');
 
 export const auth = getAuth(app);
 export const storage = getStorage(app, typedConfig.storageBucket);
