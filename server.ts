@@ -5,7 +5,8 @@ import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import aiRoutes from './src/server/routes/aiRoutes.js';
 import { sendWebhook } from './src/server/services/botConversaService';
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { productCategorizationService } from './src/services/productCategorizationService';
+import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from './src/lib/firebase';
 // Note: We'll use the client SDK in the backend for simplicity since we're in a controlled environment,
 // but for high security, firebase-admin would be preferred if service account keys were available.
@@ -56,6 +57,20 @@ async function startServer() {
     } catch (error: any) {
       console.error("Erro ao enviar webhook:", error);
       res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Intelligent Categorization
+  app.post("/api/products/categorize", async (req, res) => {
+    try {
+      const { name, description, brand, tags } = req.body;
+      const catSnap = await getDocs(collection(db, 'categories'));
+      const categories = catSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      const suggestions = productCategorizationService.suggestCategories(name, description, brand || '', tags || [], categories);
+      res.json({ suggestions });
+    } catch (error) {
+      console.error("Erro ao categorizar:", error);
+      res.status(500).json({ error: "Erro na categorização" });
     }
   });
 

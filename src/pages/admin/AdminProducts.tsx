@@ -40,8 +40,8 @@ export function AdminProducts() {
   // Categories (to be loaded from DB)
   const [categories, setCategories] = useState<Category[]>([]);
   const [categorySearch, setCategorySearch] = useState('');
+  const [categorySuggestions, setCategorySuggestions] = useState<{categoryId: string, confidence: number}[]>([]);
 
-  // Form State
   const initialProduct: Omit<Product, 'id'> = {
     name: '',
     active: true,
@@ -67,6 +67,27 @@ export function AdminProducts() {
   const [uploading, setUploading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [suggestedMultiplier, setSuggestedMultiplier] = useState(2.5);
+
+  // Categorization effect
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if ((form.name || form.fullDescription) && activeTab === 'categories') {
+        const response = await fetch('/api/products/categorize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            name: form.name, 
+            description: form.fullDescription,
+            brand: form.brand,
+            tags: form.ai_keywords || []
+          })
+        });
+        const data = await response.json();
+        setCategorySuggestions(data.suggestions || []);
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [form.name, form.fullDescription, form.brand, form.ai_keywords, activeTab]);
 
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
@@ -804,9 +825,9 @@ export function AdminProducts() {
           </div>
         </header>
 
-        <div className="bg-slate-900 rounded-2xl shadow-sm border border-slate-700 overflow-hidden flex flex-col md:flex-row min-h-[600px]">
+        <div className="bg-slate-900 rounded-2xl shadow-sm border border-slate-700 overflow-hidden flex flex-col md:flex-row h-[calc(100vh-120px)]">
           {/* Internal Navigation (Desktop Sidebar) */}
-          <div className="w-full md:w-64 border-r bg-slate-800 flex flex-col pt-4">
+          <div className="w-full md:w-64 border-r bg-slate-800 flex flex-col pt-4 overflow-y-auto">
              {tabs.map(tab => {
                const Icon = tab.icon;
                return (
@@ -827,7 +848,7 @@ export function AdminProducts() {
              })}
           </div>
 
-          <div className="flex-1 p-6 md:p-8 overflow-y-auto max-h-[calc(100vh-200px)]">
+          <div className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
             {/* 1. GERAL */}
             {activeTab === 'general' && (
               <div className="space-y-6 motion-safe:animate-in fade-in slide-in-from-right-2">
@@ -925,13 +946,54 @@ export function AdminProducts() {
             {activeTab === 'categories' && (
               <div className="space-y-6 motion-safe:animate-in fade-in slide-in-from-right-2">
                 <h3 className="text-lg font-bold border-b pb-2">Seleção de Categorias</h3>
-                <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-                  <label className="block text-sm font-bold mb-3 flex items-center gap-2">
+                
+                {/* SUGGESTÕES INTELIGENTES */}
+                <div className="p-4 bg-slate-900 border border-red-600/30 rounded-xl">
+                  <h4 className="text-sm font-bold text-red-500 mb-3 flex items-center gap-2">
+                    <Sparkles size={16} /> Sugestões Inteligentes (IA)
+                  </h4>
+                  {aiLoading ? (
+                    <div className="py-2 text-xs text-slate-500 flex items-center gap-2 animate-pulse">
+                      <Loader2 size={14} className="animate-spin" /> Analisando semântica do produto...
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                       { ( (form.name || form.fullDescription) && (categories.length > 0) ) ? (
+                         <>
+                          {categorySuggestions.map(s => {
+                              const cat = categories.find(c => c.id === s.categoryId);
+                              if (!cat || form.categoryIds?.includes(cat.id)) return null;
+                              return (
+                                <button
+                                  key={cat.id}
+                                  type="button"
+                                  onClick={() => {
+                                      const currentIds = form.categoryIds || [];
+                                      setForm({ 
+                                        ...form, 
+                                        categoryIds: [...currentIds, cat.id],
+                                        categoryId: currentIds[0] || cat.id
+                                      });
+                                  }}
+                                  className="px-2 py-1 bg-red-950 text-red-300 rounded text-[10px] uppercase font-bold hover:bg-red-800"
+                                >
+                                  + {cat.name}
+                                </button>
+                              );
+                          })}
+                         </>
+                       ) : <p className="text-xs text-slate-500 italic">Preencha nome/descrição para IA sugerir.</p>}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex flex-col">
+                  <label className="block text-sm font-bold mb-3 flex items-center gap-2 px-1">
                      <Layers size={16} className="text-red-500" />
-                     Categorias Diversas e Funcionalidades (Seleção Múltipla)
+                     Categorias e Filtros
                   </label>
-                  <p className="text-xs text-slate-400 mb-4">
-                    Associe o produto a quantas categorias forem necessárias. As categorias definem onde o produto aparecerá no catálogo.
+                  <p className="text-xs text-slate-400 mb-4 px-1">
+                    Associe o produto a quantas categorias forem necessárias. Categorias definem a organização no catálogo.
                   </p>
                   <div className="mb-4 relative">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -940,15 +1002,15 @@ export function AdminProducts() {
                       placeholder="Pesquisar categoria..."
                       value={categorySearch}
                       onChange={(e) => setCategorySearch(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-1 focus:ring-red-500 outline-none"
+                      className="w-full pl-9 pr-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-1 focus:ring-red-500 outline-none"
                     />
                   </div>
-                  <div className="flex flex-col gap-4 max-h-[400px] overflow-y-auto p-2 bg-slate-900/50 rounded-lg border border-slate-800">
+                  <div className="flex flex-col gap-4 p-4 bg-slate-900/50 rounded-xl border border-slate-800">
                      {groupedCategories.map((root: any) => {
                        const search = categorySearch.toLowerCase();
                        return (
-                         <div key={root.id} className="space-y-2 pb-2 last:pb-0 border-b border-slate-800 last:border-0">
-                           <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest px-1">{root.name}</p>
+                         <div key={root.id} className="space-y-3 pb-4 last:pb-0 border-b border-slate-800 last:border-0 hover:border-slate-700">
+                           <p className="text-[11px] font-black uppercase text-slate-400 tracking-wider sticky top-0 bg-slate-900/80 p-2 rounded">{root.name}</p>
                            <div className="flex flex-wrap gap-2">
                              {[root, ...root.allChildren].map((c: any) => {
                                if (search && !c.name.toLowerCase().includes(search)) return null;
@@ -971,14 +1033,13 @@ export function AdminProducts() {
                                      });
                                    }}
                                    className={cn(
-                                     "px-3 py-1.5 rounded-full text-[11px] font-bold transition-all border",
+                                     "px-4 py-2 rounded-full text-xs font-bold transition-all border",
                                      isSelected 
-                                       ? "bg-red-600 text-white border-red-500 shadow-md" 
-                                       : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500"
+                                       ? "bg-red-600 text-white border-red-500 shadow-md ring-2 ring-red-500/20" 
+                                       : "bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-500"
                                    )}
                                  >
                                    {c.name}
-                                   {isSelected && <Check size={10} className="inline ml-1" />}
                                  </button>
                                );
                              })}
@@ -988,7 +1049,7 @@ export function AdminProducts() {
                      })}
                   </div>
                   {(!form.categoryIds || form.categoryIds.length === 0) && (
-                    <p className="text-[10px] text-red-500 mt-2 font-bold animate-pulse">(!) Selecione ao menos uma categoria para o produto.</p>
+                    <p className="text-[11px] text-red-500 mt-2 font-bold animate-pulse px-1">(!) Selecione ao menos uma categoria para o produto.</p>
                   )}
                 </div>
               </div>
