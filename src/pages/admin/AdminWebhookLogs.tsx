@@ -231,7 +231,24 @@ export default function AdminWebhookLogs() {
                   <Button 
                     variant="outline"
                     className="w-full bg-zinc-900 border-zinc-800 hover:bg-zinc-800"
-                    onClick={() => toast("Função de reenvio manual será implementada em breve.", "info")}
+                    onClick={async () => {
+                      if (!selectedLog) return;
+                      try {
+                        const response = await fetch('/api/botconversa/retry', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ orderId: selectedLog.orderId }),
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                          toast("Webhook reenviado com sucesso!", "success");
+                        } else {
+                          throw new Error(data.error);
+                        }
+                      } catch (err: any) {
+                        toast(`Erro ao reenviar: ${err.message}`, "error");
+                      }
+                    }}
                   >
                     <RefreshCw size={16} className="mr-2" />
                     Reenviar

@@ -5,7 +5,7 @@ import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import aiRoutes from './src/server/routes/aiRoutes.js';
 import { sendWebhook } from './src/server/services/botConversaService';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from './src/lib/firebase';
 // Note: We'll use the client SDK in the backend for simplicity since we're in a controlled environment,
 // but for high security, firebase-admin would be preferred if service account keys were available.
@@ -55,6 +55,27 @@ async function startServer() {
       res.json({ success: true, message: "Webhook disparado com sucesso" });
     } catch (error: any) {
       console.error("Erro ao enviar webhook:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Retry endpoint for BotConversa webhook
+  app.post("/api/botconversa/retry", async (req, res) => {
+    try {
+      const { orderId } = req.body;
+      if (!orderId) return res.status(400).json({ error: "Order ID é obrigatório" });
+      
+      // Fetch the order from Firestore
+      const orderDoc = await getDoc(doc(db, 'orders', orderId));
+      if (!orderDoc.exists()) {
+          return res.status(404).json({ error: "Pedido não encontrado" });
+      }
+      
+      const pedido = { id: orderDoc.id, ...orderDoc.data() } as any;
+      await sendWebhook(pedido);
+      res.json({ success: true, message: "Webhook disparado com sucesso" });
+    } catch (error: any) {
+      console.error("Erro ao reenviar webhook:", error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
