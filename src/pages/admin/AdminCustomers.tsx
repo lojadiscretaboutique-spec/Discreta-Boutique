@@ -19,6 +19,7 @@ export function AdminCustomers() {
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos'|'ativo'|'inativo'>('todos');
+  const [originFilter, setOriginFilter] = useState<'todos'|'online'|'pdv'|'manual'>('todos');
   const [viewState, setViewState] = useState<'list'|'edit'|'history'|'new'>('list');
 
   // Edit / History State
@@ -40,8 +41,41 @@ export function AdminCustomers() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await customerService.listCustomers();
-      setCustomers(data);
+      const customerData = await customerService.listCustomers();
+      
+      // Also fetch users who might be just "registered" but don't have a record in customers yet
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const registeredUsers = usersSnap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as any))
+        .filter(u => !u.roles || u.roles.length === 0 || u.role === 'cliente'); // Simple filter for non-staff
+        
+      // Merge: priority to customer record if it exists (by email or phone)
+      const merged: Customer[] = [...customerData];
+      
+      registeredUsers.forEach((u: any) => {
+          const alreadyIn = merged.find(c => (u.email && c.email === u.email) || (u.phone && c.whatsapp === u.phone));
+          if (!alreadyIn) {
+              merged.push({
+                  id: u.id,
+                  nome: u.name || u.nome || 'Usuário Registrado',
+                  whatsapp: u.phone || u.whatsapp || '',
+                  email: u.email,
+                  status: u.status === 'ativo' ? 'ativo' : 'inativo',
+                  origin: 'online',
+                  endereco: u.endereco || { estado: '', cidade: '', bairro: '', rua: '', numero: '', referencia: '' },
+                  createdAt: u.createdAt
+              });
+          }
+      });
+
+      // Re-sort after merge
+      merged.sort((a, b) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : (a.createdAt ? new Date(a.createdAt) : new Date(0));
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : (b.createdAt ? new Date(b.createdAt) : new Date(0));
+          return dateB.getTime() - dateA.getTime();
+      });
+
+      setCustomers(merged);
     } catch (err) {
       toast("Erro ao carregar clientes", "error");
     } finally {
@@ -269,7 +303,10 @@ export function AdminCustomers() {
       // 1. Status Filter
       if (statusFilter !== 'todos' && c.status !== statusFilter) return false;
       
-      // 2. Search Filter
+      // 2. Origin Filter
+      if (originFilter !== 'todos' && (c.origin || 'online') !== originFilter) return false;
+      
+      // 3. Search Filter
       if (searchTerm) {
           const term = searchTerm.toLowerCase();
           const matchName = c.nome?.toLowerCase().includes(term);
@@ -537,8 +574,8 @@ export function AdminCustomers() {
       
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b pb-4">
         <div>
-           <h1 className="text-3xl font-bold tracking-tight text-white">Carteira de Clientes</h1>
-           <p className="text-slate-400">Gerencie todos os clientes cadastrados pela loja online.</p>
+            <h1 className="text-3xl font-bold tracking-tight text-white uppercase italic">Carteira unificada</h1>
+            <p className="text-slate-400">Gerencie todos os clientes (Loja Online e Física).</p>
         </div>
         <Button onClick={handleAddClick} className="bg-red-600 hover:bg-red-700 font-bold shrink-0">
           <Plus size={18} className="mr-2"/> Novo Cliente
@@ -565,6 +602,17 @@ export function AdminCustomers() {
             <option value="ativo">Somente Ativos</option>
             <option value="inativo">Inativos</option>
          </select>
+
+         <select 
+            className="border py-2 px-3 rounded-lg bg-slate-900 text-sm outline-none w-full sm:w-auto font-medium"
+            value={originFilter}
+            onChange={e => setOriginFilter(e.target.value as any)}
+         >
+            <option value="todos">Todas as Origens</option>
+            <option value="online">Loja Online</option>
+            <option value="pdv">Loja Física (PDV)</option>
+            <option value="manual">Manual / Gerente</option>
+         </select>
       </div>
       
       <div className="bg-slate-900 rounded-xl shadow-sm border overflow-hidden">
@@ -574,6 +622,7 @@ export function AdminCustomers() {
               <tr>
                 <th className="px-6 py-4 font-bold">Cliente</th>
                 <th className="px-6 py-4 font-bold">Localidade (Entrega base)</th>
+                <th className="px-6 py-4 font-bold text-center">Origem</th>
                 <th className="px-6 py-4 font-bold text-center">Status</th>
                 <th className="px-6 py-4 font-bold text-center">Compras</th>
                 <th className="px-6 py-4 font-bold text-right">LTV / Gasto</th>
@@ -596,6 +645,15 @@ export function AdminCustomers() {
                       <p className="text-slate-400 text-[11px] whitespace-normal break-words max-w-[250px]">
                           {c.endereco?.bairro}, {c.endereco?.rua}, {c.endereco?.numero}
                       </p>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                       <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter w-fit mx-auto ${
+                         c.origin === 'pdv' ? 'bg-indigo-900/40 text-indigo-400 border border-indigo-500/30' : 
+                         c.origin === 'online' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-500/30' : 
+                         'bg-slate-900/40 text-slate-400 border border-slate-700'
+                       }`}>
+                           {c.origin || 'online'}
+                       </span>
                   </td>
                   <td className="px-6 py-4 text-center">
                        <span className={`px-2 flex items-center justify-center mx-auto py-1 rounded text-[10px] font-bold uppercase tracking-wider w-fit ${c.status === 'ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-950 text-slate-400'}`}>

@@ -582,7 +582,10 @@ export function AdminPDV() {
     try {
       const { customerService } =
         await import("../../services/customerService");
-      const cId = await customerService.saveCustomer(newCustomer as Customer);
+      const cId = await customerService.saveCustomer({
+        ...newCustomer,
+        origin: 'pdv'
+      } as Customer);
       const c = await customerService.getCustomerByWhatsapp(cId);
       if (c) {
         setSelectedCustomer(c);

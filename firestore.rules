@@ -206,6 +206,17 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /abandoned_carts/{doc} {
+      allow read, delete: if can('logs', 'visualizar');
+      allow create, update: if true; // Allowed for storefront tracking
+    }
+
+    match /recovery_logs/{doc} {
+      allow read: if can('logs', 'visualizar');
+      allow create: if true; // Allowed for server background job
+      allow update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

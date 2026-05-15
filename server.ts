@@ -6,7 +6,7 @@ import { MercadoPagoConfig, Preference } from 'mercadopago';
 import aiRoutes from './src/server/routes/aiRoutes.js';
 import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
-import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from './src/lib/firebase';
 import admin from 'firebase-admin';
 import firebaseConfig from './firebase-applet-config.json';
@@ -25,29 +25,43 @@ if (firebaseConfig.projectId !== EXPECTED_PROJECT_ID) {
 
 // Initialize firebase-admin explicitly
 let adminApp: admin.app.App;
-if (!admin.apps.length) {
-  console.log("🔥 [Firebase Admin] Initializing explicitly for project:", EXPECTED_PROJECT_ID);
-  
-  const credential = admin.credential.applicationDefault();
-  if (!credential) {
-    console.error("❌ CRITICAL: Firebase Admin credentials not found! Ensure Service Account is properly configured.");
+try {
+  if (!admin.apps.length) {
+    console.log("🔥 [Firebase Admin] Initializing DEFAULT app for project:", EXPECTED_PROJECT_ID);
+    
+    const credential = admin.credential.applicationDefault();
+    adminApp = admin.initializeApp({
+      credential,
+      projectId: EXPECTED_PROJECT_ID,
+      storageBucket: firebaseConfig.storageBucket,
+    });
+  } else {
+    // Try to get the existing default app or our named one
+    adminApp = admin.apps[0] || admin.app();
+    console.log("♻️ [Firebase Admin] Using existing admin app");
+  }
+} catch (e: any) {
+  console.log("⚠️ [Firebase Admin] Standard init failed, attempting fallback naming:", e.message);
+  try {
+    adminApp = admin.initializeApp({
+      projectId: EXPECTED_PROJECT_ID,
+      storageBucket: firebaseConfig.storageBucket,
+    }, 'discreta-fallback-' + Date.now());
+  } catch (e2: any) {
+    console.error("❌ CRITICAL: Firebase Admin initialization failed completely:", e2.message);
     process.exit(1);
   }
+}
 
-  adminApp = admin.initializeApp({
-    credential,
-    projectId: EXPECTED_PROJECT_ID,
-    storageBucket: firebaseConfig.storageBucket,
-  }, 'discreta-boutique-admin');
+// Logging as requested with safety checks
+if (adminApp && adminApp.options) {
+    console.log("✅ [Firebase Admin] Firebase Project:", adminApp.options.projectId);
+    console.log("📦 [Firebase Admin] Firestore Initialized for Project:", adminApp.options.projectId);
 } else {
-  adminApp = admin.app('discreta-boutique-admin');
+    console.warn("⚠️ [Firebase Admin] Admin app initialized but options are unavailable.");
 }
 
 const adminDb = adminApp.firestore();
-
-// Logging as requested
-console.log("✅ [Firebase Admin] Firebase Project:", adminApp.options.projectId);
-console.log("📦 [Firebase Admin] Firestore Initialized for Project:", adminApp.options.projectId);
 
 // Verify connection
 (async () => {
@@ -89,12 +103,21 @@ async function startServer() {
         console.log("✅ ROTA DE PEDIDO CHAMADA");
         const orderData = req.body;
         
-        // Ensure dates are Firestore Timestamps rather than strings
-        orderData.createdAt = serverTimestamp();
-        orderData.updatedAt = serverTimestamp();
+        // Prepare order data
+        const data = {
+            ...orderData,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
         
-        // Save to DB (Listener will handle the webhook!)
-        const docRef = await addDoc(collection(db, 'orders'), orderData);
+        // Save to DB using adminDb
+        const docRef = await adminDb.collection('orders').add(data);
+        
+        // Mark as recovered if phone exists
+        if (orderData.customerWhatsapp) {
+          const { serverRecoveryService } = await import('./src/server/services/serverRecoveryService');
+          await serverRecoveryService.markAsRecovered(orderData.customerWhatsapp);
+        }
         
         res.json({ success: true, orderId: docRef.id });
     } catch (error: any) {
@@ -137,9 +160,9 @@ async function startServer() {
       const { orderId } = req.body;
       if (!orderId) return res.status(400).json({ error: "Order ID é obrigatório" });
       
-      // Fetch the order from Firestore
-      const orderDoc = await getDoc(doc(db, 'orders', orderId));
-      if (!orderDoc.exists()) {
+      // Fetch the order from Firestore using adminDb
+      const orderDoc = await adminDb.collection('orders').doc(orderId).get();
+      if (!orderDoc.exists) {
           return res.status(404).json({ error: "Pedido não encontrado" });
       }
       
@@ -204,6 +227,29 @@ async function startServer() {
       console.error("MP Preference Error:", error);
       const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
       res.status(500).json({ error: errorMessage });
+    }
+  });
+
+  // Test Abandoned Cart Recovery Webhook (Proxy)
+  app.post("/api/admin/test-recovery-webhook", async (req, res) => {
+    try {
+      const { name, phone } = req.body;
+      if (!name || !phone) return res.status(400).json({ error: "Nome e telefone são obrigatórios" });
+      
+      // We use the service already defined in the project
+      // It exists in src/services/abandonedCartWebhookService.ts
+      // Note: we can import it directly since tsx handles it
+      const { abandonedCartWebhookService } = await import("./src/services/abandonedCartWebhookService");
+      const success = await abandonedCartWebhookService.sendRecoveryWebhook(name, phone);
+      
+      if (success) {
+        res.json({ success: true });
+      } else {
+        res.status(500).json({ success: false, error: "O webhook falhou. Verifique os logs de recuperação." });
+      }
+    } catch (error: any) {
+      console.error("Erro no teste de webhook:", error);
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 
@@ -413,6 +459,17 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
     setupOrderListener();
+    
+    // Background Job: Abandoned Cart Recovery (every 5 minutes)
+    console.log("⏱️  [Recovery] Background monitor started.");
+    setInterval(async () => {
+      try {
+        const { serverRecoveryService } = await import('./src/server/services/serverRecoveryService');
+        await serverRecoveryService.processAbandonedCarts();
+      } catch (e: any) {
+        console.error("❌ [Recovery Job Error]:", e.message);
+      }
+    }, 5 * 60 * 1000); // 5 min
   });
 }
 

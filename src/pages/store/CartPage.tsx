@@ -9,6 +9,7 @@ import { useFeedback } from '../../contexts/FeedbackContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { customerService } from '../../services/customerService';
 import { stockMovementService } from '../../services/stockMovementService';
+import { abandonedCartService } from '../../services/abandonedCartService';
 import { deliveryAreaService, State, City, DeliveryArea } from '../../services/deliveryAreaService';
 import { settingsService, PaymentSettings, MercadoPagoSettings, OperatingHoursSettings } from '../../services/settingsService';
 import { doc, getDoc } from 'firebase/firestore';
@@ -132,6 +133,17 @@ export function CartPage() {
 
   const [showMpBrick, setShowMpBrick] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+  
+  // ABANDONED CART RECOVERY MONITOR
+  useEffect(() => {
+    if (name && whatsapp && whatsapp.replace(/\D/g, '').length >= 10 && items.length > 0) {
+       // Debounce slightly to avoid many calls
+       const timer = setTimeout(() => {
+          abandonedCartService.monitorCartActivity(name, whatsapp, `CART_${Date.now()}`);
+       }, 5000); // 5s debounce
+       return () => clearTimeout(timer);
+    }
+  }, [name, whatsapp, items.length]);
 
   const lastSearchedPhone = useRef('');
 

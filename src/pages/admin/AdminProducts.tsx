@@ -1959,9 +1959,19 @@ export function AdminProducts() {
                            <div className="flex flex-col min-w-0 max-w-[300px]">
                               <h4 className="font-bold text-white group-hover:text-red-600 transition-colors uppercase text-[12px] whitespace-normal break-words">{prod.name}</h4>
                               <span className="text-[10px] text-slate-400 font-black tracking-widest">{prod.sku || 'SEM SKU'}</span>
-                              <div className="flex gap-2 mt-1">
-                                 {prod.featured && <span className="bg-amber-100 text-amber-700 text-[8px] font-bold px-1 py-0.5 rounded leading-none">DESTAQUE</span>}
-                                 {prod.active ? <span className="bg-green-100 text-green-700 text-[8px] font-bold px-1 py-0.5 rounded leading-none italic uppercase">Ativo</span> : <span className="bg-red-100 text-red-700 text-[8px] font-bold px-1 py-0.5 rounded leading-none italic uppercase">Inativo</span>}
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                 {prod.categoryIds && prod.categoryIds.length > 0 ? (
+                                   prod.categoryIds.slice(0, 2).map(cid => (
+                                     <span key={cid} className="bg-slate-900 border border-slate-700 text-slate-400 text-[8px] font-bold px-1 py-0.5 rounded leading-none uppercase">
+                                       {categories.find(c => c.id === cid)?.name || 'Cat'}
+                                     </span>
+                                   ))
+                                 ) : (
+                                   <span className="bg-slate-900 border border-slate-700 text-slate-500 text-[8px] font-bold px-1 py-0.5 rounded leading-none uppercase italic">Sem Categoria</span>
+                                 )}
+                                 {prod.categoryIds && prod.categoryIds.length > 2 && (
+                                   <span className="bg-slate-900 border border-slate-700 text-slate-500 text-[8px] font-bold px-1 py-0.5 rounded leading-none">+{prod.categoryIds.length - 2}</span>
+                                 )}
                               </div>
                            </div>
                         </div>
@@ -1995,10 +2005,10 @@ export function AdminProducts() {
                                  setTargetCategoryIds(prod.categoryIds || (prod.categoryId ? [prod.categoryId] : []));
                                  setIsSingleCategoryModalOpen(true);
                                }} 
-                               className="p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 hover:text-red-600 hover:border-red-600 transition-all shadow-sm"
+                               className="p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 hover:text-red-600 hover:border-red-600 transition-all shadow-sm group/btn"
                                title="Gerenciar Categorias"
                              >
-                                <Layers size={16} />
+                                <Plus size={16} className="group-hover/btn:scale-110 transition-transform" />
                              </button>
                            )}
                            {canEdit && (

@@ -145,7 +145,11 @@ export function AdminCategories() {
               catData.level = parentId ? 1 : 0;
 
               const existingId = row.id;
-              const exists = currentCats.find(c => (existingId && c.id === existingId) || c.slug === catData.slug);
+              // Ajustado para encontrar por nome e pai, permitindo duplicados em raizes diferentes
+              const exists = currentCats.find(c => 
+                (existingId && c.id === existingId) || 
+                (c.name.trim().toLowerCase() === catData.name?.trim().toLowerCase() && c.parentId === catData.parentId)
+              );
 
               if (exists) {
                 await categoryService.updateCategory(exists.id, catData);
@@ -281,23 +285,39 @@ export function AdminCategories() {
       return;
     }
 
-    // Check for duplicate name
+    // Nova lógica de validação: nomes duplicados permitidos em raizes diferentes
     const nameLower = form.name.trim().toLowerCase();
-    const isDuplicate = categories.some(c => 
-      c.name.trim().toLowerCase() === nameLower && 
-      c.id !== editingId
-    );
+    const isSubcategory = !!form.parentId;
 
-    if (isDuplicate) {
-      toast("Já existe uma categoria com esse nome.", 'error');
-      return;
+    if (isSubcategory) {
+      const isDuplicateInSameTree = categories.some(c => 
+        c.parentId === form.parentId && 
+        c.name.trim().toLowerCase() === nameLower && 
+        c.id !== editingId
+      );
+
+      if (isDuplicateInSameTree) {
+        toast("Já existe uma subcategoria com este nome dentro desta categoria raiz.", 'error');
+        return;
+      }
     }
+    // Se for raiz, permite salvar conforme solicitado. Nenhuma interrupção aqui.
 
     setSubmitting(true);
     try {
+      let finalSlug = form.slug || generateSlug(form.name);
+      
+      // Garantir que o slug seja único mesmo que nomes sejam duplicados
+      let slugAttempts = 0;
+      let uniqueSlug = finalSlug;
+      while (categories.some(c => c.slug === uniqueSlug && c.id !== editingId)) {
+        slugAttempts++;
+        uniqueSlug = `${finalSlug}-${slugAttempts}`;
+      }
+
       const finalForm = {
         ...form,
-        slug: form.slug || generateSlug(form.name),
+        slug: uniqueSlug,
         level: form.parentId ? 1 : 0 // Simplified for now, can be updated for deeper levels
       };
 

@@ -1,12 +1,17 @@
-import { collection, onSnapshot, query, updateDoc, doc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { getAdminDb } from '../lib/firebaseAdmin';
 import { sendWebhook } from './botConversaService';
+import admin from 'firebase-admin';
 
 export function setupOrderListener() {
-    console.log("[FirestoreListener] Iniciando listener de pedidos...");
-    const q = query(collection(db, 'orders'));
+    const adminDb = getAdminDb();
+    if (!adminDb) {
+        console.error("[FirestoreListener] AdminDb não inicializado.");
+        return;
+    }
+
+    console.log("[FirestoreListener] Iniciando listener de pedidos (ADMIN)...");
     
-    onSnapshot(q, (snapshot) => {
+    adminDb.collection('orders').onSnapshot((snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
             const orderData = change.doc.data();
             const order = { 
@@ -17,9 +22,6 @@ export function setupOrderListener() {
             } as any;
             
             if (change.type === 'added' || change.type === 'modified') {
-                // Notificar sobre todos os pedidos (mantendo funcionamento para loja online e PDV caso tenham whatsapp)
-                // Se não houver telefone no payload do webhook lá na frente ele rejeita suavemente
-
                 // Prevent duplicate submission by verifying last sent
                 if (orderData.last_status_sent === orderData.status) {
                     return;
@@ -27,13 +29,13 @@ export function setupOrderListener() {
 
                 // If added, ignore old orders to avoid flooding when the server restarts
                 if (change.type === 'added') {
-                    const createdAtString = orderData.createdAt;
-                    if (createdAtString) {
-                        const createdAt = new Date(createdAtString).getTime();
-                        const now = new Date().getTime();
-                        if (now - createdAt > 1000 * 60 * 5) { // Older than 5 minutes
+                    const createdAt = orderData.createdAt;
+                    if (createdAt) {
+                        const createdTime = (createdAt as admin.firestore.Timestamp).toMillis();
+                        const now = Date.now();
+                        if (now - createdTime > 1000 * 60 * 5) { // Older than 5 minutes
                             // Mark as sent silently without triggering webhook
-                            await updateDoc(doc(db, 'orders', order.id), {
+                            await change.doc.ref.update({
                                 last_status_sent: orderData.status
                             });
                             return;
@@ -41,16 +43,14 @@ export function setupOrderListener() {
                     }
                 }
 
-                console.log(`[FirestoreListener] Processando evento de pedido para botconversa: ${order.id} - Status: ${order.status}`);
+                console.log(`[FirestoreListener] Processando evento de pedido para botconversa (ADMIN): ${order.id} - Status: ${order.status}`);
                 try {
-                   // Adicionando um pequeno delay para garantir que os dados do pedido estejam estáveis
                    await new Promise(resolve => setTimeout(resolve, 2000));
                    
                    const success = await sendWebhook(order);
                    
                    if (success) {
-                       // Marca no firestore que o status atual foi enviado
-                       await updateDoc(doc(db, 'orders', order.id), {
+                       await change.doc.ref.update({
                            last_status_sent: order.status,
                            webhook_last_sent: new Date().toISOString()
                        });
@@ -60,5 +60,7 @@ export function setupOrderListener() {
                 }
             }
         });
+    }, (error) => {
+        console.error("[FirestoreListener] Erro no snapshot:", error);
     });
 }

@@ -20,6 +20,7 @@ export interface Customer {
   dataNascimento?: string;
   endereco: CustomerAddress;
   status: 'ativo' | 'inativo';
+  origin?: 'online' | 'pdv' | 'manual';
   notes?: string;
   
   // Computed na runtime
@@ -33,10 +34,17 @@ export interface Customer {
 
 export const customerService = {
   async listCustomers(): Promise<Customer[]> {
-    const qC = query(collection(db, 'customers'), orderBy('createdAt', 'desc'));
+    const qC = collection(db, 'customers');
     const snapC = await getDocs(qC);
-    const customers = snapC.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+    let customers = snapC.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
     
+    // Sort in memory to include docs without createdAt
+    customers.sort((a, b) => {
+      const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : (a.createdAt ? new Date(a.createdAt) : new Date(0));
+      const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : (b.createdAt ? new Date(b.createdAt) : new Date(0));
+      return dateB.getTime() - dateA.getTime();
+    });
+
     // Fetch all orders to compute stats
     // Note: for a massive scale app, this would require Cloud Functions,
     // but for an MVP/local business, this is perfectly fine and avoids NoSQL redundancy sync issues.
@@ -84,7 +92,11 @@ export const customerService = {
     const cId = cleanPhone || data.id || `CUST_${Date.now()}`;
     const ref = doc(db, 'customers', cId);
     
-    const payload = { ...data, updatedAt: serverTimestamp() } as any;
+    const payload = { 
+      ...data, 
+      updatedAt: serverTimestamp(),
+      origin: data.origin || 'manual'
+    } as any;
     delete payload.id;
 
     // Use setDoc with merge: true to avoid overwriting if doc exists (upsert behavior)
@@ -108,7 +120,11 @@ export const customerService = {
     const cId = cleanPhone;
     const ref = doc(db, 'customers', cId);
     
-    const payload = { ...data, updatedAt: serverTimestamp() } as any;
+    const payload = { 
+      ...data, 
+      updatedAt: serverTimestamp(),
+      origin: data.origin || 'online'
+    } as any;
     delete payload.id;
     
     await setDoc(ref, payload, { merge: true });

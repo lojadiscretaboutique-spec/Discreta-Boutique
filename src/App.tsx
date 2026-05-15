@@ -45,6 +45,8 @@ const AdminPaymentMethods = lazy(() => import('./pages/admin/financial/AdminPaym
 const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours').then(m => ({ default: m.AdminOperatingHours })));
 const AdminWebhookLogs = lazy(() => import('./pages/admin/AdminWebhookLogs'));
 const AdminSmartStock = lazy(() => import('./pages/admin/AdminSmartStock'));
+const AdminRecoveryConfig = lazy(() => import('./pages/admin/AdminRecoveryConfig').then(m => ({ default: m.AdminRecoveryConfig })));
+const AdminRecoveryLogs = lazy(() => import('./pages/admin/AdminRecoveryLogs').then(m => ({ default: m.AdminRecoveryLogs })));
 
 // Loading Component (Splash Screen)
 function PageLoader() {
@@ -172,6 +174,8 @@ function AppContent() {
             <Route path="horarios" element={<AdminOperatingHours />} />
             <Route path="webhooks-logs" element={<AdminWebhookLogs />} />
             <Route path="estoque-inteligente" element={<AdminSmartStock />} />
+            <Route path="config/recuperador-carrinho" element={<AdminRecoveryConfig />} />
+            <Route path="config/recovery-logs" element={<AdminRecoveryLogs />} />
             <Route path="config" element={<AdminConfig />} />
           </Route>
         </Routes>

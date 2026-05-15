@@ -1,7 +1,8 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Package, ShoppingCart, Users, Settings, LogOut, LayoutDashboard, Image as ImageIcon, Layers, ClipboardList, Shield, MapPin, Banknote, DollarSign, Truck, Clock, Tag, Brain, Moon, Sun } from 'lucide-react';
+import { Package, ShoppingCart, Users, Settings, LogOut, LayoutDashboard, Image as ImageIcon, Layers, ClipboardList, Shield, MapPin, Banknote, DollarSign, Truck, Clock, Tag, Brain, Moon, Sun, RefreshCcw } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useSettings } from '../contexts/SettingsContext';
+import { useFeedback } from '../contexts/FeedbackContext';
 import { auth } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { cn } from '../lib/utils';
@@ -10,10 +11,51 @@ import { useEffect, useState } from 'react';
 export function AdminLayout() {
   const { user, userData, isAdmin, isLoading, checkAuth, hasPermission } = useAuthStore();
   const settings = useSettings();
+  const { toast } = useFeedback();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const menu = [
+    { name: 'Dashboard', path: '/admin', icon: LayoutDashboard, permission: 'dashboard' },
+    { name: 'Insights IA', path: '/admin/ia-insights', icon: Brain, permission: 'dashboard' }, // Added here
+    { name: 'PDV / Vender', path: '/admin/pdv', icon: ShoppingCart, permission: 'orders' },
+    { name: 'Pedidos', path: '/admin/pedidos', icon: ShoppingCart, permission: 'orders' },
+    { name: 'Caixa', path: '/admin/caixa', icon: Banknote, permission: 'caixa' },
+    { name: 'Categorias', path: '/admin/categorias', icon: Layers, permission: 'categories' },
+    { name: 'Produtos', path: '/admin/produtos', icon: Package, permission: 'produtos' },
+    { name: 'Etiquetas', path: '/admin/etiquetas', icon: Tag, permission: 'produtos' },
+    { name: 'Estoque', path: '/admin/mov_estoque', icon: ClipboardList, permission: 'stock' },
+    { name: 'Compras', path: '/admin/compras', icon: Truck, permission: 'compras' },
+    { name: 'Clientes', path: '/admin/clientes', icon: Users, permission: 'clientes' },
+    { name: 'Financeiro', path: '/admin/financeiro', icon: DollarSign, permission: 'financeiro', submenu: [
+        { name: 'Lançamentos', path: '/admin/financeiro/lancamentos', permission: 'financeiro' },
+        { name: 'Contas a Receber', path: '/admin/financeiro/lancamentos?filtro=receber', permission: 'financeiro' },
+        { name: 'Contas a Pagar', path: '/admin/financeiro/lancamentos?filtro=pagar', permission: 'financeiro' },
+        { name: 'Relatórios', path: '/admin/financeiro/relatorios', permission: 'financeiro' },
+        { name: 'Comissões', path: '/admin/financeiro/comissoes', permission: 'financeiro' },
+        { name: 'Integração', path: '/admin/financeiro/integracao', permission: 'financeiro' },
+        { name: 'Formas de Pagamento', path: '/admin/financeiro/formas-pagamento', permission: 'financeiro' }
+    ]},
+    { name: 'Áreas de Entrega', path: '/admin/areas-entrega', icon: MapPin, permission: 'areasEntrega' },
+    { name: 'Horários da Loja', path: '/admin/horarios', icon: Clock, permission: 'settings' },
+    { name: 'Configurações', path: '/admin/config', icon: Settings, permission: 'settings', submenu: [
+        { name: 'Dados da Loja', path: '/admin/config', permission: 'settings' },
+        { name: 'Recuperador Carrinho', path: '/admin/config/recuperador-carrinho', permission: 'settings' },
+        { name: 'Logs Recuperação', path: '/admin/config/recovery-logs', permission: 'logs' }
+    ]},
+    { name: 'Contas / Equipe', path: '/admin/usuarios', icon: Shield, permission: 'users', submenu: [
+        { name: 'Usuários', path: '/admin/usuarios', permission: 'users' },
+        { name: 'Perfis de Acesso', path: '/admin/perfis', permission: 'roles' },
+        { name: 'Logs / Auditoria', path: '/admin/logs', permission: 'logs' },
+        { name: 'Webhooks WhatsApp', path: '/admin/webhooks-logs', permission: 'logs' },
+        { name: 'Estoque Inteligente', path: '/admin/estoque-inteligente', permission: 'products' },
+    ]},
+    { name: 'Banners', path: '/admin/banners', icon: ImageIcon, permission: 'banners' },
+  ];
+
   const [usersSubMenuOpen, setUsersSubMenuOpen] = useState(false);
   const [financeSubMenuOpen, setFinanceSubMenuOpen] = useState(false);
+  const [configSubMenuOpen, setConfigSubMenuOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false); // Unified state for all screen sizes
   
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -71,7 +113,7 @@ export function AdminLayout() {
         }
 
         if (!isAdmin && !hasPermission(permissionNeeded, 'visualizar')) {
-          toast.error(`Acesso Negado: Você não tem permissão para acessar esta página (${matchedItem.name}). Motivo: Falta perfil de acesso.`);
+          toast(`Acesso Negado: Você não tem permissão para acessar esta página (${matchedItem.name}). Motivo: Falta perfil de acesso.`, "error");
           // If no dashboard permission, try to find another one
           if (currentPath === '/admin' || currentPath === '/admin/') {
              const firstAllowed = menu.find(m => hasPermission(m.permission, 'visualizar'));
@@ -113,40 +155,6 @@ export function AdminLayout() {
   const hasAnyPermission = isAdmin || Object.keys(permissions).some(k => hasPermission(k, 'visualizar'));
   
   if (!hasAnyPermission) return null;
-
-  const menu = [
-    { name: 'Dashboard', path: '/admin', icon: LayoutDashboard, permission: 'dashboard' },
-    { name: 'Insights IA', path: '/admin/ia-insights', icon: Brain, permission: 'dashboard' }, // Added here
-    { name: 'PDV / Vender', path: '/admin/pdv', icon: ShoppingCart, permission: 'orders' },
-    { name: 'Pedidos', path: '/admin/pedidos', icon: ShoppingCart, permission: 'orders' },
-    { name: 'Caixa', path: '/admin/caixa', icon: Banknote, permission: 'caixa' },
-    { name: 'Categorias', path: '/admin/categorias', icon: Layers, permission: 'categories' },
-    { name: 'Produtos', path: '/admin/produtos', icon: Package, permission: 'produtos' },
-    { name: 'Etiquetas', path: '/admin/etiquetas', icon: Tag, permission: 'produtos' },
-    { name: 'Estoque', path: '/admin/mov_estoque', icon: ClipboardList, permission: 'stock' },
-    { name: 'Compras', path: '/admin/compras', icon: Truck, permission: 'compras' },
-    { name: 'Clientes', path: '/admin/clientes', icon: Users, permission: 'clientes' },
-    { name: 'Financeiro', path: '/admin/financeiro', icon: DollarSign, permission: 'financeiro', submenu: [
-        { name: 'Lançamentos', path: '/admin/financeiro/lancamentos', permission: 'financeiro' },
-        { name: 'Contas a Receber', path: '/admin/financeiro/lancamentos?filtro=receber', permission: 'financeiro' },
-        { name: 'Contas a Pagar', path: '/admin/financeiro/lancamentos?filtro=pagar', permission: 'financeiro' },
-        { name: 'Relatórios', path: '/admin/financeiro/relatorios', permission: 'financeiro' },
-        { name: 'Comissões', path: '/admin/financeiro/comissoes', permission: 'financeiro' },
-        { name: 'Integração', path: '/admin/financeiro/integracao', permission: 'financeiro' },
-        { name: 'Formas de Pagamento', path: '/admin/financeiro/formas-pagamento', permission: 'financeiro' }
-    ]},
-    { name: 'Áreas de Entrega', path: '/admin/areas-entrega', icon: MapPin, permission: 'areasEntrega' },
-    { name: 'Horários da Loja', path: '/admin/horarios', icon: Clock, permission: 'settings' },
-    { name: 'Contas / Equipe', path: '/admin/usuarios', icon: Shield, permission: 'users', submenu: [
-        { name: 'Usuários', path: '/admin/usuarios', permission: 'users' },
-        { name: 'Perfis de Acesso', path: '/admin/perfis', permission: 'roles' },
-        { name: 'Logs / Auditoria', path: '/admin/logs', permission: 'logs' },
-        { name: 'Webhooks WhatsApp', path: '/admin/webhooks-logs', permission: 'logs' },
-        { name: 'Estoque Inteligente', path: '/admin/estoque-inteligente', permission: 'products' },
-    ]},
-    { name: 'Banners', path: '/admin/banners', icon: ImageIcon, permission: 'banners' },
-    { name: 'Configurações', path: '/admin/config', icon: Settings, permission: 'settings' },
-  ];
 
   return (
     <div className={cn("min-h-screen flex flex-col w-full font-sans print:bg-white print:min-h-0 admin-container transition-colors duration-300", theme === 'dark' ? "dark bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900")}>
@@ -246,18 +254,22 @@ export function AdminLayout() {
                 if (item.submenu) {
                     const isUsersSub = item.name === 'Contas / Equipe';
                     const isFinanceSub = item.name === 'Financeiro';
+                    const isConfigSub = item.name === 'Configurações';
                     
                     const isSubActive = isUsersSub 
                         ? (location.pathname.startsWith('/admin/usuarios') || location.pathname.startsWith('/admin/perfis') || location.pathname.startsWith('/admin/logs'))
                         : isFinanceSub 
                             ? location.pathname.startsWith('/admin/financeiro')
-                            : false;
+                            : isConfigSub
+                                ? location.pathname.startsWith('/admin/config')
+                                : false;
                             
-                    const isOpen = isUsersSub ? usersSubMenuOpen : (isFinanceSub ? financeSubMenuOpen : false);
+                    const isOpen = isUsersSub ? usersSubMenuOpen : (isFinanceSub ? financeSubMenuOpen : (isConfigSub ? configSubMenuOpen : false));
                     
                     const toggleMenu = () => {
                         if (isUsersSub) setUsersSubMenuOpen(!usersSubMenuOpen);
                         if (isFinanceSub) setFinanceSubMenuOpen(!financeSubMenuOpen);
+                        if (isConfigSub) setConfigSubMenuOpen(!configSubMenuOpen);
                     };
 
                     return (

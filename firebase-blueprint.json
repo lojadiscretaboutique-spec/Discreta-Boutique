@@ -283,6 +283,33 @@ export default {
         timestamp: { type: "string", format: "date-time" }
       },
       required: ["busca_original", "busca_processada", "interpretacao"]
+    },
+    AbandonedCart: {
+        title: "Abandoned Cart",
+        description: "A cart that was identified as potentially abandoned",
+        type: "object",
+        properties: {
+            name: { type: "string" },
+            phone: { type: "string" },
+            cartId: { type: "string" },
+            updatedAt: { type: "string", format: "date-time" },
+            status: { type: "string" },
+            attempts: { type: "number" },
+            lastAttempt: { type: "string", format: "date-time" }
+        }
+    },
+    RecoveryLog: {
+        title: "Recovery Log",
+        description: "Log of a recovery attempt",
+        type: "object",
+        properties: {
+            name: { type: "string" },
+            phone: { type: "string" },
+            timestamp: { type: "string", format: "date-time" },
+            status: { type: "string" },
+            response: { type: "string" },
+            isSuccess: { type: "boolean" }
+        }
     }
   },
   firestore: {
@@ -341,6 +368,14 @@ export default {
     "intelligent_searches": {
       schema: { $ref: "#/entities/IntelligentSearch" },
       description: "AI search cache and learning data"
+    },
+    "abandoned_carts": {
+      schema: { $ref: "#/entities/AbandonedCart" },
+      description: "Carts that been started but not finished"
+    },
+    "recovery_logs": {
+      schema: { $ref: "#/entities/RecoveryLog" },
+      description: "Logs of recovery webhook attempts"
     }
   }
 }
