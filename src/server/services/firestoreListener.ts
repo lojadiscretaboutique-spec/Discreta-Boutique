@@ -1,17 +1,17 @@
-import { getAdminDb } from '../lib/firebaseAdmin';
+import { db } from '../../lib/firebase';
+import { 
+    collection, 
+    onSnapshot, 
+    doc, 
+    updateDoc, 
+    Timestamp 
+} from 'firebase/firestore';
 import { sendWebhook } from './botConversaService';
-import admin from 'firebase-admin';
 
 export function setupOrderListener() {
-    const adminDb = getAdminDb();
-    if (!adminDb) {
-        console.error("[FirestoreListener] AdminDb não inicializado.");
-        return;
-    }
-
-    console.log("[FirestoreListener] Iniciando listener de pedidos (ADMIN)...");
+    console.log("[FirestoreListener] Iniciando listener de pedidos (Client SDK)...");
     
-    adminDb.collection('orders').onSnapshot((snapshot) => {
+    onSnapshot(collection(db, 'orders'), (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
             const orderData = change.doc.data();
             const order = { 
@@ -31,11 +31,11 @@ export function setupOrderListener() {
                 if (change.type === 'added') {
                     const createdAt = orderData.createdAt;
                     if (createdAt) {
-                        const createdTime = (createdAt as admin.firestore.Timestamp).toMillis();
+                        const createdTime = (createdAt as Timestamp).toMillis();
                         const now = Date.now();
                         if (now - createdTime > 1000 * 60 * 5) { // Older than 5 minutes
                             // Mark as sent silently without triggering webhook
-                            await change.doc.ref.update({
+                            await updateDoc(change.doc.ref, {
                                 last_status_sent: orderData.status
                             });
                             return;
@@ -43,14 +43,14 @@ export function setupOrderListener() {
                     }
                 }
 
-                console.log(`[FirestoreListener] Processando evento de pedido para botconversa (ADMIN): ${order.id} - Status: ${order.status}`);
+                console.log(`[FirestoreListener] Processando evento de pedido para botconversa (Client SDK): ${order.id} - Status: ${order.status}`);
                 try {
                    await new Promise(resolve => setTimeout(resolve, 2000));
                    
                    const success = await sendWebhook(order);
                    
                    if (success) {
-                       await change.doc.ref.update({
+                       await updateDoc(change.doc.ref, {
                            last_status_sent: order.status,
                            webhook_last_sent: new Date().toISOString()
                        });
@@ -61,6 +61,6 @@ export function setupOrderListener() {
             }
         });
     }, (error) => {
-        console.error("[FirestoreListener] Erro no snapshot:", error);
+        console.error("[FirestoreListener] Erro no snapshot (Client SDK):", error);
     });
 }

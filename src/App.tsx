@@ -172,7 +172,7 @@ function AppContent() {
             </Route>
             <Route path="areas-entrega" element={<AdminDeliveryAreas />} />
             <Route path="horarios" element={<AdminOperatingHours />} />
-            <Route path="webhooks-logs" element={<AdminWebhookLogs />} />
+            <Route path="config/webhooks-logs" element={<AdminWebhookLogs />} />
             <Route path="estoque-inteligente" element={<AdminSmartStock />} />
             <Route path="config/recuperador-carrinho" element={<AdminRecoveryConfig />} />
             <Route path="config/recovery-logs" element={<AdminRecoveryLogs />} />

@@ -1,8 +1,15 @@
 import axios from 'axios';
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { 
+    collection, 
+    addDoc, 
+    serverTimestamp, 
+    doc, 
+    getDoc 
+} from 'firebase/firestore';
 
-const WEBHOOK_URL = process.env.BOTCONVERSA_WEBHOOK_URL;
+// Removing the fixed WEBHOOK_URL to fetch it dynamically
+// const WEBHOOK_URL = process.env.BOTCONVERSA_WEBHOOK_URL;
 
 interface Pedido {
     id: string;
@@ -16,10 +23,38 @@ interface Pedido {
     [key: string]: any;
 }
 
-function gerarMensagem(pedido: Pedido): string {
+async function getStoreSettings(): Promise<{ webhook: string | null; template: string | null }> {
+    try {
+        const snap = await getDoc(doc(db, 'settings', 'store'));
+        if (snap.exists()) {
+            const data = snap.data();
+            return {
+                webhook: data?.botConversaWebhook || process.env.BOTCONVERSA_WEBHOOK_URL || null,
+                template: data?.orderMessageTemplate || null
+            };
+        }
+    } catch (e) {
+        console.error("Erro ao buscar configurações da loja no Firestore:", e);
+    }
+    return {
+        webhook: process.env.BOTCONVERSA_WEBHOOK_URL || null,
+        template: null
+    };
+}
+
+function gerarMensagem(pedido: Pedido, customTemplate?: string | null): string {
     const nome = pedido.nome || pedido.customerName || 'Cliente';
     const pid = pedido.id ? pedido.id.slice(-6).toUpperCase() : '000000';
-    const status = (pedido.status || '').toUpperCase().replace(/\s+/g, '_');
+    const statusLabel = pedido.status || 'Pendente';
+    const status = statusLabel.toUpperCase().replace(/\s+/g, '_');
+
+    // Se houver um template personalizado, usa ele ignorando o switch
+    if (customTemplate) {
+        return customTemplate
+            .replace(/{nome}/g, nome)
+            .replace(/{pedido_id}/g, pid)
+            .replace(/{status}/g, statusLabel);
+    }
 
     switch (status) {
         case 'NOVO':
@@ -52,7 +87,7 @@ function gerarMensagem(pedido: Pedido): string {
         
         case 'ENTREGUE':
         case 'FINALIZADO':
-            return `Olá ${nome}! 💖\n\nSeu pedido #${pid} foi entregue com sucesso ✨\n\nEsperamos que cada detalhe tenha sido exatamente como você imaginou.\n\nNa Discreta Boutique, acreditamos que experiências especiais começam nos pequenos cuidados…\n\nAproveite seu momento. 💎`;
+            return `Olá ${nome}! 💖\n\nSeu pedido #${pid} foi entregue com sucesso ✨\n\nEsperamos que cada detalhe tenha sido exatamente como você imaginou.\n\nAcredito que experiências especiais começam nos pequenos cuidados… Discreta Boutique. ✨\n\nAproveite seu momento. 💎`;
         
         case 'CANCELADO':
             return `Olá ${nome}! Seu pedido #${pid} foi CANCELADO. ❌\n\nSe houver alguma dúvida ou se quiser realizar uma nova escolha, nossa equipe está à disposição.\n\nAgradecemos o contato.`;
@@ -87,12 +122,14 @@ const logToFirestore = async (data: any) => {
             timestamp: serverTimestamp()
         });
     } catch (e) {
-        console.error("Erro ao salvar log no Firestore:", e);
+        console.error("Erro ao salvar log no Firestore (Client SDK):", e);
     }
 };
 
 export async function sendWebhook(pedido: Pedido, attempts = 1) {
-    if (!WEBHOOK_URL) {
+    const { webhook: webhookUrl, template: customTemplate } = await getStoreSettings();
+    
+    if (!webhookUrl) {
         console.error("❌ ERRO BOTCONVERSA: Webhook URL não configurada");
         return false;
     }
@@ -108,16 +145,28 @@ export async function sendWebhook(pedido: Pedido, attempts = 1) {
 
     const payload = {
         telefone: telefoneFormatado,
+        phone: telefoneFormatado,
+        whatsapp: telefoneFormatado,
         nome: nome,
+        name: nome,
+        customer_name: nome,
         pedido_id: pedido.id,
+        order_id: pedido.id,
         status: pedido.status,
-        mensagem: gerarMensagem({ ...pedido, nome })
+        mensagem: gerarMensagem({ ...pedido, nome }, customTemplate),
+        source: 'DiscretaBoutique_Order_Notification'
     };
 
     console.log(`🚀 [Attempt ${attempts}] ENVIANDO WEBHOOK`, pedido.id, payload);
 
     try {
-        const response = await axios.post(WEBHOOK_URL, payload, { timeout: 15000 });
+        const response = await axios.post(webhookUrl, payload, { 
+            timeout: 30000,
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
         
         await logToFirestore({
             orderId: pedido.id,

@@ -207,8 +207,8 @@ service cloud.firestore {
     }
 
     match /abandoned_carts/{doc} {
-      allow read, delete: if can('logs', 'visualizar');
-      allow create, update: if true; // Allowed for storefront tracking
+      allow read, create, update: if true; 
+      allow delete: if can('logs', 'excluir');
     }
 
     match /recovery_logs/{doc} {

@@ -6,76 +6,17 @@ import { MercadoPagoConfig, Preference } from 'mercadopago';
 import aiRoutes from './src/server/routes/aiRoutes.js';
 import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
-import { collection, getDocs } from 'firebase/firestore';
 import { db } from './src/lib/firebase';
-import admin from 'firebase-admin';
-import firebaseConfig from './firebase-applet-config.json';
-
-const EXPECTED_PROJECT_ID = "gen-lang-client-0000764233";
-
-// Forced Environment Variables to prevent fallback to internal AI Studio projects
-process.env.GOOGLE_CLOUD_PROJECT = EXPECTED_PROJECT_ID;
-process.env.GCLOUD_PROJECT = EXPECTED_PROJECT_ID;
-
-// Strict validation of project ID
-if (firebaseConfig.projectId !== EXPECTED_PROJECT_ID) {
-  console.error(`❌ CRITICAL: Project ID mismatch in config! Found ${firebaseConfig.projectId}, expected ${EXPECTED_PROJECT_ID}`);
-  process.exit(1);
-}
-
-// Initialize firebase-admin explicitly
-let adminApp: admin.app.App;
-try {
-  if (!admin.apps.length) {
-    console.log("🔥 [Firebase Admin] Initializing DEFAULT app for project:", EXPECTED_PROJECT_ID);
-    
-    const credential = admin.credential.applicationDefault();
-    adminApp = admin.initializeApp({
-      credential,
-      projectId: EXPECTED_PROJECT_ID,
-      storageBucket: firebaseConfig.storageBucket,
-    });
-  } else {
-    // Try to get the existing default app or our named one
-    adminApp = admin.apps[0] || admin.app();
-    console.log("♻️ [Firebase Admin] Using existing admin app");
-  }
-} catch (e: any) {
-  console.log("⚠️ [Firebase Admin] Standard init failed, attempting fallback naming:", e.message);
-  try {
-    adminApp = admin.initializeApp({
-      projectId: EXPECTED_PROJECT_ID,
-      storageBucket: firebaseConfig.storageBucket,
-    }, 'discreta-fallback-' + Date.now());
-  } catch (e2: any) {
-    console.error("❌ CRITICAL: Firebase Admin initialization failed completely:", e2.message);
-    process.exit(1);
-  }
-}
-
-// Logging as requested with safety checks
-if (adminApp && adminApp.options) {
-    console.log("✅ [Firebase Admin] Firebase Project:", adminApp.options.projectId);
-    console.log("📦 [Firebase Admin] Firestore Initialized for Project:", adminApp.options.projectId);
-} else {
-    console.warn("⚠️ [Firebase Admin] Admin app initialized but options are unavailable.");
-}
-
-const adminDb = adminApp.firestore();
+import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit } from 'firebase/firestore';
 
 // Verify connection
 (async () => {
   try {
-     // Basic check to ensure we are using the correct credentials and project
-     console.log("⏳ [Firestore Admin] Verifying connection...");
-     // Using a timeout for the verification check to prevent blocking startup indefinitely if network issues occur
-     const snapshot = await adminDb.collection('settings').limit(1).get();
-     console.log("⭐ [Firestore Admin] Connection Verified. Project:", adminApp.options.projectId);
+     console.log("⏳ [Firestore Client] Verifying connection...");
+     await getDocs(query(collection(db, 'settings'), limit(1)));
+     console.log("⭐ [Firestore Client] Connection Verified.");
   } catch (e: any) {
-     console.error("❌ [Firestore Admin] Connection Warning:", e.message);
-     if (e.message && e.message.includes('ais-us-east1-')) {
-       console.error("🛑 CRITICAL FAILURE: System is still trying to connect to internal AI Studio project!");
-     }
+     console.error("❌ [Firestore Client] Connection Warning:", e.message);
   }
 })();
 
@@ -103,15 +44,12 @@ async function startServer() {
         console.log("✅ ROTA DE PEDIDO CHAMADA");
         const orderData = req.body;
         
-        // Prepare order data
-        const data = {
+        // Save to DB using client SDK
+        await addDoc(collection(db, 'orders'), {
             ...orderData,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        };
-        
-        // Save to DB using adminDb
-        const docRef = await adminDb.collection('orders').add(data);
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
         
         // Mark as recovered if phone exists
         if (orderData.customerWhatsapp) {
@@ -160,13 +98,14 @@ async function startServer() {
       const { orderId } = req.body;
       if (!orderId) return res.status(400).json({ error: "Order ID é obrigatório" });
       
-      // Fetch the order from Firestore using adminDb
-      const orderDoc = await adminDb.collection('orders').doc(orderId).get();
-      if (!orderDoc.exists) {
+      // Fetch the order from Firestore using Client SDK
+      const orderDoc = await getDoc(doc(db, 'orders', orderId));
+      if (!orderDoc.exists()) {
           return res.status(404).json({ error: "Pedido não encontrado" });
       }
       
-      const pedido = { id: orderDoc.id, ...orderDoc.data() } as any;
+      const pedidoData = orderDoc.data();
+      const pedido = { id: orderDoc.id, ...pedidoData } as any;
       await sendWebhook(pedido);
       res.json({ success: true, message: "Webhook disparado com sucesso" });
     } catch (error: any) {
@@ -236,16 +175,20 @@ async function startServer() {
       const { name, phone } = req.body;
       if (!name || !phone) return res.status(400).json({ error: "Nome e telefone são obrigatórios" });
       
-      // We use the service already defined in the project
-      // It exists in src/services/abandonedCartWebhookService.ts
-      // Note: we can import it directly since tsx handles it
-      const { abandonedCartWebhookService } = await import("./src/services/abandonedCartWebhookService");
-      const success = await abandonedCartWebhookService.sendRecoveryWebhook(name, phone);
+      // Get settings manually to check if url is set
+      const settingsSnap = await getDoc(doc(db, 'settings', 'recovery'));
+      const settings = settingsSnap.exists() ? settingsSnap.data() : null;
+      
+      if (!settings?.webhookUrl) {
+          return res.status(400).json({ success: false, error: "URL do Webhook não configurada nas configurações de recuperação." });
+      }
+
+      const success = await serverRecoveryService.sendWebhook(settings.webhookUrl, name, phone);
       
       if (success) {
         res.json({ success: true });
       } else {
-        res.status(500).json({ success: false, error: "O webhook falhou. Verifique os logs de recuperação." });
+        res.status(500).json({ success: false, error: "O servidor do Bot Conversa rejeitou o envio. Verifique o link ou os logs." });
       }
     } catch (error: any) {
       console.error("Erro no teste de webhook:", error);

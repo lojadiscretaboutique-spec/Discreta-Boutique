@@ -122,13 +122,18 @@ export const abandonedCartService = {
     const q = query(
       collection(db, 'abandoned_carts'),
       where('status', '==', 'pending'),
-      where('expiresAt', '<=', now),
-      limit(20) // Batch process
+      limit(100)
     );
 
-    const snap = await getDocs(q);
+    const snapshots = await getDocs(q);
+    if (snapshots.empty) return;
+
+    // Manual filter for expiresAt to avoid composite index requirement
+    const expiredCarts = snapshots.docs
+      .filter(doc => (doc.data().expiresAt as Timestamp).toMillis() <= now.toMillis())
+      .slice(0, 20);
     
-    for (const d of snap.docs) {
+    for (const d of expiredCarts) {
       const session = { id: d.id, ...d.data() } as AbandonedCartSession;
       
       // Eligibility check: double check if an order was created recently by this phone

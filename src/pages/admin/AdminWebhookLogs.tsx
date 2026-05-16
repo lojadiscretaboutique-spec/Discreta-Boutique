@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { format } from 'date-fns';
 import { 
   CheckCircle2, XCircle, Info, RefreshCw, 
-  ExternalLink, Smartphone, User, MessageSquare, AlertTriangle, Clock
+  ExternalLink, Smartphone, User, MessageSquare, AlertTriangle, Clock, Settings, Save, Check
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Textarea } from '../../components/ui/textarea';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFeedback } from '../../contexts/FeedbackContext';
 
@@ -28,9 +30,31 @@ export default function AdminWebhookLogs() {
   const [logs, setLogs] = useState<WebhookLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<WebhookLog | null>(null);
+  const [config, setConfig] = useState({
+    url: '',
+    template: ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const { toast } = useFeedback();
 
   useEffect(() => {
+    async function loadConfig() {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'store'));
+        if (snap.exists()) {
+          const data = snap.data();
+          setConfig({
+            url: data.botConversaWebhook || '',
+            template: data.orderMessageTemplate || ''
+          });
+        }
+      } catch (e) {
+        console.error("Erro ao carregar config:", e);
+      }
+    }
+    loadConfig();
+
     const q = query(
       collection(db, 'webhook_logs'),
       orderBy('timestamp', 'desc'),
@@ -49,6 +73,23 @@ export default function AdminWebhookLogs() {
     return () => unsubscribe();
   }, [toast]);
 
+  const handleSaveConfig = async () => {
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'settings', 'store'), {
+        botConversaWebhook: config.url,
+        orderMessageTemplate: config.template
+      }, { merge: true });
+      setSaved(true);
+      toast("Configurações do Webhook salvas!");
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      toast("Erro ao salvar configurações", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const formatLogDate = (ts: any) => {
     if (!ts) return '...';
     const date = ts instanceof Timestamp ? ts.toDate() : new Date(ts);
@@ -57,20 +98,66 @@ export default function AdminWebhookLogs() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center bg-black p-6 rounded-2xl border border-red-900/30">
+      {/* Header com Estatísticas */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-black p-6 rounded-2xl border border-red-900/30 gap-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Logs de Automação (WhatsApp)</h1>
-          <p className="text-gray-400">Monitoramento em tempo real dos disparos para o BotConversa</p>
+          <h1 className="text-2xl font-bold text-white">Configuração & Logs (WhatsApp)</h1>
+          <p className="text-gray-400">Gerencie o endpoint do BotConversa e monitore os disparos.</p>
         </div>
         <div className="flex gap-4">
            <div className="bg-red-950/20 px-4 py-2 rounded-lg border border-red-900/20 text-center">
              <div className="text-2xl font-bold text-red-500">{logs.filter(l => !l.success).length}</div>
-             <div className="text-xs text-gray-500 uppercase tracking-widest font-bold">Falhas</div>
+             <div className="text-xs text-gray-400 uppercase tracking-widest font-bold">Falhas</div>
            </div>
            <div className="bg-green-950/20 px-4 py-2 rounded-lg border border-green-900/20 text-center">
              <div className="text-2xl font-bold text-green-500">{logs.filter(l => l.success).length}</div>
-             <div className="text-xs text-gray-500 uppercase tracking-widest font-bold">Sucessos</div>
+             <div className="text-xs text-gray-400 uppercase tracking-widest font-bold">Sucessos</div>
            </div>
+        </div>
+      </div>
+
+      {/* Seção de Configuração */}
+      <div className="bg-zinc-950 p-6 rounded-2xl border border-slate-800 space-y-6">
+        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <Settings size={20} className="text-red-600" />
+          Configuração da Automação
+        </h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">URL do Webhook (BotConversa)</label>
+              <Input 
+                value={config.url} 
+                onChange={e => setConfig({...config, url: e.target.value})} 
+                placeholder="https://webhook.botconversa.com.br/..."
+                className="bg-black border-slate-800 text-white"
+              />
+              <p className="text-[10px] text-gray-500 mt-1">Este link recebe os dados do pedido em tempo real.</p>
+            </div>
+            
+            <Button 
+              onClick={handleSaveConfig} 
+              disabled={saving}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold"
+            >
+              {saved ? <><Check className="mr-2" /> Salvo</> : saving ? 'Salvando...' : <><Save className="mr-2" /> Salvar Configurações</>}
+            </Button>
+          </div>
+
+          <div>
+             <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Texto da Mensagem (Opcional)</label>
+             <Textarea 
+                value={config.template}
+                onChange={e => setConfig({...config, template: e.target.value})}
+                placeholder="Olá {nome}, seu pedido {pedido_id} foi recebido..."
+                className="bg-black border-slate-800 text-white min-h-[120px] text-xs font-mono"
+             />
+             <p className="text-[10px] text-gray-500 mt-2">
+               Se vazio, usará o texto padrão do sistema. <br/>
+               Variáveis disponíveis: <code className="text-red-500">{'{nome}'}</code>, <code className="text-red-500">{'{pedido_id}'}</code>, <code className="text-red-500">{'{status}'}</code>
+             </p>
+          </div>
         </div>
       </div>
 
@@ -82,10 +169,10 @@ export default function AdminWebhookLogs() {
               <thead className="bg-zinc-900/50 border-b border-red-900/20">
                 <tr>
                   <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Data/Hora</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Pedido</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Cliente</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Tentativas</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-l border-red-900/10">Data/Hora</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-l border-red-900/10">Pedido</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-l border-red-900/10">Cliente</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-l border-red-900/10">Envios</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -125,19 +212,19 @@ export default function AdminWebhookLogs() {
                           </div>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400 border-l border-red-900/5">
                         {formatLogDate(log.timestamp)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-4 whitespace-nowrap border-l border-red-900/5">
                         <span className="text-xs font-mono px-2 py-1 bg-zinc-800 text-white rounded">
                           #{log.orderId?.slice(-6).toUpperCase()}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-4 whitespace-nowrap border-l border-red-900/5">
                          <div className="text-sm font-medium text-white">{log.customerName}</div>
                          <div className="text-xs text-gray-500">{log.customerWhatsapp}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <td className="px-6 py-4 whitespace-nowrap text-center border-l border-red-900/5">
                          <span className={cn(
                            "text-xs px-2 py-1 rounded-full",
                            log.attempts > 1 ? "bg-amber-900/30 text-amber-500" : "bg-zinc-800 text-gray-400"
@@ -222,7 +309,7 @@ export default function AdminWebhookLogs() {
                 <div className="grid grid-cols-2 gap-4">
                   <Button 
                     variant="outline" 
-                    className="w-full bg-zinc-900 border-zinc-800 hover:bg-zinc-800"
+                    className="w-full bg-zinc-900 border-zinc-800 hover:bg-zinc-800 text-white"
                     onClick={() => window.open(`/admin/pedidos?id=${selectedLog.orderId}`, '_blank')}
                   >
                     <ExternalLink size={16} className="mr-2" />
@@ -230,7 +317,7 @@ export default function AdminWebhookLogs() {
                   </Button>
                   <Button 
                     variant="outline"
-                    className="w-full bg-zinc-900 border-zinc-800 hover:bg-zinc-800"
+                    className="w-full bg-zinc-900 border-zinc-800 hover:bg-zinc-800 text-white"
                     onClick={async () => {
                       if (!selectedLog) return;
                       try {

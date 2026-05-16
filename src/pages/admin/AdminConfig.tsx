@@ -6,7 +6,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Moon, Sun, LayoutDashboard, Check, Upload, Image as ImageIcon, Trash2, Settings } from 'lucide-react';
+import { Moon, Sun, LayoutDashboard, Check, Upload, Image as ImageIcon, Trash2, Settings, RefreshCcw } from 'lucide-react';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { cn } from '../../lib/utils';
 
@@ -44,13 +44,14 @@ export function AdminConfig() {
     window.dispatchEvent(new Event('admin-theme-changed'));
   };
   
-  const [config, setConfig] = useState<StoreConfig>({
+  const [config, setConfig] = useState<StoreConfig & { botConversaWebhook?: string }>({
     storeName: 'Discreta Boutique',
     whatsapp: '5511999999999',
     deliveryFee: '15.00',
     address: '',
     instagram: '',
     logoUrl: '',
+    botConversaWebhook: '',
   });
 
   useEffect(() => {
