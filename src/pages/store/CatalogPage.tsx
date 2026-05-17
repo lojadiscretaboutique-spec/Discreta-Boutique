@@ -342,7 +342,8 @@ export function CatalogPage() {
     if (search.trim()) {
       if (aiSuggestion) {
         // AI Ranking: semantics, keywords, synonyms + base metrics
-        result = getRankingHybrid(result, aiSuggestion);
+        const interpretacao = aiSuggestion.interpretacao || aiSuggestion;
+        result = getRankingHybrid(result, interpretacao);
         console.log(`[CATALOG][AI_SEARCH] Ranked ${result.length} matches using AI interpretation`);
       } else {
         // Fallback or Standard Professional Ranking

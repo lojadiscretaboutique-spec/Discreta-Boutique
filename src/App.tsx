@@ -5,6 +5,7 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { motion, AnimatePresence } from 'motion/react';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
+import { useUIStore } from './store/uiStore';
 
 // Store Pages
 const HomePage = lazy(() => import('./pages/store/HomePage').then(m => ({ default: m.HomePage })));
@@ -102,6 +103,8 @@ function ScrollToTop() {
 function AppContent() {
   const location = useLocation();
   const [isNavigating, setIsNavigating] = useState(false);
+  const isHomeReady = useUIStore(s => s.isHomeReady);
+  const isAtHome = location.pathname === '/';
 
   useEffect(() => {
     setIsNavigating(true);
@@ -111,16 +114,21 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [location.pathname]);
 
+  // The splash should stay if we are navigating OR if we are at home and it's not ready yet
+  const showSplash = isNavigating || (isAtHome && !isHomeReady);
+
   return (
     <>
       <ScrollToTop />
       <PwaInstallBanner />
       <AnimatePresence>
-        {isNavigating && (
+        {showSplash && (
           <motion.div
+            key="splash-screen"
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
+            transition={{ duration: 0.8, ease: "easeInOut" }}
+            className="fixed inset-0 z-[9999]"
           >
             <PageLoader />
           </motion.div>

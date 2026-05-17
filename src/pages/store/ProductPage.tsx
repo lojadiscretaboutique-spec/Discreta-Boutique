@@ -132,7 +132,7 @@ export function ProductPage() {
     });
     
     // Track conversion
-    productService.trackInteraction(product.id!, 'conversion');
+    productService.trackInteraction(product.id!, 'conversion', searchId);
     
     if (redirect) {
       navigate('/carrinho');

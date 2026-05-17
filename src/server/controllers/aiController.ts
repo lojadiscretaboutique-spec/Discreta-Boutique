@@ -3,7 +3,7 @@ import { aiService } from '../services/aiService.js';
 import { productService } from '../../services/productService.js';
 import { z } from 'zod';
 import { db } from '../../lib/firebase.js';
-import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, updateDoc, increment } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, updateDoc, increment, orderBy } from 'firebase/firestore';
 
 const GenerateProductInput = z.object({
   nome: z.string().min(3).max(100),
@@ -170,53 +170,64 @@ export const getSearchSuggestions = async (req: Request, res: Response) => {
     const searchRef = collection(db, 'intelligent_searches');
     const productsRef = collection(db, 'products');
     
-    // 1. Fetch from previous successful searches
+    // 1. Fetch from previous successful searches - Prioritize those with clicks
     const qSearches = query(
       searchRef, 
-      where('termo', '>=', q),
-      where('termo', '<=', q + '\uf8ff'),
-      limit(10)
+      orderBy('cliques', 'desc'),
+      limit(100) 
     );
 
-    // 2. Fetch from products to get "semantic" words from actual inventory (faster than deep AI search for suggestions)
+    // 2. Fetch from products to get "semantic" words from actual inventory
     const qProducts = query(
       productsRef,
       where('active', '==', true),
-      limit(100) // Get a pool to extract words
+      limit(100)
     );
-
+    
+    // Manual prefix filtering for Firestore
     const [snapSearches, snapProducts] = await Promise.all([
       getDocs(qSearches),
       getDocs(qProducts)
     ]);
 
     const suggestionsSet = new Set<string>();
+    const searchSuggestionsList: {term: string, cliques: number}[] = [];
 
-    // Add previous searches (prioritize them)
+    // Add previous searches that match the prefix
     snapSearches.docs.forEach(d => {
-      const term = d.data().termo;
-      if (term) suggestionsSet.add(term.toLowerCase());
+      const data = d.data();
+      const term = (data.termo || '').toLowerCase();
+      if (term.includes(q)) {
+        searchSuggestionsList.push({ term, cliques: data.cliques || 0 });
+      }
     });
+
+    // Sort by cliques and add to set
+    searchSuggestionsList
+      .sort((a, b) => b.cliques - a.cliques)
+      .forEach(s => suggestionsSet.add(s.term));
 
     // Extract relevant words from products that match the prefix
     snapProducts.docs.forEach(d => {
-      const name = (d.data().name || '').toLowerCase();
-      const tags = (d.data().tags || []);
+      if (suggestionsSet.size >= 12) return;
       
-      // If product name starts with or contains the query, add words
+      const name = (d.data().name || '').toLowerCase();
+      const pTags = (d.data().seo?.keywords || []).map((t: any) => String(t).toLowerCase());
+      const aiKeywords = (d.data().ai_keywords || []).map((k: any) => String(k).toLowerCase());
+      const allTags = [...pTags, ...aiKeywords];
+      
       if (name.includes(q)) {
-        // Find specific words or the whole name if short
         const parts = name.split(/\s+/);
         parts.forEach((p: string) => {
-          if (p.startsWith(q)) suggestionsSet.add(p);
+          if (p.startsWith(q) && p.length > 2) suggestionsSet.add(p);
         });
         if (name.length < 30) suggestionsSet.add(name);
       }
 
-      // Check tags
-      tags.forEach((tag: string) => {
-        const t = tag.toLowerCase();
-        if (t.startsWith(q) || t.includes(q)) suggestionsSet.add(t);
+      allTags.forEach((t: string) => {
+        if (t.startsWith(q) || (q.length > 3 && t.includes(q))) {
+           suggestionsSet.add(t);
+        }
       });
     });
 

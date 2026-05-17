@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
 import { HeroBanner } from '../../components/ui/HeroBanner';
 import { ImperdiveisCarousel } from '../../components/home/ImperdiveisCarousel';
+import { useUIStore } from '../../store/uiStore';
 
 interface Banner {
   id: string;
@@ -35,17 +36,15 @@ export function HomePage() {
   const [currentBanner, setCurrentBanner] = useState(0);
   const [loading, setLoading] = useState(true);
   const [aiFrase, setAiFrase] = useState("");
+  const setHomeReady = useUIStore(s => s.setHomeReady);
 
   const loadCriticalData = useCallback(async () => {
     try {
       // Load Banners first to show Hero
       const bSnap = await getDocs(query(collection(db, 'banners'), where('active', '==', true)));
       setBanners(bSnap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
-      
-      setLoading(false); // Hero is ready
     } catch (e) {
       console.error(e);
-      setLoading(false);
     }
   }, []);
 
@@ -148,15 +147,25 @@ export function HomePage() {
       });
 
       setCategories(categoriesWithImages);
+      // Wait for everything to be set before releasing the global splash
+      setHomeReady(true);
     } catch(e) {
       console.error(e);
+      setHomeReady(true);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [setHomeReady]);
 
   useEffect(() => {
     loadCriticalData();
     loadDeferredData();
-  }, [loadCriticalData, loadDeferredData]);
+
+    return () => {
+      // Reset so splash screen reappears when coming back to home
+      setHomeReady(false);
+    };
+  }, [loadCriticalData, loadDeferredData, setHomeReady]);
 
   // Auto-play banners
   useEffect(() => {

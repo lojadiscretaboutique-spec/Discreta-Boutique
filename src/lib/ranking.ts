@@ -30,58 +30,61 @@ export const getMatchScore = (p: Product, aiSuggestion: any) => {
     let score = 0;
     const name = p.name.toLowerCase();
     const desc = `${(p.shortDescription || "").toLowerCase()} ${(p.fullDescription || "").toLowerCase()}`;
-    const pTags = (p.seo?.keywords || []).map(t => t.toLowerCase());
+    const pTags = (p.seo?.keywords || []).map(t => String(t).toLowerCase());
+    const aiKeywords = (p.ai_keywords || []).map(k => String(k).toLowerCase());
+    const aiSynonyms = (p.ai_synonyms || []).map(s => String(s).toLowerCase());
     
     if (!aiSuggestion) {
       return 0;
     }
 
-    const mainTerm = aiSuggestion.curadoria?.toLowerCase() || "";
+    const mainTerm = (aiSuggestion.termo_busca || aiSuggestion.curadoria || "").toLowerCase();
     const sugestaoCat = aiSuggestion.categoria?.toLowerCase() || "";
     const caracteristicas = (aiSuggestion.caracteristicas || []).map((c: string) => c.toLowerCase());
     const sinonimosSugeridos = (aiSuggestion.sinonimos || []).map((s: string) => s.toLowerCase());
     const subcats = (aiSuggestion.subcategorias_sugeridas || []).map((s: string) => s.toLowerCase());
 
-    // 1. Categoria e Subcategoria sugeridas pela IA (Boost máximo)
+    // 1. Exact Match on name (Massive boost to keep it top)
+    if (name === mainTerm) score += 2000;
+    if (name.includes(mainTerm)) score += 500;
+
+    // 2. Categoria e Subcategoria sugeridas pela IA
     if (sugestaoCat && sugestaoCat !== 'outros') {
-       if (pTags.includes(sugestaoCat)) score += 15;
+       if (pTags.includes(sugestaoCat)) score += 100;
     }
     
-    // Boost específico para subcategorias encontradas no nome ou tags
     subcats.forEach((sub: string) => {
-      if (name.includes(sub)) score += 20; // Prioridade máxima: Subcategoria
-      if (pTags.includes(sub)) score += 18;
+      if (name.includes(sub)) score += 150;
+      if (pTags.includes(sub)) score += 100;
     });
 
-    // 2. Tags e Keywords (Boost alto)
-    pTags.forEach(tag => {
+    // 3. Tags e Keywords
+    const allProductKeywords = [...pTags, ...aiKeywords, ...aiSynonyms];
+    allProductKeywords.forEach(tag => {
        const t = tag.toLowerCase();
-       if (mainTerm.includes(t) || t.includes(mainTerm)) score += 25;
+       if (mainTerm && (t === mainTerm)) score += 300;
+       if (mainTerm && t.includes(mainTerm)) score += 100;
+       
        caracteristicas.forEach(c => {
-         if (t.includes(c.toLowerCase())) score += 15;
+         if (t.includes(c.toLowerCase())) score += 80;
        });
        sinonimosSugeridos.forEach(s => {
-         if (t.includes(s.toLowerCase())) score += 10;
+         if (t === s.toLowerCase()) score += 150; // Exact synonym match
+         else if (t.includes(s.toLowerCase())) score += 60;
        });
     });
 
-    // 3. Core term matching no Nome (Boost médio-alto)
-    if (name.includes(mainTerm)) score += 15;
-    
-    // 4. Features e Sinônimos no Nome e Atributos (Boost médio)
+    // 4. Features e Sinônimos no Nome
     caracteristicas.forEach((ct: string) => {
       const feature = ct.toLowerCase();
-      if (name.includes(feature)) score += 12;
-      if (pTags.some(t => t.toLowerCase().includes(feature))) score += 8;
-      if (desc.includes(feature)) score += 5;
+      if (name.includes(feature)) score += 120;
+      if (desc.includes(feature)) score += 40;
     });
 
-    // 5. Descrição (Boost baixo)
-    if (desc.includes(mainTerm)) score += 5;
     sinonimosSugeridos.forEach((st: string) => {
       const syn = st.toLowerCase();
-      if (name.includes(syn)) score += 10;
-      if (desc.includes(syn)) score += 4;
+      if (name.includes(syn)) score += 100;
+      if (desc.includes(syn)) score += 30;
     });
     
     return score;
@@ -110,14 +113,13 @@ const calculateCosineSimilarity = (vecA: number[], vecB: number[]) => {
 
 export const getRankingHybrid = (products: Product[], aiSuggestion: any, queryEmbedding?: number[]): Product[] => {
     return [...products].map(p => {
-        const base = getBaseScore(p);
+        const base = getBaseScore(p) * 0.01; // Base metrics are secondary in search
         const match = getMatchScore(p, aiSuggestion);
         
         let semanticBoost = 0;
         if (queryEmbedding && p.embedding && p.embedding.length > 0) {
             const similarity = calculateCosineSimilarity(queryEmbedding, p.embedding);
-            // Boost semantic similarity (range 0 to 1, multiplied to give it weight)
-            semanticBoost = similarity * 20; 
+            semanticBoost = similarity * 100; 
         }
 
         return {
@@ -125,9 +127,10 @@ export const getRankingHybrid = (products: Product[], aiSuggestion: any, queryEm
             _tempScore: base + match + semanticBoost
         };
     })
+    .filter(p => (p as any)._tempScore > 1) // Filter out clearly unrelated items if there's AI context
     .sort((a: any, b: any) => b._tempScore - a._tempScore)
     .map((p: any) => {
-        const { _tempScore, ...pWithoutScore } = p;
+        const { _tempScore: _unused, ...pWithoutScore } = p;
         return pWithoutScore as Product;
     });
 };
