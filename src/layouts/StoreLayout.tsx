@@ -1,9 +1,10 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { ShoppingBag, Search, Menu, X, LayoutDashboard } from 'lucide-react';
+import { ShoppingBag, Menu, X, LayoutDashboard } from 'lucide-react';
 import { useCartStore } from '../store/cartStore';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { categoryService, Category } from '../services/categoryService';
+import { SearchBar } from '../components/ui/SearchBar';
 import { useAuthStore } from '../store/authStore';
 
 export function StoreLayout() {
@@ -36,7 +37,7 @@ export function StoreLayout() {
   return (
     <div className="dark min-h-screen bg-black text-white flex flex-col font-sans relative">
       {/* Header */}
-      <header className="bg-black/80 backdrop-blur-md text-white fixed top-0 w-full z-50 border-b border-zinc-900">
+      <header className="bg-black text-white fixed top-0 w-full z-50 border-b border-zinc-900">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between relative">
           
           <div className="flex items-center">
@@ -49,10 +50,9 @@ export function StoreLayout() {
             </button>
 
             {/* Desktop Nav */}
-            <nav className="hidden md:flex items-center space-x-8 text-xs font-bold uppercase tracking-widest">
+            <nav className="hidden md:flex items-center space-x-8 text-[10px] font-bold uppercase tracking-[3px]">
               <Link to="/" className="hover:text-red-500 transition-colors">Início</Link>
               <Link to="/catalogo" className="hover:text-red-500 transition-colors">Produtos</Link>
-              <Link to="/area-cliente" className="hover:text-red-500 transition-colors">Área do Cliente</Link>
             </nav>
           </div>
 
@@ -63,8 +63,8 @@ export function StoreLayout() {
 
           {/* Actions */}
           <div className="flex items-center space-x-2 sm:space-x-4">
-            <Link to="/catalogo" className="p-2 text-zinc-400 hover:text-red-500 transition-colors">
-              <Search size={20} />
+            <Link to="/area-cliente" className="p-2 text-zinc-400 hover:text-red-500 flex items-center">
+               <span className="hidden md:inline mr-2 text-[10px] font-bold uppercase tracking-widest">Conta</span>
             </Link>
             <Link to="/carrinho" className="p-2 text-zinc-400 hover:text-red-500 relative transition-colors">
               <ShoppingBag size={20} />
@@ -75,6 +75,11 @@ export function StoreLayout() {
               )}
             </Link>
           </div>
+        </div>
+
+        {/* Global Search Bar - Clean & Dark */}
+        <div className="bg-black py-4 border-b border-zinc-900/50">
+           <SearchBar placeholder="O que você busca hoje? Encontre prazer..." />
         </div>
 
         {/* Mobile Nav */}
@@ -101,7 +106,7 @@ export function StoreLayout() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col pt-16">
+      <main className="flex-1 flex flex-col pt-36 md:pt-40">
         <Outlet />
       </main>
 

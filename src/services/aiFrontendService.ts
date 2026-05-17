@@ -92,5 +92,42 @@ export const aiFrontendService = {
       console.error("Erro ao gerar embedding com OpenAI via Backend:", error);
       return [];
     }
+  },
+
+  /**
+   * Interprets a search query to identify semantic intention and categories
+   */
+  async interpretSearch(busca: string): Promise<{ searchId: string; interpretacao: any }> {
+    const response = await fetch('/api/ia/interpretar-busca', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ busca })
+    });
+
+    if (!response.ok) {
+      throw new Error('Falha ao interpretar busca');
+    }
+
+    return await response.json();
+  },
+
+  /**
+   * Tracks a click on a search result to improve ranking
+   */
+  async trackSearchClick(searchId: string, productId: string): Promise<void> {
+    await fetch('/api/ia/registrar-clique', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ searchId, productId })
+    });
+  },
+
+  /**
+   * Gets search suggestions based on previous successful searches
+   */
+  async getSearchSuggestions(q: string): Promise<string[]> {
+    const response = await fetch(`/api/ia/search-suggestions?q=${encodeURIComponent(q)}`);
+    if (!response.ok) return [];
+    return await response.json();
   }
 };

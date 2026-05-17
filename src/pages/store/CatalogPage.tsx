@@ -4,15 +4,15 @@ import { db } from '../../lib/firebase';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
 import { Search, X, Minus, Plus, Frown, Loader2 } from 'lucide-react';
-import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
-import { getRankingProfissional } from '../../lib/ranking';
+import { getRankingProfissional, getRankingHybrid } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
 import { catalogSectionsService, SECTION_METADATA, CatalogSection } from '../../services/catalogSectionsService';
 import { openaiOfferSorting } from '../../services/openaiOfferSorting';
+import { aiFrontendService } from '../../services/aiFrontendService';
 
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -21,7 +21,6 @@ export function CatalogPage() {
   const qSection = searchParams.get('secao');
   const qSubcat = searchParams.get('subcategoria');
   const qCollection = searchParams.get('colecao');
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [filtered, setFiltered] = useState<Product[]>([]);
@@ -34,6 +33,7 @@ export function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [rankingAi, setRankingAi] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<any>(null);
   const lastRankedSection = useRef<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
@@ -95,18 +95,34 @@ export function CatalogPage() {
     }
     
     setSearching(true);
-    // Simular um pequeno delay para feedback visual de busca profissional
-    setTimeout(() => {
+    try {
+      const suggestion = await aiFrontendService.interpretSearch(searchTerm.trim());
+      setAiSuggestion(suggestion);
+    } catch (e) {
+      console.warn('[SEARCH][AI_ERROR] Falling back to standard ranking', e);
+      setAiSuggestion(null);
+    } finally {
       setSearching(false);
-    }, 400);
+    }
   };
 
   const trackProductClick = async (productId: string) => {
     // Register for overall ranking
     productService.trackInteraction(productId, 'click');
+
+    // Register for AI search optimization if within a search context
+    if (aiSuggestion?.searchId) {
+      aiFrontendService.trackSearchClick(aiSuggestion.searchId, productId);
+    }
   };
 
   const isCategoriesEmpty = categories.length === 0;
+  useEffect(() => {
+    if (qSearch && !aiSuggestion) {
+      handleRealSearch(qSearch);
+    }
+  }, [qSearch, aiSuggestion]);
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -322,10 +338,17 @@ export function CatalogPage() {
       console.log(`[FILTER][CATEGORY] Found ${result.length} products for cat ${selectedCat}`);
     }
 
-    // 5. Filtro de Busca (Profissional)
+    // 5. Filtro de Busca (Inteligente/Profissional)
     if (search.trim()) {
-      result = getRankingProfissional(result, search, categories);
-      console.log(`[CATALOG][PROFESSIONAL_SEARCH] Found ${result.length} matches for "${search}"`);
+      if (aiSuggestion) {
+        // AI Ranking: semantics, keywords, synonyms + base metrics
+        result = getRankingHybrid(result, aiSuggestion);
+        console.log(`[CATALOG][AI_SEARCH] Ranked ${result.length} matches using AI interpretation`);
+      } else {
+        // Fallback or Standard Professional Ranking
+        result = getRankingProfissional(result, search, categories);
+        console.log(`[CATALOG][PROFESSIONAL_SEARCH] Found ${result.length} matches for "${search}"`);
+      }
     }
 
     console.log(`[CATALOG][FILTER_COMPLETE] ${result.length} results | Time: ${Date.now() - startTime}ms`);
@@ -385,39 +408,9 @@ export function CatalogPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-black text-white min-h-screen">
-      {/* Header / Search Area - Professional Search */}
+      {/* Category Navigation - More Compact */}
       <section className="bg-zinc-950 border-b border-zinc-900 pt-6 pb-4 px-4 sticky top-14 md:top-16 z-30 backdrop-blur-md bg-black/95">
         <div className="max-w-7xl mx-auto space-y-4">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-zinc-400 mb-1 ml-1">
-              <Search size={16} />
-              <h2 className="text-sm font-black uppercase tracking-tight">O que você está procurando?</h2>
-            </div>
-            <div className="relative group w-full">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-red-500 transition-colors" size={18} />
-              <Input 
-                ref={searchInputRef}
-                type="text"
-                placeholder="Busque por produtos, categorias ou desejos..." 
-                className="w-full bg-zinc-900/80 border-zinc-800 text-white pl-12 pr-14 py-6 rounded-2xl focus:ring-1 focus:ring-red-600/50 font-medium placeholder:text-zinc-600 transition-all text-sm shadow-inner"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleRealSearch();
-                }}
-              />
-              <button 
-                onClick={() => handleRealSearch()}
-                disabled={searching || !search.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl disabled:opacity-0 disabled:scale-95 transition-all shadow-lg shadow-red-900/20"
-                title="Pesquisar"
-              >
-                <Search size={16} className={searching ? "animate-pulse" : ""} />
-              </button>
-            </div>
-          </div>
-
-          {/* Category Navigation - More Compact */}
           <div className="space-y-2">
             {/* Root Categories Horizontal Scroll */}
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-0.5">

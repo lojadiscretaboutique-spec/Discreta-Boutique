@@ -162,6 +162,72 @@ export const trackClick = async (req: Request, res: Response) => {
   }
 };
 
+export const getSearchSuggestions = async (req: Request, res: Response) => {
+  try {
+    const q = (req.query.q as string || '').toLowerCase().trim();
+    if (!q) return res.json([]);
+
+    const searchRef = collection(db, 'intelligent_searches');
+    const productsRef = collection(db, 'products');
+    
+    // 1. Fetch from previous successful searches
+    const qSearches = query(
+      searchRef, 
+      where('termo', '>=', q),
+      where('termo', '<=', q + '\uf8ff'),
+      limit(10)
+    );
+
+    // 2. Fetch from products to get "semantic" words from actual inventory (faster than deep AI search for suggestions)
+    const qProducts = query(
+      productsRef,
+      where('active', '==', true),
+      limit(100) // Get a pool to extract words
+    );
+
+    const [snapSearches, snapProducts] = await Promise.all([
+      getDocs(qSearches),
+      getDocs(qProducts)
+    ]);
+
+    const suggestionsSet = new Set<string>();
+
+    // Add previous searches (prioritize them)
+    snapSearches.docs.forEach(d => {
+      const term = d.data().termo;
+      if (term) suggestionsSet.add(term.toLowerCase());
+    });
+
+    // Extract relevant words from products that match the prefix
+    snapProducts.docs.forEach(d => {
+      const name = (d.data().name || '').toLowerCase();
+      const tags = (d.data().tags || []);
+      
+      // If product name starts with or contains the query, add words
+      if (name.includes(q)) {
+        // Find specific words or the whole name if short
+        const parts = name.split(/\s+/);
+        parts.forEach((p: string) => {
+          if (p.startsWith(q)) suggestionsSet.add(p);
+        });
+        if (name.length < 30) suggestionsSet.add(name);
+      }
+
+      // Check tags
+      tags.forEach((tag: string) => {
+        const t = tag.toLowerCase();
+        if (t.startsWith(q) || t.includes(q)) suggestionsSet.add(t);
+      });
+    });
+
+    const finalSuggestions = Array.from(suggestionsSet).slice(0, 8);
+    res.json(finalSuggestions);
+  } catch (error) {
+    console.error('[GET_SUGGEST_ERROR]', error);
+    res.status(500).json({ error: 'Erro ao buscar sugestões' });
+  }
+};
+
 export const botConsult = async (req: Request, res: Response) => {
   try {
     const { busca } = req.body;
@@ -417,5 +483,6 @@ export const aiController = {
   suggestRelatedProducts,
   enrichProduct,
   generateEmbedding,
-  rankOffers
+  rankOffers,
+  getSearchSuggestions
 };
