@@ -40,9 +40,7 @@ export function AdminLayout() {
     { name: 'Horários da Loja', path: '/admin/horarios', icon: Clock, permission: 'settings' },
     { name: 'Configurações', path: '/admin/config', icon: Settings, permission: 'settings', submenu: [
         { name: 'Dados da Loja', path: '/admin/config', permission: 'settings' },
-        { name: 'Webhooks WhatsApp', path: '/admin/config/webhooks-logs', permission: 'logs' },
-        { name: 'Recuperador Carrinho', path: '/admin/config/recuperador-carrinho', permission: 'settings' },
-        { name: 'Logs Recuperação', path: '/admin/config/recovery-logs', permission: 'logs' }
+        { name: 'Bot Conversa / Webhooks', path: '/admin/config/webhooks', permission: 'logs' },
     ]},
     { name: 'Contas / Equipe', path: '/admin/usuarios', icon: Shield, permission: 'users', submenu: [
         { name: 'Usuários', path: '/admin/usuarios', permission: 'users' },

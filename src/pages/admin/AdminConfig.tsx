@@ -210,44 +210,7 @@ export function AdminConfig() {
               </div>
 
               <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
-                <h3 className="text-sm font-bold mb-4 flex items-center gap-2">
-                   <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                   Notificações (Bot Conversa)
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">URL do Webhook de Pedidos</label>
-                    <Input 
-                      value={config.botConversaWebhook} 
-                      onChange={e=>setConfig({...config, botConversaWebhook: e.target.value})} 
-                      placeholder="https://webhook.botconversa.com.br/..." 
-                      className="dark:bg-slate-950 dark:border-slate-800" 
-                    />
-                    <p className="text-[10px] text-zinc-500 mt-1 uppercase font-bold tracking-tight">Opcional: Deixe vazio para usar o padrão (.env)</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Template da Mensagem (Opcional)</label>
-                    <textarea 
-                       value={config.orderMessageTemplate} 
-                       onChange={e=>setConfig({...config, orderMessageTemplate: e.target.value})} 
-                       placeholder="Olá {nome}! Seu pedido #{pedido_id} mudou para {status}."
-                       className="w-full min-h-[100px] p-3 text-sm bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg outline-none focus:ring-2 focus:ring-red-600 transition-all font-sans"
-                    />
-                    <div className="flex flex-wrap gap-2 mt-2">
-                       <span className="text-[9px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-black text-slate-500">TAGS:</span>
-                       {['{nome}', '{pedido_id}', '{status}'].map(tag => (
-                         <button 
-                           key={tag} 
-                           type="button"
-                           onClick={() => setConfig(prev => ({ ...prev, orderMessageTemplate: (prev.orderMessageTemplate || '') + tag }))}
-                           className="text-[9px] bg-slate-100 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-900/20 px-1.5 py-0.5 rounded font-bold text-slate-600 dark:text-slate-400 border border-transparent hover:border-red-500/20 transition-all"
-                         >
-                           {tag}
-                         </button>
-                       ))}
-                    </div>
-                  </div>
-                </div>
+                <p className="text-[10px] text-slate-500 uppercase font-black">Nota: As configurações de WebHook da Bot Conversa foram movidas para a aba dedicada no menu lateral.</p>
               </div>
               
               {canEdit ? (

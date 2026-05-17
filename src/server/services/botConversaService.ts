@@ -25,6 +25,19 @@ interface Pedido {
 
 async function getStoreSettings(): Promise<{ webhook: string | null; template: string | null }> {
     try {
+        // First try the new unified webhooks settings
+        const webhookSnap = await getDoc(doc(db, 'settings', 'webhooks'));
+        if (webhookSnap.exists()) {
+            const data = webhookSnap.data();
+            if (data.statusWebhookUrl) {
+                return {
+                    webhook: data.statusWebhookUrl,
+                    template: data.statusTemplate || null
+                };
+            }
+        }
+
+        // Fallback to old path
         const snap = await getDoc(doc(db, 'settings', 'store'));
         if (snap.exists()) {
             const data = snap.data();
@@ -145,16 +158,16 @@ export async function sendWebhook(pedido: Pedido, attempts = 1) {
 
     const payload = {
         telefone: telefoneFormatado,
-        phone: telefoneFormatado,
         whatsapp: telefoneFormatado,
         nome: nome,
-        name: nome,
-        customer_name: nome,
-        pedido_id: pedido.id,
-        order_id: pedido.id,
         status: pedido.status,
+        pedido_id: pedido.id,
+        order_id: pedido.id, // Keeping for compatibility
+        pedido_id_curto: pedido.id ? pedido.id.slice(-6).toUpperCase() : 'N/A',
+        data_agendamento: pedido.scheduledDate || '',
+        hora_agendamento: pedido.scheduledTime || '',
         mensagem: gerarMensagem({ ...pedido, nome }, customTemplate),
-        source: 'DiscretaBoutique_Order_Notification'
+        source: 'DiscretaBoutique_Status_Notification'
     };
 
     console.log(`🚀 [Attempt ${attempts}] ENVIANDO WEBHOOK`, pedido.id, payload);

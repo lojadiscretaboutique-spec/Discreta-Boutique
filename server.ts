@@ -175,15 +175,32 @@ async function startServer() {
       const { name, phone } = req.body;
       if (!name || !phone) return res.status(400).json({ error: "Nome e telefone são obrigatórios" });
       
-      // Get settings manually to check if url is set
-      const settingsSnap = await getDoc(doc(db, 'settings', 'recovery'));
-      const settings = settingsSnap.exists() ? settingsSnap.data() : null;
+      let webhookUrl = null;
       
-      if (!settings?.webhookUrl) {
-          return res.status(400).json({ success: false, error: "URL do Webhook não configurada nas configurações de recuperação." });
+      // Try new settings first
+      const webhookSnap = await getDoc(doc(db, 'settings', 'webhooks'));
+      if (webhookSnap.exists()) {
+          const data = webhookSnap.data();
+          if (data.recoveryWebhookUrl) {
+              webhookUrl = data.recoveryWebhookUrl;
+          }
       }
 
-      const success = await serverRecoveryService.sendWebhook(settings.webhookUrl, name, phone);
+      // Fallback to legacy
+      if (!webhookUrl) {
+          const settingsSnap = await getDoc(doc(db, 'settings', 'recovery'));
+          const settings = settingsSnap.exists() ? settingsSnap.data() : null;
+          if (settings?.webhookUrl) {
+              webhookUrl = settings.webhookUrl;
+          }
+      }
+      
+      if (!webhookUrl) {
+          return res.status(400).json({ success: false, error: "URL do Webhook não configurada nas configurações de recuperação. Acesse Configurações > Bot Conversa." });
+      }
+
+      const { serverRecoveryService } = await import('./src/server/services/serverRecoveryService');
+      const success = await serverRecoveryService.sendWebhook(webhookUrl, name, phone, 'TEST_MANUAL');
       
       if (success) {
         res.json({ success: true });

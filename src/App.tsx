@@ -44,10 +44,8 @@ const AdminCommissions = lazy(() => import('./pages/admin/financial/AdminCommiss
 const AdminIntegracao = lazy(() => import('./pages/admin/financial/AdminIntegracao').then(m => ({ default: m.AdminIntegracao })));
 const AdminPaymentMethods = lazy(() => import('./pages/admin/financial/AdminPaymentMethods').then(m => ({ default: m.AdminPaymentMethods })));
 const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours').then(m => ({ default: m.AdminOperatingHours })));
-const AdminWebhookLogs = lazy(() => import('./pages/admin/AdminWebhookLogs'));
+const AdminWebhooks = lazy(() => import('./pages/admin/AdminWebhooks').then(m => ({ default: m.AdminWebhooks })));
 const AdminSmartStock = lazy(() => import('./pages/admin/AdminSmartStock'));
-const AdminRecoveryConfig = lazy(() => import('./pages/admin/AdminRecoveryConfig').then(m => ({ default: m.AdminRecoveryConfig })));
-const AdminRecoveryLogs = lazy(() => import('./pages/admin/AdminRecoveryLogs').then(m => ({ default: m.AdminRecoveryLogs })));
 
 // Loading Component (Splash Screen)
 function PageLoader() {
@@ -180,10 +178,11 @@ function AppContent() {
             </Route>
             <Route path="areas-entrega" element={<AdminDeliveryAreas />} />
             <Route path="horarios" element={<AdminOperatingHours />} />
-            <Route path="config/webhooks-logs" element={<AdminWebhookLogs />} />
+            <Route path="config/webhooks" element={<AdminWebhooks />} />
+            <Route path="config/webhooks-logs" element={<AdminWebhooks />} />
             <Route path="estoque-inteligente" element={<AdminSmartStock />} />
-            <Route path="config/recuperador-carrinho" element={<AdminRecoveryConfig />} />
-            <Route path="config/recovery-logs" element={<AdminRecoveryLogs />} />
+            <Route path="config/recuperador-carrinho" element={<AdminWebhooks />} />
+            <Route path="config/recovery-logs" element={<AdminWebhooks />} />
             <Route path="config" element={<AdminConfig />} />
           </Route>
         </Routes>
