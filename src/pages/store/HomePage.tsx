@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, memo } from 'react';
 import { ResponsiveImage } from '../../components/ui/ResponsiveImage';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useNavigate } from 'react-router-dom';
 import { Package, ShoppingCart, Users, ChevronLeft, ChevronRight, CreditCard, Plus, Minus } from 'lucide-react';
@@ -50,16 +50,7 @@ export function HomePage() {
 
   const loadDeferredData = useCallback(async () => {
     try {
-      const pSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true)));
-      const allActiveProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-
-      const visibleProducts = allActiveProducts.filter(p => 
-        (p.images && p.images.length > 0) && 
-        (p.extras?.showInCatalog !== false) &&
-        (!p.controlStock || p.allowBackorder || (Number(p.stock) || 0) > 0)
-      );
-
-      // --- CURADORIA IA ---
+      // 1. Get Home Curation first to know what to prioritize
       let curadoria: any = null;
       try {
         const docRef = doc(db, 'ai_curation', 'home');
@@ -71,6 +62,23 @@ export function HomePage() {
       } catch (e) {
         console.warn('IA Home Curatory fails:', e);
       }
+
+      // 2. Optimized fetch: Instead of ALL products, let's fetch a reasonable amount for Home
+      // If we have curation IDs, we could fetch them explicitly, but for simplicity 
+      // and to ensure enough items for sections, we fetch the 150 most relevant/recent
+      const pSnap = await getDocs(query(
+        collection(db, 'products'), 
+        where('active', '==', true),
+        limit(150) // Reasonable limit for home page categorization
+      ));
+      
+      const allFetchedProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+
+      const visibleProducts = allFetchedProducts.filter(p => 
+        (p.images && p.images.length > 0) && 
+        (p.extras?.showInCatalog !== false) &&
+        (!p.controlStock || p.allowBackorder || (Number(p.stock) || 0) > 0)
+      );
 
       const usedIds = new Set<string>();
       

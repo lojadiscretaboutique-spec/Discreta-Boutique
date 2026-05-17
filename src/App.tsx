@@ -192,6 +192,18 @@ function AppContent() {
 }
 
 export default function App() {
+  useEffect(() => {
+    // Reveal app and hide static splash
+    const staticSplash = document.getElementById('initial-splash');
+    if (staticSplash) {
+      staticSplash.style.opacity = '0';
+      setTimeout(() => {
+        staticSplash.remove();
+        document.body.style.overflow = 'auto'; // Re-enable scroll if it was blocked
+      }, 500);
+    }
+  }, []);
+
   return (
     <SettingsProvider>
       <AppContent />
