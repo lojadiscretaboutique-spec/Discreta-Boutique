@@ -12,6 +12,7 @@ export interface CartItem {
   variantId?: string;
   variantName?: string;
   searchId?: string;
+  costPrice?: number;
 }
 
 interface CartStore {
@@ -61,7 +62,8 @@ export const useCartStore = create<CartStore>()(
           quantity: item.quantity,
           sku: item.sku,
           imageUrl: item.imageUrl,
-          variantName: item.variantName
+          variantName: item.variantName,
+          costPrice: item.costPrice
         }));
         set({ items: cartItems });
       }

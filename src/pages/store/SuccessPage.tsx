@@ -7,6 +7,8 @@ import { doc, getDoc, DocumentData } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { productService } from '../../services/productService';
 
+import { abandonedCartService } from '../../services/abandonedCartService';
+
 export function SuccessPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -15,12 +17,18 @@ export function SuccessPage() {
   const [orderData, setOrderData] = useState<DocumentData | null>(null);
 
   useEffect(() => {
-    const s = location.state as { orderId: string } | null;
+    const s = location.state as { orderId: string, whatsapp?: string } | null;
     const idFromParam = searchParams.get('orderId') || searchParams.get('external_reference');
     const finalId = s?.orderId || idFromParam;
 
     if (finalId) {
       setOrderId(finalId);
+      
+      // Mark as recovered if we have the phone
+      if (s?.whatsapp) {
+        abandonedCartService.markAsRecovered(s.whatsapp);
+      }
+      
       // Fetch order details to see if payment was completed online
       const fetchOrder = async () => {
         try {
@@ -28,6 +36,11 @@ export function SuccessPage() {
           if (d.exists()) {
             const data = d.data();
             setOrderData(data);
+            
+            // Re-mark as recovered if we found the phone now
+            if (data.customerWhatsapp) {
+              abandonedCartService.markAsRecovered(data.customerWhatsapp);
+            }
             
             // Track conversions for AI learning
             if (data.items && Array.isArray(data.items)) {

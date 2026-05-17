@@ -1347,6 +1347,10 @@ export function AdminProducts() {
                                 <input type="number" step="0.01" className="w-full h-8 text-xs bg-slate-800 border rounded px-2 focus:ring-1 focus:ring-red-500 outline-none" value={v.price === null || v.price === undefined ? '' : v.price} onChange={e => {const nv = [...variants]; nv[i].price = e.target.value === '' ? 0 : Number(e.target.value); setVariants(nv)}} />
                               </div>
                               <div>
+                                <label className="text-[10px] uppercase font-black text-slate-400 block mb-0.5">P. Custo (R$)</label>
+                                <input type="number" step="0.01" className="w-full h-8 text-xs bg-slate-800 border rounded px-2 focus:ring-1 focus:ring-red-500 outline-none" value={v.costPrice === null || v.costPrice === undefined ? '' : v.costPrice} onChange={e => {const nv = [...variants]; nv[i].costPrice = e.target.value === '' ? 0 : Number(e.target.value); setVariants(nv)}} />
+                              </div>
+                              <div>
                                 <label className="text-[10px] uppercase font-black text-slate-400 block mb-0.5" title="Apenas leitura. Use o mód. Movimentações.">Estoque (Leitura)</label>
                                 <input 
                                   className="w-full h-8 text-xs bg-slate-950 text-slate-400 font-bold border border-slate-700 rounded px-2 cursor-not-allowed outline-none" 

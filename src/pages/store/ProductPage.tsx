@@ -127,6 +127,7 @@ export function ProductPage() {
       imageUrl: currentImage,
       variantId: selectedVariant?.id,
       variantName: selectedVariant?.name,
+      costPrice: selectedVariant?.costPrice || product.costPrice || 0,
       searchId
     });
     

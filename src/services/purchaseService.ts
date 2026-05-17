@@ -208,6 +208,29 @@ export const purchaseService = {
         costPrice: Number(nextCostPrice.toFixed(2)),
         updatedAt: serverTimestamp()
       });
+
+      // Also update variant cost price if it exists
+      if (item.variantId) {
+        const variantRef = doc(db, `products/${item.productId}/variants`, item.variantId);
+        const variantSnap = await getDoc(variantRef);
+        
+        let nextVariantCostPrice = purchaseCostWithShipping;
+        
+        if (variantSnap.exists()) {
+          const variantInfo = variantSnap.data();
+          const currentVariantStock = variantInfo.stock || 0;
+          const currentVariantCost = variantInfo.costPrice || 0;
+          
+          if (currentVariantStock > 0) {
+            nextVariantCostPrice = ((currentVariantStock * currentVariantCost) + (item.quantity * purchaseCostWithShipping)) / (currentVariantStock + item.quantity);
+          }
+        }
+
+        await updateDoc(variantRef, {
+          costPrice: Number(nextVariantCostPrice.toFixed(2)),
+          updatedAt: serverTimestamp()
+        });
+      }
     }
 
     // 2. Update Purchase Status

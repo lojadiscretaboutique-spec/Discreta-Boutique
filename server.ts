@@ -45,7 +45,7 @@ async function startServer() {
         const orderData = req.body;
         
         // Save to DB using client SDK
-        await addDoc(collection(db, 'orders'), {
+        const docRef = await addDoc(collection(db, 'orders'), {
             ...orderData,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()

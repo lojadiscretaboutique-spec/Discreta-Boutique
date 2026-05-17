@@ -10,6 +10,7 @@ export interface ProductVariant {
   barcode?: string;
   price?: number;
   promoPrice?: number;
+  costPrice?: number;
   stock: number;
   imageUrl?: string;
   active: boolean;

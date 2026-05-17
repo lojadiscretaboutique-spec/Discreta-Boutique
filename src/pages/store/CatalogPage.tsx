@@ -753,6 +753,7 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
         productId: product.id,
         name: product.name,
         price: hasPromo ? product.promoPrice! : product.price,
+        costPrice: product.costPrice || 0,
         quantity: quantity,
         sku: product.sku,
         imageUrl: image || '',

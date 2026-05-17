@@ -679,6 +679,7 @@ export function CartPage() {
           variantId: i.variantId || null,
           name: i.name + (i.variantName ? ` - ${i.variantName}` : ''),
           price: i.price,
+          costPrice: i.costPrice || 0,
           quantity: i.quantity,
           sku: i.sku || '',
           searchId: i.searchId || null
@@ -1106,6 +1107,7 @@ export function CartPage() {
                                     productId: p.id,
                                     name: p.name,
                                     price: p.price,
+                                    costPrice: p.costPrice || 0,
                                     quantity: 1,
                                     sku: p.sku || '',
                                     imageUrl: p.imageUrl

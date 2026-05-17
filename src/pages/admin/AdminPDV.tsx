@@ -56,6 +56,7 @@ interface CartItem {
   name: string;
   variantName?: string;
   price: number;
+  costPrice: number;
   quantity: number;
   sku: string;
   imageUrl?: string;
@@ -213,6 +214,7 @@ export function AdminPDV() {
               name: item.name,
               variantName: item.variantName || undefined,
               price: item.price,
+              costPrice: item.costPrice || 0,
               quantity: item.quantity,
               sku: item.sku || "",
               discount: item.discount || 0,
@@ -732,6 +734,7 @@ export function AdminPDV() {
           name,
           variantName,
           price,
+          costPrice: variant?.costPrice || product.costPrice || 0,
           quantity: 1,
           sku,
           imageUrl,
@@ -839,6 +842,7 @@ export function AdminPDV() {
           name: item.name,
           variantName: item.variantName || null,
           price: item.price,
+          costPrice: (item as any).costPrice || 0,
           quantity: item.quantity,
           sku: item.sku,
           discount: item.discount || 0,
