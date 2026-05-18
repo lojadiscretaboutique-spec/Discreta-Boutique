@@ -394,6 +394,33 @@ export function AdminPDV() {
 
       if (exactMatches.length > 0) {
         playBeep();
+        
+        // Se o produto encontrado tem variantes, precisamos ver se não existe uma variação com esse SKU também para ser mais preciso de imediato
+        if (exactMatches[0].hasVariants) {
+          const vSnap = await getDocs(
+            collection(db, `products/${exactMatches[0].id}/variants`),
+          );
+          const variantDoc = vSnap.docs.find((d) => {
+            const v = d.data();
+            return (
+              v.barcode === term ||
+              v.sku === term ||
+              termsToSearch.includes(v.sku)
+            );
+          });
+
+          if (variantDoc) {
+            const variant = {
+              id: variantDoc.id,
+              ...variantDoc.data(),
+            } as ProductVariant;
+            addToCart(exactMatches[0], variant);
+            setSearchTerm("");
+            setSearchResults([]);
+            return;
+          }
+        }
+        
         addToCart(exactMatches[0]);
         setSearchTerm("");
         setSearchResults([]);
@@ -1858,7 +1885,10 @@ export function AdminPDV() {
                     <div className="mt-2 flex justify-between items-center">
                       <div className="flex items-center gap-3">
                         <button
-                          onClick={() => updateQty(idx, -1)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateQty(idx, -1);
+                          }}
                           className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-900/10 hover:bg-red-600 transition-colors"
                         >
                           <Minus size={12} />
@@ -1867,7 +1897,10 @@ export function AdminPDV() {
                           {item.quantity}
                         </span>
                         <button
-                          onClick={() => updateQty(idx, 1)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateQty(idx, 1);
+                          }}
                           className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-900/10 hover:bg-red-600 transition-colors"
                         >
                           <Plus size={12} />

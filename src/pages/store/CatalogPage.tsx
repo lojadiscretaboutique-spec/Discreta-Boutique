@@ -194,7 +194,7 @@ export function CatalogPage() {
               controlStock: p.controlStock,
               allowBackorder: p.allowBackorder,
               extras: p.extras,
-              seo: { keywords: p.seo?.keywords },
+              seo: { keywords: p.seo?.keywords, slug: p.seo?.slug },
               ai_keywords: p.ai_keywords,
               ai_synonyms: p.ai_synonyms,
               searchTerms: p.searchTerms,
