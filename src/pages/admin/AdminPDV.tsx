@@ -389,7 +389,9 @@ export function AdminPDV() {
     // 0. Buscar por Combos (Exato ou SKU gerado)
     const exactCombo = allCombos.find(c => 
       c.name.toLowerCase() === lowerTerm || 
-      `combo-${c.id?.slice(-6).toUpperCase()}`.toLowerCase() === lowerTerm
+      `combo-${c.id?.slice(-6).toUpperCase()}`.toLowerCase() === lowerTerm ||
+      (c.gtin && c.gtin.toLowerCase() === lowerTerm) ||
+      (c.sku && c.sku.toLowerCase() === lowerTerm)
     );
     if (exactCombo) {
       addComboToCart(exactCombo);
@@ -714,7 +716,9 @@ export function AdminPDV() {
         // Filter combos (already loaded in allCombos)
         const combos = allCombos.filter(c => 
           c.name.toLowerCase().includes(s) || 
-          c.description.toLowerCase().includes(s)
+          c.description.toLowerCase().includes(s) ||
+          (c.gtin && c.gtin.toLowerCase().includes(s)) ||
+          (c.sku && c.sku.toLowerCase().includes(s))
         );
         setComboResults(combos);
 
