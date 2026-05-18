@@ -76,8 +76,8 @@ export function AdminLabels() {
         allItems.push({
            id: combo.id,
            name: combo.name,
-           sku: 'COMBO',
-           gtin: combo.id || '',
+           sku: combo.sku || 'COMBO',
+           gtin: combo.gtin || '',
            price: combo.price,
            active: combo.active,
            images: combo.images || (combo.imageUrl ? [{url: combo.imageUrl, path: '', isMain: true}] : []),
