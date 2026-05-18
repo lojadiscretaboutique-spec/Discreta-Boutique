@@ -1,5 +1,6 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { cacheService } from './cacheService';
 
 export interface MethodConfig {
   id: string;
@@ -66,6 +67,7 @@ export const settingsService = {
 
   async saveOperatingHours(settings: OperatingHoursSettings) {
     await setDoc(doc(db, 'settings', OPERATING_HOURS_DOC_ID), settings);
+    await cacheService.notifyChange();
   },
 
   async getPaymentSettings(): Promise<PaymentSettings> {
@@ -83,6 +85,7 @@ export const settingsService = {
 
   async savePaymentSettings(settings: PaymentSettings) {
     await setDoc(doc(db, 'settings', SETTINGS_DOC_ID), settings);
+    await cacheService.notifyChange();
   },
 
   async getMercadoPagoSettings(): Promise<MercadoPagoSettings> {
@@ -98,5 +101,6 @@ export const settingsService = {
 
   async saveMercadoPagoSettings(settings: MercadoPagoSettings) {
     await setDoc(doc(db, 'settings', MP_DOC_ID), settings);
+    await cacheService.notifyChange();
   }
 };

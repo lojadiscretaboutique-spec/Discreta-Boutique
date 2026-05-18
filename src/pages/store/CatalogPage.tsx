@@ -6,13 +6,11 @@ import { formatCurrency, cn } from '../../lib/utils';
 import { Search, X, Minus, Plus, Frown, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
-import { getRankingProfissional, getRankingHybrid } from '../../lib/ranking';
+import { getRankingProfissional } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
 import { catalogSectionsService, SECTION_METADATA, CatalogSection } from '../../services/catalogSectionsService';
-import { openaiOfferSorting } from '../../services/openaiOfferSorting';
-import { aiFrontendService } from '../../services/aiFrontendService';
 
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -32,8 +30,6 @@ export function CatalogPage() {
   const [selectedCollection, setSelectedCollection] = useState<string | null>(qCollection);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
-  const [rankingAi, setRankingAi] = useState(false);
-  const [aiSuggestion, setAiSuggestion] = useState<any>(null);
   const lastRankedSection = useRef<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
@@ -95,33 +91,21 @@ export function CatalogPage() {
     }
     
     setSearching(true);
-    try {
-      const suggestion = await aiFrontendService.interpretSearch(searchTerm.trim());
-      setAiSuggestion(suggestion);
-    } catch (e) {
-      console.warn('[SEARCH][AI_ERROR] Falling back to standard ranking', e);
-      setAiSuggestion(null);
-    } finally {
-      setSearching(false);
-    }
+    // Standard local ranking is used in the filter effect
+    setSearching(false);
   };
 
   const trackProductClick = async (productId: string) => {
     // Register for overall ranking
     productService.trackInteraction(productId, 'click');
-
-    // Register for AI search optimization if within a search context
-    if (aiSuggestion?.searchId) {
-      aiFrontendService.trackSearchClick(aiSuggestion.searchId, productId);
-    }
   };
 
   const isCategoriesEmpty = categories.length === 0;
   useEffect(() => {
-    if (qSearch && !aiSuggestion) {
+    if (qSearch) {
       handleRealSearch(qSearch);
     }
-  }, [qSearch, aiSuggestion]);
+  }, [qSearch]);
 
   useEffect(() => {
     async function loadData() {
@@ -243,10 +227,12 @@ export function CatalogPage() {
           const cat = searchParams.get('categoria');
           const sub = searchParams.get('subcategoria');
           const col = searchParams.get('colecao');
+          const q = searchParams.get('q');
 
           setSelectedSection(s);
           setSelectedSubcat(sub);
           setSelectedCollection(col);
+          if (q !== null) setSearch(q);
 
           if (cat && cat !== 'all') {
             const found = catsData.find(c => c.id === cat || c.slug === cat);
@@ -271,19 +257,17 @@ export function CatalogPage() {
 
   useEffect(() => {
     async function rankSpecialSections() {
-      // Evitar re-ranqueamento se já foi feito para esta seção e o número de itens é o mesmo
+      // Local ranking for special sections to avoid extra AI calls
       const rankKey = `${selectedSection}-${filtered.length}`;
       if (selectedSection === 'promocoes' && filtered.length > 0 && lastRankedSection.current !== rankKey) {
-        setRankingAi(true);
-        try {
-          const ranked = await openaiOfferSorting.rankOffers(filtered);
-          lastRankedSection.current = rankKey;
-          setFiltered(ranked);
-        } catch (e) {
-          console.warn('[AI_RANK_CATALOG_FAIL]', e);
-        } finally {
-          setRankingAi(false);
-        }
+        // Optimized local sort for promotions (biggest discount first)
+        const sorted = [...filtered].sort((a, b) => {
+          const discountA = a.price > 0 ? (a.price - (a.promoPrice || a.price)) / a.price : 0;
+          const discountB = b.price > 0 ? (b.price - (b.promoPrice || b.price)) / b.price : 0;
+          return discountB - discountA;
+        });
+        lastRankedSection.current = rankKey;
+        setFiltered(sorted);
       }
     }
     rankSpecialSections();
@@ -338,18 +322,11 @@ export function CatalogPage() {
       console.log(`[FILTER][CATEGORY] Found ${result.length} products for cat ${selectedCat}`);
     }
 
-    // 5. Filtro de Busca (Inteligente/Profissional)
+    // 5. Filtro de Busca (Profissional Local)
     if (search.trim()) {
-      if (aiSuggestion) {
-        // AI Ranking: semantics, keywords, synonyms + base metrics
-        const interpretacao = aiSuggestion.interpretacao || aiSuggestion;
-        result = getRankingHybrid(result, interpretacao);
-        console.log(`[CATALOG][AI_SEARCH] Ranked ${result.length} matches using AI interpretation`);
-      } else {
-        // Fallback or Standard Professional Ranking
-        result = getRankingProfissional(result, search, categories);
-        console.log(`[CATALOG][PROFESSIONAL_SEARCH] Found ${result.length} matches for "${search}"`);
-      }
+      // Use standard local ranking as requested by customer
+      result = getRankingProfissional(result, search, categories);
+      console.log(`[CATALOG][PROFESSIONAL_SEARCH] Found ${result.length} matches for "${search}"`);
     }
 
     console.log(`[CATALOG][FILTER_COMPLETE] ${result.length} results | Time: ${Date.now() - startTime}ms`);
@@ -557,19 +534,6 @@ export function CatalogPage() {
             </button>
           )}
         </div>
-
-        {rankingAi && (
-          <motion.div 
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-3 py-4 mb-8 bg-red-600/5 border border-red-600/10 rounded-2xl px-6 animate-pulse"
-          >
-            <Loader2 className="animate-spin text-red-600" size={16} />
-            <span className="text-[10px] font-black uppercase tracking-[3px] text-red-600">
-              Inteligência Artificial otimizando vitrine...
-            </span>
-          </motion.div>
-        )}
 
         {/* Product Grid - Optimized Columns */}
         <main className="w-full">

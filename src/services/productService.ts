@@ -2,6 +2,7 @@ import { serverTimestamp, collection, doc, updateDoc, getDoc, getDocs, query, or
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
 import { stockSyncService } from './stockSyncService';
+import { cacheService } from './cacheService';
 
 export interface ProductVariant {
   id?: string;
@@ -179,15 +180,21 @@ export const productService = {
 
   async listProducts() {
     try {
+      const cached = cacheService.get('products_list');
+      if (cached) return cached as Product[];
+
       const q = query(collection(db, 'products'), orderBy('updatedAt', 'desc'));
       const snap = await getDocs(q);
-      return snap.docs.map(doc => {
+      const products = snap.docs.map(doc => {
         const data = doc.data();
         if (data.images && Array.isArray(data.images)) {
           data.images.sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
         }
         return { id: doc.id, ...data } as Product;
       });
+
+      cacheService.set('products_list', products);
+      return products;
     } catch (error: unknown) {
       console.error("Error listing products:", error);
       const err = error as { code?: string };
@@ -321,6 +328,7 @@ export const productService = {
         await stockSyncService.syncParentStock(productRef.id);
       }
 
+      await cacheService.notifyChange();
       return productRef.id;
     } catch (error) {
       console.error("Error creating product:", error);
@@ -393,6 +401,7 @@ export const productService = {
         await stockSyncService.syncParentStock(id);
       }
 
+      await cacheService.notifyChange();
       return id;
     } catch (error: any) {
       console.error("Error updating product:", error);
@@ -438,6 +447,7 @@ export const productService = {
       try {
         await batch.commit();
         console.log(`[Diagnostic] Step 4 Success: Batch committed.`);
+        await cacheService.notifyChange();
       } catch (e: any) {
         console.error(`[Diagnostic] Step 4 FAILED (Batch Commit): ${e.message}`, e);
         throw e;

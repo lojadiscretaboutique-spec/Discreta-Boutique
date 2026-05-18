@@ -45,8 +45,15 @@ export const getMatchScore = (p: Product, aiSuggestion: any) => {
     const subcats = (aiSuggestion.subcategorias_sugeridas || []).map((s: string) => s.toLowerCase());
 
     // 1. Exact Match on name (Massive boost to keep it top)
-    if (name === mainTerm) score += 2000;
-    if (name.includes(mainTerm)) score += 500;
+    if (name === mainTerm) score += 5000;
+    if (name.startsWith(mainTerm)) score += 2500;
+    if (name.includes(mainTerm)) score += 1500;
+
+    // Bonus for matching all words from the main term
+    const mainTermWords = mainTerm.split(/\s+/).filter((w: string) => w.length >= 2);
+    if (mainTermWords.length > 1 && mainTermWords.every((w: string) => name.includes(w))) {
+      score += 800;
+    }
 
     // 2. Categoria e Subcategoria sugeridas pela IA
     if (sugestaoCat && sugestaoCat !== 'outros') {
@@ -170,46 +177,118 @@ export const getRankingProfissional = (products: Product[], queryText: string, c
 
     const startTime = Date.now();
 
+    // Criar mapa de categorias para busca rápida de pais
+    const categoryMap = new Map();
+    categories.forEach(c => categoryMap.set(c.id, c));
+
+    const getAncestors = (catId: string): any[] => {
+        const ancestors: any[] = [];
+        let currentId = catId;
+        const visited = new Set(); // Prevenir loops
+        
+        while (currentId && categoryMap.has(currentId) && !visited.has(currentId)) {
+            visited.add(currentId);
+            const cat = categoryMap.get(currentId);
+            ancestors.push(cat);
+            currentId = cat.parentId;
+        }
+        return ancestors;
+    };
+
     const ranked = products.map(p => {
         let score = 0;
         const name = normalizeSearchText(p.name);
         const desc = normalizeSearchText(`${p.shortDescription || ""} ${p.fullDescription || ""} ${p.subtitle || ""}`);
         const subcat = normalizeSearchText(p.subcategory || "");
-        const catObj = categories.find(c => c.id === p.categoryId);
-        const catName = normalizeSearchText(catObj?.name || "");
+        
+        // Categorias e Ancestrais (Hierarquia: Pai e Filhas)
+        const ancestors = p.categoryId ? getAncestors(p.categoryId) : [];
+        const catNames = ancestors.map(a => normalizeSearchText(a.name));
         
         const tags = [
             ...(p.tags || []),
             ...(p.seo?.keywords || []),
             ...(p.ai_keywords || []),
+            ...(p.ai_synonyms || []),
             ...(p.searchTerms || []),
             ...(p.palavras_chave || [])
         ].map(t => normalizeSearchText(String(t)));
 
         // 1. Nome exato ou parcial (Prioridade Máxima)
-        if (name === normalizedQuery) score += 500; // Match exato total
-        if (name.includes(normalizedQuery)) score += 100;
-        
-        queryWords.forEach(word => {
-            if (name.includes(word)) score += 20;
-        });
+        const allWordsInName = queryWords.every(word => name.includes(word));
+        const exactPhraseMatch = name.includes(normalizedQuery);
+        const startsWithPhrase = name.startsWith(normalizedQuery);
 
-        // 2. Subcategoria (+60)
-        if (subcat && allSearchTerms.some(t => subcat.includes(t) || t.includes(subcat))) {
-            score += 60;
+        if (name === normalizedQuery) {
+            score += 5000; // Match exato total - o suprassumo da busca
+        } else if (startsWithPhrase) {
+            score += 2000; // Começa exatamente com a frase buscada
+        } else if (exactPhraseMatch) {
+            score += 1500; // Contém a frase exata em qualquer lugar do nome
+            
+            // Bônus se a frase exata estiver "limpa" (sem muitas palavras extras ao redor)
+            const queryLength = normalizedQuery.split(' ').length;
+            const nameLength = name.split(' ').length;
+            if (nameLength <= queryLength + 2) score += 500;
+        } else if (allWordsInName) {
+            score += 1000;  // Contém todas as palavras, mesmo que dispersas
+            
+            // Verificar ordem das palavras para reforçar match sequencial
+            let lastIndex = -1;
+            let sequential = true;
+            for (const word of queryWords) {
+                const currentIndex = name.indexOf(word);
+                if (currentIndex < lastIndex) {
+                    sequential = false;
+                    break;
+                }
+                lastIndex = currentIndex;
+            }
+            if (sequential) score += 300;
         }
-
-        // 3. Tags (+40)
-        tags.forEach(tag => {
-            if (allSearchTerms.some(t => tag.includes(t) || t.includes(tag))) {
-                score += 40;
+        
+        // Bônus por palavras individuais no nome
+        let wordsMatched = 0;
+        queryWords.forEach(word => {
+            if (name === word) {
+                score += 300;
+                wordsMatched++;
+            } else if (name.includes(word)) {
+                score += 100;
+                wordsMatched++;
             }
         });
 
-        // 4. Categoria (+20)
-        if (catName && allSearchTerms.some(t => catName.includes(t) || t.includes(catName))) {
-            score += 20;
+        // Penalidade para nomes que não contém a maioria das palavras buscadas se a busca for longa
+        if (queryWords.length >= 3 && wordsMatched < Math.ceil(queryWords.length / 2)) {
+            score -= 500; // Forte penalidade para "ruído"
         }
+
+        // Penalidade para nomes muito longos se for uma busca curta (precisão por densidade)
+        if (exactPhraseMatch && name.length > normalizedQuery.length + 30) {
+            score -= 150; // Reduz mais agressivamente se houver muito texto extra irrelevante
+        }
+
+        // 2. Subcategoria (+120)
+        if (subcat && (subcat === normalizedQuery || allSearchTerms.some(t => subcat.includes(t) || t.includes(subcat)))) {
+            score += 120;
+        }
+
+        // 3. Tags e Synonyms (+80)
+        tags.forEach(tag => {
+            if (tag === normalizedQuery) score += 400; // Match exato com tag/keyword
+            if (allSearchTerms.some(t => tag.includes(t) || t.includes(tag))) {
+                score += 150;
+            }
+        });
+
+        // 4. Categorias (Pai e Filhas) (+400 para match exato, +100 para parcial)
+        catNames.forEach(cName => {
+            if (cName === normalizedQuery) score += 400; // Match exato com nome da categoria (pai ou filha)
+            else if (allSearchTerms.some(t => cName.includes(t) || t.includes(cName))) {
+                score += 100; // Match parcial
+            }
+        });
 
         // 5. Keywords/SEO (+20) - Já estamos olhando nas tags acima, mas podemos reforçar
         // p.seo?.keywords.forEach(...)

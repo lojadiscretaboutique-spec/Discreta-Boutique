@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { useUIStore } from './store/uiStore';
+import { cacheService } from './services/cacheService';
 
 // Store Pages
 const HomePage = lazy(() => import('./pages/store/HomePage').then(m => ({ default: m.HomePage })));
@@ -103,6 +104,10 @@ function AppContent() {
   const [isNavigating, setIsNavigating] = useState(false);
   const isHomeReady = useUIStore(s => s.isHomeReady);
   const isAtHome = location.pathname === '/';
+
+  useEffect(() => {
+    cacheService.validateCache();
+  }, []);
 
   useEffect(() => {
     setIsNavigating(true);

@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
+import { cacheService } from './cacheService';
 
 export interface Category {
   id: string;
@@ -46,6 +47,9 @@ export interface Category {
 export const categoryService = {
   async listCategories() {
     try {
+      const cached = cacheService.get('categories_with_count');
+      if (cached) return cached as Category[];
+
       // 1. Fetch categories
       const q = query(collection(db, 'categories'), orderBy('sortOrder', 'asc'));
       const catSnap = await getDocs(q);
@@ -70,10 +74,13 @@ export const categoryService = {
       }));
 
       // 4. Return sorted
-      return categoriesWithCount.sort((a, b) => {
+      const result = categoriesWithCount.sort((a, b) => {
         if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
         return a.name.localeCompare(b.name);
       });
+
+      cacheService.set('categories_with_count', result);
+      return result;
     } catch (error: unknown) {
       console.error("Error listing categories:", error);
       return [];
@@ -122,6 +129,7 @@ export const categoryService = {
       });
 
       const docRef = await addDoc(collection(db, 'categories'), data);
+      await cacheService.notifyChange();
       return docRef.id;
     } catch (error) {
       console.error("Error creating category:", error);
@@ -153,6 +161,7 @@ export const categoryService = {
       updateData.updatedAt = serverTimestamp();
 
       await updateDoc(docRef, updateData);
+      await cacheService.notifyChange();
       return id;
     } catch (error: any) {
       console.error("Error updating category:", error);
@@ -177,6 +186,7 @@ export const categoryService = {
       }
 
       await deleteDoc(doc(db, 'categories', id));
+      await cacheService.notifyChange();
     } catch (error) {
       console.error("Error deleting category:", error);
       throw error;
@@ -213,6 +223,7 @@ export const categoryService = {
       });
 
       const docRef = await addDoc(collection(db, 'categories'), data);
+      await cacheService.notifyChange();
       return docRef.id;
     } catch (error) {
       console.error("Error duplicating category:", error);

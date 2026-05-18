@@ -7,9 +7,17 @@ interface ResponsiveImageProps {
   className?: string;
   loading?: 'lazy' | 'eager';
   sizes?: string;
+  isPriority?: boolean;
 }
 
-export function ResponsiveImage({ src, alt, className, loading = 'lazy', sizes = '(max-width: 768px) 100vw, 50vw' }: ResponsiveImageProps) {
+export function ResponsiveImage({ 
+  src, 
+  alt, 
+  className, 
+  loading = 'lazy', 
+  sizes = '(max-width: 768px) 100vw, 50vw',
+  isPriority = false
+}: ResponsiveImageProps) {
   const [loaded, setLoaded] = useState(false);
 
   return (
@@ -21,7 +29,8 @@ export function ResponsiveImage({ src, alt, className, loading = 'lazy', sizes =
       <img
         src={src}
         alt={alt}
-        loading={loading}
+        loading={isPriority ? 'eager' : loading}
+        fetchPriority={isPriority ? 'high' : 'auto'}
         sizes={sizes}
         className={cn(
           "w-full h-full object-cover transition-opacity duration-700",

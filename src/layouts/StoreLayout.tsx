@@ -77,10 +77,12 @@ export function StoreLayout() {
           </div>
         </div>
 
-        {/* Global Search Bar - Clean & Dark */}
-        <div className="bg-black py-4 border-b border-zinc-900/50">
-           <SearchBar placeholder="O que você busca hoje? Encontre prazer..." />
-        </div>
+        {/* Global Search Bar - Clean & Dark - Only on Home and Catalog */}
+        {(location.pathname === '/' || location.pathname === '/catalogo') && (
+          <div className="bg-black py-4 border-b border-zinc-900/50">
+             <SearchBar placeholder="O que você busca hoje? Encontre prazer..." />
+          </div>
+        )}
 
         {/* Mobile Nav */}
         <AnimatePresence>

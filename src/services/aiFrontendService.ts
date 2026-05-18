@@ -123,11 +123,11 @@ export const aiFrontendService = {
   },
 
   /**
-   * Gets search suggestions based on previous successful searches
+   * Gets search suggestions and product previews based on previous successful searches and current inventory
    */
-  async getSearchSuggestions(q: string): Promise<string[]> {
+  async getSearchSuggestions(q: string): Promise<{ suggestions: string[], products: any[] }> {
     const response = await fetch(`/api/ia/search-suggestions?q=${encodeURIComponent(q)}`);
-    if (!response.ok) return [];
+    if (!response.ok) return { suggestions: [], products: [] };
     return await response.json();
   }
 };

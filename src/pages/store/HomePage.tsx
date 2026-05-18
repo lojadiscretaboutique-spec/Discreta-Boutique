@@ -1,18 +1,18 @@
-import { useEffect, useState, useCallback, useRef, memo } from 'react';
-import { ResponsiveImage } from '../../components/ui/ResponsiveImage';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Link, useNavigate } from 'react-router-dom';
-import { Package, ShoppingCart, Users, ChevronLeft, ChevronRight, CreditCard, Plus, Minus } from 'lucide-react';
-import { formatCurrency, cn } from '../../lib/utils';
+import { Link } from 'react-router-dom';
+import { Package, ShoppingCart, Users, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react';
+import { cn } from '../../lib/utils';
 import { Product } from '../../services/productService';
 import { getLancamentos, getDestaques, getMaisVendidos, getEmAlta, getRecomendados, fillFallback } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
-import { useCartStore } from '../../store/cartStore';
 import { HeroBanner } from '../../components/ui/HeroBanner';
 import { ImperdiveisCarousel } from '../../components/home/ImperdiveisCarousel';
 import { useUIStore } from '../../store/uiStore';
+import { ProductItemCard, SkeletonCard } from '../../components/ui/ProductItemCard';
+import { LazyLoad } from '../../components/ui/LazyLoad';
 
 interface Banner {
   id: string;
@@ -259,13 +259,12 @@ export function HomePage() {
               <div className="w-12 h-1 bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"></div>
             </div>
 
-            <div className="flex items-start gap-6 md:gap-12 overflow-x-auto no-scrollbar pb-6 scroll-p-4">
+            <div className="flex items-start gap-4 md:gap-8 overflow-x-auto no-scrollbar pb-6 scroll-p-4">
               {loading ? (
-                Array(6).fill(0).map((_, i) => (
-                  <div key={i} className="flex flex-col items-center shrink-0 w-32 md:w-44 animate-pulse">
-                    <div className="w-32 h-32 md:w-44 md:h-44 rounded-full bg-zinc-900 border border-zinc-800 mb-4 shadow-2xl" />
-                    <div className="h-4 bg-zinc-900 rounded w-20 mb-2" />
-                    <div className="h-0.5 bg-zinc-900 w-8" />
+                Array(8).fill(0).map((_, i) => (
+                  <div key={i} className="flex flex-col items-center shrink-0 w-20 md:w-28 animate-pulse">
+                    <div className="w-20 h-20 md:w-28 md:h-28 rounded-full bg-zinc-900 border border-zinc-800 mb-3 shadow-2xl" />
+                    <div className="h-3 bg-zinc-900 rounded w-16 mb-2" />
                   </div>
                 ))
               ) : (
@@ -273,10 +272,10 @@ export function HomePage() {
                   <Link 
                     key={cat.id} 
                     to={`/catalogo?categoria=${cat.slug || cat.id}`} 
-                    className="group flex flex-col items-center shrink-0 w-32 md:w-44"
+                    className="group flex flex-col items-center shrink-0 w-20 md:w-28"
                   >
-                    {/* Circular Image Container */}
-                    <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full overflow-hidden bg-zinc-900 transition-all duration-500 shadow-2xl mb-4 group-hover:shadow-red-900/20 group-hover:scale-105">
+                    {/* Circular Image Container - Smaller */}
+                    <div className="relative w-20 h-20 md:w-28 md:h-28 rounded-full overflow-hidden bg-zinc-900 transition-all duration-500 shadow-2xl mb-3 group-hover:shadow-red-900/20 group-hover:scale-105 border border-zinc-900">
                       {cat.image?.url ? (
                         <img 
                           src={cat.image.url || undefined} 
@@ -285,7 +284,7 @@ export function HomePage() {
                           referrerPolicy="no-referrer" 
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-4xl font-black italic text-zinc-800">
+                        <div className="w-full h-full flex items-center justify-center text-xl md:text-2xl font-black italic text-zinc-800 bg-zinc-900 uppercase">
                           {cat.name.substring(0, 1)}
                         </div>
                       )}
@@ -294,13 +293,10 @@ export function HomePage() {
                       <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                     </div>
                     
-                    {/* Title Below */}
-                    <h3 className="text-base md:text-lg font-black uppercase tracking-[1px] text-white group-hover:text-red-500 text-center transition-colors duration-500 line-clamp-2 leading-tight px-1">
+                    {/* Title Below - Smaller text */}
+                    <h3 className="text-[10px] md:text-xs font-black uppercase tracking-[1px] text-zinc-400 group-hover:text-red-500 text-center transition-colors duration-500 line-clamp-2 leading-tight px-1">
                       {cat.name}
                     </h3>
-                    
-                    {/* Active Indicator line */}
-                    <div className="mt-2 w-0 h-0.5 bg-red-600 group-hover:w-12 transition-all duration-500 shadow-[0_0_8px_rgba(220,38,38,0.8)]"></div>
                   </Link>
                 ))
               )}
@@ -319,23 +315,28 @@ export function HomePage() {
           </>
         ) : (
           <>
-            {/* 1. LANÇAMENTOS */}
+            {/* 1. LANÇAMENTOS - Carrega imediatamente */}
             {sections.lancamentos.length > 0 && <ProductCarousel title="Lançamentos" products={sections.lancamentos} link="/catalogo?secao=lancamentos" />}
             
-            {/* 2. DESTAQUES */}
+            {/* 2. DESTAQUES - Carrega imediatamente */}
             {sections.destaques.length > 0 && <ProductCarousel title="Destaques" products={sections.destaques} link="/catalogo?secao=destaques" />}
             
-            {/* 3. MAIS VENDIDOS */}
-            {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo?secao=mais-vendidos" />}
-
-            {/* OFERTAS IMPERDÍVEIS (IA POWERED) */}
-            <ImperdiveisCarousel products={sections.ofertas} loading={loading} />
-
-            {/* 4. EM ALTA */}
-            {sections.emAlta.length > 0 && <ProductCarousel title="Em Alta" products={sections.emAlta} link="/catalogo?secao=em-alta" />}
-
-            {/* 5. RECOMENDADOS */}
-            {sections.recomendados.length > 0 && <ProductCarousel title="Recomendados" products={sections.recomendados} link="/catalogo?secao=recomendados" />}
+            {/* Sessões carregadas conforme o scroll para performance */}
+            <LazyLoad rootMargin="300px">
+              {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo?secao=mais-vendidos" />}
+            </LazyLoad>
+ 
+            <LazyLoad rootMargin="300px">
+              <ImperdiveisCarousel products={sections.ofertas} loading={loading} />
+            </LazyLoad>
+ 
+            <LazyLoad rootMargin="300px">
+              {sections.emAlta.length > 0 && <ProductCarousel title="Em Alta" products={sections.emAlta} link="/catalogo?secao=em-alta" />}
+            </LazyLoad>
+ 
+            <LazyLoad rootMargin="300px">
+              {sections.recomendados.length > 0 && <ProductCarousel title="Recomendados" products={sections.recomendados} link="/catalogo?secao=recomendados" />}
+            </LazyLoad>
           </>
         )}
       </div>
@@ -371,14 +372,28 @@ export function HomePage() {
 
 function ProductCarousel({ title, products, link, loading }: { title: string, products: Product[], link: string, loading?: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = useState(6);
+
+  const handleScroll = useCallback(() => {
+    if (scrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+      // Load more items when getting close to the end (300px threshold)
+      if (scrollLeft + clientWidth >= scrollWidth - 300 && visibleCount < products.length) {
+        setVisibleCount(prev => Math.min(prev + 12, products.length));
+      }
+    }
+  }, [visibleCount, products.length]);
 
   const scroll = (direction: 'left' | 'right') => {
     if (scrollRef.current) {
       const { scrollLeft, clientWidth } = scrollRef.current;
       const scrollTo = direction === 'left' ? scrollLeft - clientWidth : scrollLeft + clientWidth;
       scrollRef.current.scrollTo({ left: scrollTo, behavior: 'smooth' });
+      if (direction === 'right') setVisibleCount(prev => Math.min(prev + 6, products.length));
     }
   };
+
+  const displayProducts = loading ? Array(4).fill(0) : products.slice(0, visibleCount);
 
   return (
     <section className="relative group/carousel">
@@ -392,19 +407,20 @@ function ProductCarousel({ title, products, link, loading }: { title: string, pr
       <div className="relative">
         <div 
           ref={scrollRef}
+          onScroll={handleScroll}
           className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-4 no-scrollbar"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {loading ? (
-             Array(5).fill(0).map((_, i) => (
-              <div key={i} className="min-w-[calc(50%-8px)] sm:min-w-[240px] snap-start">
+             displayProducts.map((_, i) => (
+              <div key={i} className="min-w-[42%] sm:min-w-[240px] snap-start h-full">
                 <SkeletonCard />
               </div>
             ))
-          ) : products.length > 0 ? (
-            products.map(product => (
-              <div key={product.id} className="min-w-[calc(50%-8px)] sm:min-w-[240px] snap-start">
-                <ProductItemCard product={product} />
+          ) : displayProducts.length > 0 ? (
+            displayProducts.map((product: any, idx: number) => (
+              <div key={product.id} className="min-w-[42%] sm:min-w-[240px] snap-start h-full">
+                <ProductItemCard product={product} isPriority={idx < 2} />
               </div>
             ))
           ) : null}
@@ -429,160 +445,6 @@ function ProductCarousel({ title, products, link, loading }: { title: string, pr
         )}
       </div>
     </section>
-  );
-}
-
-const ProductItemCard = memo(({ product }: { product: Product }) => {
-  const mainImage = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
-  const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
-  const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
-  const hasVariants = !!product.hasVariants;
-  const [quantity, setQuantity] = useState(1);
-  const addItem = useCartStore(s => s.addItem);
-  const navigate = useNavigate();
-
-  const handleAddToCart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (hasVariants) {
-      navigate(`/produto/${product.seo?.slug || product.id}`);
-    } else {
-      addItem({
-        id: `${product.id}-base`,
-        productId: product.id,
-        name: product.name,
-        price: hasPromo ? product.promoPrice! : product.price,
-        quantity: quantity,
-        sku: product.sku,
-        imageUrl: mainImage || '',
-        variantId: undefined,
-        variantName: undefined
-      });
-      navigate('/carrinho');
-    }
-  };
-  
-  return (
-    <Link 
-      to={`/produto/${product.seo?.slug || product.id}`} 
-      className={cn(
-        "group relative bg-zinc-950/40 rounded-[2.5rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-700 h-full",
-        isOut ? "grayscale opacity-40 shadow-none border-zinc-950" : "hover:border-red-600/30 hover:bg-zinc-950 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:shadow-red-900/10"
-      )}
-    >
-      <div className="aspect-[3/4] relative bg-white overflow-hidden group-hover:bg-zinc-50 transition-colors duration-500">
-        {mainImage ? (
-          <ResponsiveImage 
-            src={mainImage} 
-            alt={product.name} 
-            className={cn(
-              "w-full h-full object-cover transition-transform duration-1000 ease-out",
-              !isOut && "group-hover:scale-105"
-            )}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-zinc-800 text-[10px] font-black uppercase tracking-widest text-center px-4 italic">Sem Imagem</div>
-        )}
-        
-        {/* Organic Floating Badges */}
-        <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
-          {product.newRelease && !isOut && (
-            <motion.span 
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              className="bg-red-600 text-white text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-[0_5px_15px_rgba(220,38,38,0.4)] backdrop-blur-sm"
-            >
-              Novo
-            </motion.span>
-          )}
-          {hasPromo && (
-            <motion.span 
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.1 }}
-              className="bg-red-600 text-white text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-xl"
-            >
-              Oferta
-            </motion.span>
-          )}
-        </div>
-
-        {isOut && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-[4px] z-20">
-            <span className="bg-transparent text-white text-[10px] font-black uppercase tracking-[4px] border-b-2 border-white/20 pb-1">Esgotado</span>
-          </div>
-        )}
-        
-        {/* Soft Glow Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-      </div>
-      
-      <div className="p-4 md:p-5 flex flex-col flex-1 relative bg-zinc-950">
-        <h3 className="text-sm md:text-base font-bold text-zinc-100 group-hover:text-white transition-colors duration-300 line-clamp-4 leading-snug min-h-[5rem] md:min-h-[6rem] mb-3 capitalize">
-          {product.name.toLowerCase()}
-        </h3>
-
-        <div className="mt-auto flex flex-col w-full relative">
-          <div className="flex flex-col gap-1.5 mb-3">
-            {/* A Vista */}
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-xs md:text-sm font-bold text-red-600 tracking-tight">à vista</span>
-              <span className="text-xl md:text-2xl font-black text-red-600 tracking-tighter">
-                {formatCurrency(hasPromo ? product.promoPrice! : product.price)}
-              </span>
-            </div>
-            
-            {/* Installments */}
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] md:text-[11px] text-zinc-400 font-black tracking-tight uppercase">
-                {hasPromo && (
-                  <span className="line-through opacity-60 mr-1.5 font-medium">{formatCurrency(product.price)}</span>
-                )}
-                OU 10X DE {formatCurrency((hasPromo ? product.promoPrice! : product.price) / 10)} SEM JUROS
-              </span>
-            </div>
-          </div>
-          
-          {/* Bottom Actions */}
-          {!isOut && (
-            <div className="flex items-stretch gap-2 w-full h-9 md:h-10 relative z-20" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-              {!hasVariants && (
-                <div className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded px-1.5 w-[4.5rem] md:w-20 shrink-0">
-                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setQuantity(Math.max(1, quantity - 1)); }} className="text-zinc-400 hover:text-white p-1 transition-colors"><Minus size={14} /></button>
-                  <span className="text-xs font-bold text-white">{quantity}</span>
-                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setQuantity(quantity + 1); }} className="text-zinc-400 hover:text-white p-1 transition-colors"><Plus size={14} /></button>
-                </div>
-              )}
-              <button 
-                onClick={handleAddToCart}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] md:text-xs uppercase tracking-wider rounded transition-colors flex items-center justify-center"
-              >
-                Comprar
-              </button>
-            </div>
-          )}
-        </div>
-        
-        {/* Decoration line */}
-        <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
-      </div>
-    </Link>
-  );
-});
-
-function SkeletonCard() {
-  return (
-    <div className="bg-zinc-950/40 rounded-[2.5rem] border border-zinc-900 animate-pulse overflow-hidden h-full">
-      <div className="aspect-[3/4] bg-zinc-900" />
-      <div className="p-5 space-y-4">
-        <div className="h-4 bg-zinc-900 rounded-full w-3/4" />
-        <div className="h-4 bg-zinc-900 rounded-full w-1/2" />
-        <div className="space-y-2 pt-4">
-          <div className="h-6 bg-zinc-900 rounded-full w-2/3" />
-          <div className="h-10 bg-zinc-900 rounded w-full mt-4" />
-        </div>
-      </div>
-    </div>
   );
 }
 

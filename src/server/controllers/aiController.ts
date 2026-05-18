@@ -165,29 +165,29 @@ export const trackClick = async (req: Request, res: Response) => {
 export const getSearchSuggestions = async (req: Request, res: Response) => {
   try {
     const q = (req.query.q as string || '').toLowerCase().trim();
-    if (!q) return res.json([]);
+    if (!q) return res.json({ suggestions: [], products: [] });
 
     const searchRef = collection(db, 'intelligent_searches');
     const productsRef = collection(db, 'products');
+    const categoriesRef = collection(db, 'categories');
     
-    // 1. Fetch from previous successful searches - Prioritize those with clicks
+    // 1. Fetch from previous successful searches, products, and categories
     const qSearches = query(
       searchRef, 
       orderBy('cliques', 'desc'),
       limit(100) 
     );
 
-    // 2. Fetch from products to get "semantic" words from actual inventory
     const qProducts = query(
       productsRef,
       where('active', '==', true),
-      limit(100)
+      limit(200)
     );
-    
-    // Manual prefix filtering for Firestore
-    const [snapSearches, snapProducts] = await Promise.all([
+
+    const [snapSearches, snapProducts, snapCategories] = await Promise.all([
       getDocs(qSearches),
-      getDocs(qProducts)
+      getDocs(qProducts),
+      getDocs(categoriesRef)
     ]);
 
     const suggestionsSet = new Set<string>();
@@ -202,37 +202,74 @@ export const getSearchSuggestions = async (req: Request, res: Response) => {
       }
     });
 
+    // Add categories that match the query
+    snapCategories.docs.forEach(d => {
+      const catData = d.data();
+      const catName = (catData.name || '').toLowerCase();
+      if (catName.includes(q)) {
+        suggestionsSet.add(catName);
+      }
+    });
+
     // Sort by cliques and add to set
     searchSuggestionsList
       .sort((a, b) => b.cliques - a.cliques)
       .forEach(s => suggestionsSet.add(s.term));
 
-    // Extract relevant words from products that match the prefix
+    const matchingProducts: any[] = [];
+    
+    // Build a category map for product preview filtering
+    const categoryMap = new Map();
+    snapCategories.docs.forEach(d => categoryMap.set(d.id, { id: d.id, ...d.data() }));
+
+    // Extract relevant words from products and identify matching products for the preview
     snapProducts.docs.forEach(d => {
-      if (suggestionsSet.size >= 12) return;
+      const pData = d.data();
+      const name = (pData.name || '').toLowerCase();
+      const pTags = (pData.seo?.keywords || []).map((t: any) => String(t).toLowerCase());
+      const aiKeywords = (pData.ai_keywords || []).map((k: any) => String(k).toLowerCase());
+      const aiSynonyms = (pData.ai_synonyms || []).map((s: any) => String(s).toLowerCase());
+      const allTags = [...pTags, ...aiKeywords, ...aiSynonyms];
       
-      const name = (d.data().name || '').toLowerCase();
-      const pTags = (d.data().seo?.keywords || []).map((t: any) => String(t).toLowerCase());
-      const aiKeywords = (d.data().ai_keywords || []).map((k: any) => String(k).toLowerCase());
-      const allTags = [...pTags, ...aiKeywords];
+      // Also match based on category name
+      const catObj = pData.categoryId ? categoryMap.get(pData.categoryId) : null;
+      const catName = (catObj?.name || '').toLowerCase();
       
-      if (name.includes(q)) {
-        const parts = name.split(/\s+/);
-        parts.forEach((p: string) => {
-          if (p.startsWith(q) && p.length > 2) suggestionsSet.add(p);
+      const isMatch = name.includes(q) || allTags.some(t => t.includes(q)) || catName.includes(q);
+
+      if (isMatch && matchingProducts.length < 4) {
+        matchingProducts.push({
+          id: d.id,
+          name: pData.name,
+          price: pData.price,
+          promoPrice: pData.promoPrice,
+          imageUrl: pData.images?.find((img: any) => img.isMain)?.url || pData.images?.[0]?.url || '',
+          slug: pData.seo?.slug
         });
-        if (name.length < 30) suggestionsSet.add(name);
       }
 
-      allTags.forEach((t: string) => {
-        if (t.startsWith(q) || (q.length > 3 && t.includes(q))) {
-           suggestionsSet.add(t);
+      if (suggestionsSet.size < 12) {
+        if (name.includes(q)) {
+          const parts = name.split(/\s+/);
+          parts.forEach((p: string) => {
+            if (p.startsWith(q) && p.length > 2) suggestionsSet.add(p);
+          });
+          if (name.length < 30) suggestionsSet.add(name);
         }
-      });
+
+        allTags.forEach((t: string) => {
+          if (t.startsWith(q) || (q.length > 3 && t.includes(q))) {
+            suggestionsSet.add(t);
+          }
+        });
+      }
     });
 
-    const finalSuggestions = Array.from(suggestionsSet).slice(0, 8);
-    res.json(finalSuggestions);
+    const finalSuggestions = Array.from(suggestionsSet).slice(0, 6);
+    res.json({
+      suggestions: finalSuggestions,
+      products: matchingProducts
+    });
   } catch (error) {
     console.error('[GET_SUGGEST_ERROR]', error);
     res.status(500).json({ error: 'Erro ao buscar sugestões' });
