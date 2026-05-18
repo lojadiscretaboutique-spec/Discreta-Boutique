@@ -4,7 +4,8 @@ import {
     onSnapshot, 
     doc, 
     updateDoc, 
-    Timestamp 
+    Timestamp,
+    runTransaction
 } from 'firebase/firestore';
 import { sendWebhook } from './botConversaService';
 
@@ -44,19 +45,64 @@ export function setupOrderListener() {
                 }
 
                 console.log(`[FirestoreListener] Processando evento de pedido para botconversa (Client SDK): ${order.id} - Status: ${order.status}`);
+                
                 try {
+                   const now = Date.now();
+                   
+                   // Usar transaction para evitar que múltiplas instâncias enviem ao mesmo tempo
+                   const docRef = doc(db, 'orders', order.id);
+                   const shouldSend = await runTransaction(db, async (transaction) => {
+                        const sfDoc = await transaction.get(docRef);
+                        if (!sfDoc.exists()) {
+                            return false;
+                        }
+                        
+                        const data = sfDoc.data();
+                        
+                        if (data.last_status_sent === data.status) {
+                             return false;
+                        }
+                        
+                        const lastProcessingTime = data.webhook_processing_timestamp || 0;
+                        // Se já houve processamento nos últimos 15 segundos para este pedido, aborta
+                        if (now - lastProcessingTime < 15000) {
+                            return false;
+                        }
+                        
+                        // Marca como em processamento (lock de 15 segundos)
+                        transaction.update(docRef, { webhook_processing_timestamp: now });
+                        return true;
+                   });
+                   
+                   if (!shouldSend) {
+                       console.log(`[FirestoreListener] Pedido ${order.id} já sendo processado por outra instância ou cooldown ativo (15s). Ignorando.`);
+                       return;
+                   }
+                   
+                   // Dá um pequeno atraso para garantir que os dados relacionados foram salvos, e previne double triggers locais
                    await new Promise(resolve => setTimeout(resolve, 2000));
                    
                    const success = await sendWebhook(order);
                    
                    if (success) {
-                       await updateDoc(change.doc.ref, {
+                       // Atualiza pós-sucesso (usamos updateDoc direto pois só uma instância deve estar aqui)
+                       await updateDoc(docRef, {
                            last_status_sent: order.status,
                            webhook_last_sent: new Date().toISOString()
+                       });
+                   } else {
+                       // Remove o lock pra poder tentar novamente
+                       await updateDoc(docRef, {
+                           webhook_processing_timestamp: 0
                        });
                    }
                 } catch(e) {
                    console.error(`[FirestoreListener] Erro ao notificar pedido ${order.id}:`, e);
+                   try {
+                       await updateDoc(doc(db, 'orders', order.id), {
+                           webhook_processing_timestamp: 0
+                       });
+                   } catch (err) {}
                 }
             }
         });
