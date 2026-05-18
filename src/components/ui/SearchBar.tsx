@@ -166,7 +166,7 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
                           <button
                             key={product.id}
                             type="button"
-                            onClick={() => product.slug && goToProduct(product.slug)}
+                            onClick={() => goToProduct(product.slug || product.id)}
                             className="w-full text-left p-3 hover:bg-zinc-900 flex items-center gap-4 text-zinc-300 transition-colors group rounded-md"
                           >
                             <div className="w-12 h-12 rounded bg-zinc-900 flex-shrink-0 overflow-hidden border border-zinc-800">

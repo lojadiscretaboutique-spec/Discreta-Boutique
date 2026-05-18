@@ -358,7 +358,7 @@ export function ProductPage() {
                   transition={{ delay: idx * 0.1 }}
                   key={p.id}
                   onClick={() => {
-                    navigate(`/produto/${p.id}`);
+                    navigate(`/produto/${p.seo?.slug || p.id}`);
                     window.scrollTo(0, 0);
                   }}
                   className="group cursor-pointer"

@@ -127,6 +127,7 @@ export function AdminPDV() {
   const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
   const [modalVariants, setModalVariants] = useState<ProductVariant[]>([]);
   const [notes, setNotes] = useState("");
+  const [loadingVariants, setLoadingVariants] = useState(false);
   const [stockWarningModal, setStockWarningModal] = useState<{
     productName: string;
     stock: number;
