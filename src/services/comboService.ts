@@ -68,31 +68,50 @@ export const comboService = {
   },
 
   async saveCombo(data: Partial<Combo>) {
-    const isUpdate = !!data.id;
-    const ref = isUpdate ? doc(db, 'combos', data.id!) : doc(collection(db, 'combos'));
+    const { id, ...restData } = data;
+    const isUpdate = !!id;
+    const ref = isUpdate ? doc(db, 'combos', id!) : doc(collection(db, 'combos'));
     
     // Ensure we have a main image defined if images exist
-    if (data.images && data.images.length > 0) {
-      const hasMain = data.images.some(img => img.isMain);
-      if (!hasMain) data.images[0].isMain = true;
+    if (restData.images && restData.images.length > 0) {
+      const hasMain = restData.images.some(img => img.isMain);
+      if (!hasMain) restData.images[0].isMain = true;
     }
 
     const payload = {
-      ...data,
+      ...restData,
       updatedAt: serverTimestamp(),
-      createdAt: data.createdAt || serverTimestamp(),
-      soldCount: data.soldCount || 0,
-      profit: data.profit || 0,
-      active: data.active ?? true,
-      showInCatalog: data.showInCatalog ?? true,
-      isFeatured: data.isFeatured ?? false,
-      categories: data.categories || [],
+      createdAt: restData.createdAt || serverTimestamp(),
+      soldCount: restData.soldCount || 0,
+      profit: restData.profit || 0,
+      active: restData.active ?? true,
+      showInCatalog: restData.showInCatalog ?? true,
+      isFeatured: restData.isFeatured ?? false,
+      categories: restData.categories || [],
     };
 
+    // Remove undefined values recursively
+    const removeUndefined = (obj: any): any => {
+      if (Array.isArray(obj)) {
+        return obj.map(removeUndefined);
+      } else if (obj !== null && typeof obj === 'object') {
+        const newObj: any = {};
+        Object.keys(obj).forEach(key => {
+          if (obj[key] !== undefined) {
+            newObj[key] = removeUndefined(obj[key]);
+          }
+        });
+        return newObj;
+      }
+      return obj;
+    };
+    
+    const cleanPayload = removeUndefined(payload);
+    
     if (isUpdate) {
-      await updateDoc(ref, payload);
+      await updateDoc(ref, cleanPayload);
     } else {
-      await setDoc(ref, payload);
+      await setDoc(ref, cleanPayload);
     }
     
     await cacheService.notifyChange();

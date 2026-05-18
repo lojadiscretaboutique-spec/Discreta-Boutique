@@ -105,6 +105,22 @@ export default {
       },
       required: ["imageUrl", "active"]
     },
+    OfferBanner: {
+      title: "Offer Banner",
+      description: "Daily offer banners displayed on home page",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        imageUrl: { type: "string" },
+        linkUrl: { type: "string" },
+        active: { type: "boolean" },
+        startDate: { type: "string", format: "date-time" },
+        endDate: { type: "string", format: "date-time" },
+        createdAt: { type: "string", format: "date-time" }
+      },
+      required: ["name", "imageUrl", "active"]
+    },
     StoreSettings: {
       title: "Store Settings",
       description: "General store configurations",
@@ -369,6 +385,10 @@ export default {
     "banners": {
       schema: { $ref: "#/entities/Banner" },
       description: "Home page promotional banners"
+    },
+    "offer_banners": {
+      schema: { $ref: "#/entities/OfferBanner" },
+      description: "Daily offer banners"
     },
     "settings": {
       schema: { $ref: "#/entities/StoreSettings" },

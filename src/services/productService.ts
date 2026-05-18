@@ -274,7 +274,10 @@ export const productService = {
         }
       }
 
-    } catch (e) {
+    } catch (e: any) {
+      if (e.code === 'not-found' || e.message?.includes('No document to update')) {
+        return;
+      }
       console.error("Error tracking interaction:", e);
     }
   },

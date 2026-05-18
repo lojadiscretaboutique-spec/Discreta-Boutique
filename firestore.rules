@@ -101,6 +101,12 @@ service cloud.firestore {
       allow delete: if can('banners', 'excluir');
     }
 
+    match /offer_banners/{doc} {
+      allow read: if true;
+      allow create, update: if isMasterAdmin() || can('banners', 'criar');
+      allow delete: if can('banners', 'excluir');
+    }
+
     match /settings/{doc} {
       allow read: if true;
       allow update: if can('settings', 'editar');

@@ -22,8 +22,19 @@ interface Banner {
   active: boolean;
 }
 
+interface OfferBanner {
+  id: string;
+  name: string;
+  imageUrl: string;
+  linkUrl: string;
+  active: boolean;
+  startDate?: string;
+  endDate?: string;
+}
+
 export function HomePage() {
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [offerBanners, setOfferBanners] = useState<OfferBanner[]>([]);
   const [sections, setSections] = useState<{
     lancamentos: Product[],
     destaques: Product[],
@@ -41,8 +52,24 @@ export function HomePage() {
   const loadCriticalData = useCallback(async () => {
     try {
       // Load Banners first to show Hero
-      const bSnap = await getDocs(query(collection(db, 'banners'), where('active', '==', true)));
+      const [bSnap, oSnap] = await Promise.all([
+        getDocs(query(collection(db, 'banners'), where('active', '==', true))),
+        getDocs(query(collection(db, 'offer_banners'), where('active', '==', true)))
+      ]);
+      
       setBanners(bSnap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
+      
+      // Filter Offer Banners by date on client side for flexibility
+      const now = new Date();
+      const filteredOffers = oSnap.docs
+        .map(d => ({ id: d.id, ...d.data() } as OfferBanner))
+        .filter(o => {
+          if (!o.active) return false;
+          if (o.startDate && new Date(o.startDate) > now) return false;
+          if (o.endDate && new Date(o.endDate) < now) return false;
+          return true;
+        });
+      setOfferBanners(filteredOffers);
     } catch (e) {
       console.error(e);
     }
@@ -205,8 +232,8 @@ export function HomePage() {
   return (
     <div className="flex-1 flex flex-col bg-black text-white">
       {/* 1. HERO BANNERS */}
-      <section className="relative h-[250px] md:h-[500px] overflow-hidden bg-zinc-950 group">
-        {banners.length > 0 ? (
+      {banners.length > 0 && (
+        <section className="relative h-[250px] md:h-[500px] overflow-hidden bg-zinc-950 group">
           <div className="relative h-full w-full">
             <AnimatePresence mode="wait">
               <motion.div
@@ -255,18 +282,8 @@ export function HomePage() {
               <ChevronRight size={20} />
             </button>
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4 bg-zinc-950">
-             <motion.h1 
-               initial={{ opacity: 0, scale: 0.9 }}
-               animate={{ opacity: 1, scale: 1 }}
-               className="text-4xl md:text-6xl font-black italic tracking-tighter uppercase mb-4 text-white relative z-20 px-4 drop-shadow-2xl"
-             >
-               {aiFrase || "DISCRETA"}
-             </motion.h1>
-          </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* 1.5 CATEGORY EXPOSITION */}
       {(loading || categories.length > 0) && (
@@ -312,12 +329,50 @@ export function HomePage() {
                     </div>
                     
                     {/* Title Below - Smaller text */}
-                    <h3 className="text-[10px] md:text-xs font-black uppercase tracking-[1px] text-zinc-400 group-hover:text-red-500 text-center transition-colors duration-500 line-clamp-2 leading-tight px-1">
+                    <h3 className="text-[9px] md:text-[10px] font-black uppercase tracking-[1px] text-zinc-400 group-hover:text-red-500 text-center transition-colors duration-500 line-clamp-2 leading-tight px-1">
                       {cat.name}
                     </h3>
                   </Link>
                 ))
               )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* 1.7 DAILY OFFERS BANNERS (OFERTAS DO DIA) */}
+      {!loading && offerBanners.length > 0 && (
+        <section className="bg-black py-4 md:py-10 border-b border-zinc-900">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="flex flex-col mb-6 md:mb-8">
+              <h2 className="text-sm font-black uppercase tracking-[4px] text-zinc-600 mb-2">Ofertas do Dia</h2>
+              <div className="w-12 h-1 bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"></div>
+            </div>
+
+            <div className="flex items-start gap-4 md:gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4">
+              {offerBanners.map(banner => (
+                <Link 
+                  key={banner.id} 
+                  to={banner.linkUrl || '#'} 
+                  className="group relative flex-none w-[200px] md:w-[320px] aspect-square md:aspect-[4/5] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 transition-all duration-500 hover:scale-[1.02] hover:border-red-600/30"
+                >
+                  <img 
+                    src={banner.imageUrl} 
+                    alt={banner.name} 
+                    className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110" 
+                    referrerPolicy="no-referrer"
+                  />
+                  
+                  {/* Glassmorphism Title Box */}
+                  <div className="absolute inset-x-4 bottom-4 p-4 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-500">
+                    <h3 className="text-xs md:text-sm font-black uppercase italic tracking-tighter text-white line-clamp-1">
+                      {banner.name}
+                    </h3>
+                    <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mt-1">Aproveite agora</p>
+                  </div>
+
+                </Link>
+              ))}
             </div>
           </div>
         </section>
