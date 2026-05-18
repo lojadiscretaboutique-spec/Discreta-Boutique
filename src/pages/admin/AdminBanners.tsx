@@ -40,6 +40,7 @@ export function AdminBanners() {
   const [offerBanners, setOfferBanners] = useState<OfferBanner[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [bannerToEdit, setBannerToEdit] = useState<Banner | OfferBanner | null>(null);
   const { toast, confirm } = useFeedback();
 
   const canCreate = hasPermission('banners', 'criar');
@@ -105,60 +106,76 @@ export function AdminBanners() {
     loadData();
   };
 
+  const startEdit = (banner: Banner | OfferBanner) => {
+    setBannerToEdit(banner);
+    setTitle((banner as any).title || (banner as any).name);
+    setLinkUrl(banner.linkUrl);
+    if ('startDate' in banner) {
+       setStartDate(banner.startDate ? banner.startDate.split('.')[0] : '');
+       setEndDate(banner.endDate ? banner.endDate.split('.')[0] : '');
+    }
+    setIsActive(banner.active);
+    setShowForm(true);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!imageFile) {
+    if (!imageFile && !bannerToEdit) {
       toast("Selecione uma imagem para o banner!", 'warning');
       return;
     }
     
     setSubmitting(true);
     try {
-      // Requirements: WebP, Quality min 90%, Mobile optimized
-      const options = {
-        maxSizeMB: activeTab === 'main' ? 0.2 : 0.15, 
-        maxWidthOrHeight: activeTab === 'main' ? 1200 : 800, // Offers can be smaller/square
-        useWebWorker: true,
-        fileType: 'image/webp' as const,
-        initialQuality: 0.92, // Exceeding the 90% requirement
-      };
+      let imageUrl = bannerToEdit ? bannerToEdit.imageUrl : '';
       
-      const compressedBlob = await imageCompression(imageFile, options);
-      const optimizedFile = new File([compressedBlob], `${imageFile.name.split('.')[0]}_${Date.now()}.webp`, {
-        type: 'image/webp',
-      });
+      if (imageFile) {
+        // Requirements: WebP, Quality min 90%, Mobile optimized
+        const options = {
+          maxSizeMB: activeTab === 'main' ? 0.2 : 0.15, 
+          maxWidthOrHeight: activeTab === 'main' ? 1200 : 800, // Offers can be smaller/square
+          useWebWorker: true,
+          fileType: 'image/webp' as const,
+          initialQuality: 0.92, // Exceeding the 90% requirement
+        };
+        
+        const compressedBlob = await imageCompression(imageFile, options);
+        const optimizedFile = new File([compressedBlob], `${imageFile.name.split('.')[0]}_${Date.now()}.webp`, {
+          type: 'image/webp',
+        });
 
-      const path = activeTab === 'main' ? 'banners' : 'offer_banners';
-      const fileRef = ref(storage, `${path}/${Date.now()}_${optimizedFile.name}`);
-      await uploadBytes(fileRef, optimizedFile);
-      const imageUrl = await getDownloadURL(fileRef);
+        const path = activeTab === 'main' ? 'banners' : 'offer_banners';
+        const fileRef = ref(storage, `${path}/${Date.now()}_${optimizedFile.name}`);
+        await uploadBytes(fileRef, optimizedFile);
+        imageUrl = await getDownloadURL(fileRef);
+      }
 
       const collectionName = activeTab === 'main' ? 'banners' : 'offer_banners';
-      
-      if (activeTab === 'main') {
-        await addDoc(collection(db, collectionName), {
-          title,
-          linkUrl,
-          imageUrl,
-          active: isActive,
-          createdAt: serverTimestamp()
-        });
+      const data = activeTab === 'main' ? {
+        title,
+        linkUrl,
+        imageUrl,
+        active: isActive,
+      } : {
+        name: title || "",
+        linkUrl: linkUrl || "",
+        imageUrl,
+        active: !!isActive,
+        startDate: startDate ? new Date(startDate).toISOString() : null,
+        endDate: endDate ? new Date(endDate).toISOString() : null,
+      };
+
+      if (bannerToEdit) {
+        await updateDoc(doc(db, collectionName, bannerToEdit.id), { ...data, updatedAt: serverTimestamp() });
+        toast("Banner atualizado com sucesso!");
       } else {
-        await addDoc(collection(db, collectionName), {
-          name: title || "",
-          linkUrl: linkUrl || "",
-          imageUrl: imageUrl || "",
-          active: !!isActive,
-          startDate: startDate ? new Date(startDate).toISOString() : null,
-          endDate: endDate ? new Date(endDate).toISOString() : null,
-          createdAt: serverTimestamp()
-        });
+        await addDoc(collection(db, collectionName), { ...data, createdAt: serverTimestamp() });
+        toast("Banner salvo com sucesso!");
       }
       
       setShowForm(false);
       resetForm();
       loadData();
-      toast("Banner otimizado e salvo com sucesso!");
     } catch(err) {
       console.error(err);
       toast("Erro ao salvar banner", 'error');
@@ -174,6 +191,7 @@ export function AdminBanners() {
     setEndDate('');
     setImageFile(null);
     setIsActive(true);
+    setBannerToEdit(null);
   };
 
   return (
@@ -225,7 +243,7 @@ export function AdminBanners() {
              <h2 className="text-2xl font-black italic uppercase tracking-tighter">
                {activeTab === 'main' ? 'Cadastrar Banner topo' : 'Cadastrar Banner Oferta do Dia'}
              </h2>
-             <button onClick={() => setShowForm(false)} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-all">
+             <button onClick={() => { setShowForm(false); resetForm(); }} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-all">
                <X size={20}/>
              </button>
           </div>
@@ -299,7 +317,7 @@ export function AdminBanners() {
                     <Upload size={32} />
                   </div>
                   <div className="text-center">
-                    <p className="font-bold text-sm uppercase tracking-wide">{imageFile ? imageFile.name : 'Clique para selecionar'}</p>
+                    <p className="font-bold text-sm uppercase tracking-wide">{imageFile ? imageFile.name : (bannerToEdit ? 'Manter imagem atual' : 'Clique para selecionar')}</p>
                     <p className="text-xs opacity-50 mt-1">Formatos aceitos: JPG, PNG, WebP</p>
                   </div>
                 </label>
@@ -372,16 +390,25 @@ export function AdminBanners() {
                   {/* Actions */}
                   <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all translate-y-[-10px] group-hover:translate-y-0">
                     {canEdit && (
-                       <button 
-                         onClick={() => toggleStatus(item.id, item.active)}
-                         className={cn(
-                           "w-9 h-9 rounded-xl flex items-center justify-center transition-all",
-                           item.active ? "bg-red-600 text-white" : "bg-emerald-600 text-white"
-                         )}
-                         title={item.active ? "Desativar" : "Ativar"}
-                       >
-                         {item.active ? <X size={16} /> : <Plus size={16} />}
-                       </button>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => startEdit(item)}
+                          className="w-9 h-9 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center text-slate-100 hover:bg-zinc-800 transition-all border border-white/10"
+                          title="Editar"
+                        >
+                          <ImageIcon size={16} />
+                        </button>
+                        <button 
+                          onClick={() => toggleStatus(item.id, item.active)}
+                          className={cn(
+                            "w-9 h-9 rounded-xl flex items-center justify-center transition-all",
+                            item.active ? "bg-red-600 text-white" : "bg-emerald-600 text-white"
+                          )}
+                          title={item.active ? "Desativar" : "Ativar"}
+                        >
+                          {item.active ? <X size={16} /> : <Plus size={16} />}
+                        </button>
+                      </div>
                     )}
                     {canDelete && (
                       <button 
