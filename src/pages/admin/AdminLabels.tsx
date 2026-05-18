@@ -3,6 +3,7 @@ import { Package, Search, Plus, Trash2, Printer } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { productService, ProductVariant } from '../../services/productService';
+import { comboService } from '../../services/comboService';
 import { Product } from '../../types/catalog';
 import JsBarcode from 'jsbarcode';
 import { collectionGroup, getDocs } from 'firebase/firestore';
@@ -40,7 +41,10 @@ export function AdminLabels() {
 
   const loadProducts = async () => {
     try {
-      const data = await productService.listProducts();
+      const [data, combosData] = await Promise.all([
+        productService.listProducts(),
+        comboService.listCombos(),
+      ]);
       
       const allItems: Product[] = [];
       
@@ -66,6 +70,21 @@ export function AdminLabels() {
            slug: 'variant',
          } as unknown as Product);
       });
+      
+      // Add combos
+      for (const combo of combosData) {
+        allItems.push({
+           id: combo.id,
+           name: combo.name,
+           sku: 'COMBO',
+           gtin: combo.id || '',
+           price: combo.price,
+           active: combo.active,
+           images: combo.images || (combo.imageUrl ? [{url: combo.imageUrl, path: '', isMain: true}] : []),
+           categoryId: 'combo',
+           slug: 'combo',
+         } as unknown as Product);
+      }
       
       /* 
         Optional mock product kept as example:

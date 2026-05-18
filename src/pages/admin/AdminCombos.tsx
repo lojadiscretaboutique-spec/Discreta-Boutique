@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage, db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, Timestamp, orderBy, collectionGroup } from 'firebase/firestore';
 
 export function AdminCombos() {
   const { hasPermission } = useAuthStore();
@@ -178,8 +178,30 @@ export function AdminCombos() {
         productService.listProducts(),
         categoryService.listCategories(),
       ]);
+
+      // Busca todas as variações usando collectionGroup
+      const variantsSnap = await getDocs(collectionGroup(db, 'variants'));
+      const allVariants: { [productId: string]: ProductVariant[] } = {};
+      
+      variantsSnap.forEach(docSnap => {
+        const productId = docSnap.ref.parent.parent?.id;
+        if (productId) {
+           if (!allVariants[productId]) allVariants[productId] = [];
+           allVariants[productId].push({ id: docSnap.id, ...docSnap.data() } as ProductVariant);
+        }
+      });
+      
+      const hydratedProducts = productsData.map(p => {
+         // Clona o produto para não modificar o estado em cache diretamente
+         const pClone = { ...p };
+         if (pClone.hasVariants && allVariants[pClone.id!]) {
+            pClone.variants = allVariants[pClone.id!];
+         }
+         return pClone;
+      });
+
       setCombos(combosData);
-      setProducts(productsData);
+      setProducts(hydratedProducts);
       setCategories(categoriesData);
     } catch (error) {
       console.error(error);
@@ -201,12 +223,18 @@ export function AdminCombos() {
 
   // Search products for combo
   useEffect(() => {
-    if (productSearch.length > 2) {
+    if (productSearch.length > 1) {
       const term = productSearch.toLowerCase();
       const filtered = products.filter(p => 
-        p.name.toLowerCase().includes(term) || 
-        p.sku?.toLowerCase().includes(term)
-      ).slice(0, 5);
+        String(p.name || '').toLowerCase().includes(term) || 
+        String(p.sku || '').toLowerCase().includes(term) ||
+        String(p.gtin || '').toLowerCase().includes(term) ||
+        p.variants?.some(v => 
+          String(v.name || '').toLowerCase().includes(term) || 
+          String(v.sku || '').toLowerCase().includes(term) || 
+          String(v.barcode || '').toLowerCase().includes(term)
+        )
+      ).slice(0, 10);
       setFoundProducts(filtered);
     } else {
       setFoundProducts([]);
@@ -704,10 +732,50 @@ export function AdminCombos() {
                         <Search className="text-slate-500" size={20} />
                         <input 
                           type="text" 
-                          placeholder="Pesquisar produto pelo nome ou SKU..."
+                          placeholder="Pesquisar produto pelo nome, SKU ou GTIN..."
                           className="bg-transparent border-none text-white w-full focus:ring-0"
                           value={productSearch}
                           onChange={(e) => setProductSearch(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const term = productSearch.toLowerCase().trim();
+                              if (!term) return;
+                              
+                              let matchedProduct: Product | undefined;
+                              let matchedVariant: ProductVariant | undefined;
+                              
+                              // Exact barcode/gtin match
+                              for (const p of products) {
+                                if (p.variants && p.variants.length > 0) {
+                                  const matchingVar = p.variants.find(v => 
+                                    String(v.barcode || '').toLowerCase() === term ||
+                                    String(v.sku || '').toLowerCase() === term ||
+                                    String((v as any).gtin || '').toLowerCase() === term
+                                  );
+                                  if (matchingVar) {
+                                    matchedProduct = p;
+                                    matchedVariant = matchingVar;
+                                    break;
+                                  }
+                                }
+                                
+                                if (!matchedProduct && (
+                                  String(p.gtin || '').toLowerCase() === term ||
+                                  String(p.sku || '').toLowerCase() === term
+                                )) {
+                                  matchedProduct = p;
+                                  break;
+                                }
+                              }
+                              
+                              if (matchedProduct) {
+                                handleAddItem(matchedProduct, matchedVariant);
+                              } else {
+                                toast("Nenhum produto encontrado com este código exato.", "error");
+                              }
+                            }
+                          }}
                         />
                       </div>
 
@@ -725,7 +793,13 @@ export function AdminCombos() {
                                   <div className="space-y-2 p-2">
                                     <p className="text-sm font-bold text-white px-2 py-1">{p.name}</p>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                      {p.variants?.map(v => (
+                                      {p.variants?.filter(v => {
+                                        const term = productSearch.toLowerCase();
+                                        if (String(p.name || '').toLowerCase().includes(term) || String(p.sku || '').toLowerCase().includes(term) || String(p.gtin || '').toLowerCase().includes(term)) return true;
+                                        return String(v.name || '').toLowerCase().includes(term) || 
+                                               String(v.sku || '').toLowerCase().includes(term) || 
+                                               String(v.barcode || '').toLowerCase().includes(term);
+                                      }).map(v => (
                                         <button
                                           key={v.id}
                                           onClick={() => handleAddItem(p, v)}

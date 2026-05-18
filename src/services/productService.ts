@@ -58,6 +58,7 @@ export interface Product {
 
   // 3. Variações
   hasVariants: boolean;
+  variants?: ProductVariant[];
 
   // 4. Moda
   fashion?: {
