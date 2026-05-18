@@ -24,6 +24,7 @@ const LGPDPage = lazy(() => import('./pages/store/LGPDPage'));
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin').then(m => ({ default: m.AdminLogin })));
 const AdminOrders = lazy(() => import('./pages/admin/AdminOrders').then(m => ({ default: m.AdminOrders })));
 const AdminProducts = lazy(() => import('./pages/admin/AdminProducts').then(m => ({ default: m.AdminProducts })));
+const AdminCombos = lazy(() => import('./pages/admin/AdminCombos').then(m => ({ default: m.AdminCombos })));
 const AdminLabels = lazy(() => import('./pages/admin/AdminLabels').then(m => ({ default: m.AdminLabels })));
 const AdminCategories = lazy(() => import('./pages/admin/AdminCategories').then(m => ({ default: m.AdminCategories })));
 const AdminBanners = lazy(() => import('./pages/admin/AdminBanners').then(m => ({ default: m.AdminBanners })));
@@ -162,6 +163,7 @@ function AppContent() {
             <Route path="pedidos" element={<AdminOrders />} />
             <Route path="categorias" element={<AdminCategories />} />
             <Route path="produtos" element={<AdminProducts />} />
+            <Route path="combos" element={<AdminCombos />} />
             <Route path="etiquetas" element={<AdminLabels />} />
             <Route path="mov_estoque" element={<MovEstoque />} />
             <Route path="usuarios" element={<AdminUsers />} />

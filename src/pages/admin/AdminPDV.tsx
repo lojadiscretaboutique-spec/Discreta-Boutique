@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Search,
   ShoppingCart,
@@ -47,6 +47,7 @@ import { stockMovementService } from "../../services/stockMovementService";
 import { cashService, CashSession } from "../../services/cashService";
 import { financialService } from "../../services/financialService";
 import { pdvFinancialService } from "../../services/pdvFinancialService";
+import { comboService, Combo } from "../../services/comboService";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -55,6 +56,8 @@ interface CartItem {
   variantId?: string;
   name: string;
   variantName?: string;
+  isCombo?: boolean;
+  comboId?: string;
   price: number;
   costPrice: number;
   quantity: number;
@@ -95,20 +98,28 @@ export function AdminPDV() {
   const canPDV =
     hasPermission("caixa", "visualizar") || hasPermission("orders", "criar");
 
-  useEffect(() => {
-    if (!canPDV) {
-      toast("Você não tem permissão para acessar o PDV", "error");
-      navigate("/admin");
-    }
-  }, [canPDV, navigate, toast]);
-
-  const [searchParams] = useSearchParams();
-  const editingOrderId = searchParams.get("orderId");
-
   // Search state
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [comboResults, setComboResults] = useState<Combo[]>([]);
   const [searching, setSearching] = useState(false);
+  const [allCombos, setAllCombos] = useState<Combo[]>([]);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editingOrderId = searchParams.get("orderId");
+  const addComboId = searchParams.get("addCombo");
+
+  useEffect(() => {
+    const loadCombos = async () => {
+      try {
+        const data = await comboService.listCombos();
+        setAllCombos(data.filter(c => c.active));
+      } catch (error) {
+        console.error("Error loading combos:", error);
+      }
+    };
+    loadCombos();
+  }, []);
 
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -343,6 +354,17 @@ export function AdminPDV() {
     e.preventDefault();
     const term = searchTerm.trim();
     if (!term) return;
+
+    const lowerTerm = term.toLowerCase();
+    // 0. Buscar por Combos (Exato ou SKU gerado)
+    const exactCombo = allCombos.find(c => 
+      c.name.toLowerCase() === lowerTerm || 
+      `combo-${c.id?.slice(-6).toUpperCase()}`.toLowerCase() === lowerTerm
+    );
+    if (exactCombo) {
+      addComboToCart(exactCombo);
+      return;
+    }
 
     setSearching(true);
     try {
@@ -623,12 +645,22 @@ export function AdminPDV() {
   useEffect(() => {
     if (searchTerm.trim().length < 2) {
       setSearchResults([]);
+      setComboResults([]);
       return;
     }
 
     const delayDebounceFn = setTimeout(async () => {
       setSearching(true);
       try {
+        const s = searchTerm.toLowerCase();
+
+        // Filter combos (already loaded in allCombos)
+        const combos = allCombos.filter(c => 
+          c.name.toLowerCase().includes(s) || 
+          c.description.toLowerCase().includes(s)
+        );
+        setComboResults(combos);
+
         const q = query(
           collection(db, "products"),
           where("active", "==", true),
@@ -642,7 +674,6 @@ export function AdminPDV() {
         // Client side filtering for better UX with partial terms
         const filtered = products
           .filter((p) => {
-            const s = searchTerm.toLowerCase();
             return (
               p.name.toLowerCase().includes(s) ||
               p.sku?.toLowerCase().includes(s) ||
@@ -665,7 +696,7 @@ export function AdminPDV() {
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm]);
+  }, [searchTerm, allCombos]);
 
   const openVariantModal = async (product: Product) => {
     setSelectedProduct(product);
@@ -754,6 +785,68 @@ export function AdminPDV() {
       "success",
     );
   };
+
+  const addComboToCart = useCallback(async (combo: Combo) => {
+    // 1. Validar estoque geral do combo
+    const virtualStock = await comboService.getComboStock(combo);
+    if (virtualStock <= 0) {
+      toast(`Combo "${combo.name}" esgotado devido a falta de itens individuais.`, "error");
+      return;
+    }
+
+    setCart((prev) => {
+      const existingIndex = prev.findIndex((item) => item.isCombo && item.comboId === combo.id);
+
+      if (existingIndex > -1) {
+        const newCart = [...prev];
+        newCart[existingIndex].quantity += 1;
+        return newCart;
+      }
+
+      return [
+        ...prev,
+        {
+          productId: combo.id!, // Using productId as unique identifier in some loops
+          comboId: combo.id,
+          isCombo: true,
+          name: `[COMBO] ${combo.name}`,
+          price: combo.price,
+          costPrice: 0, // Need to implement cost price calc if needed
+          quantity: 1,
+          sku: `COMBO-${combo.id!.slice(-6).toUpperCase()}`,
+          imageUrl: combo.imageUrl,
+          discount: 0,
+        },
+      ];
+    });
+
+    setSearchTerm("");
+    setSearchResults([]);
+    setComboResults([]);
+    playBeep();
+    toast(`Adicionado: Combo ${combo.name}`, "success");
+  }, [allCombos, toast]);
+
+  // Handle addCombo query param
+  useEffect(() => {
+    if (addComboId && allCombos.length > 0) {
+      const combo = allCombos.find(c => c.id === addComboId);
+      if (combo) {
+        addComboToCart(combo);
+        // Clear param
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete("addCombo");
+        setSearchParams(newParams);
+      }
+    }
+  }, [addComboId, allCombos, searchParams, setSearchParams, addComboToCart]);
+
+  useEffect(() => {
+    if (!canPDV) {
+      toast("Você não tem permissão para acessar o PDV", "error");
+      navigate("/admin");
+    }
+  }, [canPDV, navigate, toast]);
 
   const removeFromCart = (index: number) => {
     setCart((prev) => prev.filter((_, i) => i !== index));
@@ -846,6 +939,8 @@ export function AdminPDV() {
           quantity: item.quantity,
           sku: item.sku,
           discount: item.discount || 0,
+          isCombo: item.isCombo || false,
+          comboId: item.comboId || null,
           subtotal: roundTo2(item.price * item.quantity - (item.discount || 0)),
         })),
         subtotal: cartSubtotal,
@@ -886,17 +981,37 @@ export function AdminPDV() {
 
         // 3. REGISTRAR NOVAS MOVIMENTAÇÕES (A partir do carrinho atual)
         for (const item of cart) {
-          await stockMovementService.registerMovement({
-            productId: item.productId,
-            productName: item.name,
-            variantId: item.variantId || undefined,
-            sku: item.sku,
-            quantity: item.quantity,
-            type: "out",
-            reason: `Venda PDV (Editado - #${editingOrderId.slice(-6).toUpperCase()})`,
-            channel: "Loja Física",
-            orderId: editingOrderId,
-          });
+          if (item.isCombo) {
+            const combo = allCombos.find(c => c.id === item.comboId);
+            if (combo) {
+              for (const cItem of combo.items) {
+                 await stockMovementService.registerMovement({
+                  productId: cItem.productId,
+                  productName: `${cItem.name || item.name} (Combo: ${combo.name})`,
+                  variantId: cItem.variantId || undefined,
+                  sku: item.sku,
+                  quantity: cItem.quantity * item.quantity,
+                  type: "out",
+                  reason: `Venda Combo PDV (Editado - #${editingOrderId.slice(-6).toUpperCase()})`,
+                  channel: "Loja Física",
+                  orderId: editingOrderId,
+                });
+              }
+              await comboService.incrementSoldCount(combo.id!, item.quantity, (item.price - item.costPrice) * item.quantity);
+            }
+          } else {
+            await stockMovementService.registerMovement({
+              productId: item.productId,
+              productName: item.name,
+              variantId: item.variantId || undefined,
+              sku: item.sku,
+              quantity: item.quantity,
+              type: "out",
+              reason: `Venda PDV (Editado - #${editingOrderId.slice(-6).toUpperCase()})`,
+              channel: "Loja Física",
+              orderId: editingOrderId,
+            });
+          }
         }
 
         // 4. Se estiver editando, limpamos os lançamentos financeiros antigos associados a este pedido
@@ -913,17 +1028,37 @@ export function AdminPDV() {
 
         // Registrar movimentações de saída para cada item
         for (const item of cart) {
-          await stockMovementService.registerMovement({
-            productId: item.productId,
-            productName: item.name,
-            variantId: item.variantId || undefined,
-            sku: item.sku,
-            quantity: item.quantity,
-            type: "out",
-            reason: "Venda PDV",
-            channel: "Loja Física",
-            orderId: currentOrderId,
-          });
+          if (item.isCombo) {
+            const combo = allCombos.find(c => c.id === item.comboId);
+            if (combo) {
+              for (const cItem of combo.items) {
+                await stockMovementService.registerMovement({
+                  productId: cItem.productId,
+                  productName: `${cItem.name || item.name} (Combo: ${combo.name})`,
+                  variantId: cItem.variantId || undefined,
+                  sku: item.sku,
+                  quantity: cItem.quantity * item.quantity,
+                  type: "out",
+                  reason: "Venda Combo PDV",
+                  channel: "Loja Física",
+                  orderId: currentOrderId,
+                });
+              }
+              await comboService.incrementSoldCount(combo.id!, item.quantity, (item.price - item.costPrice) * item.quantity);
+            }
+          } else {
+            await stockMovementService.registerMovement({
+              productId: item.productId,
+              productName: item.name,
+              variantId: item.variantId || undefined,
+              sku: item.sku,
+              quantity: item.quantity,
+              type: "out",
+              reason: "Venda PDV",
+              channel: "Loja Física",
+              orderId: currentOrderId,
+            });
+          }
         }
       }
 
@@ -1183,8 +1318,36 @@ export function AdminPDV() {
 
               {/* Results Area */}
               <div className="flex-1 overflow-y-auto no-scrollbar pb-6">
-                {searchResults.length > 0 ? (
+                {(searchResults.length > 0 || comboResults.length > 0) ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+                    {/* Render Combos First */}
+                    {comboResults.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => addComboToCart(c)}
+                        className="bg-slate-900/5 border-2 border-red-500/50 rounded-2xl p-3 flex flex-col items-center text-center hover:bg-slate-900/10 hover:border-red-600 hover:scale-[1.02] active:scale-[0.98] transition-all group relative"
+                      >
+                         <div className="absolute top-2 left-2 z-10 bg-red-600 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg">COMBO</div>
+                         <div className="w-full aspect-square bg-slate-800 rounded-xl mb-3 overflow-hidden relative">
+                            {(c.images && c.images.find(img => img.isMain)?.url) ? (
+                              <img src={c.images.find(img => img.isMain)?.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt="" />
+                            ) : c.imageUrl ? (
+                              <img src={c.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt="" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                <Plus size={24} />
+                              </div>
+                            )}
+                         </div>
+                         <h3 className="text-xs font-bold text-slate-100 line-clamp-2 leading-tight h-8 mb-2 group-hover:text-red-500 transition-colors">
+                            {c.name}
+                          </h3>
+                          <p className="text-sm font-black text-white">
+                            {formatCurrency(c.price)}
+                          </p>
+                      </button>
+                    ))}
+
                     {searchResults.map((p) => {
                       const mainImg =
                         p.images?.find((i) => i.isMain)?.url ||

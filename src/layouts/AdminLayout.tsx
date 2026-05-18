@@ -22,7 +22,10 @@ export function AdminLayout() {
     { name: 'Pedidos', path: '/admin/pedidos', icon: ShoppingCart, permission: 'orders' },
     { name: 'Caixa', path: '/admin/caixa', icon: Banknote, permission: 'caixa' },
     { name: 'Categorias', path: '/admin/categorias', icon: Layers, permission: 'categories' },
-    { name: 'Produtos', path: '/admin/produtos', icon: Package, permission: 'produtos' },
+    { name: 'Produtos', path: '/admin/produtos', icon: Package, permission: 'produtos', submenu: [
+        { name: 'Lista de Produtos', path: '/admin/produtos', permission: 'produtos' },
+        { name: 'Combos de Produtos', path: '/admin/combos', permission: 'produtos' },
+    ]},
     { name: 'Etiquetas', path: '/admin/etiquetas', icon: Tag, permission: 'produtos' },
     { name: 'Estoque', path: '/admin/mov_estoque', icon: ClipboardList, permission: 'stock' },
     { name: 'Compras', path: '/admin/compras', icon: Truck, permission: 'compras' },
@@ -54,6 +57,7 @@ export function AdminLayout() {
   const [usersSubMenuOpen, setUsersSubMenuOpen] = useState(false);
   const [financeSubMenuOpen, setFinanceSubMenuOpen] = useState(false);
   const [configSubMenuOpen, setConfigSubMenuOpen] = useState(false);
+  const [productSubMenuOpen, setProductSubMenuOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false); // Unified state for all screen sizes
   
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -253,6 +257,7 @@ export function AdminLayout() {
                     const isUsersSub = item.name === 'Contas / Equipe';
                     const isFinanceSub = item.name === 'Financeiro';
                     const isConfigSub = item.name === 'Configurações';
+                    const isProductSub = item.name === 'Produtos';
                     
                     const isSubActive = isUsersSub 
                         ? (location.pathname.startsWith('/admin/usuarios') || location.pathname.startsWith('/admin/perfis') || location.pathname.startsWith('/admin/logs'))
@@ -260,14 +265,17 @@ export function AdminLayout() {
                             ? location.pathname.startsWith('/admin/financeiro')
                             : isConfigSub
                                 ? location.pathname.startsWith('/admin/config')
-                                : false;
+                                : isProductSub
+                                    ? (location.pathname === '/admin/produtos' || location.pathname === '/admin/combos')
+                                    : false;
                             
-                    const isOpen = isUsersSub ? usersSubMenuOpen : (isFinanceSub ? financeSubMenuOpen : (isConfigSub ? configSubMenuOpen : false));
+                    const isOpen = isUsersSub ? usersSubMenuOpen : (isFinanceSub ? financeSubMenuOpen : (isConfigSub ? configSubMenuOpen : (isProductSub ? productSubMenuOpen : false)));
                     
                     const toggleMenu = () => {
                         if (isUsersSub) setUsersSubMenuOpen(!usersSubMenuOpen);
                         if (isFinanceSub) setFinanceSubMenuOpen(!financeSubMenuOpen);
                         if (isConfigSub) setConfigSubMenuOpen(!configSubMenuOpen);
+                        if (isProductSub) setProductSubMenuOpen(!productSubMenuOpen);
                     };
 
                     return (

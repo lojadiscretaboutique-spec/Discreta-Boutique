@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export interface CartItem {
-  id: string; // Cart unique string (productId + variantId)
+  id: string; // Cart unique string (productId + variantId or comboId)
   productId: string;
   name: string;
   price: number;
@@ -13,6 +13,8 @@ export interface CartItem {
   variantName?: string;
   searchId?: string;
   costPrice?: number;
+  isCombo?: boolean;
+  comboId?: string;
 }
 
 interface CartStore {

@@ -310,6 +310,35 @@ export default {
             response: { type: "string" },
             isSuccess: { type: "boolean" }
         }
+    },
+    Combo: {
+      title: "Product Combo",
+      description: "A bundle of products sold together",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        description: { type: "string" },
+        price: { type: "number" },
+        imageUrl: { type: "string" },
+        active: { type: "boolean" },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              productId: { type: "string" },
+              variantId: { type: "string" },
+              quantity: { type: "number" }
+            }
+          }
+        },
+        soldCount: { type: "number" },
+        profit: { type: "number" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" }
+      },
+      required: ["name", "price", "active", "items"]
     }
   },
   firestore: {
@@ -320,6 +349,10 @@ export default {
     "productVariants": {
       schema: { $ref: "#/entities/ProductVariant" },
       description: "Store product variants"
+    },
+    "combos": {
+      schema: { $ref: "#/entities/Combo" },
+      description: "Bundled products"
     },
     "orders": {
       schema: { $ref: "#/entities/Order" },

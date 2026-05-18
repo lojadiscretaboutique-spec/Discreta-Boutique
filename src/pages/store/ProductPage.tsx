@@ -33,39 +33,64 @@ export function ProductPage() {
         let productData: Product | null = null;
 
         if (pSnap.empty) {
-          const fallbackSnap = await getDocs(query(collection(db, 'products')));
-          const found = fallbackSnap.docs.find(d => d.id === slug);
-          if (found) {
-            productData = { id: found.id, ...found.data() } as Product;
+          // Check by ID in products
+          const fallbackSnap = await getDoc(doc(db, 'products', slug));
+          if (fallbackSnap.exists()) {
+            productData = { id: fallbackSnap.id, ...fallbackSnap.data() } as Product;
+          } else {
+            // Check in combos
+            const cSnap = await getDocs(query(collection(db, 'combos'), where('active', '==', true)));
+            const foundCombo = cSnap.docs.find(d => d.id === slug);
+            if (foundCombo) {
+              const combo = foundCombo.data();
+              productData = {
+                id: foundCombo.id,
+                name: combo.name,
+                description: combo.description,
+                price: combo.price,
+                images: combo.images || (combo.imageUrl ? [{ url: combo.imageUrl, isMain: true }] : []),
+                isCombo: true,
+                categoryId: 'combos'
+              } as any;
+            }
           }
         } else {
           productData = { id: pSnap.docs[0].id, ...pSnap.docs[0].data() } as Product;
         }
 
         if (productData) {
-          productService.trackInteraction(productData.id!, 'view', searchId);
+          if (!(productData as any).isCombo) {
+            productService.trackInteraction(productData.id!, 'view', searchId);
+            
+            const vSnap = await getDocs(query(collection(db, `products/${productData.id}/variants`)));
+            const vData = vSnap.docs.map(d => ({id: d.id, ...d.data()})) as ProductVariant[];
+            setVariants(vData);
+            if (vData.length > 0) {
+              const firstInStock = vData.find(v => v.stock > 0);
+              setSelectedVariant(firstInStock || vData[0]);
+            }
+          } else {
+            // It's a combo, no variants
+            setVariants([]);
+            setSelectedVariant(null);
+          }
+          
           setProduct(productData);
           
-          // Carregar Sugestões da IA
-          fetch('/api/ia/sugestao-produto', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ productId: productData.id })
-          })
-          .then(res => res.json())
-          .then(data => {
-            if (data.produtos && data.produtos.length > 0) {
-              setAiSuggestions(data);
-            }
-          })
-          .catch(err => console.error('[AI_SUGGEST_FETCH_ERROR]', err));
-
-          const vSnap = await getDocs(query(collection(db, `products/${productData.id}/variants`)));
-          const vData = vSnap.docs.map(d => ({id: d.id, ...d.data()})) as ProductVariant[];
-          setVariants(vData);
-          if (vData.length > 0) {
-            const firstInStock = vData.find(v => v.stock > 0);
-            setSelectedVariant(firstInStock || vData[0]);
+          // Carregar Sugestões da IA (Only for regular products for now)
+          if (!(productData as any).isCombo) {
+            fetch('/api/ia/sugestao-produto', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ productId: productData.id })
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (data.produtos && data.produtos.length > 0) {
+                setAiSuggestions(data);
+              }
+            })
+            .catch(err => console.error('[AI_SUGGEST_FETCH_ERROR]', err));
           }
         }
       } catch (error) {

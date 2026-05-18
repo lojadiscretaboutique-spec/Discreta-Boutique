@@ -217,6 +217,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /combos/{doc} {
+      allow read: if true;
+      allow create: if can('produtos', 'criar');
+      allow update: if can('produtos', 'editar') || can('orders', 'criar') || can('orders', 'editar');
+      allow delete: if can('produtos', 'excluir');
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

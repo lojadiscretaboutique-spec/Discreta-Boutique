@@ -64,20 +64,38 @@ export function HomePage() {
       }
 
       // 2. Optimized fetch: Instead of ALL products, let's fetch a reasonable amount for Home
-      // If we have curation IDs, we could fetch them explicitly, but for simplicity 
-      // and to ensure enough items for sections, we fetch the 150 most relevant/recent
-      const pSnap = await getDocs(query(
-        collection(db, 'products'), 
-        where('active', '==', true),
-        limit(150) // Reasonable limit for home page categorization
-      ));
+      const [pSnap, combosSnap] = await Promise.all([
+        getDocs(query(
+          collection(db, 'products'), 
+          where('active', '==', true),
+          limit(150)
+        )),
+        getDocs(query(
+          collection(db, 'combos'),
+          where('active', '==', true),
+          where('showInCatalog', '==', true)
+        ))
+      ]);
       
       const allFetchedProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+      const comboProducts = combosSnap.docs.map(d => {
+        const combo = d.data();
+        return {
+          id: d.id,
+          name: combo.name,
+          description: combo.description,
+          price: combo.price,
+          images: combo.images || (combo.imageUrl ? [{ url: combo.imageUrl, isMain: true }] : []),
+          isCombo: true,
+          categoryId: 'combos',
+          featured: combo.isFeatured
+        } as any;
+      });
 
-      const visibleProducts = allFetchedProducts.filter(p => 
+      const visibleProducts = [...allFetchedProducts, ...comboProducts].filter(p => 
         (p.images && p.images.length > 0) && 
         (p.extras?.showInCatalog !== false) &&
-        (!p.controlStock || p.allowBackorder || (Number(p.stock) || 0) > 0)
+        (p.isCombo || !p.controlStock || p.allowBackorder || (Number((p as any).stock) || 0) > 0)
       );
 
       const usedIds = new Set<string>();

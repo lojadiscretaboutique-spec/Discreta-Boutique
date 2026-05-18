@@ -1,51 +1,84 @@
-import React from 'react';
-import { cn } from '../lib/utils';
+import * as React from "react";
+import { cn } from "../../lib/utils";
 
-interface Tab {
-  id: string;
-  label: string;
-  count?: number;
-  icon?: React.ElementType;
-}
+const TabsContext = React.createContext<{ value?: string; onValueChange?: (value: string) => void }>({});
 
-interface TabsProps {
-  tabs: Tab[];
-  activeTab: string;
-  onChange: (id: string) => void;
-  className?: string;
-}
+const Tabs = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement> & {
+    value?: string;
+    onValueChange?: (value: string) => void;
+  }
+>(({ className, value, onValueChange, ...props }, ref) => (
+  <TabsContext.Provider value={{ value, onValueChange }}>
+    <div
+      ref={ref}
+      className={cn("", className)}
+      {...props}
+    />
+  </TabsContext.Provider>
+));
+Tabs.displayName = "Tabs";
 
-export function Tabs({ tabs, activeTab, onChange, className }: TabsProps) {
+const TabsList = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(
+      "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
+      className
+    )}
+    {...props}
+  />
+));
+TabsList.displayName = "TabsList";
+
+const TabsTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement> & { value: string }
+>(({ className, value, ...props }, ref) => {
+  const { value: activeValue, onValueChange } = React.useContext(TabsContext);
+  const isActive = activeValue === value;
+
   return (
-    <div className={cn("flex flex-wrap border-b border-slate-200 bg-white sticky top-0 z-20 px-1 pt-1", className)}>
-      {tabs.map((tab) => {
-        const Icon = tab.icon;
-        const isActive = activeTab === tab.id;
-        return (
-          <button
-            key={tab.id}
-            onClick={() => onChange(tab.id)}
-            type="button"
-            className={cn(
-              "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all relative border-b-2 -mb-[2px]",
-              isActive 
-                ? "border-red-600 text-red-600" 
-                : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-            )}
-          >
-            {Icon && <Icon size={16} />}
-            {tab.label}
-            {tab.count !== undefined && (
-              <span className={cn(
-                "px-1.5 py-0.5 text-[10px] rounded-full font-bold",
-                isActive ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-500"
-              )}>
-                {tab.count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
+    <button
+      ref={ref}
+      type="button"
+      role="tab"
+      aria-selected={isActive}
+      data-state={isActive ? "active" : "inactive"}
+      className={cn(
+        "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+        className
+      )}
+      onClick={() => onValueChange?.(value)}
+      {...props}
+    />
   );
-}
+});
+TabsTrigger.displayName = "TabsTrigger";
+
+const TabsContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement> & { value: string }
+>(({ className, value, ...props }, ref) => {
+  const { value: activeValue } = React.useContext(TabsContext);
+  if (activeValue !== value) return null;
+
+  return (
+    <div
+      ref={ref}
+      role="tabpanel"
+      className={cn(
+        "mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        className
+      )}
+      {...props}
+    />
+  );
+});
+TabsContent.displayName = "TabsContent";
+
+export { Tabs, TabsList, TabsTrigger, TabsContent };

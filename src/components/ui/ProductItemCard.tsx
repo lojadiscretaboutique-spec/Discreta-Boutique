@@ -19,12 +19,28 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    if ((product as any).isCombo) {
+      addItem({
+        id: `combo-${product.id}`,
+        productId: product.id!,
+        name: product.name,
+        price: hasPromo ? product.promoPrice! : product.price,
+        quantity: quantity,
+        imageUrl: mainImage || '',
+        isCombo: true,
+        comboId: product.id
+      });
+      navigate('/carrinho');
+      return;
+    }
+
     if (hasVariants) {
       navigate(`/produto/${product.seo?.slug || product.id}`);
     } else {
       addItem({
         id: `${product.id}-base`,
-        productId: product.id,
+        productId: product.id!,
         name: product.name,
         price: hasPromo ? product.promoPrice! : product.price,
         quantity: quantity,

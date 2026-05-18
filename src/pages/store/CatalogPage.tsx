@@ -153,11 +153,33 @@ export function CatalogPage() {
         }
 
         if (prods.length === 0) {
-          const pSnap = await getDocs(query(collection(db, 'products'), where('active', '==', true)));
-          prods = pSnap.docs.map(d => ({id: d.id, ...d.data()} as Product));
-          
-          // Optimization: Removed per-product variant stock fetch. 
-          // We trust the 'stock' field which is synced in admin.
+          const [pSnap, cSnap] = await Promise.all([
+            getDocs(query(collection(db, 'products'), where('active', '==', true))),
+            getDocs(query(collection(db, 'combos'), where('active', '==', true), where('showInCatalog', '==', true)))
+          ]);
+
+          const regularProds = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+          const combosAsProducts = cSnap.docs.map(d => {
+            const combo = d.data() as Combo;
+            return {
+              id: d.id,
+              name: combo.name,
+              description: combo.description,
+              price: combo.price,
+              images: combo.images || (combo.imageUrl ? [{ url: combo.imageUrl, isMain: true }] : []),
+              categoryId: 'combos', // Treat as a special category or use the first one from combo.categories
+              active: combo.active,
+              isCombo: true,
+              showInCatalog: combo.showInCatalog,
+              featured: combo.isFeatured,
+              seo: {
+                title: combo.seoTitle,
+                description: combo.seoDescription
+              }
+            } as any;
+          });
+
+          prods = [...regularProds, ...combosAsProducts];
           
           try {
             // Minimize product data for session storage more aggressively
@@ -178,7 +200,8 @@ export function CatalogPage() {
               searchTerms: p.searchTerms,
               newRelease: p.newRelease,
               hasVariants: p.hasVariants,
-              sku: p.sku
+              sku: p.sku,
+              isCombo: (p as any).isCombo
             }));
             
             const serialized = JSON.stringify(minimizedProds);
