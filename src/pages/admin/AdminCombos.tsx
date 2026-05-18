@@ -22,6 +22,20 @@ import { storage, db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, Timestamp, orderBy, collectionGroup } from 'firebase/firestore';
 
+function generateEan13() {
+  let ean = "789"; 
+  for (let i = 0; i < 9; i++) ean += Math.floor(Math.random() * 10).toString();
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += parseInt(ean[i]) * (i % 2 === 0 ? 1 : 3);
+  return ean + ((10 - (sum % 10)) % 10).toString();
+}
+
+function generateSku() {
+  const prefix = 'CBO';
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `${prefix}-${rand}`;
+}
+
 export function AdminCombos() {
   const { hasPermission } = useAuthStore();
   const navigate = useNavigate();
@@ -58,6 +72,8 @@ export function AdminCombos() {
     showInCatalog: true,
     isFeatured: false,
     categories: ['Ofertas Combo'],
+    sku: '',
+    gtin: '',
     seoTitle: '',
     seoDescription: '',
     items: [],
@@ -293,8 +309,12 @@ export function AdminCombos() {
 
     setSubmitting(true);
     try {
+      const finalForm = { ...form };
+      if (!finalForm.sku) finalForm.sku = generateSku();
+      if (!finalForm.gtin) finalForm.gtin = generateEan13();
+
       await comboService.saveCombo({
-        ...form,
+        ...finalForm,
         id: editingId || undefined,
       });
       toast(`Combo ${editingId ? 'atualizado' : 'criado'} com sucesso!`, "success");
@@ -320,6 +340,8 @@ export function AdminCombos() {
       showInCatalog: combo.showInCatalog ?? true,
       isFeatured: combo.isFeatured ?? false,
       categories: combo.categories || ['Ofertas Combo'],
+      sku: combo.sku || '',
+      gtin: combo.gtin || '',
       seoTitle: combo.seoTitle || '',
       seoDescription: combo.seoDescription || '',
       items: combo.items,
@@ -395,7 +417,10 @@ export function AdminCombos() {
           <p className="text-slate-400">Gerencie conjuntos de produtos com preços especiais</p>
         </div>
         {view === 'list' && canCreate && (
-          <Button onClick={() => setView('form')} className="bg-red-600 hover:bg-red-700 text-white font-bold h-12 px-6 rounded-xl shadow-lg shadow-red-900/20">
+          <Button onClick={() => {
+            setForm({ ...initialCombo, sku: generateSku(), gtin: generateEan13() });
+            setView('form');
+          }} className="bg-red-600 hover:bg-red-700 text-white font-bold h-12 px-6 rounded-xl shadow-lg shadow-red-900/20">
             <Plus size={20} className="mr-2" />
             NOVO COMBO
           </Button>
@@ -708,6 +733,45 @@ export function AdminCombos() {
                                 <option key={cat.id} value={cat.name}>{cat.name}</option>
                               ))}
                             </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Código de Barras (GTIN/EAN13)</label>
+                          <div className="relative">
+                            <Input 
+                              placeholder="Ex: 7891234567890" 
+                              className="bg-slate-950 border-slate-800 h-14 rounded-xl font-mono text-white pr-16"
+                              value={form.gtin || ''}
+                              onChange={(e) => setForm(prev => ({ ...prev, gtin: e.target.value }))}
+                            />
+                            <button 
+                              type="button" 
+                              onClick={() => setForm(prev => ({ ...prev, gtin: generateEan13() }))}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-red-600 bg-red-600/10 hover:bg-red-600/20 px-2 py-1 rounded"
+                            >
+                              GERAR
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">SKU (Código Interno)</label>
+                          <div className="relative">
+                            <Input 
+                              placeholder="Ex: CBO-DIA-NAM" 
+                              className="bg-slate-950 border-slate-800 h-14 rounded-xl font-mono text-white uppercase pr-16"
+                              value={form.sku || ''}
+                              onChange={(e) => setForm(prev => ({ ...prev, sku: e.target.value.toUpperCase() }))}
+                            />
+                            <button 
+                              type="button" 
+                              onClick={() => setForm(prev => ({ ...prev, sku: generateSku() }))}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-red-600 bg-red-600/10 hover:bg-red-600/20 px-2 py-1 rounded"
+                            >
+                              GERAR
+                            </button>
                           </div>
                         </div>
                       </div>

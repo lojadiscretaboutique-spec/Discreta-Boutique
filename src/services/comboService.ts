@@ -44,6 +44,8 @@ export interface Combo {
   showInCatalog: boolean;
   isFeatured: boolean;
   categories: string[];
+  sku?: string;
+  gtin?: string;
   seoTitle?: string;
   seoDescription?: string;
   items: ComboItem[];
