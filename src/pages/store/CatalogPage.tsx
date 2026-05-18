@@ -110,7 +110,7 @@ export function CatalogPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const CACHE_VERSION = 'v2'; // To force clear old incorrect stock sums
+        const CACHE_VERSION = 'v3'; // To force clear old incorrect stock sums and ensure SEO data
         const now = Date.now();
         const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 

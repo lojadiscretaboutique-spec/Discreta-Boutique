@@ -157,6 +157,7 @@ export async function sendWebhook(pedido: Pedido, attempts = 1) {
     }
 
     const payload = {
+        phone: telefoneFormatado,
         telefone: telefoneFormatado,
         whatsapp: telefoneFormatado,
         nome: nome,

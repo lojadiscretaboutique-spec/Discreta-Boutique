@@ -133,6 +133,13 @@ export function AdminPDV() {
     stock: number;
   } | null>(null);
 
+  const cartSubtotal = roundTo2(
+    cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+  );
+  const itemsDiscountTotal = roundTo2(
+    cart.reduce((sum, item) => sum + (item.discount || 0), 0),
+  );
+
   // Customer state
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null,
@@ -180,8 +187,34 @@ export function AdminPDV() {
   const [isFinishing, setIsFinishing] = useState(false);
   const [lastOrderId, setLastOrderId] = useState("");
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
+  const [discountType, setDiscountType] = useState<'value' | 'percent'>('value');
+  const [discountBase, setDiscountBase] = useState<number>(0);
   const [shipping, setShipping] = useState<number>(0);
   const [partialAmount, setPartialAmount] = useState<string>("");
+
+  const resetPDV = useCallback(() => {
+    setCart([]);
+    setSelectedCustomer(null);
+    setPayments([]);
+    setPaymentMethod("");
+    setReceivedAmount("");
+    setGlobalDiscount(0);
+    setDiscountBase(0);
+    setDiscountType('value');
+    setShipping(0);
+    setNotes("");
+    setSearchTerm("");
+    setSearchResults([]);
+    setStep("cart");
+  }, []);
+
+  useEffect(() => {
+      if (discountType === 'value') {
+        setGlobalDiscount(discountBase);
+      } else {
+        setGlobalDiscount(cartSubtotal > 0 ? roundTo2((cartSubtotal * discountBase) / 100) : 0);
+      }
+    }, [discountType, discountBase, cartSubtotal]);
   const [editingOrderType, setEditingOrderType] = useState<string | null>(null);
   const [showMobileCart, setShowMobileCart] = useState(false);
 
@@ -311,11 +344,7 @@ export function AdminPDV() {
       }
       if (e.key === "F2") {
         e.preventDefault();
-        setStep("cart");
-        setCart([]);
-        setSelectedCustomer(null);
-        setPaymentMethod("");
-        setReceivedAmount("");
+        resetPDV();
         setTimeout(() => searchInputRef.current?.focus(), 50);
       }
       if (e.key === "Escape" && step === "cart") {
@@ -327,7 +356,7 @@ export function AdminPDV() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cart.length, step]);
+  }, [cart.length, step, resetPDV]);
 
   // Load delivery areas data when customer tab is active
   useEffect(() => {
@@ -898,12 +927,6 @@ export function AdminPDV() {
     });
   };
 
-  const cartSubtotal = roundTo2(
-    cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
-  );
-  const itemsDiscountTotal = roundTo2(
-    cart.reduce((sum, item) => sum + (item.discount || 0), 0),
-  );
   const calculatedTotal = roundTo2(
     cartSubtotal - itemsDiscountTotal + shipping - globalDiscount,
   );
@@ -1116,11 +1139,7 @@ export function AdminPDV() {
       // Listener removes the need to manually trigger webhooks
       // thus preventing duplicated events.
       setStep("success");
-      setCart([]);
-      setSelectedCustomer(null);
-      setPayments([]);
-      setPaymentMethod("");
-      setReceivedAmount("");
+      resetPDV();
     } catch (error) {
       console.error("PDV Order error:", error);
       toast("Erro ao processar pedido. Verifique sua conexão.", "error");
@@ -1651,7 +1670,15 @@ export function AdminPDV() {
                               setNewCustomer((prev) => ({
                                 ...prev,
                                 endereco: {
-                                  ...prev.endereco!,
+                                  ...(prev.endereco || {
+                                    estado: "",
+                                    cidade: "",
+                                    bairro: "",
+                                    rua: "",
+                                    numero: "",
+                                    complemento: "",
+                                    referencia: "",
+                                  }),
                                   estado: e.target.value,
                                 },
                               }))
@@ -1672,7 +1699,15 @@ export function AdminPDV() {
                               setNewCustomer((prev) => ({
                                 ...prev,
                                 endereco: {
-                                  ...prev.endereco!,
+                                  ...(prev.endereco || {
+                                    estado: "",
+                                    cidade: "",
+                                    bairro: "",
+                                    rua: "",
+                                    numero: "",
+                                    complemento: "",
+                                    referencia: "",
+                                  }),
                                   cidade: e.target.value,
                                 },
                               }))
@@ -1696,7 +1731,15 @@ export function AdminPDV() {
                               setNewCustomer((prev) => ({
                                 ...prev,
                                 endereco: {
-                                  ...prev.endereco!,
+                                  ...(prev.endereco || {
+                                    estado: "",
+                                    cidade: "",
+                                    bairro: "",
+                                    rua: "",
+                                    numero: "",
+                                    complemento: "",
+                                    referencia: "",
+                                  }),
                                   bairro: e.target.value,
                                 },
                               }))
@@ -1716,7 +1759,15 @@ export function AdminPDV() {
                               setNewCustomer((prev) => ({
                                 ...prev,
                                 endereco: {
-                                  ...prev.endereco!,
+                                  ...(prev.endereco || {
+                                    estado: "",
+                                    cidade: "",
+                                    bairro: "",
+                                    rua: "",
+                                    numero: "",
+                                    complemento: "",
+                                    referencia: "",
+                                  }),
                                   rua: e.target.value,
                                 },
                               }))
@@ -1739,7 +1790,15 @@ export function AdminPDV() {
                               setNewCustomer((prev) => ({
                                 ...prev,
                                 endereco: {
-                                  ...prev.endereco!,
+                                  ...(prev.endereco || {
+                                    estado: "",
+                                    cidade: "",
+                                    bairro: "",
+                                    rua: "",
+                                    numero: "",
+                                    complemento: "",
+                                    referencia: "",
+                                  }),
                                   numero: e.target.value,
                                 },
                               }))
@@ -1758,7 +1817,15 @@ export function AdminPDV() {
                               setNewCustomer((prev) => ({
                                 ...prev,
                                 endereco: {
-                                  ...prev.endereco!,
+                                  ...(prev.endereco || {
+                                    estado: "",
+                                    cidade: "",
+                                    bairro: "",
+                                    rua: "",
+                                    numero: "",
+                                    complemento: "",
+                                    referencia: "",
+                                  }),
                                   complemento: e.target.value,
                                 },
                               }))
@@ -1893,9 +1960,19 @@ export function AdminPDV() {
                         >
                           <Minus size={12} />
                         </button>
-                        <span className="text-sm font-black w-4 text-center">
-                          {item.quantity}
-                        </span>
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const newQty = parseInt(e.target.value) || 1;
+                            setCart((prev) => {
+                              const newCart = [...prev];
+                              newCart[idx].quantity = newQty;
+                              return newCart;
+                            });
+                          }}
+                          className="w-10 text-sm font-black text-center bg-slate-950 border border-white/10 rounded-lg outline-none focus:border-red-500"
+                        />
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1968,20 +2045,25 @@ export function AdminPDV() {
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="text-green-500 font-bold">-</span>
-                  <input
-                    type="number"
-                    value={globalDiscount}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
-                      setGlobalDiscount(val);
-                    }}
-                    onBlur={(e) => {
-                      const val = roundTo2(parseFloat(e.target.value)) || 0;
-                      setGlobalDiscount(val);
-                    }}
-                    className="w-20 bg-slate-900/5 border border-white/10 rounded px-2 py-1 text-xs font-black text-green-500 text-right outline-none focus:border-green-500 transition-colors"
-                    placeholder="0,00"
-                  />
+                  <div className="flex items-center bg-slate-900 border border-white/10 rounded overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setDiscountType(prev => prev === 'value' ? 'percent' : 'value')}
+                      className="px-2 py-1 text-[10px] font-black text-slate-400 hover:text-white bg-slate-800"
+                    >
+                      {discountType === 'value' ? 'R$' : '%'}
+                    </button>
+                    <input
+                      type="number"
+                      value={discountBase}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setDiscountBase(val);
+                      }}
+                      className="w-16 bg-transparent border-none px-2 py-1 text-xs font-black text-green-500 text-right outline-none focus:ring-0 transition-colors"
+                      placeholder="0,00"
+                    />
+                  </div>
                 </div>
               </div>
               {itemsDiscountTotal > 0 && (

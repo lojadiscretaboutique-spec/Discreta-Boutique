@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useCartStore } from '../../store/cartStore';
 import { formatCurrency, cn, formatVariantName } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
-import { ArrowLeft, Check, ShoppingBag, Package, Zap } from 'lucide-react';
+import { ArrowLeft, Check, ShoppingBag, Package, Zap, Share2 } from 'lucide-react';
 import { Product, ProductVariant, productService } from '../../services/productService';
 import { motion } from 'motion/react';
 
 export function ProductPage() {
   const { slug } = useParams();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const searchId = searchParams.get('sid') || undefined;
   const navigate = useNavigate();
@@ -31,12 +32,20 @@ export function ProductPage() {
       try {
         const pSnap = await getDocs(query(collection(db, 'products'), where('seo.slug', '==', slug)));
         let productData: Product | null = null;
+        let productId: string = '';
 
         if (pSnap.empty) {
           // Check by ID in products
           const fallbackSnap = await getDoc(doc(db, 'products', slug));
           if (fallbackSnap.exists()) {
             productData = { id: fallbackSnap.id, ...fallbackSnap.data() } as Product;
+            productId = fallbackSnap.id;
+            
+            // Redirect to slug URL if it has a slug
+            if (productData.seo?.slug) {
+              navigate(`/produto/${productData.seo.slug}${location.search}`, { replace: true });
+              return;
+            }
           } else {
             // Check in combos
             const cSnap = await getDocs(query(collection(db, 'combos'), where('active', '==', true)));
@@ -122,6 +131,22 @@ export function ProductPage() {
 
   const currentPrice = selectedVariant?.price || product.promoPrice || product.price;
   const currentImage = selectedVariant?.imageUrl || (product.images && product.images.length > 0 ? product.images[0].url : null);
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: product.name,
+          url: window.location.href,
+        });
+      } catch (err) {
+        console.error("Error sharing:", err);
+      }
+    } else {
+       navigator.clipboard.writeText(window.location.href);
+       alert('Link copiado!');
+    }
+  };
 
   const isOutOfStock = () => {
     if (!product.controlStock || product.allowBackorder) return false;
@@ -218,7 +243,12 @@ export function ProductPage() {
           {/* Info Area */}
           <div className="w-full lg:w-1/2 flex flex-col lg:sticky lg:top-24">
             <div className="mb-8">
-              <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter leading-none mb-4 italic">{product.name}</h1>
+              <div className="flex justify-between items-start">
+                  <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter leading-none mb-4 italic">{product.name}</h1>
+                  <button onClick={handleShare} className="text-zinc-500 hover:text-red-500 transition-colors p-2">
+                    <Share2 size={24} />
+                  </button>
+              </div>
               {product.subtitle && <p className="text-red-500 font-bold uppercase tracking-[4px] text-[10px] mb-4">{product.subtitle}</p>}
               <div className="flex items-center gap-4 text-xs font-bold text-zinc-500 uppercase tracking-widest">
                  <span>SKU: {selectedVariant?.sku || product.sku}</span>
