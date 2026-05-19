@@ -67,6 +67,7 @@ export function AdminProducts() {
   const [uploading, setUploading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [suggestedMultiplier, setSuggestedMultiplier] = useState(2.5);
+  const [forceRegen, setForceRegen] = useState(false);
 
   // Categorization effect
   useEffect(() => {
@@ -849,7 +850,7 @@ export function AdminProducts() {
   const generateVariants = () => {
     if (tempAttrs.length === 0) return;
 
-    const cartesian = <T,>(...args: T[][]): T[][] => args.reduce((a, b) => a.flatMap(d => b.map(e => [d, e].flat())));
+    const cartesian = <T,>(...args: T[][]): T[][] => args.reduce((a, b) => a.flatMap(d => b.map(e => [d, e].flat() as T[]))) as T[][];
     const combinations = cartesian(...tempAttrs.map(a => a.values));
     
     const newVariants: ProductVariant[] = combinations.map((combo: string[] | string, index: number) => {

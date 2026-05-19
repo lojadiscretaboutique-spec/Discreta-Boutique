@@ -110,7 +110,7 @@ export function AdminDashboard() {
     let totalItems = 0;
     
     const itemsSold: Record<string, { name: string, qty: number, revenue: number }> = {};
-    const salesByDate: Record<string, number> = {};
+    const salesByDate: Record<string, { total: number, timestamp: number }> = {};
 
     orders.forEach(o => {
       const orderTotal = o.total || 0;
@@ -139,13 +139,17 @@ export function AdminDashboard() {
       
       // Chart data grouping
       if (o.createdAt?.toDate) {
+        const dateObj = o.createdAt.toDate();
         let dateStr = '';
         if (['hoje', 'ontem'].includes(period)) {
-          dateStr = format(o.createdAt.toDate(), 'HH:00');
+          dateStr = format(dateObj, 'HH:00');
         } else {
-          dateStr = format(o.createdAt.toDate(), 'dd/MMM', { locale: ptBR });
+          dateStr = format(dateObj, 'dd/MMM', { locale: ptBR });
         }
-        salesByDate[dateStr] = (salesByDate[dateStr] || 0) + orderTotal;
+        if (!salesByDate[dateStr]) {
+          salesByDate[dateStr] = { total: 0, timestamp: dateObj.getTime() };
+        }
+        salesByDate[dateStr].total += orderTotal;
       }
     });
 
@@ -153,7 +157,9 @@ export function AdminDashboard() {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5);
 
-    const chartData = Object.entries(salesByDate).map(([date, total]) => ({ date, total }));
+    const chartData = Object.entries(salesByDate)
+      .sort((a, b) => a[1].timestamp - b[1].timestamp)
+      .map(([date, data]) => ({ date, total: data.total }));
     
     // Low stock
     const lowStock = products.filter(p => (p.stock || 0) <= 5 && p.active !== false)

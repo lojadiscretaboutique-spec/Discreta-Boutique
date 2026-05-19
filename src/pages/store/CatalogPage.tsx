@@ -11,6 +11,7 @@ import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
 import { catalogSectionsService, SECTION_METADATA, CatalogSection } from '../../services/catalogSectionsService';
+import { usePromotion } from '../../contexts/PromotionContext';
 
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -715,9 +716,21 @@ export function CatalogPage() {
 }
 
 function ProductGridCard({ product, onItemClick }: { product: Product, onItemClick?: () => void }) {
+  const { calculateProductPrice } = usePromotion();
+  const pricing = calculateProductPrice({
+    id: product.id!,
+    categoryId: product.categoryId,
+    price: product.price,
+    promoPrice: product.promoPrice
+  });
+
   const image = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
-  const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
+  
+  const finalPrice = pricing.price;
+  const originalPrice = pricing.originalPrice;
+  const hasPromo = (!!product.promoPrice && product.promoPrice < product.price) || !!pricing.promotion;
+  
   const hasVariants = !!product.hasVariants;
   const [quantity, setQuantity] = useState(1);
   const addItem = useCartStore(s => s.addItem);
@@ -733,14 +746,15 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
         id: `${product.id}-base`,
         productId: product.id,
         name: product.name,
-        price: hasPromo ? product.promoPrice! : product.price,
+        price: finalPrice,
         costPrice: product.costPrice || 0,
         quantity: quantity,
         sku: product.sku,
         gtin: product.gtin,
         imageUrl: image || '',
         variantId: undefined,
-        variantName: undefined
+        variantName: undefined,
+        isFreeShipping: pricing.isFreeShipping
       });
       // Track conversion
       productService.trackInteraction(product.id!, 'conversion');
@@ -790,7 +804,17 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
               transition={{ delay: 0.1 }}
               className="bg-red-600 text-white text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-xl"
             >
-              Oferta
+              {pricing.promotion?.name || 'Oferta'}
+            </motion.span>
+          )}
+          {pricing.isFreeShipping && (
+            <motion.span 
+              initial={{ x: -20, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="bg-orange-500 text-white text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-xl flex items-center gap-1"
+            >
+              <Truck size={10} /> Frete Grátis
             </motion.span>
           )}
         </div>
@@ -816,7 +840,7 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
             <div className="flex items-baseline gap-1.5">
               <span className="text-[11px] md:text-xs font-bold text-red-600 tracking-tight">à vista</span>
               <span className="text-base md:text-lg font-black text-red-600 tracking-tighter">
-                {formatCurrency(hasPromo ? product.promoPrice! : product.price)}
+                {formatCurrency(finalPrice)}
               </span>
             </div>
             
@@ -824,9 +848,9 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
             <div className="flex flex-col gap-0.5">
               <span className="text-[9px] md:text-[10px] text-zinc-500 font-bold tracking-tight uppercase">
                 {hasPromo && (
-                  <span className="line-through opacity-60 mr-1.5 font-medium">{formatCurrency(product.price)}</span>
+                  <span className="line-through opacity-60 mr-1.5 font-medium">{formatCurrency(originalPrice)}</span>
                 )}
-                OU 10X DE {formatCurrency((hasPromo ? product.promoPrice! : product.price) / 10)} SEM JUROS
+                OU 10X DE {formatCurrency(finalPrice / 10)} SEM JUROS
               </span>
             </div>
           </div>

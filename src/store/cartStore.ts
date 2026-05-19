@@ -16,22 +16,33 @@ export interface CartItem {
   costPrice?: number;
   isCombo?: boolean;
   comboId?: string;
+  isFreeShipping?: boolean;
+}
+
+export interface AppliedCoupon {
+  code: string;
+  type: 'percentage' | 'fixed';
+  value: number;
 }
 
 interface CartStore {
   items: CartItem[];
+  appliedCoupon: AppliedCoupon | null;
   addItem: (item: CartItem) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
   total: () => number;
   loadOrder: (order: any) => void;
+  applyCoupon: (coupon: AppliedCoupon) => void;
+  removeCoupon: () => void;
 }
 
 export const useCartStore = create<CartStore>()(
   persist(
     (set, get) => ({
       items: [],
+      appliedCoupon: null,
       addItem: (item) => {
         const items = get().items;
         const existing = items.find((i) => i.id === item.id);
@@ -53,7 +64,7 @@ export const useCartStore = create<CartStore>()(
             i.id === id ? { ...i, quantity: Math.max(1, quantity) } : i
           ),
         }),
-      clearCart: () => set({ items: [] }),
+      clearCart: () => set({ items: [], appliedCoupon: null }),
       total: () => get().items.reduce((acc, item) => acc + item.price * item.quantity, 0),
       loadOrder: (order: any) => {
         const cartItems: CartItem[] = order.items.map((item: any) => ({
@@ -68,8 +79,10 @@ export const useCartStore = create<CartStore>()(
           variantName: item.variantName,
           costPrice: item.costPrice
         }));
-        set({ items: cartItems });
-      }
+        set({ items: cartItems, appliedCoupon: null }); // clear coupon on load order usually for admin edits
+      },
+      applyCoupon: (coupon) => set({ appliedCoupon: coupon }),
+      removeCoupon: () => set({ appliedCoupon: null })
     }),
     {
       name: 'discreta-cart',

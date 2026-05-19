@@ -1,16 +1,30 @@
 import { memo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Minus } from 'lucide-react';
+import { Plus, Minus, Truck } from 'lucide-react';
 import { formatCurrency, cn } from '../../lib/utils';
 import { Product } from '../../services/productService';
 import { useCartStore } from '../../store/cartStore';
 import { ResponsiveImage } from './ResponsiveImage';
+import { usePromotion } from '../../contexts/PromotionContext';
 
 export const ProductItemCard = memo(({ product, isPriority = false }: { product: Product, isPriority?: boolean }) => {
+  const { calculateProductPrice } = usePromotion();
+  const pricing = calculateProductPrice({
+    id: product.id!,
+    categoryId: product.categoryId,
+    price: product.price,
+    promoPrice: product.promoPrice
+  });
+
   const mainImage = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
-  const hasPromo = !!product.promoPrice && product.promoPrice < product.price && !isOut;
+  
+  // Use calculated promotion if available
+  const hasPromo = (!!product.promoPrice && product.promoPrice < product.price) || !!pricing.promotion;
+  const finalPrice = pricing.price;
+  const originalPrice = pricing.originalPrice;
+  
   const hasVariants = !!product.hasVariants;
   const [quantity, setQuantity] = useState(1);
   const addItem = useCartStore(s => s.addItem);
@@ -25,13 +39,14 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
         id: `combo-${product.id}`,
         productId: product.id!,
         name: product.name,
-        price: hasPromo ? product.promoPrice! : product.price,
+        price: finalPrice,
         quantity: quantity,
         sku: product.sku || '',
         gtin: product.gtin || '',
         imageUrl: mainImage || '',
         isCombo: true,
-        comboId: product.id
+        comboId: product.id,
+        isFreeShipping: pricing.isFreeShipping
       });
       navigate('/carrinho');
       return;
@@ -44,13 +59,14 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
         id: `${product.id}-base`,
         productId: product.id!,
         name: product.name,
-        price: hasPromo ? product.promoPrice! : product.price,
+        price: finalPrice,
         quantity: quantity,
         sku: product.sku,
         gtin: product.gtin,
         imageUrl: mainImage || '',
         variantId: undefined,
-        variantName: undefined
+        variantName: undefined,
+        isFreeShipping: pricing.isFreeShipping
       });
       navigate('/carrinho');
     }
@@ -97,7 +113,17 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
               transition={{ delay: 0.1 }}
               className="bg-red-600 text-white text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-xl"
             >
-              Oferta
+              {pricing.promotion?.name || 'Oferta'}
+            </motion.span>
+          )}
+          {pricing.isFreeShipping && (
+            <motion.span 
+              initial={{ x: -20, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="bg-orange-500 text-white text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-xl flex items-center gap-1"
+            >
+              <Truck size={10} /> Frete Grátis
             </motion.span>
           )}
         </div>
@@ -123,7 +149,7 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
             <div className="flex items-baseline gap-1 md:gap-1.5">
               <span className="text-[10px] md:text-sm font-bold text-red-600 tracking-tight shrink-0">à vista</span>
               <span className="text-base md:text-2xl font-black text-red-600 tracking-tighter">
-                {formatCurrency(hasPromo ? product.promoPrice! : product.price)}
+                {formatCurrency(finalPrice)}
               </span>
             </div>
             
@@ -131,9 +157,9 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
             <div className="flex flex-col gap-0.5">
               <span className="text-[8px] md:text-[11px] text-zinc-400 font-black tracking-tight uppercase leading-none">
                 {hasPromo && (
-                  <span className="line-through opacity-60 mr-1 font-medium">{formatCurrency(product.price)}</span>
+                  <span className="line-through opacity-60 mr-1 font-medium">{formatCurrency(originalPrice)}</span>
                 )}
-                OU 10X DE {formatCurrency((hasPromo ? product.promoPrice! : product.price) / 10)}
+                OU 10X DE {formatCurrency(finalPrice / 10)}
               </span>
             </div>
           </div>

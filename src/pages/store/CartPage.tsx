@@ -10,6 +10,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { customerService } from '../../services/customerService';
 import { stockMovementService } from '../../services/stockMovementService';
 import { abandonedCartService } from '../../services/abandonedCartService';
+import { abandonedCartWebhookService } from '../../services/abandonedCartWebhookService';
+import { couponService } from '../../services/couponService';
 import { deliveryAreaService, State, City, DeliveryArea } from '../../services/deliveryAreaService';
 import { settingsService, PaymentSettings, MercadoPagoSettings, OperatingHoursSettings } from '../../services/settingsService';
 import { doc, getDoc } from 'firebase/firestore';
@@ -18,7 +20,7 @@ import { db } from '../../lib/firebase';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 
 export function CartPage() {
-  const { items, updateQuantity, removeItem, clearCart, total } = useCartStore();
+  const { items, updateQuantity, removeItem, clearCart, total, appliedCoupon, applyCoupon, removeCoupon } = useCartStore();
   const { currentCustomer, setCustomer } = useCustomerAuthStore();
   const navigate = useNavigate();
   const { toast } = useFeedback();
@@ -79,6 +81,8 @@ export function CartPage() {
   const [name, setName] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [email, setEmail] = useState('');
+  const [couponInput, setCouponInput] = useState('');
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
 
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedSlot, setSelectedSlot] = useState<string>('');
@@ -234,8 +238,24 @@ export function CartPage() {
 
   // Computed Totals
   const subTotal = roundTo2(total());
-  const deliveryFee = roundTo2(receiveMethod === 'entrega' && currentArea ? (currentArea.freteGratisAcima && subTotal >= currentArea.freteGratisAcima ? 0 : currentArea.taxaEntrega) : 0);
-  const orderTotal = roundTo2(subTotal + deliveryFee);
+  let couponDiscount = 0;
+  if (appliedCoupon) {
+    if (appliedCoupon.type === 'percentage') {
+      couponDiscount = subTotal * (appliedCoupon.value / 100);
+    } else if (appliedCoupon.type === 'fixed') {
+      couponDiscount = appliedCoupon.value;
+    }
+  }
+  // Ensure discount does not exceed subtotal
+  couponDiscount = Math.min(couponDiscount, subTotal);
+  
+  const hasFreeShippingPromo = items.some(i => i.isFreeShipping);
+  
+  const deliveryFee = roundTo2(receiveMethod === 'entrega' && currentArea ? (
+    hasFreeShippingPromo ? 0 :
+    (currentArea.freteGratisAcima && subTotal >= currentArea.freteGratisAcima ? 0 : currentArea.taxaEntrega)
+  ) : 0);
+  const orderTotal = roundTo2(subTotal - couponDiscount + deliveryFee);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -336,6 +356,77 @@ export function CartPage() {
   }, [currentCustomer]);
 
   // Handle auto-login/identification logic
+  const handleApplyCoupon = async () => {
+    if (!couponInput) return;
+    setApplyingCoupon(true);
+    try {
+      const coupon = await couponService.getCouponByCode(couponInput);
+      if (!coupon) {
+        toast("Cupom inválido", "error");
+        return;
+      }
+      if (!coupon.active) {
+        toast("Cupom inativo", "error");
+        return;
+      }
+      if (coupon.maxUses && coupon.uses >= coupon.maxUses) {
+        toast("Cupom esgotado", "error");
+        return;
+      }
+
+      // Check dates
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      
+      if (coupon.startDate) {
+        const start = new Date(coupon.startDate);
+        start.setHours(0, 0, 0, 0);
+        if (now < start) {
+          toast("Este cupom ainda não é válido", "warning");
+          return;
+        }
+      }
+      
+      if (coupon.endDate) {
+        const end = new Date(coupon.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (now > end) {
+          toast("Este cupom já expirou", "error");
+          return;
+        }
+      }
+
+      // Check usage per customer
+      if (coupon.usageLimitPerCustomer && currentCustomer) {
+        const { collection, query, where, getDocs } = await import('firebase/firestore');
+        const { db } = await import('../../lib/firebase');
+        const q = query(
+          collection(db, 'orders'),
+          where('customerWhatsapp', '==', currentCustomer.whatsapp.replace(/\D/g, '')),
+          where('coupon.code', '==', coupon.code)
+        );
+        const orderSnap = await getDocs(q);
+        if (orderSnap.size >= coupon.usageLimitPerCustomer) {
+          toast(`Você já atingiu o limite de uso deste cupom (${coupon.usageLimitPerCustomer}x)`, "warning");
+          return;
+        }
+      }
+
+      if (coupon.minPurchaseAmount && subTotal < coupon.minPurchaseAmount) {
+        toast(`O valor mínimo para este cupom é ${formatCurrency(coupon.minPurchaseAmount)}`, "warning");
+        return;
+      }
+      
+      applyCoupon({ code: coupon.code, type: coupon.type, value: coupon.value });
+      toast("Cupom aplicado!", "success");
+      setCouponInput("");
+    } catch (e) {
+      toast("Erro ao aplicar", "error");
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
+
   const handleIdentification = async (e?: any) => {
     if (e?.preventDefault) e.preventDefault();
     
@@ -367,6 +458,11 @@ export function CartPage() {
         });
         toast(`Bem-vindo(a) de volta, ${existing.nome.split(' ')[0]}!`, "success");
         setCheckoutStep('RESUMO');
+        
+        // Chamada imediata ao webhook de carrinho
+        if (items && items.length > 0) {
+           abandonedCartWebhookService.sendImmediateCartWebhook(existing.nome, cleanPhone, items).catch(err => console.error(err));
+        }
       } else {
         if (!isNewCustomer) {
           setIsNewCustomer(true);
@@ -393,6 +489,11 @@ export function CartPage() {
         });
         toast("Cadastro realizado com sucesso!", "success");
         setCheckoutStep('RESUMO');
+
+        // Chamada imediata ao webhook de carrinho
+        if (items && items.length > 0) {
+           abandonedCartWebhookService.sendImmediateCartWebhook(name, cleanPhone, items).catch(err => console.error(err));
+        }
       }
     } catch (err) {
       console.error("Auth error:", err);
@@ -669,7 +770,8 @@ export function CartPage() {
         notes: finalNotes,
         subTotal: subTotal,
         deliveryFee: receiveMethod === 'entrega' ? deliveryFee : 0,
-        total: receiveMethod === 'entrega' ? orderTotal : subTotal,
+        total: receiveMethod === 'entrega' ? orderTotal : subTotal - couponDiscount, // Ensure total considers discount even for store pickup
+        coupon: appliedCoupon ? { code: appliedCoupon.code, discountValue: couponDiscount } : null,
         deliveryAreaId: validArea?.id || null,
         paymentMethod: paymentMethod,
         status: 'NOVO',
@@ -721,6 +823,10 @@ export function CartPage() {
         }
       }
       
+      if (appliedCoupon) {
+        couponService.recordCouponUse(appliedCoupon.code).catch(e => console.error("Error recording coupon usage", e));
+      }
+
       // CHECK FOR ONLINE INTEGRATION
       const isOnlineMethod = selectedMethodConfig?.useIntegration;
       const useIntegration = mpSettings?.active && isOnlineMethod;
@@ -1447,12 +1553,48 @@ export function CartPage() {
                   <span className="text-[10px] text-zinc-600 tracking-widest not-italic">{items.length} itens</span>
                 </h2>
 
+                {/* Coupon Input Area */}
+                {checkoutStep === 'RESUMO' && (
+                  <div className="mb-6 flex gap-2">
+                    {appliedCoupon ? (
+                      <div className="flex-1 flex justify-between items-center bg-green-500/10 border border-green-500/20 text-green-500 px-4 py-3 rounded-2xl">
+                        <span className="text-xs font-bold uppercase tracking-widest">Cupom: {appliedCoupon.code}</span>
+                        <button onClick={removeCoupon} className="text-green-500 hover:text-green-400 font-black text-[10px] uppercase">Remover</button>
+                      </div>
+                    ) : (
+                      <>
+                        <input 
+                          type="text" 
+                          placeholder="CÓDIGO DO CUPOM" 
+                          value={couponInput}
+                          onChange={e => setCouponInput(e.target.value.toUpperCase())}
+                          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-2xl px-4 text-sm font-bold placeholder:text-zinc-600 uppercase"
+                        />
+                        <Button 
+                          onClick={handleApplyCoupon} 
+                          disabled={!couponInput || applyingCoupon}
+                          variant="outline" 
+                          className="rounded-2xl border-zinc-800 text-zinc-300 hover:bg-zinc-800"
+                        >
+                          {applyingCoupon ? '...' : 'Usar'}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center py-6 border-y border-zinc-800 mb-6">
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-zinc-500">
                       <span className="text-[9px] font-black uppercase tracking-widest">Subtotal:</span>
                       <span className="font-bold text-sm text-white">{formatCurrency(subTotal)}</span>
                     </div>
+                    {couponDiscount > 0 && (
+                      <div className="flex justify-between items-center text-green-500">
+                        <span className="text-[9px] font-black uppercase tracking-widest">Desconto ({appliedCoupon?.code}):</span>
+                        <span className="font-bold text-sm">- {formatCurrency(couponDiscount)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center text-zinc-500">
                       <span className="text-[9px] font-black uppercase tracking-widest">Entrega:</span>
                       <span className="font-bold text-sm text-white">

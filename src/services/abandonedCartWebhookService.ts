@@ -39,6 +39,78 @@ export const abandonedCartWebhookService = {
     return cleaned;
   },
 
+  async sendImmediateCartWebhook(name: string, phone: string, cartItems: any[]): Promise<boolean> {
+    try {
+      if (!cartItems || cartItems.length === 0) return false;
+
+      // Check settings/webhooks first
+      let webhookUrl = '';
+      const hooksSnap = await getDoc(doc(db, 'settings', 'webhooks'));
+      if (hooksSnap.exists()) {
+        webhookUrl = hooksSnap.data().recoveryWebhookUrl;
+      }
+      if (!webhookUrl) {
+         // Fallback to settings/recovery
+         const recSnap = await getDoc(doc(db, 'settings', 'recovery'));
+         if (recSnap.exists()) {
+            webhookUrl = recSnap.data().webhookUrl;
+         }
+      }
+
+      if (!webhookUrl) {
+         console.warn('Webhook de recuperação não configurado.');
+         return false;
+      }
+
+      const standardizedPhone = this.standardizePhone(phone);
+      if (!standardizedPhone) return false;
+
+      // Generate a short ID
+      const shortId = 'CART-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+
+      const payload = {
+        nome: name,
+        whatsapp: standardizedPhone,
+        pedido_id_curto: shortId,
+        items_count: cartItems.length,
+        source: 'DiscretaBoutique_ImmediateCart'
+      };
+
+      let success = false;
+      let resStatus = 0;
+      let errorMsg = '';
+
+      try {
+        const response = await axios.post(webhookUrl, payload, { timeout: 10000 });
+        success = response.status >= 200 && response.status < 300;
+        resStatus = response.status;
+      } catch (e: any) {
+        success = false;
+        resStatus = e.response?.status || 0;
+        errorMsg = e.message || 'Erro no webhook';
+      }
+
+      await addDoc(collection(db, 'webhook_logs'), {
+        customerName: name,
+        customerWhatsapp: standardizedPhone,
+        status: 'RECUPERAÇÃO_IMEDIATA',
+        payload: payload,
+        response: resStatus ? { status: resStatus } : null,
+        error: errorMsg,
+        attempts: 1,
+        success: success,
+        timestamp: serverTimestamp(),
+        type: 'recovery',
+        orderId: shortId
+      });
+
+      return success;
+    } catch (err) {
+      console.error('sendImmediateCartWebhook error:', err);
+      return false;
+    }
+  },
+
   async sendRecoveryWebhook(name: string, phone: string): Promise<boolean> {
     try {
       // 1. Get Settings

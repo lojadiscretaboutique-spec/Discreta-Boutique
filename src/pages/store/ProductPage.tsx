@@ -5,11 +5,13 @@ import { db } from '../../lib/firebase';
 import { useCartStore } from '../../store/cartStore';
 import { formatCurrency, cn, formatVariantName } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
-import { ArrowLeft, Check, ShoppingBag, Package, Zap, Share2 } from 'lucide-react';
+import { ArrowLeft, Check, ShoppingBag, Package, Zap, Share2, Truck, Tag } from 'lucide-react';
 import { Product, ProductVariant, productService } from '../../services/productService';
 import { motion } from 'motion/react';
+import { usePromotion } from '../../contexts/PromotionContext';
 
 export function ProductPage() {
+  const { calculateProductPrice } = usePromotion();
   const { slug } = useParams();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -25,6 +27,19 @@ export function ProductPage() {
     mensagem: string;
   } | null>(null);
   const addItem = useCartStore(s => s.addItem);
+
+  // Apply promotion logic
+  const pricing = product ? calculateProductPrice({
+    id: product.id!,
+    categoryId: product.categoryId,
+    price: selectedVariant?.price || product.price,
+    promoPrice: selectedVariant ? undefined : product.promoPrice
+  }) : { price: 0, originalPrice: 0, promotion: null, isFreeShipping: false };
+
+  // Adjust currentPrice to use pricing from hook
+  const currentPrice = pricing.price;
+  const isPromoActive = !!pricing.promotion || (!!product?.promoPrice && product.promoPrice! < product!.price);
+  const originalPrice = pricing.originalPrice;
 
   useEffect(() => {
     async function loadData() {
@@ -129,7 +144,6 @@ export function ProductPage() {
     );
   }
 
-  const currentPrice = selectedVariant?.price || product.promoPrice || product.price;
   const currentImage = selectedVariant?.imageUrl || (product.images && product.images.length > 0 ? product.images[0].url : null);
 
   const handleShare = async () => {
@@ -179,7 +193,8 @@ export function ProductPage() {
       variantId: selectedVariant?.id,
       variantName: selectedVariant?.name,
       costPrice: selectedVariant?.costPrice || product.costPrice || 0,
-      searchId
+      searchId,
+      isFreeShipping: pricing.isFreeShipping
     });
     
     // Track conversion
@@ -262,12 +277,34 @@ export function ProductPage() {
               </div>
             </div>
 
-            <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-8 mb-8">
-              <div className="flex items-end gap-3 mb-6">
-                <span className="text-4xl font-black text-white tracking-tighter">{formatCurrency(Number(currentPrice))}</span>
-                {!!product.promoPrice && product.promoPrice < product.price && !selectedVariant && (
-                  <span className="text-xl text-zinc-600 line-through mb-1">{formatCurrency(Number(product.price))}</span>
-                )}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-8 mb-8 relative overflow-hidden">
+              {/* Promotion Badge Background Glow */}
+              {isPromoActive && (
+                <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 blur-3xl -z-0" />
+              )}
+              
+              <div className="flex flex-col gap-4 mb-6 relative z-10">
+                <div className="flex items-end gap-3">
+                  <span className="text-4xl md:text-5xl font-black text-white tracking-tighter">{formatCurrency(Number(currentPrice))}</span>
+                  {(isPromoActive && originalPrice > currentPrice) && (
+                    <span className="text-xl text-zinc-600 line-through mb-1">{formatCurrency(Number(originalPrice))}</span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {pricing.promotion && (
+                    <div className="flex items-center gap-1.5 bg-red-600/10 border border-red-600/30 text-red-500 px-3 py-1 rounded-full">
+                      <Tag size={12} className="fill-red-500" />
+                      <span className="text-[10px] font-black uppercase tracking-widest">{pricing.promotion.name}</span>
+                    </div>
+                  )}
+                  {pricing.isFreeShipping && (
+                    <div className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/30 text-orange-500 px-3 py-1 rounded-full">
+                      <Truck size={12} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Frete Grátis</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {variants.length > 0 && (
@@ -382,35 +419,60 @@ export function ProductPage() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              {aiSuggestions.produtos.map((p, idx) => (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.1 }}
-                  key={p.id}
-                  onClick={() => {
-                    navigate(`/produto/${p.seo?.slug || p.id}`);
-                    window.scrollTo(0, 0);
-                  }}
-                  className="group cursor-pointer"
-                >
-                  <div className="aspect-[3/4] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 mb-4 relative">
-                    <img 
-                      src={p.imageUrl || undefined} 
-                      alt={p.name} 
-                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 grayscale-[0.5] group-hover:grayscale-0"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-6">
-                      <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 px-4 rounded-full w-fit tracking-widest">
-                        Ver Detalhes
+              {aiSuggestions.produtos.map((p, idx) => {
+                const sPricing = calculateProductPrice({
+                  id: p.id,
+                  categoryId: p.categoryId,
+                  price: p.price,
+                  promoPrice: p.promoPrice
+                });
+                const sHasPromo = !!sPricing.promotion || (p.promoPrice && p.promoPrice < p.price);
+
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.1 }}
+                    key={p.id}
+                    onClick={() => {
+                      navigate(`/produto/${p.seo?.slug || p.id}`);
+                      window.scrollTo(0, 0);
+                    }}
+                    className="group cursor-pointer"
+                  >
+                    <div className="aspect-[3/4] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 mb-4 relative">
+                      <img 
+                        src={p.imageUrl || undefined} 
+                        alt={p.name} 
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 grayscale-[0.5] group-hover:grayscale-0"
+                        referrerPolicy="no-referrer"
+                      />
+                      {sHasPromo && (
+                        <div className="absolute top-4 left-4 bg-red-600 text-white text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-xl z-20">
+                          {sPricing.promotion?.name || 'Oferta'}
+                        </div>
+                      )}
+                      {sPricing.isFreeShipping && (
+                        <div className="absolute top-4 right-4 bg-orange-500 text-white p-1.5 rounded-full shadow-xl z-20">
+                          <Truck size={12} />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-6">
+                        <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 px-4 rounded-full w-fit tracking-widest">
+                          Ver Detalhes
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <h3 className="text-sm font-bold uppercase tracking-tight line-clamp-1 group-hover:text-red-500 transition-colors">{p.name}</h3>
-                  <p className="text-zinc-500 text-xs font-black uppercase tracking-widest mt-1">{formatCurrency(p.price)}</p>
-                </motion.div>
-              ))}
+                    <h3 className="text-sm font-bold uppercase tracking-tight line-clamp-1 group-hover:text-red-500 transition-colors">{p.name}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-red-500 text-xs font-black uppercase tracking-widest">{formatCurrency(sPricing.price)}</p>
+                      {sHasPromo && sPricing.originalPrice > sPricing.price && (
+                        <p className="text-zinc-600 text-[10px] font-bold line-through">{formatCurrency(sPricing.originalPrice)}</p>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
           </div>
         </div>

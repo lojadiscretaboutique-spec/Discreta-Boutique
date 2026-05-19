@@ -1,5 +1,5 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Package, ShoppingCart, Users, Settings, LogOut, LayoutDashboard, Image as ImageIcon, Layers, ClipboardList, Shield, MapPin, Banknote, DollarSign, Truck, Clock, Tag, Brain, Moon, Sun, RefreshCcw } from 'lucide-react';
+import { Package, ShoppingCart, Users, Settings, LogOut, LayoutDashboard, Image as ImageIcon, Layers, ClipboardList, Shield, MapPin, Banknote, DollarSign, Truck, Clock, Tag, Brain, Moon, Sun, RefreshCcw, Megaphone } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useSettings } from '../contexts/SettingsContext';
 import { useFeedback } from '../contexts/FeedbackContext';
@@ -41,9 +41,14 @@ export function AdminLayout() {
     ]},
     { name: 'Áreas de Entrega', path: '/admin/areas-entrega', icon: MapPin, permission: 'areasEntrega' },
     { name: 'Horários da Loja', path: '/admin/horarios', icon: Clock, permission: 'settings' },
+    { name: 'Marketing', path: '/admin/marketing', icon: Megaphone, permission: 'banners', submenu: [
+        { name: 'Banners', path: '/admin/marketing/banners', permission: 'banners' },
+        { name: 'Cupons', path: '/admin/marketing/cupons', permission: 'banners' },
+        { name: 'Promoções Automáticas', path: '/admin/marketing/promocoes', permission: 'banners' },
+        { name: 'Bot Conversa / Webhooks', path: '/admin/marketing/webhooks', permission: 'logs' },
+    ]},
     { name: 'Configurações', path: '/admin/config', icon: Settings, permission: 'settings', submenu: [
         { name: 'Dados da Loja', path: '/admin/config', permission: 'settings' },
-        { name: 'Bot Conversa / Webhooks', path: '/admin/config/webhooks', permission: 'logs' },
     ]},
     { name: 'Contas / Equipe', path: '/admin/usuarios', icon: Shield, permission: 'users', submenu: [
         { name: 'Usuários', path: '/admin/usuarios', permission: 'users' },
@@ -51,13 +56,13 @@ export function AdminLayout() {
         { name: 'Logs / Auditoria', path: '/admin/logs', permission: 'logs' },
         { name: 'Estoque Inteligente', path: '/admin/estoque-inteligente', permission: 'products' },
     ]},
-    { name: 'Banners', path: '/admin/banners', icon: ImageIcon, permission: 'banners' },
   ];
 
   const [usersSubMenuOpen, setUsersSubMenuOpen] = useState(false);
   const [financeSubMenuOpen, setFinanceSubMenuOpen] = useState(false);
   const [configSubMenuOpen, setConfigSubMenuOpen] = useState(false);
   const [productSubMenuOpen, setProductSubMenuOpen] = useState(false);
+  const [marketingSubMenuOpen, setMarketingSubMenuOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false); // Unified state for all screen sizes
   
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -258,6 +263,7 @@ export function AdminLayout() {
                     const isFinanceSub = item.name === 'Financeiro';
                     const isConfigSub = item.name === 'Configurações';
                     const isProductSub = item.name === 'Produtos';
+                    const isMarketingSub = item.name === 'Marketing';
                     
                     const isSubActive = isUsersSub 
                         ? (location.pathname.startsWith('/admin/usuarios') || location.pathname.startsWith('/admin/perfis') || location.pathname.startsWith('/admin/logs'))
@@ -265,17 +271,20 @@ export function AdminLayout() {
                             ? location.pathname.startsWith('/admin/financeiro')
                             : isConfigSub
                                 ? location.pathname.startsWith('/admin/config')
+                                : isMarketingSub
+                                    ? location.pathname.startsWith('/admin/marketing')
                                 : isProductSub
                                     ? (location.pathname === '/admin/produtos' || location.pathname === '/admin/combos')
                                     : false;
                             
-                    const isOpen = isUsersSub ? usersSubMenuOpen : (isFinanceSub ? financeSubMenuOpen : (isConfigSub ? configSubMenuOpen : (isProductSub ? productSubMenuOpen : false)));
+                    const isOpen = isUsersSub ? usersSubMenuOpen : (isFinanceSub ? financeSubMenuOpen : (isConfigSub ? configSubMenuOpen : (isProductSub ? productSubMenuOpen : (isMarketingSub ? marketingSubMenuOpen : false))));
                     
                     const toggleMenu = () => {
                         if (isUsersSub) setUsersSubMenuOpen(!usersSubMenuOpen);
                         if (isFinanceSub) setFinanceSubMenuOpen(!financeSubMenuOpen);
                         if (isConfigSub) setConfigSubMenuOpen(!configSubMenuOpen);
                         if (isProductSub) setProductSubMenuOpen(!productSubMenuOpen);
+                        if (isMarketingSub) setMarketingSubMenuOpen(!marketingSubMenuOpen);
                     };
 
                     return (

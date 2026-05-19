@@ -9,10 +9,13 @@ import { Button } from '../../components/ui/button';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { customerService } from '../../services/customerService';
 import { deliveryAreaService, State, City, DeliveryArea } from '../../services/deliveryAreaService';
+import { abandonedCartWebhookService } from '../../services/abandonedCartWebhookService';
+import { useCartStore } from '../../store/cartStore';
 
 export function CustomerAreaPage() {
   const { user } = useAuthStore();
   const { currentCustomer, setCustomer, clearCustomer } = useCustomerAuthStore();
+  const cartItems = useCartStore(state => state.items);
   const { toast } = useFeedback();
 
   const [loading, setLoading] = useState(false);
@@ -170,6 +173,10 @@ export function CustomerAreaPage() {
            dataNascimento: customer.dataNascimento,
            enderecoObj: currentEnd
         });
+
+        if (cartItems && cartItems.length > 0) {
+           abandonedCartWebhookService.sendImmediateCartWebhook(customer.nome, customer.whatsapp, cartItems).catch(err => console.error(err));
+        }
       }
     } catch (err) {
       toast('Erro ao buscar dados.', 'error');
@@ -253,6 +260,10 @@ export function CustomerAreaPage() {
            dataNascimento: data.dataNascimento,
            enderecoObj: data.enderecoObj
         });
+
+        if (cartItems && cartItems.length > 0) {
+           abandonedCartWebhookService.sendImmediateCartWebhook(data.nome, searchedWhatsapp, cartItems).catch(err => console.error(err));
+        }
       }
       toast('Seus dados foram atualizados.', 'success');
     } catch (err) {

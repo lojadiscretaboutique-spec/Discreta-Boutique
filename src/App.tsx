@@ -5,6 +5,7 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { motion, AnimatePresence } from 'motion/react';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
+import { PromotionProvider } from './contexts/PromotionContext';
 import { useUIStore } from './store/uiStore';
 import { cacheService } from './services/cacheService';
 
@@ -28,6 +29,8 @@ const AdminCombos = lazy(() => import('./pages/admin/AdminCombos').then(m => ({ 
 const AdminLabels = lazy(() => import('./pages/admin/AdminLabels').then(m => ({ default: m.AdminLabels })));
 const AdminCategories = lazy(() => import('./pages/admin/AdminCategories').then(m => ({ default: m.AdminCategories })));
 const AdminBanners = lazy(() => import('./pages/admin/AdminBanners').then(m => ({ default: m.AdminBanners })));
+const AdminCoupons = lazy(() => import('./pages/admin/marketing/AdminCoupons').then(m => ({ default: m.AdminCoupons })));
+const AdminPromotions = lazy(() => import('./pages/admin/marketing/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
 const MovEstoque = lazy(() => import('./pages/admin/MovEstoque').then(m => ({ default: m.MovEstoque })));
 const AdminCustomers = lazy(() => import('./pages/admin/AdminCustomers').then(m => ({ default: m.AdminCustomers })));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers').then(m => ({ default: m.AdminUsers })));
@@ -169,7 +172,9 @@ function AppContent() {
             <Route path="usuarios" element={<AdminUsers />} />
             <Route path="perfis" element={<AdminRoles />} />
             <Route path="logs" element={<AdminLogs />} />
-            <Route path="banners" element={<AdminBanners />} />
+            <Route path="marketing/banners" element={<AdminBanners />} />
+            <Route path="marketing/cupons" element={<AdminCoupons />} />
+            <Route path="marketing/promocoes" element={<AdminPromotions />} />
             <Route path="clientes" element={<AdminCustomers />} />
             <Route path="caixa" element={<AdminCaixa />} />
             <Route path="pdv" element={<AdminPDV />} />
@@ -185,11 +190,11 @@ function AppContent() {
             </Route>
             <Route path="areas-entrega" element={<AdminDeliveryAreas />} />
             <Route path="horarios" element={<AdminOperatingHours />} />
-            <Route path="config/webhooks" element={<AdminWebhooks />} />
-            <Route path="config/webhooks-logs" element={<AdminWebhooks />} />
+            <Route path="marketing/webhooks" element={<AdminWebhooks />} />
+            <Route path="marketing/webhooks-logs" element={<AdminWebhooks />} />
             <Route path="estoque-inteligente" element={<AdminSmartStock />} />
-            <Route path="config/recuperador-carrinho" element={<AdminWebhooks />} />
-            <Route path="config/recovery-logs" element={<AdminWebhooks />} />
+            <Route path="marketing/recuperador-carrinho" element={<AdminWebhooks />} />
+            <Route path="marketing/recovery-logs" element={<AdminWebhooks />} />
             <Route path="config" element={<AdminConfig />} />
           </Route>
         </Routes>
@@ -213,7 +218,9 @@ export default function App() {
 
   return (
     <SettingsProvider>
-      <AppContent />
+      <PromotionProvider>
+        <AppContent />
+      </PromotionProvider>
     </SettingsProvider>
   );
 }

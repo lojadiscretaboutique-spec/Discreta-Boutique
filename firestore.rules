@@ -234,6 +234,20 @@ service cloud.firestore {
       allow delete: if can('produtos', 'excluir');
     }
 
+    match /coupons/{doc} {
+      allow read: if true;
+      allow create: if can('banners', 'criar');
+      allow update: if can('banners', 'editar') || can('orders', 'criar');
+      allow delete: if can('banners', 'excluir');
+    }
+
+    match /promotions/{doc} {
+      allow read: if true;
+      allow create: if can('banners', 'criar');
+      allow update: if can('banners', 'editar');
+      allow delete: if can('banners', 'excluir');
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
