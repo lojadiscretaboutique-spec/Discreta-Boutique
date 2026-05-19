@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
-import { Search, X, Minus, Plus, Frown, Loader2 } from 'lucide-react';
+import { Search, X, Minus, Plus, Frown, Loader2, Truck } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
 import { getRankingProfissional } from '../../lib/ranking';
