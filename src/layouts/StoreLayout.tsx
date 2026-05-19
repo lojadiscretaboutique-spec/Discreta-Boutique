@@ -7,6 +7,29 @@ import { categoryService, Category } from '../services/categoryService';
 import { SearchBar } from '../components/ui/SearchBar';
 import { useAuthStore } from '../store/authStore';
 
+import { Truck } from 'lucide-react';
+import { usePromotion } from '../contexts/PromotionContext';
+
+function FreeShippingBar() {
+  const { activePromotions } = usePromotion();
+
+  const hasGlobalFreeShipping = activePromotions.some(
+    p => p.active && p.type === 'free_shipping' && p.scope === 'all'
+  );
+
+  if (!hasGlobalFreeShipping) return null;
+
+  return (
+    <div className="bg-emerald-600 text-white w-full border-b border-emerald-500/20">
+      <div className="py-2.5 px-4 flex items-center justify-center gap-3 text-[10px] md:text-xs font-black uppercase tracking-[0.3em]">
+        <Truck size={14} className="animate-pulse" />
+        <span className="drop-shadow-md">Frete Grátis em Toda a Loja - Aproveite!</span>
+        <Truck size={14} className="animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
 export function StoreLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const cartItems = useCartStore(state => state.items);
@@ -38,6 +61,7 @@ export function StoreLayout() {
     <div className="dark min-h-screen bg-black text-white flex flex-col font-sans relative">
       {/* Header */}
       <header className="bg-black text-white fixed top-0 w-full z-50 border-b border-zinc-900">
+        <FreeShippingBar />
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between relative">
           
           <div className="flex items-center">

@@ -284,11 +284,19 @@ export function ProductPage() {
               )}
               
               <div className="flex flex-col gap-4 mb-6 relative z-10">
-                <div className="flex items-end gap-3">
-                  <span className="text-4xl md:text-5xl font-black text-white tracking-tighter">{formatCurrency(Number(currentPrice))}</span>
+                <div className="flex flex-col gap-1">
                   {(isPromoActive && originalPrice > currentPrice) && (
-                    <span className="text-xl text-zinc-600 line-through mb-1">{formatCurrency(Number(originalPrice))}</span>
+                    <span className="text-xl md:text-2xl text-zinc-500 line-through font-bold tracking-tighter">{formatCurrency(Number(originalPrice))}</span>
                   )}
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-4xl md:text-6xl font-black text-white tracking-tighter">{formatCurrency(Number(currentPrice))}</span>
+                    <span className="text-sm md:text-lg font-bold text-red-600 uppercase tracking-widest">no pix</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 text-zinc-400 font-bold uppercase tracking-wider text-xs md:text-sm mt-1">
+                    <Zap className="fill-yellow-500 text-yellow-500" size={16} />
+                    OU 10X DE {formatCurrency(Number(currentPrice) / 10)} SEM JUROS
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -299,7 +307,7 @@ export function ProductPage() {
                     </div>
                   )}
                   {pricing.isFreeShipping && (
-                    <div className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/30 text-orange-500 px-3 py-1 rounded-full">
+                    <div className="flex items-center gap-1.5 bg-emerald-600/10 border border-emerald-600/30 text-emerald-500 px-3 py-1 rounded-full">
                       <Truck size={12} />
                       <span className="text-[10px] font-black uppercase tracking-widest">Frete Grátis</span>
                     </div>
@@ -453,7 +461,7 @@ export function ProductPage() {
                         </div>
                       )}
                       {sPricing.isFreeShipping && (
-                        <div className="absolute top-4 right-4 bg-orange-500 text-white p-1.5 rounded-full shadow-xl z-20">
+                        <div className="absolute top-4 right-4 bg-emerald-600 text-white p-1.5 rounded-full shadow-xl z-20">
                           <Truck size={12} />
                         </div>
                       )}
@@ -464,11 +472,15 @@ export function ProductPage() {
                       </div>
                     </div>
                     <h3 className="text-sm font-bold uppercase tracking-tight line-clamp-1 group-hover:text-red-500 transition-colors">{p.name}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-red-500 text-xs font-black uppercase tracking-widest">{formatCurrency(sPricing.price)}</p>
+                    <div className="flex flex-col gap-0.5 mt-1">
                       {sHasPromo && sPricing.originalPrice > sPricing.price && (
-                        <p className="text-zinc-600 text-[10px] font-bold line-through">{formatCurrency(sPricing.originalPrice)}</p>
+                        <p className="text-zinc-600 text-[10px] font-bold line-through tracking-tighter opacity-70">{formatCurrency(sPricing.originalPrice)}</p>
                       )}
+                      <div className="flex items-baseline gap-1.5">
+                        <p className="text-red-500 text-sm font-black uppercase tracking-widest">{formatCurrency(sPricing.price)}</p>
+                        <p className="text-[8px] font-bold text-red-500 uppercase">no pix</p>
+                      </div>
+                      <p className="text-zinc-500 text-[8px] font-black uppercase tracking-tight whitespace-nowrap">OU 10X DE {formatCurrency(sPricing.price / 10)} SEM JUROS</p>
                     </div>
                   </motion.div>
                 );

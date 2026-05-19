@@ -116,16 +116,6 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
               {pricing.promotion?.name || 'Oferta'}
             </motion.span>
           )}
-          {pricing.isFreeShipping && (
-            <motion.span 
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.2 }}
-              className="bg-orange-500 text-white text-[7px] md:text-[8px] font-black uppercase tracking-[3px] px-3 py-1.5 rounded-full shadow-xl flex items-center gap-1"
-            >
-              <Truck size={10} /> Frete Grátis
-            </motion.span>
-          )}
         </div>
 
         {isOut && (
@@ -143,23 +133,36 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
           {product.name.toLowerCase()}
         </h3>
 
+        {/* Frete Grátis Label - Positioning between Title and Price */}
+        {pricing.isFreeShipping && (
+          <div className="mb-2 md:mb-3">
+            <span className="inline-flex items-center gap-1 bg-emerald-600 text-white text-[7px] md:text-[9px] font-black uppercase tracking-[2px] px-2.5 py-1 rounded-md shadow-lg shadow-emerald-900/20">
+              <Truck size={10} className="md:w-3 md:h-3" /> Frete Grátis
+            </span>
+          </div>
+        )}
+
         <div className="mt-auto flex flex-col w-full relative">
-          <div className="flex flex-col gap-1 mb-2 md:mb-3">
-            {/* A Vista */}
+          <div className="flex flex-col gap-0.5 mb-2 md:mb-3">
+            {/* Preço Anterior (Riscado) - Agora acima e maior */}
+            {hasPromo && (
+              <span className="text-[10px] md:text-xs text-zinc-500 font-bold line-through opacity-70 tracking-tighter">
+                {formatCurrency(originalPrice)}
+              </span>
+            )}
+            
+            {/* Preço Atual */}
             <div className="flex items-baseline gap-1 md:gap-1.5">
-              <span className="text-[10px] md:text-sm font-bold text-red-600 tracking-tight shrink-0">à vista</span>
               <span className="text-base md:text-2xl font-black text-red-600 tracking-tighter">
                 {formatCurrency(finalPrice)}
               </span>
+              <span className="text-[9px] md:text-xs font-bold text-red-600 tracking-tight uppercase">no pix</span>
             </div>
             
-            {/* Installments */}
+            {/* Parcelamento */}
             <div className="flex flex-col gap-0.5">
-              <span className="text-[8px] md:text-[11px] text-zinc-400 font-black tracking-tight uppercase leading-none">
-                {hasPromo && (
-                  <span className="line-through opacity-60 mr-1 font-medium">{formatCurrency(originalPrice)}</span>
-                )}
-                OU 10X DE {formatCurrency(finalPrice / 10)}
+              <span className="text-[8px] md:text-[10px] text-zinc-400 font-black tracking-tight uppercase leading-none">
+                OU 10X DE {formatCurrency(finalPrice / 10)} SEM JUROS
               </span>
             </div>
           </div>
