@@ -682,6 +682,7 @@ export function CartPage() {
           costPrice: i.costPrice || 0,
           quantity: i.quantity,
           sku: i.sku || '',
+          gtin: i.gtin || '',
           searchId: i.searchId || null
         })),
         createdAt: new Date().toISOString(),
@@ -1110,6 +1111,7 @@ export function CartPage() {
                                     costPrice: p.costPrice || 0,
                                     quantity: 1,
                                     sku: p.sku || '',
+                                    gtin: p.gtin || '',
                                     imageUrl: p.imageUrl
                                   });
                                   toast(`${p.name} adicionado!`, "success");

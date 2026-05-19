@@ -737,6 +737,7 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
         costPrice: product.costPrice || 0,
         quantity: quantity,
         sku: product.sku,
+        gtin: product.gtin,
         imageUrl: image || '',
         variantId: undefined,
         variantName: undefined

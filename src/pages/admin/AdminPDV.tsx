@@ -62,6 +62,7 @@ interface CartItem {
   costPrice: number;
   quantity: number;
   sku: string;
+  gtin?: string;
   imageUrl?: string;
   discount?: number;
 }
@@ -805,6 +806,7 @@ export function AdminPDV() {
     const name = product.name;
     const variantName = variant?.name;
     const sku = variant?.sku || product.sku;
+    const gtin = variant?.barcode || product.gtin;
     const imageUrl = variant?.imageUrl || product.images?.[0]?.url;
 
     setCart((prev) => {
@@ -828,7 +830,8 @@ export function AdminPDV() {
           price,
           costPrice: variant?.costPrice || product.costPrice || 0,
           quantity: 1,
-          sku,
+          sku: sku || "",
+          gtin: gtin || "",
           imageUrl,
           discount: 0,
         },
@@ -874,7 +877,8 @@ export function AdminPDV() {
           price: combo.price,
           costPrice: 0, // Need to implement cost price calc if needed
           quantity: 1,
-          sku: `COMBO-${combo.id!.slice(-6).toUpperCase()}`,
+          sku: combo.sku || `COMBO-${combo.id!.slice(-6).toUpperCase()}`,
+          gtin: combo.gtin || "",
           imageUrl: combo.imageUrl,
           discount: 0,
         },
@@ -993,6 +997,7 @@ export function AdminPDV() {
           costPrice: (item as any).costPrice || 0,
           quantity: item.quantity,
           sku: item.sku,
+          gtin: item.gtin || "",
           discount: item.discount || 0,
           isCombo: item.isCombo || false,
           comboId: item.comboId || null,

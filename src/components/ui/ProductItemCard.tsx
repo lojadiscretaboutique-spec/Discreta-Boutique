@@ -27,6 +27,8 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
         name: product.name,
         price: hasPromo ? product.promoPrice! : product.price,
         quantity: quantity,
+        sku: product.sku || '',
+        gtin: product.gtin || '',
         imageUrl: mainImage || '',
         isCombo: true,
         comboId: product.id
@@ -45,6 +47,7 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
         price: hasPromo ? product.promoPrice! : product.price,
         quantity: quantity,
         sku: product.sku,
+        gtin: product.gtin,
         imageUrl: mainImage || '',
         variantId: undefined,
         variantName: undefined

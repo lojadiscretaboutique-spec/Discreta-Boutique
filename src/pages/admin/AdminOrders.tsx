@@ -62,6 +62,7 @@ interface OrderItem {
   price: number;
   quantity: number;
   sku?: string;
+  gtin?: string;
 }
 
 interface Order {
@@ -75,9 +76,11 @@ interface Order {
   total: number;
   status: string;
   paymentMethod?: string;
+  payments?: any[]; // added payments array
   type?: "online" | "pdv";
   subTotal?: number;
   deliveryFee?: number;
+  shipping?: number; // adding shipping alias
   discount?: number;
   additionalAmount?: number;
   financialReceivedAmount?: number;
@@ -1319,10 +1322,13 @@ export function AdminOrders() {
                   TIPO: {selectedOrder.type === "pdv" ? "BALCAO" : "ONLINE"}
                 </div>
                 {selectedOrder.scheduledDate && (
-                  <div style={{ color: "red", fontWeight: "bold" }}>
-                    ENTREGA:{" "}
-                    {selectedOrder.scheduledDate.split("-").reverse().join("/")}{" "}
-                    @ {selectedOrder.scheduledTime}h
+                  <div style={{ fontWeight: "bold" }}>
+                    <span style={{ fontWeight: 900 }}>ENTREGA AGENDADA:</span>
+                    <br />
+                    <span style={{ fontWeight: 900, fontSize: "14px" }}>
+                      {selectedOrder.scheduledDate.split("-").reverse().join("/")}{" "}
+                      @ {selectedOrder.scheduledTime}h
+                    </span>
                   </div>
                 )}
               </div>
@@ -1333,7 +1339,7 @@ export function AdminOrders() {
               {selectedOrder.type !== "pdv" && (
                 <>
                   <div style={{ marginTop: "5px" }}>ENDERECO:</div>
-                  <div style={{ fontSize: "10px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: "bold" }}>
                     {selectedOrder.customerAddress}
                   </div>
                 </>
@@ -1350,9 +1356,18 @@ export function AdminOrders() {
                 <tbody>
                   {selectedOrder.items.map((item, i) => (
                     <tr key={i}>
-                      <td>{item.quantity}</td>
-                      <td>{item.name}</td>
-                      <td style={{ textAlign: "right" }}>
+                      <td style={{ verticalAlign: "top" }}>{item.quantity}</td>
+                      <td>
+                        {item.name}
+                        {(item.sku || item.gtin) && (
+                          <div style={{ fontSize: "10px" }}>
+                            {item.sku ? `SKU: ${item.sku}` : ""}
+                            {item.sku && item.gtin ? " | " : ""}
+                            {item.gtin ? `EAN: ${item.gtin}` : ""}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ textAlign: "right", verticalAlign: "top" }}>
                         {formatCurrency(item.price * item.quantity)}
                       </td>
                     </tr>
@@ -1365,8 +1380,33 @@ export function AdminOrders() {
                   className="item"
                   style={{ display: "flex", justifyContent: "space-between" }}
                 >
-                  <span>Total Venda:</span>
-                  <span>{formatCurrency(selectedOrder.total)}</span>
+                  <span>Subtotal:</span>
+                  <span>{formatCurrency(selectedOrder.subTotal || selectedOrder.items.reduce((acc, item) => acc + item.price * item.quantity, 0))}</span>
+                </div>
+                {(selectedOrder.deliveryFee !== undefined || selectedOrder.shipping !== undefined) && (selectedOrder.deliveryFee! > 0 || selectedOrder.shipping! > 0) && (
+                  <div
+                    className="item"
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span>Frete/Entrega:</span>
+                    <span>{formatCurrency(selectedOrder.deliveryFee || selectedOrder.shipping || 0)}</span>
+                  </div>
+                )}
+                {selectedOrder.discount && selectedOrder.discount > 0 ? (
+                  <div
+                    className="item"
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span>Desconto:</span>
+                    <span>-{formatCurrency(selectedOrder.discount)}</span>
+                  </div>
+                ) : null}
+                <div
+                  className="item"
+                  style={{ display: "flex", justifyContent: "space-between", marginTop: "4px", paddingTop: "4px", borderTop: "1px dashed #ccc" }}
+                >
+                  <span style={{ fontWeight: "bold" }}>Total:</span>
+                  <span style={{ fontWeight: "bold" }}>{formatCurrency(selectedOrder.total)}</span>
                 </div>
                 {selectedOrder.additionalAmount &&
                   selectedOrder.additionalAmount > 0 && (
@@ -1375,7 +1415,6 @@ export function AdminOrders() {
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
-                        color: "green",
                       }}
                     >
                       <span>Acréscimo:</span>
@@ -1407,7 +1446,18 @@ export function AdminOrders() {
               </div>
               <div className="divider"></div>
               <div className="font-bold">FORMA DE PAGTO:</div>
-              <div>{selectedOrder.paymentMethod || "A DEFINIR"}</div>
+              {selectedOrder.payments && selectedOrder.payments.length > 0 ? (
+                <div>
+                  {selectedOrder.payments.map((p, idx) => (
+                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px" }}>
+                      <span>- {p.method}</span>
+                      <span>{formatCurrency(p.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div>{selectedOrder.paymentMethod || "A DEFINIR"}</div>
+              )}
               {selectedOrder.notes && (
                 <>
                   <div style={{ marginTop: "5px", fontStyle: "italic" }}>

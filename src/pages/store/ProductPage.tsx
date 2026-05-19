@@ -174,6 +174,7 @@ export function ProductPage() {
       price: Number(currentPrice),
       quantity: 1,
       sku: selectedVariant?.sku || product.sku,
+      gtin: selectedVariant?.barcode || product.gtin,
       imageUrl: currentImage,
       variantId: selectedVariant?.id,
       variantName: selectedVariant?.name,

@@ -7,7 +7,6 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
-import imageCompression from 'browser-image-compression';
 import { cn } from '../../lib/utils';
 import { motion } from 'motion/react';
 
@@ -130,19 +129,44 @@ export function AdminBanners() {
       let imageUrl = bannerToEdit ? bannerToEdit.imageUrl : '';
       
       if (imageFile) {
-        // Requirements: WebP, Quality min 90%, Mobile optimized
-        const options = {
-          maxSizeMB: activeTab === 'main' ? 0.2 : 0.15, 
-          maxWidthOrHeight: activeTab === 'main' ? 1200 : 800, // Offers can be smaller/square
-          useWebWorker: true,
-          fileType: 'image/webp' as const,
-          initialQuality: 0.92, // Exceeding the 90% requirement
+        const processImageToSquareWebP = async (file: File): Promise<File> => {
+          return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+              const maxSize = 1200; 
+              let size = Math.max(img.width, img.height);
+              let scale = 1;
+              if (size > maxSize) {
+                scale = maxSize / size;
+                size = maxSize;
+              }
+              
+              const canvas = document.createElement('canvas');
+              canvas.width = size;
+              canvas.height = size;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return reject('No canvas context');
+
+              ctx.clearRect(0, 0, size, size);
+
+              const targetW = img.width * scale;
+              const targetH = img.height * scale;
+              const dx = (size - targetW) / 2;
+              const dy = (size - targetH) / 2;
+              
+              ctx.drawImage(img, dx, dy, targetW, targetH);
+
+              canvas.toBlob((blob) => {
+                if (!blob) return reject('Blob creation failed');
+                resolve(new File([blob], `${file.name.split('.')[0]}_square.webp`, { type: 'image/webp' }));
+              }, 'image/webp', 0.92);
+            };
+            img.onerror = reject;
+            img.src = URL.createObjectURL(file);
+          });
         };
-        
-        const compressedBlob = await imageCompression(imageFile, options);
-        const optimizedFile = new File([compressedBlob], `${imageFile.name.split('.')[0]}_${Date.now()}.webp`, {
-          type: 'image/webp',
-        });
+
+        const optimizedFile = await processImageToSquareWebP(imageFile);
 
         const path = activeTab === 'main' ? 'banners' : 'offer_banners';
         const fileRef = ref(storage, `${path}/${Date.now()}_${optimizedFile.name}`);
@@ -302,7 +326,7 @@ export function AdminBanners() {
             
             <div className="space-y-1">
               <label className="text-[10px] font-black uppercase tracking-[2px] text-slate-500 ml-1">
-                Imagem do Banner * {activeTab === 'main' ? '(Sugerido: 1200x500)' : '(Sugerido: 800x800 - Quadrado)'}
+                Imagem do Banner * (Será convertida automaticamente para quadrada 1:1)
               </label>
               <div className="relative border-2 border-dashed border-white/10 rounded-2xl p-8 transition-all hover:border-red-600/50 group/upload bg-slate-950/50">
                 <input 

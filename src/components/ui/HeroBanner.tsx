@@ -31,7 +31,7 @@ export function HeroBanner({ banner, isEager }: HeroBannerProps) {
         alt=""
         loading={isEager ? 'eager' : 'lazy'}
         className={cn(
-          "w-full h-full object-cover transition-opacity duration-700",
+          "w-full h-full object-contain transition-opacity duration-700",
           loaded ? "opacity-100" : "opacity-0"
         )}
         onLoad={() => setLoaded(true)}

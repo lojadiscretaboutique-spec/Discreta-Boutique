@@ -233,8 +233,8 @@ export function HomePage() {
     <div className="flex-1 flex flex-col bg-black text-white">
       {/* 1. HERO BANNERS */}
       {banners.length > 0 && (
-        <section className="relative h-[250px] md:h-[500px] overflow-hidden bg-zinc-950 group">
-          <div className="relative h-full w-full">
+        <section className="relative w-full aspect-square md:aspect-auto md:h-[600px] max-h-screen overflow-hidden bg-zinc-950 group p-4 sm:p-6 pb-0">
+          <div className="relative h-full w-full max-w-5xl mx-auto rounded-3xl overflow-hidden shadow-2xl">
             <AnimatePresence mode="wait">
               <motion.div
                 key={banners[currentBanner].id}
@@ -354,12 +354,12 @@ export function HomePage() {
                 <Link 
                   key={banner.id} 
                   to={banner.linkUrl || '#'} 
-                  className="group relative flex-none w-[200px] md:w-[320px] aspect-square md:aspect-[4/5] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 transition-all duration-500 hover:scale-[1.02] hover:border-red-600/30"
+                  className="group relative flex-none w-[280px] md:w-[400px] aspect-square rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 transition-all duration-500 hover:scale-[1.02] hover:border-red-600/30"
                 >
                   <img 
                     src={banner.imageUrl} 
                     alt={banner.name} 
-                    className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110" 
+                    className="w-full h-full object-contain transition-transform duration-700 ease-out group-hover:scale-110" 
                     referrerPolicy="no-referrer"
                   />
                   
