@@ -1,7 +1,6 @@
-import { Search, Loader2, ArrowRight } from 'lucide-react';
+import { Search, Loader2, ArrowRight, X } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Input } from './input';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { aiFrontendService } from '../../services/aiFrontendService';
@@ -18,14 +17,17 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
   const [isFocused, setIsFocused] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch suggestions as user types - faster debounce for "instant" feel
   useEffect(() => {
+    if (isNavigating) return;
+
     const timer = setTimeout(async () => {
-      if (search.trim().length >= 1) {
+      if (search.trim().length >= 1 && isFocused) {
         setLoading(true);
         try {
           const results = await aiFrontendService.getSearchSuggestions(search.trim());
@@ -47,13 +49,14 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
     }, 200);
 
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, isFocused, isNavigating]);
 
   // Close suggestions on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setShowSuggestions(false);
+        setIsFocused(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -62,15 +65,21 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
 
   const handleSearch = (term: string) => {
     if (!term.trim()) return;
+    setIsNavigating(true);
     setLoading(true);
     setShowSuggestions(false);
     
-    // Smooth transition
+    // Immediate navigation
+    navigate(`/catalogo?q=${encodeURIComponent(term.trim())}`);
+    
+    // After navigation, we allow suggestions again if user refocuses
+    // But we give it a tiny bit of time for the page change to settle
     setTimeout(() => {
-      navigate(`/catalogo?q=${encodeURIComponent(term.trim())}`);
+      setIsNavigating(false);
       setLoading(false);
       setSearch(term);
-    }, 150);
+      setIsFocused(false);
+    }, 500);
   };
 
   const goToProduct = (slug: string) => {
@@ -84,46 +93,59 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
   };
 
   return (
-    <div ref={containerRef} className={cn("w-full max-w-4xl mx-auto px-4 relative z-[100]", className)}>
+    <div ref={containerRef} className={cn("w-full max-w-2xl mx-auto px-4 relative z-[100]", className)}>
       <form 
         onSubmit={onSubmit}
-        className="relative"
+        className="relative shadow-2xl"
       >
         <div className={cn(
-          "relative flex items-center bg-transparent rounded-lg overflow-hidden transition-all duration-300 border",
-          isFocused ? "border-zinc-500 shadow-[0_0_20px_rgba(255,255,255,0.05)]" : "border-zinc-800"
+          "relative flex items-center bg-zinc-950/80 backdrop-blur-md rounded-2xl overflow-hidden transition-all duration-300 border-2",
+          isFocused ? "border-red-600/50 shadow-[0_0_25px_rgba(220,38,38,0.15)] bg-zinc-900/90" : "border-zinc-800 bg-zinc-950/80"
         )}>
           {/* Icon */}
           <div className="pl-5 text-zinc-500">
-            {loading ? <Loader2 size={16} className="animate-spin text-red-500" /> : <Search size={16} />}
+            {loading ? <Loader2 size={18} className="animate-spin text-red-500" /> : <Search size={18} />}
           </div>
 
           {/* Input */}
-          <Input 
+          <input 
             ref={inputRef}
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onFocus={() => {
-              setIsFocused(true);
-              setSearch('');
-              setSuggestions([]);
-              setProductResults([]);
-              setShowSuggestions(false);
-            }}
+            onFocus={() => setIsFocused(true)}
             placeholder={placeholder}
-            className="flex-1 bg-transparent border-none text-zinc-100 py-6 px-4 focus-visible:ring-0 placeholder:text-zinc-600 font-light text-base md:text-lg h-12 md:h-14"
+            className="flex-1 bg-transparent border-none text-zinc-100 py-4 px-4 focus:outline-none focus:ring-0 placeholder:text-zinc-600 font-medium text-sm md:text-base h-12 md:h-14"
           />
 
-          {/* Action Button - Minimalist */}
-          {search.trim() && (
-            <button
-              type="submit"
-              className="pr-5 text-red-500 hover:text-red-400 transition-colors"
-            >
-              <ArrowRight size={18} />
-            </button>
-          )}
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 pr-4">
+            {search && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('');
+                  setSuggestions([]);
+                  setProductResults([]);
+                  setShowSuggestions(false);
+                  inputRef.current?.focus();
+                }}
+                className="p-1 text-zinc-600 hover:text-zinc-300 transition-colors"
+                title="Limpar busca"
+              >
+                <X size={18} />
+              </button>
+            )}
+            
+            {search.trim() && (
+              <button
+                type="submit"
+                className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-xl transition-all active:scale-95"
+              >
+                <ArrowRight size={18} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Suggestions Dropdown - Dark & Clean */}
@@ -133,7 +155,7 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -5 }}
-              className="absolute top-full left-0 right-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl overflow-hidden z-[110]"
+              className="absolute top-full left-0 right-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden z-[110]"
             >
               <div className="flex flex-col md:flex-row max-h-[70vh] overflow-y-auto">
                 {/* Text Suggestions */}

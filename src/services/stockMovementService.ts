@@ -2,6 +2,7 @@ import { collection, doc, serverTimestamp, getDocs, getDoc, updateDoc, query, or
 import { db, auth } from '../lib/firebase';
 import { auditLogService } from './auditLogService';
 import { stockSyncService } from './stockSyncService';
+import { smartStockService } from './smartStockService';
 
 export interface NewStockMovement {
   id?: string;
@@ -92,6 +93,13 @@ export const stockMovementService = {
       }
 
       await updateDoc(targetRef, updatePayload);
+
+      // 5. Smart Stock: Auto-update minStock based on history
+      // We trigger this after the movement to ensure it's reflecting the latest sales if it was an 'out' movement
+      if (data.productId) {
+        // Fire and forget - don't block the movement registration
+        smartStockService.updateProductSmartMinStock(data.productId);
+      }
 
       // Sincronizar o estoque do pai se for uma entrada/saída de variação
       if (data.variantId) {

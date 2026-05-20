@@ -293,15 +293,19 @@ export const getRankingProfissional = (products: Product[], queryText: string, c
         // 5. Keywords/SEO (+20) - Já estamos olhando nas tags acima, mas podemos reforçar
         // p.seo?.keywords.forEach(...)
 
-        // 6. Descrição (+10)
-        if (allSearchTerms.some(t => desc.includes(t))) {
-            score += 10;
+        // 6. Descrição (+30 para parcial, +100 para todas as palavras)
+        const allWordsInDesc = queryWords.every(word => desc.includes(word));
+        if (allWordsInDesc) {
+            score += 100;
+        } else if (queryWords.some(word => desc.includes(word))) {
+            score += 30;
         }
 
         // 7. Sku / Código Interno (Boost importante para busca técnica)
         const sku = normalizeSearchText(p.sku || "");
         const iCode = normalizeSearchText(p.internalCode || "");
-        if (normalizedQuery === sku || normalizedQuery === iCode) score += 200;
+        if (normalizedQuery === sku || normalizedQuery === iCode) score += 500;
+        else if (sku.includes(normalizedQuery) || (iCode && iCode.includes(normalizedQuery))) score += 200;
 
         // Base score decay (recência e performance)
         const base = getBaseScore(p) * 0.1; // Reduced weight for search context
@@ -315,7 +319,7 @@ export const getRankingProfissional = (products: Product[], queryText: string, c
         .filter(p => (p as any)._searchScore > 0.5) // 0.5 to allow tiny base scores if needed, but usually we want a match
         .sort((a, b) => (b as any)._searchScore - (a as any)._searchScore)
         .map(p => {
-            const { _searchScore, ...clean } = p as any;
+            const { _searchScore: _unusedScore, ...clean } = p as any;
             return clean as Product;
         });
 

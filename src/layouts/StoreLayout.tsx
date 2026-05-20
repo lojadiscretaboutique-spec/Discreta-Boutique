@@ -9,6 +9,7 @@ import { useAuthStore } from '../store/authStore';
 
 import { Truck } from 'lucide-react';
 import { usePromotion } from '../contexts/PromotionContext';
+import { cn } from '../lib/utils';
 
 function FreeShippingBar() {
   const { activePromotions } = usePromotion();
@@ -132,7 +133,10 @@ export function StoreLayout() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col pt-36 md:pt-40">
+      <main className={cn(
+        "flex-1 flex flex-col",
+        (location.pathname === '/' || location.pathname === '/catalogo') ? "pt-36 md:pt-40" : "pt-24 md:pt-28"
+      )}>
         <Outlet />
       </main>
 

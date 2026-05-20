@@ -210,7 +210,7 @@ export function ProductPage() {
 
   return (
     <div className="flex-1 bg-black text-white">
-      <div className="max-w-7xl mx-auto w-full px-4 py-8">
+      <div className="max-w-7xl mx-auto w-full px-4 pb-8 pt-4 md:pt-6">
         <Link to="/catalogo" className="inline-flex items-center text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-red-500 transition-colors mb-8">
           <ArrowLeft size={16} className="mr-2" /> Voltar ao catálogo
         </Link>
