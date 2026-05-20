@@ -99,15 +99,15 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
         className="relative shadow-2xl"
       >
         <div className={cn(
-          "relative flex items-center bg-zinc-950/80 backdrop-blur-md rounded-2xl overflow-hidden transition-all duration-300 border-2",
-          isFocused ? "border-red-600/50 shadow-[0_0_25px_rgba(220,38,38,0.15)] bg-zinc-900/90" : "border-zinc-800 bg-zinc-950/80"
+          "relative flex items-center bg-zinc-950/90 backdrop-blur-sm rounded-2xl overflow-hidden transition-all duration-500 border-2",
+          isFocused ? "border-red-500 shadow-[0_0_30px_rgba(220,38,38,0.2)]" : "border-zinc-700 hover:border-zinc-600"
         )}>
           {/* Icon */}
-          <div className="pl-5 text-zinc-500">
+          <div className="pl-5 text-zinc-500 group-focus-within:text-red-500 transition-colors">
             {loading ? <Loader2 size={18} className="animate-spin text-red-500" /> : <Search size={18} />}
           </div>
 
-          {/* Input */}
+          {/* Input Area - Pure text, no background or inner borders */}
           <input 
             ref={inputRef}
             type="text"
@@ -115,11 +115,11 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
             onChange={(e) => setSearch(e.target.value)}
             onFocus={() => setIsFocused(true)}
             placeholder={placeholder}
-            className="flex-1 bg-transparent border-none text-zinc-100 py-4 px-4 focus:outline-none focus:ring-0 placeholder:text-zinc-600 font-medium text-sm md:text-base h-12 md:h-14"
+            className="flex-1 bg-transparent border-0 focus:ring-0 focus:ring-offset-0 focus:outline-none text-zinc-100 py-4 px-3 font-medium text-sm md:text-base h-12 md:h-14 placeholder:text-zinc-600 appearance-none selection:bg-red-500/30"
           />
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 pr-4">
+          {/* Action Buttons Container */}
+          <div className="flex items-center gap-1 pr-3">
             {search && (
               <button
                 type="button"
@@ -130,17 +130,17 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
                   setShowSuggestions(false);
                   inputRef.current?.focus();
                 }}
-                className="p-1 text-zinc-600 hover:text-zinc-300 transition-colors"
+                className="p-2 text-zinc-500 hover:text-zinc-300 transition-colors rounded-full hover:bg-white/5"
                 title="Limpar busca"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             )}
             
             {search.trim() && (
               <button
                 type="submit"
-                className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-xl transition-all active:scale-95"
+                className="bg-red-600 hover:bg-red-700 text-white p-2.5 rounded-xl transition-all active:scale-95 shadow-lg shadow-red-900/20"
               >
                 <ArrowRight size={18} />
               </button>
