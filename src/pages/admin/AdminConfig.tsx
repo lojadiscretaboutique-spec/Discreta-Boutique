@@ -9,6 +9,7 @@ import { Input } from '../../components/ui/input';
 import { Moon, Sun, LayoutDashboard, Check, Upload, Image as ImageIcon, Trash2, Settings, RefreshCcw } from 'lucide-react';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { cn } from '../../lib/utils';
+import { cacheService } from '../../services/cacheService';
 
 interface StoreConfig {
   storeName: string;
@@ -29,6 +30,9 @@ export function AdminConfig() {
   const [saved, setSaved] = useState(false);
   const { toast } = useFeedback();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [systemVersion, setSystemVersion] = useState('1.1.0');
+  const [updatingVersion, setUpdatingVersion] = useState(false);
 
   const canEdit = hasPermission('settings', 'editar');
   
@@ -64,6 +68,13 @@ export function AdminConfig() {
         const snap = await getDoc(docRef);
         if (snap.exists()) {
           setConfig(prev => ({ ...prev, ...snap.data() }));
+        }
+
+        // Pull current app code version from Firestore
+        const statusRef = doc(db, 'settings', 'system_status');
+        const statusSnap = await getDoc(statusRef);
+        if (statusSnap.exists()) {
+          setSystemVersion(statusSnap.data().app_code_version || '1.1.0');
         }
       } catch (e) {
         console.error(e);
@@ -285,6 +296,102 @@ export function AdminConfig() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Controle de Versão e Cache */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 transition-colors">
+            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+              <RefreshCcw className="w-5 h-5 text-red-650 animate-pulse" />
+              Versão do Sistema & Cache
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+              Sempre que houver alteração crítica nas fontes, imagens ou dados do catálogo, você pode forçar a reinicialização limpa em todos os celulares, tablets ou PCs de seus clientes de forma instantânea.
+            </p>
+
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-900 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Sua versão atual ativa</span>
+                  <span className="text-2xl font-black tracking-wider text-red-600 font-mono italic">
+                    v{systemVersion}
+                  </span>
+                </div>
+                {canEdit && (
+                  <button
+                    type="button"
+                    disabled={updatingVersion}
+                    onClick={async () => {
+                      const match = systemVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
+                      let nextV = '1.1.1';
+                      if (match) {
+                        const major = parseInt(match[1], 10);
+                        const minor = parseInt(match[2], 10);
+                        const patch = parseInt(match[3], 10);
+                        nextV = `${major}.${minor}.${patch + 1}`;
+                      } else {
+                        nextV = systemVersion + '.1';
+                      }
+                      setUpdatingVersion(true);
+                      try {
+                        await cacheService.updateAppVersion(nextV);
+                        setSystemVersion(nextV);
+                        toast(`Versão incrementada e atualizada para ${nextV}! Todos os clientes reinstalarão na próxima abertura.`);
+                      } catch {
+                        toast("Falha ao incrementar versão", 'error');
+                      } finally {
+                        setUpdatingVersion(false);
+                      }
+                    }}
+                    className="h-10 px-3.5 text-[10px] uppercase font-black tracking-wider rounded-xl border border-red-600/20 text-red-600 hover:bg-red-650 hover:text-white transition-all shadow-md active:scale-95"
+                  >
+                    🚀 Auto Incrementar
+                  </button>
+                )}
+              </div>
+
+              {canEdit ? (
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-[2px] text-slate-500 ml-1">Atualizar Versão Manualmente</label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        value={systemVersion}
+                        onChange={(e) => setSystemVersion(e.target.value)}
+                        placeholder="Ex: 1.1.2"
+                        className="bg-slate-50 dark:bg-slate-950 dark:border-slate-800 h-11 focus:border-red-600 font-mono text-center text-sm rounded-xl"
+                      />
+                      <Button
+                        type="button"
+                        onClick={async () => {
+                          if (!systemVersion.trim()) return;
+                          setUpdatingVersion(true);
+                          try {
+                            await cacheService.updateAppVersion(systemVersion);
+                            toast(`Versão ativa configurada para ${systemVersion}! Todos os dispositivos farão bust de cache na próxima carga.`);
+                          } catch {
+                            toast("Falha ao atualizar versão externa", 'error');
+                          } finally {
+                            setUpdatingVersion(false);
+                          }
+                        }}
+                        disabled={updatingVersion}
+                        className="h-11 px-5 bg-red-600 hover:bg-red-700 text-white font-black text-[10px] uppercase tracking-wider rounded-xl shadow-lg shadow-red-600/15 shrink-0"
+                      >
+                        {updatingVersion ? 'Gravando...' : 'Aplicar'}
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-slate-450 italic mt-1 font-medium leading-relaxed">
+                    * Os dispositivos dos clientes sincronizam em segundo plano ao abrir o site. Eventuais divergências redefinem o cache local na mesma fração de segundo de forma transparente!
+                  </p>
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-500 uppercase font-black text-center p-3 bg-slate-100 dark:bg-slate-950 rounded-xl">
+                  Somente administradores de TI podem forçar bust de versão.
+                </div>
+              )}
             </div>
           </div>
           

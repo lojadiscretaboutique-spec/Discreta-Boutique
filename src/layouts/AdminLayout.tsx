@@ -43,6 +43,7 @@ export function AdminLayout() {
     { name: 'Horários da Loja', path: '/admin/horarios', icon: Clock, permission: 'settings' },
     { name: 'Marketing', path: '/admin/marketing', icon: Megaphone, permission: 'banners', submenu: [
         { name: 'Banners', path: '/admin/marketing/banners', permission: 'banners' },
+        { name: 'Popups', path: '/admin/marketing/popups', permission: 'banners' },
         { name: 'Cupons', path: '/admin/marketing/cupons', permission: 'banners' },
         { name: 'Promoções Automáticas', path: '/admin/marketing/promocoes', permission: 'banners' },
         { name: 'Bot Conversa / Webhooks', path: '/admin/marketing/webhooks', permission: 'logs' },

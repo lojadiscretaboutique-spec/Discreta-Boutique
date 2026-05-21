@@ -17,12 +17,18 @@ export interface CartItem {
   isCombo?: boolean;
   comboId?: string;
   isFreeShipping?: boolean;
+  categoryId?: string;
+  originalPrice?: number;
+  promoPrice?: number;
+  promoAllowedPaymentMethods?: string[];
+  promotionId?: string;
 }
 
 export interface AppliedCoupon {
   code: string;
   type: 'percentage' | 'fixed';
   value: number;
+  allowedPaymentMethods?: string[];
 }
 
 interface CartStore {

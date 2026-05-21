@@ -194,7 +194,12 @@ export function ProductPage() {
       variantName: selectedVariant?.name,
       costPrice: selectedVariant?.costPrice || product.costPrice || 0,
       searchId,
-      isFreeShipping: pricing.isFreeShipping
+      isFreeShipping: pricing.isFreeShipping,
+      categoryId: product.categoryId,
+      originalPrice: originalPrice,
+      promoPrice: selectedVariant ? undefined : product.promoPrice,
+      promoAllowedPaymentMethods: pricing.promotion?.allowedPaymentMethods || [],
+      promotionId: pricing.promotion?.id
     });
     
     // Track conversion

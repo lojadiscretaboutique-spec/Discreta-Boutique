@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { categoryService, Category } from '../services/categoryService';
 import { SearchBar } from '../components/ui/SearchBar';
 import { useAuthStore } from '../store/authStore';
+import { PopupOverlay } from '../components/PopupOverlay';
 
 import { Truck } from 'lucide-react';
 import { usePromotion } from '../contexts/PromotionContext';
@@ -38,8 +39,14 @@ export function StoreLayout() {
   
   const [categories, setCategories] = useState<Category[]>([]);
   const { user } = useAuthStore();
+  const [appVersion, setAppVersion] = useState('1.1.0');
 
   const location = useLocation();
+
+  useEffect(() => {
+    const version = localStorage.getItem('app_code_version') || '1.1.0';
+    setAppVersion(version);
+  }, []);
 
   useEffect(() => {
     async function loadCategories() {
@@ -60,6 +67,7 @@ export function StoreLayout() {
 
   return (
     <div className="dark min-h-screen bg-black text-white flex flex-col font-sans relative">
+      <PopupOverlay />
       {/* Header */}
       <header className="bg-black text-white fixed top-0 w-full z-50 border-b border-zinc-900">
         <FreeShippingBar />
@@ -192,6 +200,7 @@ export function StoreLayout() {
              <div className="flex flex-wrap justify-center gap-4 px-4">
                 <span className="whitespace-nowrap">Proibido para menores de 18 anos</span>
                 <span className="whitespace-nowrap">Sigilo garantido</span>
+                <span className="whitespace-nowrap bg-zinc-900/50 border border-white/5 py-0.5 px-2 rounded text-[8px] font-mono text-zinc-500 font-medium tracking-normal lowercase">v{appVersion}</span>
              </div>
           </div>
         </footer>

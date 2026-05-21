@@ -248,6 +248,15 @@ service cloud.firestore {
       allow delete: if can('banners', 'excluir');
     }
 
+    match /popups/{doc} {
+      allow read: if true;
+      allow create: if can('banners', 'criar');
+      allow update: if can('banners', 'editar') || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clickCount'])
+      );
+      allow delete: if can('banners', 'excluir');
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

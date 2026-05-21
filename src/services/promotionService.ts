@@ -27,6 +27,7 @@ export interface Promotion {
   priority: number; // To handle conflicting promotions
   createdAt?: any;
   updatedAt?: any;
+  allowedPaymentMethods?: string[];
 }
 
 const COLLECTION_NAME = 'promotions';

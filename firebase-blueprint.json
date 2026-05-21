@@ -327,6 +327,23 @@ export default {
             isSuccess: { type: "boolean" }
         }
     },
+    PopupBanner: {
+      title: "Popup Banner",
+      description: "Interactive campaign popup banners shown to users",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        imageUrl: { type: "string" },
+        linkUrl: { type: "string" },
+        active: { type: "boolean" },
+        startDate: { type: "string", format: "date-time" },
+        endDate: { type: "string", format: "date-time" },
+        clickCount: { type: "number" },
+        createdAt: { type: "string", format: "date-time" }
+      },
+      required: ["name", "imageUrl", "active"]
+    },
     Combo: {
       title: "Product Combo",
       description: "A bundle of products sold together",
@@ -429,6 +446,10 @@ export default {
     "recovery_logs": {
       schema: { $ref: "#/entities/RecoveryLog" },
       description: "Logs of recovery webhook attempts"
+    },
+    "popups": {
+      schema: { $ref: "#/entities/PopupBanner" },
+      description: "App popup campaign banners"
     }
   }
 }

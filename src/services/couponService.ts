@@ -13,6 +13,7 @@ export interface Coupon {
   startDate?: string;
   endDate?: string;
   active: boolean;
+  allowedPaymentMethods?: string[];
 }
 
 export const couponService = {

@@ -66,7 +66,12 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
         imageUrl: mainImage || '',
         variantId: undefined,
         variantName: undefined,
-        isFreeShipping: pricing.isFreeShipping
+        isFreeShipping: pricing.isFreeShipping,
+        categoryId: product.categoryId,
+        originalPrice: originalPrice,
+        promoPrice: product.promoPrice,
+        promoAllowedPaymentMethods: pricing.promotion?.allowedPaymentMethods || [],
+        promotionId: pricing.promotion?.id
       });
       navigate('/carrinho');
     }

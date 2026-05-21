@@ -237,13 +237,32 @@ export function CartPage() {
   }, [operatingHours, selectedDate, getAvailableDays]);
 
   // Computed Totals
-  const subTotal = roundTo2(total());
+  const subTotal = useMemo(() => {
+    let sum = 0;
+    for (const item of items) {
+      let price = item.price;
+      if (item.promoAllowedPaymentMethods && item.promoAllowedPaymentMethods.length > 0) {
+        if (paymentMethod && !item.promoAllowedPaymentMethods.includes(paymentMethod)) {
+          price = item.originalPrice ?? item.price;
+        }
+      }
+      sum += price * item.quantity;
+    }
+    return roundTo2(sum);
+  }, [items, paymentMethod]);
   let couponDiscount = 0;
   if (appliedCoupon) {
-    if (appliedCoupon.type === 'percentage') {
-      couponDiscount = subTotal * (appliedCoupon.value / 100);
-    } else if (appliedCoupon.type === 'fixed') {
-      couponDiscount = appliedCoupon.value;
+    const isPaymentAllowed = !appliedCoupon.allowedPaymentMethods || 
+      appliedCoupon.allowedPaymentMethods.length === 0 || 
+      !paymentMethod || 
+      appliedCoupon.allowedPaymentMethods.includes(paymentMethod);
+
+    if (isPaymentAllowed) {
+      if (appliedCoupon.type === 'percentage') {
+        couponDiscount = subTotal * (appliedCoupon.value / 100);
+      } else if (appliedCoupon.type === 'fixed') {
+        couponDiscount = appliedCoupon.value;
+      }
     }
   }
   // Ensure discount does not exceed subtotal
@@ -417,7 +436,19 @@ export function CartPage() {
         return;
       }
       
-      applyCoupon({ code: coupon.code, type: coupon.type, value: coupon.value });
+      if (coupon.allowedPaymentMethods && coupon.allowedPaymentMethods.length > 0 && paymentMethod) {
+        if (!coupon.allowedPaymentMethods.includes(paymentMethod)) {
+          toast(`Este cupom só é válido para pagamentos via: ${coupon.allowedPaymentMethods.map(id => paymentSettings?.methods.find(m => m.id === id)?.label || id).join(', ')}.`, "warning");
+          return;
+        }
+      }
+
+      applyCoupon({ 
+        code: coupon.code, 
+        type: coupon.type, 
+        value: coupon.value,
+        allowedPaymentMethods: coupon.allowedPaymentMethods || []
+      });
       toast("Cupom aplicado!", "success");
       setCouponInput("");
     } catch (e) {
@@ -706,6 +737,14 @@ export function CartPage() {
       return;
     }
 
+    if (appliedCoupon && appliedCoupon.allowedPaymentMethods && appliedCoupon.allowedPaymentMethods.length > 0) {
+      if (!appliedCoupon.allowedPaymentMethods.includes(paymentMethod)) {
+        const methodLabel = paymentSettings?.methods.find(m => m.id === paymentMethod)?.label || paymentMethod;
+        toast(`O cupom "${appliedCoupon.code}" não é válido para a forma de pagamento ${methodLabel}.`, "warning");
+        return;
+      }
+    }
+
     let addressObj: any = null;
     let validArea: any = null;
     let fullAddressString = "Retirada na Loja";
@@ -776,17 +815,24 @@ export function CartPage() {
         paymentMethod: paymentMethod,
         status: 'NOVO',
         type: 'online',
-        items: items.map(i => ({
-          productId: i.productId,
-          variantId: i.variantId || null,
-          name: i.name + (i.variantName ? ` - ${i.variantName}` : ''),
-          price: i.price,
-          costPrice: i.costPrice || 0,
-          quantity: i.quantity,
-          sku: i.sku || '',
-          gtin: i.gtin || '',
-          searchId: i.searchId || null
-        })),
+        items: items.map(i => {
+          const isPromoInvalid = i.promoAllowedPaymentMethods && 
+            i.promoAllowedPaymentMethods.length > 0 && 
+            paymentMethod && 
+            !i.promoAllowedPaymentMethods.includes(paymentMethod);
+          const activeItemPrice = isPromoInvalid ? (i.originalPrice ?? i.price) : i.price;
+          return {
+            productId: i.productId,
+            variantId: i.variantId || null,
+            name: i.name + (i.variantName ? ` - ${i.variantName}` : ''),
+            price: activeItemPrice,
+            costPrice: i.costPrice || 0,
+            quantity: i.quantity,
+            sku: i.sku || '',
+            gtin: i.gtin || '',
+            searchId: i.searchId || null
+          };
+        }),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -1046,70 +1092,81 @@ export function CartPage() {
                     </div>
                     <ul className="divide-y divide-zinc-800/50">
                       <AnimatePresence initial={false}>
-                        {items.map((item) => (
-                        <motion.li 
-                          key={item.id} 
-                          layout
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          className="p-5 sm:p-7 flex flex-col gap-5 group relative hover:bg-zinc-800/40 transition-all duration-500"
-                        >
-                          {/* Item Header: Title & Variations spanning the width */}
-                          <div className="w-full flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 border-b border-zinc-800/30 pb-3">
-                            <h3 className="font-medium text-[10px] sm:text-[11px] text-zinc-400 uppercase tracking-[0.15em] leading-relaxed group-hover:text-red-500 transition-colors duration-300">
-                              {item.name}
-                            </h3>
-                            {item.variantName && (
-                              <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest italic sm:text-right">
-                                {formatVariantName(item.variantName)}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex flex-row gap-5 sm:gap-8 items-center">
-                            {/* Product Image with glass effect on quantity tag */}
-                            <div className="w-20 h-20 sm:w-28 sm:h-28 bg-zinc-950 rounded-[1.5rem] overflow-hidden shrink-0 border border-zinc-800 shadow-2xl relative group/img">
-                              {item.imageUrl ? (
-                                <img src={item.imageUrl || undefined} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 ease-out" />
-                              ) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 to-black border border-zinc-800">
-                                  <Sparkles size={18} className="text-zinc-800 mb-1 animate-pulse" />
-                                  <span className="text-[8px] font-black tracking-widest text-zinc-700 uppercase">Premium</span>
-                                </div>
-                              )}
-                              {/* Quantity Badge for Mobile */}
-                              {item.quantity > 1 && (
-                                <div className="absolute top-2 right-2 bg-red-600/90 backdrop-blur-md text-white w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shadow-lg sm:hidden border border-white/20">
-                                  {item.quantity}
-                                </div>
-                              )}
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover/img:opacity-100 transition-opacity duration-500" />
-                            </div>
-                            
-                            {/* Product Info */}
-                            <div className="flex-1 min-w-0 py-1 flex flex-col justify-center">
-                              <div className="flex flex-wrap items-center gap-3">
-                                <div className="flex flex-col">
-                                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-0.5">Preço Unitário</span>
-                                  <span className="font-black text-lg sm:text-2xl text-white tracking-tighter">
-                                    {formatCurrency(item.price)}
+                        {items.map((item) => {
+                          const isPromoInvalid = item.promoAllowedPaymentMethods && 
+                            item.promoAllowedPaymentMethods.length > 0 && 
+                            paymentMethod && 
+                            !item.promoAllowedPaymentMethods.includes(paymentMethod);
+                          const activeItemPrice = isPromoInvalid ? (item.originalPrice ?? item.price) : item.price;
+                          return (
+                            <motion.li 
+                              key={item.id} 
+                              layout
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, scale: 0.95 }}
+                              className="p-5 sm:p-7 flex flex-col gap-5 group relative hover:bg-zinc-800/40 transition-all duration-500"
+                            >
+                              {/* Item Header: Title & Variations spanning the width */}
+                              <div className="w-full flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 border-b border-zinc-800/30 pb-3">
+                                <h3 className="font-medium text-[10px] sm:text-[11px] text-zinc-400 uppercase tracking-[0.15em] leading-relaxed group-hover:text-red-500 transition-colors duration-300">
+                                  {item.name}
+                                </h3>
+                                {item.variantName && (
+                                  <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest italic sm:text-right">
+                                    {formatVariantName(item.variantName)}
                                   </span>
-                                </div>
-                                
-                                {item.quantity > 1 && (
-                                  <div className="h-8 w-[1px] bg-zinc-800/50 hidden sm:block mx-1" />
-                                ) }
-                                {item.quantity > 1 && (
-                                  <div className="flex flex-col">
-                                    <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-0.5">Subtotal Item</span>
-                                    <span className="text-[11px] sm:text-[13px] font-black text-red-500 uppercase tracking-widest bg-red-500/5 px-2 py-0.5 rounded-md border border-red-500/10">
-                                      {formatCurrency(item.price * item.quantity)}
-                                    </span>
-                                  </div>
                                 )}
                               </div>
-                            </div>
+
+                              <div className="flex flex-row gap-5 sm:gap-8 items-center">
+                                {/* Product Image with glass effect on quantity tag */}
+                                <div className="w-20 h-20 sm:w-28 sm:h-28 bg-zinc-950 rounded-[1.5rem] overflow-hidden shrink-0 border border-zinc-800 shadow-2xl relative group/img">
+                                  {item.imageUrl ? (
+                                    <img src={item.imageUrl || undefined} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 ease-out" />
+                                  ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 to-black border border-zinc-800">
+                                      <Sparkles size={18} className="text-zinc-800 mb-1 animate-pulse" />
+                                      <span className="text-[8px] font-black tracking-widest text-zinc-700 uppercase">Premium</span>
+                                    </div>
+                                  )}
+                                  {/* Quantity Badge for Mobile */}
+                                  {item.quantity > 1 && (
+                                    <div className="absolute top-2 right-2 bg-red-600/90 backdrop-blur-md text-white w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shadow-lg sm:hidden border border-white/20">
+                                      {item.quantity}
+                                    </div>
+                                  )}
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover/img:opacity-100 transition-opacity duration-500" />
+                                </div>
+                                
+                                {/* Product Info */}
+                                <div className="flex-1 min-w-0 py-1 flex flex-col justify-center">
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <div className="flex flex-col">
+                                      <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-0.5">Preço Unitário</span>
+                                      <span className="font-black text-lg sm:text-2xl text-white tracking-tighter">
+                                        {formatCurrency(activeItemPrice)}
+                                      </span>
+                                      {isPromoInvalid && (
+                                        <span className="text-[8px] text-red-500 font-bold uppercase tracking-wider mt-1">
+                                          Promoção indisponível para esta forma de pagamento
+                                        </span>
+                                      )}
+                                    </div>
+                                    
+                                    {item.quantity > 1 && (
+                                      <div className="h-8 w-[1px] bg-zinc-800/50 hidden sm:block mx-1" />
+                                    ) }
+                                    {item.quantity > 1 && (
+                                      <div className="flex flex-col">
+                                        <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-0.5">Subtotal Item</span>
+                                        <span className="text-[11px] sm:text-[13px] font-black text-red-500 uppercase tracking-widest bg-red-500/5 px-2 py-0.5 rounded-md border border-red-500/10">
+                                          {formatCurrency(activeItemPrice * item.quantity)}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
 
                             {/* Actions & Quantity Selector */}
                             <div className="flex flex-col items-end gap-5 shrink-0">
@@ -1148,7 +1205,8 @@ export function CartPage() {
                             </div>
                           </div>
                         </motion.li>
-                        ))}
+                        );
+                        })}
                       </AnimatePresence>
                     </ul>
                   </div>
@@ -1495,7 +1553,14 @@ export function CartPage() {
                         .map(method => (
                           <button
                             key={method.id}
-                            onClick={() => setPaymentMethod(method.id)}
+                            onClick={() => {
+                              if (appliedCoupon && appliedCoupon.allowedPaymentMethods && appliedCoupon.allowedPaymentMethods.length > 0) {
+                                if (!appliedCoupon.allowedPaymentMethods.includes(method.id)) {
+                                  toast(`O cupom "${appliedCoupon.code}" não é válido para pagamentos via ${method.label}.`, "warning");
+                                }
+                              }
+                              setPaymentMethod(method.id);
+                            }}
                             className={cn(
                               "flex flex-col items-start p-5 rounded-2xl border-2 transition-all text-left",
                               paymentMethod === method.id 
@@ -1589,11 +1654,25 @@ export function CartPage() {
                       <span className="text-[9px] font-black uppercase tracking-widest">Subtotal:</span>
                       <span className="font-bold text-sm text-white">{formatCurrency(subTotal)}</span>
                     </div>
-                    {couponDiscount > 0 && (
-                      <div className="flex justify-between items-center text-green-500">
-                        <span className="text-[9px] font-black uppercase tracking-widest">Desconto ({appliedCoupon?.code}):</span>
-                        <span className="font-bold text-sm">- {formatCurrency(couponDiscount)}</span>
-                      </div>
+                    {appliedCoupon && (
+                      (couponDiscount > 0 || !paymentMethod) ? (
+                        <div className="flex justify-between items-center text-green-500">
+                          <span className="text-[9px] font-black uppercase tracking-widest">Desconto ({appliedCoupon.code}):</span>
+                          <span className="font-bold text-sm">
+                            {couponDiscount > 0 
+                              ? `- ${formatCurrency(couponDiscount)}` 
+                              : (appliedCoupon.type === 'percentage' ? `${appliedCoupon.value}%` : formatCurrency(appliedCoupon.value))
+                            }
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-center text-red-500">
+                          <span className="text-[9px] font-black uppercase tracking-widest">Desconto ({appliedCoupon.code}):</span>
+                          <span className="text-xs font-bold text-red-400 uppercase tracking-wider">
+                            Inválido para {paymentSettings?.methods.find(m => m.id === paymentMethod)?.label || 'este pagamento'}
+                          </span>
+                        </div>
+                      )
                     )}
                     <div className="flex justify-between items-center text-zinc-500">
                       <span className="text-[9px] font-black uppercase tracking-widest">Entrega:</span>

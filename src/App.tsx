@@ -29,6 +29,7 @@ const AdminCombos = lazy(() => import('./pages/admin/AdminCombos').then(m => ({ 
 const AdminLabels = lazy(() => import('./pages/admin/AdminLabels').then(m => ({ default: m.AdminLabels })));
 const AdminCategories = lazy(() => import('./pages/admin/AdminCategories').then(m => ({ default: m.AdminCategories })));
 const AdminBanners = lazy(() => import('./pages/admin/AdminBanners').then(m => ({ default: m.AdminBanners })));
+const AdminPopups = lazy(() => import('./pages/admin/marketing/AdminPopups').then(m => ({ default: m.AdminPopups })));
 const AdminCoupons = lazy(() => import('./pages/admin/marketing/AdminCoupons').then(m => ({ default: m.AdminCoupons })));
 const AdminPromotions = lazy(() => import('./pages/admin/marketing/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
 const MovEstoque = lazy(() => import('./pages/admin/MovEstoque').then(m => ({ default: m.MovEstoque })));
@@ -173,6 +174,7 @@ function AppContent() {
             <Route path="perfis" element={<AdminRoles />} />
             <Route path="logs" element={<AdminLogs />} />
             <Route path="marketing/banners" element={<AdminBanners />} />
+            <Route path="marketing/popups" element={<AdminPopups />} />
             <Route path="marketing/cupons" element={<AdminCoupons />} />
             <Route path="marketing/promocoes" element={<AdminPromotions />} />
             <Route path="clientes" element={<AdminCustomers />} />
