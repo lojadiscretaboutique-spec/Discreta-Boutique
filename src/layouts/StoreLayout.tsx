@@ -42,6 +42,11 @@ export function StoreLayout() {
   const [appVersion, setAppVersion] = useState('1.1.0');
 
   const location = useLocation();
+  const { activePromotions } = usePromotion();
+
+  const hasGlobalFreeShipping = activePromotions.some(
+    p => p.active && p.type === 'free_shipping' && p.scope === 'all'
+  );
 
   useEffect(() => {
     const version = localStorage.getItem('app_code_version') || '1.1.0';
@@ -143,7 +148,9 @@ export function StoreLayout() {
       {/* Main Content */}
       <main className={cn(
         "flex-1 flex flex-col",
-        (location.pathname === '/' || location.pathname === '/catalogo') ? "pt-36 md:pt-40" : "pt-24 md:pt-28"
+        (location.pathname === '/' || location.pathname === '/catalogo') 
+          ? (hasGlobalFreeShipping ? "pt-[190px] sm:pt-[200px] md:pt-[210px]" : "pt-[150px] sm:pt-[160px] md:pt-[170px]") 
+          : "pt-24 md:pt-28"
       )}>
         <Outlet />
       </main>

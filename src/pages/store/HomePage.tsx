@@ -233,8 +233,8 @@ export function HomePage() {
     <div className="flex-1 flex flex-col bg-black text-white">
       {/* 1. HERO BANNERS */}
       {banners.length > 0 && (
-        <section className="relative w-full max-w-xl md:max-w-2xl mx-auto bg-transparent group p-4 sm:p-6 pb-2">
-          <div className="relative w-full aspect-square rounded-3xl overflow-hidden shadow-2xl border border-white/5 bg-zinc-950">
+        <section className="relative z-10 w-full max-w-xl md:max-w-2xl mx-auto bg-transparent group px-4 pt-6 pb-8 sm:px-6 md:pt-8 md:pb-10">
+          <div className="relative w-full aspect-square rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-zinc-950">
             <AnimatePresence mode="wait">
               <motion.div
                 key={banners[currentBanner].id}

@@ -167,7 +167,12 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
             {/* Parcelamento */}
             <div className="flex flex-col gap-0.5">
               <span className="text-[8px] md:text-[10px] text-zinc-400 font-black tracking-tight uppercase leading-none">
-                OU 10X DE {formatCurrency(finalPrice / 10)} SEM JUROS
+                OU 10X DE {(() => {
+                  const promo = pricing.promotion;
+                  const isPromoRestrictedToCashOnly = !!(promo && promo.allowedPaymentMethods && promo.allowedPaymentMethods.length > 0 && !promo.allowedPaymentMethods.includes('credit_card'));
+                  const installmentBasePrice = isPromoRestrictedToCashOnly ? originalPrice : finalPrice;
+                  return formatCurrency(installmentBasePrice / 10);
+                })()} SEM JUROS
               </span>
             </div>
           </div>

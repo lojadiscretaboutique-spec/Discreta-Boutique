@@ -24,6 +24,7 @@ export function AdminCaixa() {
   const { hasPermission } = useAuthStore();
   const [currentSession, setCurrentSession] = useState<CashSession | null>(null);
   const [sessions, setSessions] = useState<CashSession[]>([]);
+  const [sessionsCashTotals, setSessionsCashTotals] = useState<Record<string, number>>({});
   const [transactions, setTransactions] = useState<CashTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'status' | 'history' | 'report'>('status');
@@ -74,6 +75,24 @@ export function AdminCaixa() {
       setCurrentSession(current);
       
       const sessList = await cashService.listRecentSessions();
+      
+      // Calculate cash-only (Dinheiro) totals for each recent session to find the true cash difference
+      const cashTotalsMap: Record<string, number> = {};
+      await Promise.all(sessList.map(async (s) => {
+        if (s.id) {
+          const transList = await cashService.listTransactions(s.id);
+          const dineroTotal = transList.reduce((sum, t) => {
+            const method = t.paymentMethod || 'Dinheiro';
+            if (method === 'Dinheiro') {
+              if (t.type === 'entrada') return sum + t.amount;
+              else return sum - t.amount;
+            }
+            return sum;
+          }, 0);
+          cashTotalsMap[s.id] = roundTo2(dineroTotal);
+        }
+      }));
+      setSessionsCashTotals(cashTotalsMap);
       setSessions(sessList);
 
       if (current) {
@@ -202,7 +221,7 @@ export function AdminCaixa() {
       setSubmitting(true);
       try {
           await cashService.closeSession(currentSession.id!, roundTo2(parseFloat(closingBalance)));
-          toast("Caixa aberto com sucesso.");
+          toast("Caixa fechado com sucesso.", 'success');
           loadData();
       } catch (err: unknown) {
           toast(err instanceof Error ? "Erro: " + err.message : "Erro ao fechar caixa", 'error');
@@ -613,8 +632,8 @@ export function AdminCaixa() {
                   {sessions.length === 0 ? (
                       <tr><td colSpan={8} className="p-8 text-center text-slate-400">Nenhum histórico disponível.</td></tr>
                   ) : sessions.map(s => {
-                      const expected = roundTo2(s.initialBalance + (s.totalInputs || 0) - (s.totalOutputs || 0));
-                      const diff = s.status === 'fechado' ? roundTo2((s.finalBalance || 0) - expected) : 0;
+                      const expectedCash = roundTo2(s.initialBalance + (sessionsCashTotals[s.id || ''] || 0));
+                      const diff = s.status === 'fechado' ? roundTo2((s.finalBalance || 0) - expectedCash) : 0;
                       const isSelected = selectedSession?.id === s.id;
                       return (
                           <tr key={s.id} className={`hover:bg-slate-800 transition-colors ${isSelected ? 'bg-slate-800 border-l-4 border-red-600' : ''}`}>

@@ -300,7 +300,12 @@ export function ProductPage() {
                   
                   <div className="flex items-center gap-2 text-zinc-400 font-bold uppercase tracking-wider text-xs md:text-sm mt-1">
                     <Zap className="fill-yellow-500 text-yellow-500" size={16} />
-                    OU 10X DE {formatCurrency(Number(currentPrice) / 10)} SEM JUROS
+                    OU 10X DE {(() => {
+                      const promo = pricing.promotion;
+                      const isPromoRestrictedToCashOnly = !!(promo && promo.allowedPaymentMethods && promo.allowedPaymentMethods.length > 0 && !promo.allowedPaymentMethods.includes('credit_card'));
+                      const installmentBasePrice = isPromoRestrictedToCashOnly ? originalPrice : currentPrice;
+                      return formatCurrency(Number(installmentBasePrice) / 10);
+                    })()} SEM JUROS
                   </div>
                 </div>
 
@@ -485,7 +490,14 @@ export function ProductPage() {
                         <p className="text-red-500 text-sm font-black uppercase tracking-widest">{formatCurrency(sPricing.price)}</p>
                         <p className="text-[8px] font-bold text-red-500 uppercase">no pix</p>
                       </div>
-                      <p className="text-zinc-500 text-[8px] font-black uppercase tracking-tight whitespace-nowrap">OU 10X DE {formatCurrency(sPricing.price / 10)} SEM JUROS</p>
+                      <p className="text-zinc-500 text-[8px] font-black uppercase tracking-tight whitespace-nowrap">
+                        OU 10X DE {(() => {
+                          const sPromo = sPricing.promotion;
+                          const sRestricted = !!(sPromo && sPromo.allowedPaymentMethods && sPromo.allowedPaymentMethods.length > 0 && !sPromo.allowedPaymentMethods.includes('credit_card'));
+                          const sInstallmentPrice = sRestricted ? sPricing.originalPrice : sPricing.price;
+                          return formatCurrency(sInstallmentPrice / 10);
+                        })()} SEM JUROS
+                      </p>
                     </div>
                   </motion.div>
                 );
