@@ -32,6 +32,7 @@ const AdminBanners = lazy(() => import('./pages/admin/AdminBanners').then(m => (
 const AdminPopups = lazy(() => import('./pages/admin/marketing/AdminPopups').then(m => ({ default: m.AdminPopups })));
 const AdminCoupons = lazy(() => import('./pages/admin/marketing/AdminCoupons').then(m => ({ default: m.AdminCoupons })));
 const AdminPromotions = lazy(() => import('./pages/admin/marketing/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
+const PostagemInstagram = lazy(() => import('./modules/instagramMarketing/pages/PostagemInstagram').then(m => ({ default: m.PostagemInstagram })));
 const MovEstoque = lazy(() => import('./pages/admin/MovEstoque').then(m => ({ default: m.MovEstoque })));
 const AdminCustomers = lazy(() => import('./pages/admin/AdminCustomers').then(m => ({ default: m.AdminCustomers })));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers').then(m => ({ default: m.AdminUsers })));
@@ -177,6 +178,7 @@ function AppContent() {
             <Route path="marketing/popups" element={<AdminPopups />} />
             <Route path="marketing/cupons" element={<AdminCoupons />} />
             <Route path="marketing/promocoes" element={<AdminPromotions />} />
+            <Route path="marketing/postagem-instagram" element={<PostagemInstagram />} />
             <Route path="clientes" element={<AdminCustomers />} />
             <Route path="caixa" element={<AdminCaixa />} />
             <Route path="pdv" element={<AdminPDV />} />

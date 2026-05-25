@@ -372,6 +372,70 @@ export default {
         updatedAt: { type: "string", format: "date-time" }
       },
       required: ["name", "price", "active", "items"]
+    },
+    InstagramPost: {
+      title: "Instagram Post",
+      description: "A scheduled or saved content draft for Instagram",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        tipo: { type: "string", enum: ["feed", "story", "reels"] },
+        titulo: { type: "string" },
+        descricao: { type: "string" },
+        hashtags: { type: "array", items: { type: "string" } },
+        imagem_modelo: { type: "string" },
+        modo: { type: "string", enum: ["unica", "carrossel"] },
+        imagens_geradas: { type: "array", items: { type: "string" } },
+        ordem: { type: "array", items: { type: "number" } },
+        agendamento: { type: "string", format: "date-time" },
+        status: { type: "string", enum: ["rascunho", "agendado", "publicado", "erro"] },
+        created_at: { type: "string", format: "date-time" },
+        updated_at: { type: "string", format: "date-time" },
+        erro_mensagem: { type: "string" },
+        media_id: { type: "string" }
+      },
+      required: ["tipo", "status", "created_at", "updated_at"]
+    },
+    InstagramLog: {
+      title: "Instagram Log",
+      description: "An audit/execution log of Instagram actions",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        tipo: { type: "string", enum: ["info", "sucesso", "erro"] },
+        acao: { type: "string" },
+        detalhes: { type: "string" },
+        created_at: { type: "string", format: "date-time" },
+        postId: { type: "string" }
+      },
+      required: ["tipo", "acao", "detalhes", "created_at"]
+    },
+    InstagramIntegration: {
+      title: "Instagram Integration",
+      description: "Meta API credentials and status configurations",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        access_token: { type: "string" },
+        page_id: { type: "string" },
+        instagram_business_id: { type: "string" },
+        facebook_page_id: { type: "string" },
+        status: { type: "string", enum: ["conectado", "erro"] },
+        created_at: { type: "string", format: "date-time" }
+      },
+      required: ["access_token", "instagram_business_id", "status", "created_at"]
+    },
+    InstagramBrandKit: {
+      title: "Instagram Brand Kit",
+      description: "Brand identity, visual identity, social media contacts, and AI rule configurations",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        identidade_marca: { type: "object" },
+        identidade_visual: { type: "object" },
+        redes_sociais: { type: "object" },
+        regras_ia: { type: "object" }
+      }
     }
   },
   firestore: {
@@ -450,6 +514,30 @@ export default {
     "popups": {
       schema: { $ref: "#/entities/PopupBanner" },
       description: "App popup campaign banners"
+    },
+    "instagram_posts": {
+      schema: { $ref: "#/entities/InstagramPost" },
+      description: "Scheduled and saved post drafts"
+    },
+    "instagram_logs": {
+      schema: { $ref: "#/entities/InstagramLog" },
+      description: "Activity logs for Instagram publishing"
+    },
+    "instagram_integracoes": {
+      schema: { $ref: "#/entities/InstagramIntegration" },
+      description: "Meta API keys and permissions data"
+    },
+    "instagram_brand_kits": {
+      schema: { $ref: "#/entities/InstagramBrandKit" },
+      description: "Brand kit settings for marketing identity"
+    },
+    "instagram_brandkit_data": {
+      schema: { $ref: "#/entities/InstagramBrandKit" },
+      description: "Alternative brand kit settings dataset"
+    },
+    "instagram_brand_kit_configs": {
+      schema: { $ref: "#/entities/InstagramBrandKit" },
+      description: "Configuration files for specific brand requirements"
     }
   }
 }

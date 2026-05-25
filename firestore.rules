@@ -111,6 +111,10 @@ service cloud.firestore {
       allow delete: if can('banners', 'excluir');
     }
 
+    match /settings/instagram_brand_kit {
+      allow read, write: if true;
+    }
+
     match /settings/{doc} {
       allow read: if true;
       allow update: if can('settings', 'editar');
@@ -255,6 +259,36 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clickCount'])
       );
       allow delete: if can('banners', 'excluir');
+    }
+
+    match /instagram_posts/{doc} {
+      allow read, create, update: if true;
+      allow delete: if isMasterAdmin();
+    }
+
+    match /instagram_logs/{doc} {
+      allow read, create: if true;
+      allow update, delete: if isMasterAdmin();
+    }
+
+    match /instagram_integracoes/{doc} {
+      allow read, create, update: if true;
+      allow delete: if isMasterAdmin();
+    }
+
+    match /instagram_brand_kits/{doc} {
+      allow read, create, update, write: if true;
+      allow delete: if isMasterAdmin();
+    }
+
+    match /instagram_brandkit_data/{doc} {
+      allow read, create, update, write: if true;
+      allow delete: if isMasterAdmin();
+    }
+
+    match /instagram_brand_kit_configs/{doc} {
+      allow read, create, update, write: if true;
+      allow delete: if isMasterAdmin();
     }
 
     match /{document=**} {

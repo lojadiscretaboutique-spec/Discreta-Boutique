@@ -46,6 +46,7 @@ export function AdminLayout() {
         { name: 'Popups', path: '/admin/marketing/popups', permission: 'banners' },
         { name: 'Cupons', path: '/admin/marketing/cupons', permission: 'banners' },
         { name: 'Promoções Automáticas', path: '/admin/marketing/promocoes', permission: 'banners' },
+        { name: 'Postagem Instagram', path: '/admin/marketing/postagem-instagram', permission: 'banners' },
         { name: 'Bot Conversa / Webhooks', path: '/admin/marketing/webhooks', permission: 'logs' },
     ]},
     { name: 'Configurações', path: '/admin/config', icon: Settings, permission: 'settings', submenu: [
