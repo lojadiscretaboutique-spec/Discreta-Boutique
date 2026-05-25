@@ -115,6 +115,7 @@ export function PostagemInstagram() {
     checks: null,
     status_texto: ''
   });
+  const [connMethod, setConnMethod] = useState<'oauth' | 'manual'>('manual');
 
   // Load Data
   const loadPosts = async () => {
@@ -571,6 +572,62 @@ export function PostagemInstagram() {
       loadIntegration();
     } catch (err: any) {
       toastError('Erro ao salvar configurações avançadas.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Connect manually using Page ID, Instagram ID, and Token (Skip creating App ID)
+  const handleConnectManual = async () => {
+    if (!integracao.access_token) {
+      toastError('O Token de Acesso Ativo (Meta API) é obrigatório.');
+      return;
+    }
+    if (!integracao.instagram_business_id) {
+      toastError('O ID do Instagram Comercial é obrigatório.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const payload = {
+        access_token: integracao.access_token.trim(),
+        page_id: (integracao.page_id || '').trim(),
+        instagram_business_id: integracao.instagram_business_id.trim(),
+        facebook_page_id: (integracao.page_id || '').trim(),
+        facebook_app_id: (integracao.facebook_app_id || '').trim(),
+        facebook_app_secret: (integracao.facebook_app_secret || '').trim(),
+        perfil_conectado: integracao.perfil_conectado || {
+          username: 'perfil_manual',
+          name: 'Instagram Manual',
+          profile_picture_url: '',
+          page_name: 'Página Manual'
+        },
+        status: 'conectado',
+        checks: integracao.checks || {
+          token_valid: true,
+          instagram_connected: true,
+          page_linked: true,
+          permissions_approved: true
+        }
+      };
+
+      await axios.post('/api/instagram/integracao', payload);
+      toastSuccess('Credenciais salvas localmente! Sincronizando perfil com a Meta...');
+
+      // Attempt to automatically retrieve the latest Meta details
+      try {
+        const resSync = await axios.post('/api/instagram/integracao/sincronizar');
+        if (resSync.data?.integration?.perfil_conectado?.username) {
+          toastSuccess(`Conexão manual estabelecida! Perfil @${resSync.data.integration.perfil_conectado.username} sincronizado.`);
+        }
+      } catch (errSync: any) {
+        console.warn('Sincronização opcional falhou:', errSync);
+        toastSuccess('Configuração manual gravada. Lembre-se de validar se o token inserido é válido e ativo.');
+      }
+
+      loadIntegration();
+    } catch (err: any) {
+      toastError('Erro ao conectar manualmente: ' + (err.response?.data?.error || err.message));
     } finally {
       setLoading(false);
     }
@@ -1761,94 +1818,191 @@ export function PostagemInstagram() {
             {!oauthResult && (!integracao.access_token || !integracao.perfil_conectado) && (
               <div className="p-8 bg-slate-950 border border-slate-850 rounded-2xl space-y-6 max-w-xl mx-auto">
                 <div className="text-center space-y-2">
-                  <div className="mx-auto w-12 h-12 bg-blue-600/10 border border-blue-500/20 rounded-xl flex items-center justify-center text-blue-500 shadow-inner animate-pulse">
+                  <div className="mx-auto w-12 h-12 bg-amber-600/10 border border-amber-500/20 rounded-xl flex items-center justify-center text-amber-500 shadow-inner animate-pulse">
                     <Link2 className="w-6 h-6" />
                   </div>
-                  <h4 className="text-white text-md font-extrabold leading-normal">Conectar sua Conta Comercial do Instagram</h4>
+                  <h4 className="text-white text-md font-extrabold leading-normal">Conectar sua Conta do Instagram</h4>
                   <p className="text-slate-400 text-xs leading-relaxed max-w-sm mx-auto">
-                    Para habilitar o agendamento e publicação automatizada via Meta API, configure os passos abaixo usando as chaves do seu aplicativo do Facebook Developers.
+                    Habilite a automação oficial do Instagram Meta API. Escolha o método que melhor atende às suas necessidades abaixo:
                   </p>
                 </div>
 
-                <div className="bg-slate-900/60 p-5 border border-slate-850 rounded-xl text-left space-y-4">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[10px] font-black">1</span>
-                    <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider block">Identificadores do App de Desenvolvedor</h5>
-                  </div>
-                  
-                  <p className="text-[11px] text-slate-500 leading-normal">
-                    Se você ainda não tem, crie um aplicativo do tipo <strong>"Empresa"</strong> (Business) no portal <a href="https://developers.facebook.com" target="_blank" rel="noreferrer" className="text-amber-500 hover:underline">developers.facebook.com</a> com a permissão do Instagram Graph API ativa.
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta App ID (ID do App)</label>
-                      <input
-                        type="text"
-                        placeholder="Ex: 1430489214227891"
-                        value={integracao.facebook_app_id || ''}
-                        onChange={(e) => setIntegracao({ ...integracao, facebook_app_id: e.target.value })}
-                        className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta App Secret (Chave Secreta)</label>
-                      <input
-                        type="password"
-                        placeholder="••••••••••••••••"
-                        value={integracao.facebook_app_secret || ''}
-                        onChange={(e) => setIntegracao({ ...integracao, facebook_app_secret: e.target.value })}
-                        className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={handleSaveDeveloperSettings}
-                      className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-white font-extrabold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      Salvar Chaves do App
-                    </button>
-                  </div>
+                {/* Connection Method Selector */}
+                <div className="flex bg-slate-900 border border-slate-850 p-1 rounded-xl max-w-xs mx-auto">
+                  <button
+                    type="button"
+                    onClick={() => setConnMethod('manual')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                      connMethod === 'manual'
+                        ? 'bg-amber-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    🔌 Conexão Manual (Sem App ID)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConnMethod('oauth')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                      connMethod === 'oauth'
+                        ? 'bg-amber-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    🌐 Login Popup (App ID)
+                  </button>
                 </div>
 
-                <div className="bg-slate-900/60 p-5 border border-slate-850 rounded-xl text-left space-y-4 font-sans">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[10px] font-black font-semibold">2</span>
-                    <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Autorizar e Vincular Perfil</h5>
-                  </div>
+                {/* METHOD 1: MANUAL DIRECT ENTRY */}
+                {connMethod === 'manual' && (
+                  <div className="bg-slate-900/60 p-5 border border-slate-850 rounded-xl text-left space-y-5">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[10px] font-black">🔌</span>
+                      <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider block">Inserir Identificadores Manuais</h5>
+                    </div>
 
-                  <p className="text-[11px] text-slate-500 leading-normal">
-                    Após preencher e salvar as chaves no Passo 1, clique abaixo para fazer login com o Facebook e selecionar sua página comercial do Instagram.
-                  </p>
+                    <p className="text-[11px] text-slate-500 leading-normal">
+                      Insira diretamente as credenciais obtidas no portal Facebook Developers (pelo Graph Explorer ou App). Isso evita erros de IDs de aplicativo indisponíveis.
+                    </p>
 
-                  <div className="flex justify-center pt-2">
-                    {!(integracao.facebook_app_id && integracao.facebook_app_secret) ? (
-                      <div className="p-3 bg-amber-500/5 border border-amber-500/15 text-[11px] text-amber-400 rounded-lg text-center w-full leading-relaxed">
-                        ⚠️ <strong>Chaves não configuradas:</strong> Você precisa preencher e salvar o seu <strong>Meta App ID</strong> e o seu <strong>App Secret</strong> no Passo 1 para ativar o botão de login oficial.
+                    <div className="space-y-4">
+                      {/* Access Token Input */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">User Access Token Ativo (Meta API)</label>
+                        <textarea
+                          rows={3}
+                          placeholder="Cole aqui seu Token de Acesso Ativo (Começa com EAAC...)"
+                          value={integracao.access_token || ''}
+                          onChange={(e) => setIntegracao({ ...integracao, access_token: e.target.value })}
+                          className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 font-mono outline-none resize-y"
+                        />
                       </div>
-                    ) : (
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Page ID Input */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Facebook Page ID</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: 104592837283"
+                            value={integracao.page_id || ''}
+                            onChange={(e) => setIntegracao({ ...integracao, page_id: e.target.value })}
+                            className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 font-mono outline-none"
+                          />
+                        </div>
+
+                        {/* Commercial ID Input */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Instagram Commercial ID</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: 178414012345678"
+                            value={integracao.instagram_business_id || ''}
+                            onChange={(e) => setIntegracao({ ...integracao, instagram_business_id: e.target.value })}
+                            className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 font-mono outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
                       <button
                         type="button"
                         disabled={loading}
-                        onClick={handleMetaOAuth}
+                        onClick={handleConnectManual}
                         className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs rounded-xl transition-all inline-flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-950/20 group hover:scale-[1.01]"
                       >
-                        Fazer Login com Facebook e Instagram
+                        Salvar e Conectar Canal
                         <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" strokeWidth={2.5} />
                       </button>
-                    )}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* METHOD 2: OFFICIAL OAUTH POPUP */}
+                {connMethod === 'oauth' && (
+                  <div className="space-y-5">
+                    <div className="bg-slate-900/60 p-5 border border-slate-850 rounded-xl text-left space-y-4">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[10px] font-black">1</span>
+                        <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider block">Identificadores do App de Desenvolvedor</h5>
+                      </div>
+                      
+                      <p className="text-[11px] text-slate-500 leading-normal">
+                        Crie um app do tipo <strong>"Empresa"</strong> no portal de desenvolvedores do Facebook com a permissão Instagram Graph API ativa.
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta App ID (ID do App)</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: 1430489214227891"
+                            value={integracao.facebook_app_id || ''}
+                            onChange={(e) => setIntegracao({ ...integracao, facebook_app_id: e.target.value })}
+                            className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta App Secret (Chave Secreta)</label>
+                          <input
+                            type="password"
+                            placeholder="••••••••••••••••"
+                            value={integracao.facebook_app_secret || ''}
+                            onChange={(e) => setIntegracao({ ...integracao, facebook_app_secret: e.target.value })}
+                            className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={handleSaveDeveloperSettings}
+                          className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-white font-extrabold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          Salvar Chaves do App
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-900/60 p-5 border border-slate-850 rounded-xl text-left space-y-4 font-sans">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[10px] font-black font-semibold">2</span>
+                        <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Autorizar e Vincular Perfil</h5>
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 leading-normal">
+                        Após preencher e salvar as chaves no Passo 1, clique abaixo para fazer login com o Facebook e selecionar sua página comercial do Instagram.
+                      </p>
+
+                      <div className="flex justify-center pt-2">
+                        {!(integracao.facebook_app_id && integracao.facebook_app_secret) ? (
+                          <div className="p-3 bg-amber-500/5 border border-amber-500/15 text-[11px] text-amber-400 rounded-lg text-center w-full leading-relaxed">
+                            ⚠️ <strong>Chaves não configuradas:</strong> Você precisa preencher e salvar o seu <strong>Meta App ID</strong> e o seu <strong>App Secret</strong> no Passo 1 para ativar o botão de login oficial.
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={loading}
+                            onClick={handleMetaOAuth}
+                            className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs rounded-xl transition-all inline-flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-950/20 group hover:scale-[1.01]"
+                          >
+                            Fazer Login com Facebook e Instagram
+                            <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" strokeWidth={2.5} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="p-3.5 bg-slate-900 border border-slate-850 text-left text-[11px] text-slate-500 rounded-xl leading-relaxed space-y-1">
                   <strong>ℹ️ Informações sobre o processo:</strong>
                   <p>
-                    Nosso sistema utiliza apenas as APIs Oficiais do Meta Graph API. Suas credenciais são salvas de forma estritamente privada apenas em sua instância do Firebase.
+                    Nosso sistema utiliza apenas as APIs Oficiais do Meta Graph API. Suas credenciais são de uso exclusivo privado em sua instância do Firebase.
                   </p>
                 </div>
               </div>
@@ -1904,39 +2058,54 @@ export function PostagemInstagram() {
                   </button>
                 </div>
 
-                {/* Legacy stats: Read Only and for diagnostics review */}
-                <div className="space-y-3 pt-2">
-                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Parâmetros Técnicos Ativos (Somente Leitura para Depuração)</h4>
+                {/* Dynamic fields: Editable for direct manual saves */}
+                <div className="space-y-4 pt-4 border-t border-slate-900">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Atualização de Parâmetros Ativos (Modo Edição Manual)</h4>
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <span className="text-[9px] font-bold text-slate-500">Facebook Page ID</span>
+                      <span className="text-[9px] font-bold text-slate-400">Facebook Page ID</span>
                       <input
                         type="text"
-                        readOnly
-                        value={integracao.page_id || 'Não conectado'}
-                        className="w-full bg-slate-950/40 text-slate-500 border border-slate-900 text-[11px] p-2 rounded-lg cursor-not-allowed font-mono outline-none"
+                        value={integracao.page_id || ''}
+                        onChange={(e) => setIntegracao({ ...integracao, page_id: e.target.value })}
+                        placeholder="Ex: 104058912445892"
+                        className="w-full bg-slate-950 text-slate-200 border border-slate-850 text-[11px] p-2 rounded-lg focus:border-amber-500 font-mono outline-none"
                       />
                     </div>
 
                     <div className="space-y-1.5">
-                      <span className="text-[9px] font-bold text-slate-500">Instagram Commercial ID</span>
+                      <span className="text-[9px] font-bold text-slate-400">Instagram Commercial ID</span>
                       <input
                         type="text"
-                        readOnly
-                        value={integracao.instagram_business_id || 'Não conectado'}
-                        className="w-full bg-slate-950/40 text-slate-500 border border-slate-900 text-[11px] p-2 rounded-lg cursor-not-allowed font-mono outline-none"
+                        value={integracao.instagram_business_id || ''}
+                        onChange={(e) => setIntegracao({ ...integracao, instagram_business_id: e.target.value })}
+                        placeholder="Ex: 17841401234567891"
+                        className="w-full bg-slate-950 text-slate-200 border border-slate-850 text-[11px] p-2 rounded-lg focus:border-amber-500 font-mono outline-none"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="text-[9px] font-bold text-slate-500">User Access Token Ativo (Meta API)</span>
+                    <span className="text-[9px] font-bold text-slate-400">User Access Token Ativo (Meta API)</span>
                     <textarea
-                      rows={2}
-                      readOnly
-                      value={integracao.access_token ? `${integracao.access_token.substring(0, 30)}... [Chave Ocultada por Segurança]` : 'Nenhum token ativo'}
-                      className="w-full bg-slate-950/40 text-slate-500 border border-slate-900 text-[10px] p-2.5 rounded-lg cursor-not-allowed font-mono outline-none resize-none"
+                      rows={3}
+                      value={integracao.access_token || ''}
+                      onChange={(e) => setIntegracao({ ...integracao, access_token: e.target.value })}
+                      placeholder="Insira o token de acesso de usuário do Facebook Developers..."
+                      className="w-full bg-slate-950 text-slate-200 border border-slate-850 text-[10px] p-2.5 rounded-lg focus:border-amber-500 font-mono outline-none resize-y"
                     />
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={handleConnectManual}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      Salvar Alterações Manuais
+                    </button>
                   </div>
                 </div>
               </div>

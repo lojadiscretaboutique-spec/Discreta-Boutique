@@ -291,10 +291,9 @@ export async function saveIntegration(req: Request, res: Response): Promise<void
       last_sync
     } = req.body;
 
-    if (!access_token || !instagram_business_id) {
-      res.status(400).json({ error: 'Os campos access_token e instagram_business_id são obrigatórios.' });
-      return;
-    }
+    // Permite salvar configurações parciais (ex: apenas as chaves do Facebook App ID/Secret no Passo 1) sem exigir token ativo imediatamente.
+    const hasCredentials = !!(access_token && instagram_business_id);
+    const calculatedStatus = status || (hasCredentials ? 'conectado' : 'Não configurado');
 
     // Check if an integration exists
     const q = query(collection(db, 'instagram_integracoes'), limit(1));
@@ -306,13 +305,13 @@ export async function saveIntegration(req: Request, res: Response): Promise<void
     }
 
     const dataToSave: any = {
-      access_token,
+      access_token: access_token || '',
       page_id: page_id || '',
-      instagram_business_id,
+      instagram_business_id: instagram_business_id || '',
       facebook_page_id: facebook_page_id || '',
       facebook_app_id: facebook_app_id || '',
       facebook_app_secret: facebook_app_secret || '',
-      status: status || 'conectado',
+      status: calculatedStatus,
       created_at: getISODate()
     };
 
