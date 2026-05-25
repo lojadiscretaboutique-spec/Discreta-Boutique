@@ -28,7 +28,7 @@ export class OpenAIContentService {
   /**
    * Generates general ideas for posts.
    */
-  async generateIdeas(context: string, sectionType: 'feed' | 'story' | 'reels', brandKitPrompt?: string): Promise<InstagramSuggestion[]> {
+  async generateIdeas(context: string, sectionType: 'feed' | 'story' | 'reels', brandKitPrompt?: string, quantity: number = 10): Promise<InstagramSuggestion[]> {
     const client = this.getClient();
     
     const storeContext = `
@@ -40,7 +40,7 @@ export class OpenAIContentService {
 
     const systemPrompt = `Você é um especialista sênior em marketing digital de engajamento para marcas premium.
 Sua tarefa é planejar estratégias semanais de conteúdo para o Instagram no formato: ${sectionType.toUpperCase()}.
-Gere exatamente 10 ideias de conteúdo que sejam fascinantes, refinadas e com alta taxa de interação.
+Gere exatamente ${quantity} ideias de conteúdo que sejam fascinantes, refinadas e com alta taxa de interação.
 Retorne APENAS um array JSON válido contendo exatamente o seguinte formato sem blocos de código markdown ou texto explicativo extra:
 [
   {
@@ -56,7 +56,7 @@ ${brandKitPrompt || storeContext}
 E no desejo do usuário para esta semana:
 "${context}"
 
-Gere 10 sugestões estruturadas para o formato ${sectionType}.`;
+Gere ${quantity} sugestões estruturadas para o formato ${sectionType}.`;
 
     try {
       const completion = await client.chat.completions.create({

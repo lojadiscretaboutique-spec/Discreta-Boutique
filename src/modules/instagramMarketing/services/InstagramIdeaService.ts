@@ -11,12 +11,13 @@ export class InstagramIdeaService {
   async generateWeeklyIdeas(
     userDescription: string, 
     type: 'feed' | 'story' | 'reels',
-    brandKitPrompt?: string
+    brandKitPrompt?: string,
+    quantity?: number
   ): Promise<InstagramSuggestion[]> {
     if (!userDescription || userDescription.trim() === '') {
       throw new Error('A descrição ou tema semanal de ideias não pode estar vazia.');
     }
     
-    return await this.contentService.generateIdeas(userDescription, type, brandKitPrompt);
+    return await this.contentService.generateIdeas(userDescription, type, brandKitPrompt, quantity);
   }
 }

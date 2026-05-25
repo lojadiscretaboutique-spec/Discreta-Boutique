@@ -77,6 +77,10 @@ export function PostagemInstagram() {
   const [feedTopic, setFeedTopic] = useState('');
   const [reelsTopic, setReelsTopic] = useState('');
 
+  const [storyQty, setStoryQty] = useState<number>(10);
+  const [feedQty, setFeedQty] = useState<number>(10);
+  const [reelsQty, setReelsQty] = useState<number>(10);
+
   // Suggestions history
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [storySuggestions, setStorySuggestions] = useState<any[]>([]);
@@ -194,6 +198,7 @@ export function PostagemInstagram() {
   // 1. Generation Logic
   const handleGenerateIdeas = async (tipo: 'story' | 'feed' | 'reels') => {
     const topic = tipo === 'story' ? storyTopic : tipo === 'feed' ? feedTopic : reelsTopic;
+    const qty = tipo === 'story' ? storyQty : tipo === 'feed' ? feedQty : reelsQty;
     if (!topic || topic.trim() === '') {
       toastError(`Digite o que deseja planejar para os ${tipo === 'story' ? 'Stories' : tipo === 'feed' ? 'Feed' : 'Reels'} nesta semana.`);
       return;
@@ -203,7 +208,8 @@ export function PostagemInstagram() {
     try {
       const response = await axios.post('/api/instagram/generate-content', {
         descricao: topic,
-        tipo: tipo
+        tipo: tipo,
+        quantidade: qty
       });
 
       const resIdeas = response.data.suggestions || [];
@@ -219,7 +225,7 @@ export function PostagemInstagram() {
       else if (tipo === 'feed') setFeedSuggestions(mappedIdeas);
       else if (tipo === 'reels') setReelsSuggestions(mappedIdeas);
 
-      toastSuccess(`Geração concluída! 10 sugestões de ${tipo.toUpperCase()} foram criadas.`);
+      toastSuccess(`Geração concluída! ${qty} sugestões de ${tipo.toUpperCase()} foram criadas.`);
     } catch (err: any) {
       toastError(err.response?.data?.error || err.message || 'Falha ao conectar com o serviço de IA.');
     } finally {
@@ -747,7 +753,7 @@ export function PostagemInstagram() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               
               {/* STOIES CARD COLUMN */}
-              <div className="bg-slate-900 border border-pink-900/30 rounded-2xl p-6 transition-all duration-500 hover:border-pink-900/60 relative overflow-hidden flex flex-col justify-between min-h-[380px] shadow-lg">
+              <div className="bg-slate-900 border border-pink-900/30 rounded-2xl p-6 transition-all duration-500 hover:border-pink-900/60 relative overflow-hidden flex flex-col justify-between min-h-[440px] shadow-lg">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-pink-600/5 rounded-full blur-3xl pointer-events-none"></div>
                 
                 <div className="space-y-4">
@@ -767,8 +773,39 @@ export function PostagemInstagram() {
                       value={storyTopic}
                       onChange={(e) => setStoryTopic(e.target.value)}
                       placeholder="Ex: Promoção perfumes femininos, Novidade maquiagem importada..."
-                      className="w-full h-32 px-4 py-3 text-sm bg-slate-950 border border-slate-800 rounded-xl focus:border-pink-500 focus:ring-1 focus:ring-pink-500 text-slate-100 placeholder-slate-600 outline-none resize-none transition-all duration-300"
+                      className="w-full h-24 px-4 py-3 text-sm bg-slate-950 border border-slate-800 rounded-xl focus:border-pink-500 focus:ring-1 focus:ring-pink-500 text-slate-100 placeholder-slate-600 outline-none resize-none transition-all duration-300"
                     />
+                  </div>
+
+                  {/* Quantidade a Gerar */}
+                  <div className="flex items-center justify-between bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quantidade</span>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      <button
+                        type="button"
+                        onClick={() => setStoryQty(Math.max(1, storyQty - 1))}
+                        className="w-6 h-6 bg-slate-900 border border-slate-800 sm:hover:border-pink-500 rounded text-[10px] font-bold text-slate-300 flex items-center justify-center transition-all cursor-pointer"
+                        title="Diminuir"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={storyQty}
+                        onChange={(e) => setStoryQty(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))}
+                        className="w-10 text-center bg-slate-900 border border-slate-800 text-[11px] font-black text-pink-400 py-0.5 rounded outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setStoryQty(Math.min(30, storyQty + 1))}
+                        className="w-6 h-6 bg-slate-900 border border-slate-800 sm:hover:border-pink-500 rounded text-[10px] font-bold text-slate-300 flex items-center justify-center transition-all cursor-pointer"
+                        title="Aumentar"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -781,12 +818,12 @@ export function PostagemInstagram() {
                     {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                     Gerar Ideias Stories
                   </button>
-                  <p className="text-[10px] text-slate-500 text-center">Gera 10 ideias de sequência roteirizada</p>
+                  <p className="text-[10px] text-slate-500 text-center">Gera {storyQty} ideias de sequência roteirizada</p>
                 </div>
               </div>
 
               {/* FEED CARD COLUMN */}
-              <div className="bg-slate-900 border border-violet-900/30 rounded-2xl p-6 transition-all duration-500 hover:border-violet-900/60 relative overflow-hidden flex flex-col justify-between min-h-[380px] shadow-lg">
+              <div className="bg-slate-900 border border-violet-900/30 rounded-2xl p-6 transition-all duration-500 hover:border-violet-900/60 relative overflow-hidden flex flex-col justify-between min-h-[440px] shadow-lg">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-violet-600/5 rounded-full blur-3xl pointer-events-none"></div>
                 
                 <div className="space-y-4">
@@ -806,8 +843,39 @@ export function PostagemInstagram() {
                       value={feedTopic}
                       onChange={(e) => setFeedTopic(e.target.value)}
                       placeholder="Ex: Semana dia das mães, Lançamento skincare, Perfumes importados..."
-                      className="w-full h-32 px-4 py-3 text-sm bg-slate-950 border border-slate-800 rounded-xl focus:border-violet-500 focus:ring-1 focus:ring-violet-500 text-slate-100 placeholder-slate-600 outline-none resize-none transition-all duration-300"
+                      className="w-full h-24 px-4 py-3 text-sm bg-slate-950 border border-slate-800 rounded-xl focus:border-violet-500 focus:ring-1 focus:ring-violet-500 text-slate-100 placeholder-slate-600 outline-none resize-none transition-all duration-300"
                     />
+                  </div>
+
+                  {/* Quantidade a Gerar */}
+                  <div className="flex items-center justify-between bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quantidade</span>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      <button
+                        type="button"
+                        onClick={() => setFeedQty(Math.max(1, feedQty - 1))}
+                        className="w-6 h-6 bg-slate-900 border border-slate-800 sm:hover:border-violet-500 rounded text-[10px] font-bold text-slate-300 flex items-center justify-center transition-all cursor-pointer"
+                        title="Diminuir"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={feedQty}
+                        onChange={(e) => setFeedQty(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))}
+                        className="w-10 text-center bg-slate-900 border border-slate-800 text-[11px] font-black text-violet-400 py-0.5 rounded outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFeedQty(Math.min(30, feedQty + 1))}
+                        className="w-6 h-6 bg-slate-900 border border-slate-800 sm:hover:border-violet-500 rounded text-[10px] font-bold text-slate-300 flex items-center justify-center transition-all cursor-pointer"
+                        title="Aumentar"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -820,12 +888,12 @@ export function PostagemInstagram() {
                     {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                     Gerar Ideias Feed
                   </button>
-                  <p className="text-[10px] text-slate-500 text-center">Gera 10 ideias de copywriting e arte visual</p>
+                  <p className="text-[10px] text-slate-500 text-center">Gera {feedQty} ideias de copywriting e arte visual</p>
                 </div>
               </div>
 
               {/* REELS CARD COLUMN */}
-              <div className="bg-slate-900 border border-amber-900/30 rounded-2xl p-6 transition-all duration-500 hover:border-amber-900/60 relative overflow-hidden flex flex-col justify-between min-h-[380px] shadow-lg">
+              <div className="bg-slate-900 border border-amber-900/30 rounded-2xl p-6 transition-all duration-500 hover:border-amber-900/60 relative overflow-hidden flex flex-col justify-between min-h-[440px] shadow-lg">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-amber-600/5 rounded-full blur-3xl pointer-events-none"></div>
                 
                 <div className="space-y-4">
@@ -845,8 +913,39 @@ export function PostagemInstagram() {
                       value={reelsTopic}
                       onChange={(e) => setReelsTopic(e.target.value)}
                       placeholder="Ex: Campanha skincare luxo, Tendências de beleza cosmética..."
-                      className="w-full h-32 px-4 py-3 text-sm bg-slate-950 border border-slate-800 rounded-xl focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-slate-100 placeholder-slate-600 outline-none resize-none transition-all duration-300"
+                      className="w-full h-24 px-4 py-3 text-sm bg-slate-950 border border-slate-800 rounded-xl focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-slate-100 placeholder-slate-600 outline-none resize-none transition-all duration-300"
                     />
+                  </div>
+
+                  {/* Quantidade a Gerar */}
+                  <div className="flex items-center justify-between bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quantidade</span>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      <button
+                        type="button"
+                        onClick={() => setReelsQty(Math.max(1, reelsQty - 1))}
+                        className="w-6 h-6 bg-slate-900 border border-slate-800 sm:hover:border-amber-500 rounded text-[10px] font-bold text-slate-300 flex items-center justify-center transition-all cursor-pointer"
+                        title="Diminuir"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={reelsQty}
+                        onChange={(e) => setReelsQty(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))}
+                        className="w-10 text-center bg-slate-900 border border-slate-800 text-[11px] font-black text-amber-400 py-0.5 rounded outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setReelsQty(Math.min(30, reelsQty + 1))}
+                        className="w-6 h-6 bg-slate-900 border border-slate-800 sm:hover:border-amber-500 rounded text-[10px] font-bold text-slate-300 flex items-center justify-center transition-all cursor-pointer"
+                        title="Aumentar"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -859,7 +958,7 @@ export function PostagemInstagram() {
                     {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                     Gerar Ideias Reels
                   </button>
-                  <p className="text-[10px] text-slate-500 text-center">Gera 10 ideias de roteiros de alta retenção</p>
+                  <p className="text-[10px] text-slate-500 text-center">Gera {reelsQty} ideias de roteiros de alta retenção</p>
                 </div>
               </div>
 

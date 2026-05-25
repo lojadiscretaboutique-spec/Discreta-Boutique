@@ -78,15 +78,17 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
  */
 export async function generateContent(req: Request, res: Response): Promise<void> {
   try {
-    const { descricao, tipo } = req.body;
+    const { descricao, tipo, quantidade } = req.body;
     if (!descricao || !tipo) {
       res.status(400).json({ error: 'Os campos "descricao" e "tipo" (feed, story, reels) são obrigatórios.' });
       return;
     }
 
-    console.log(`[InstagramController] Gerando ideias para "${descricao}" (${tipo})...`);
+    const numericQty = quantidade ? parseInt(quantidade, 10) : undefined;
+
+    console.log(`[InstagramController] Gerando ${numericQty || 10} ideias para "${descricao}" (${tipo})...`);
     const brandKitPrompt = await getBrandKitPrompt();
-    const suggestions = await ideaService.generateWeeklyIdeas(descricao, tipo, brandKitPrompt);
+    const suggestions = await ideaService.generateWeeklyIdeas(descricao, tipo, brandKitPrompt, numericQty);
     res.json({ suggestions });
   } catch (error: any) {
     console.error('Erro ao gerar conteúdos:', error);
