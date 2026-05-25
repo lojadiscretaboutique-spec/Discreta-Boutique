@@ -15,7 +15,8 @@ import {
   saveBrandKit,
   getAuthUrl,
   oauthCallback,
-  syncIntegration
+  syncIntegration,
+  proxyDownloadImage
 } from '../controllers/instagramController.js';
 
 const router = Router();
@@ -45,5 +46,6 @@ router.post('/integracao/testar', testConnection);
 router.post('/integracao/sincronizar', syncIntegration);
 router.get('/brand-kit', getBrandKit);
 router.post('/brand-kit', saveBrandKit);
+router.get('/proxy-download', proxyDownloadImage);
 
 export default router;

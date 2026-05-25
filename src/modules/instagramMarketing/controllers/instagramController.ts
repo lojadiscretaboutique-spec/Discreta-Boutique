@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import axios from 'axios';
 import { db, auth } from '../../../lib/firebase.js';
 import { collection, addDoc, getDocs, updateDoc, doc, getDoc, setDoc, query, orderBy, limit } from 'firebase/firestore';
 import { InstagramIdeaService } from '../services/InstagramIdeaService.js';
@@ -722,6 +723,17 @@ export async function getBrandKitPrompt(): Promise<string> {
   return '';
 }
 
+export function sanitizePromptValue(val: any): string {
+  if (typeof val !== 'string') return '';
+  if (val.startsWith('data:') && val.includes(';base64,')) {
+    return '[Discreta Boutique: Logotipo em formato imagem carregado no sistema (Base64 omitida do prompt para economizar tokens)]';
+  }
+  if (val.length > 5000) {
+    return val.substring(0, 5000) + '... [Texto truncado para melhor controle de tokens]';
+  }
+  return val;
+}
+
 /**
  * Compiles/formats the Master Prompt according to prompt blueprint
  */
@@ -736,40 +748,44 @@ export function assembleMasterPrompt(bk: any): string {
 Siga RIGOROSAMENTE as seguintes diretrizes de Identidade de Marca e Inteligência Visual:
 
 1. IDENTIDADE DA MARCA:
-- Empresa: ${ident.nome || 'Discreta Boutique'}
-- Slogan: ${ident.slogan || ''}
-- Descrição: ${ident.descricao || ''}
-- Missão: ${ident.missao || ''}
-- Público-Alvo: ${ident.publico_alvo || ''}
-- Personalidade da Marca: ${ident.personalidade || ''}
-- Tom de Voz: ${ident.tom_voz || ''}
-- Objetivo no Instagram: ${ident.objetivo || ''}
+- Empresa: ${sanitizePromptValue(ident.nome || 'Discreta Boutique')}
+- Slogan: ${sanitizePromptValue(ident.slogan || '')}
+- Descrição: ${sanitizePromptValue(ident.descricao || '')}
+- Missão: ${sanitizePromptValue(ident.missao || '')}
+- Público-Alvo: ${sanitizePromptValue(ident.publico_alvo || '')}
+- Personalidade da Marca: ${sanitizePromptValue(ident.personalidade || '')}
+- Tom de Voz: ${sanitizePromptValue(ident.tom_voz || '')}
+- Objetivo no Instagram: ${sanitizePromptValue(ident.objetivo || '')}
 
 2. IDENTIDADE VISUAL & ESTILO:
-- Logotipo: ${visual.logo || 'Usar logo oficial'}
-- Cores de Destaque / Principais: ${visual.cores_principais || ''}
-- Cores Secundárias: ${visual.cores_secundarias || ''}
-- Fontes Preferidas: ${visual.fontes_preferidas || ''}
-- Estilo Visual: ${visual.estilo_visual || ''}
-- Referências: ${visual.referencias_visuais || ''}
-- Site Oficial: ${visual.site_oficial || ''}
+- Logotipo: ${sanitizePromptValue(visual.logo || 'Usar logo oficial')}
+- Cores de Destaque / Principais: ${sanitizePromptValue(visual.cores_principais || '')}
+- Cores Secundárias: ${sanitizePromptValue(visual.cores_secundarias || '')}
+- Fontes Preferidas: ${sanitizePromptValue(visual.fontes_preferidas || '')}
+- Estilo Visual: ${sanitizePromptValue(visual.estilo_visual || '')}
+- Referências: ${sanitizePromptValue(visual.referencias_visuais || '')}
+- Site Oficial: ${sanitizePromptValue(visual.site_oficial || '')}
+- Diretrizes de Proporção para Feed (4:5): ${sanitizePromptValue(visual.instrucoes_feed || '')}
+- Diretrizes de Proporção para Story (9:16): ${sanitizePromptValue(visual.instrucoes_story || '')}
+- Diretrizes de Proporção para Carrossel: ${sanitizePromptValue(visual.instrucoes_carrossel || '')}
+- Regra de Área Segura e Respiro Visual: ${sanitizePromptValue(visual.regras_area_segura || '')}
 
 3. CONTATOS E LINKS:
-- Instagram: ${redes.instagram || ''}
-- WhatsApp: ${redes.whatsapp || ''}
-- Facebook: ${redes.facebook || ''}
-- TikTok: ${redes.tiktok || ''}
-- Site: ${redes.site || ''}
-- Endereço / Localização: ${redes.endereco || ''}
+- Instagram: ${sanitizePromptValue(redes.instagram || '')}
+- WhatsApp: ${sanitizePromptValue(redes.whatsapp || '')}
+- Facebook: ${sanitizePromptValue(redes.facebook || '')}
+- TikTok: ${sanitizePromptValue(redes.tiktok || '')}
+- Site: ${sanitizePromptValue(redes.site || '')}
+- Endereço / Localização: ${sanitizePromptValue(redes.endereco || '')}
 
 4. REGRAS PARA GERAÇÃO DA IA:
-- Frases Obrigatórias: ${regras.frases_obrigatorias || ''}
-- Palavras Proibidas (NUNCA UTILIZE): ${regras.palavras_proibidas || ''}
-- CTA Padrão: ${regras.cta_padrao || ''}
-- Emojis Permitidos: ${regras.emojis_permitidos || ''}
-- Hashtags Automáticas / Padrão: ${regras.hashtags_automaticas || ''}
-- Regras de Escrita: ${regras.regras_escrita || ''}
-- Regras de Design / Estética Visual: ${regras.regras_design || ''}
+- Frases Obrigatórias: ${sanitizePromptValue(regras.frases_obrigatorias || '')}
+- Palavras Proibidas (NUNCA UTILIZE): ${sanitizePromptValue(regras.palavras_proibidas || '')}
+- CTA Padrão: ${sanitizePromptValue(regras.cta_padrao || '')}
+- Emojis Permitidos: ${sanitizePromptValue(regras.emojis_permitidos || '')}
+- Hashtags Automáticas / Padrão: ${sanitizePromptValue(regras.hashtags_automaticas || '')}
+- Regras de Escrita: ${sanitizePromptValue(regras.regras_escrita || '')}
+- Regras de Design / Estética Visual: ${sanitizePromptValue(regras.regras_design || '')}
 
 5. ESTRATÉGIA INTEGRADA DO INSTAGRAM:
 A IA deve respeitar os seguintes pilares estratégicos da marca:
@@ -783,3 +799,31 @@ A IA deve respeitar os seguintes pilares estratégicos da marca:
 
 Utilize o fluxo de funil: Atrair → Conectar → Ensinar → Gerar confiança → Fortalecer autoridade → Converter.`;
 }
+
+/**
+ * Proxies image downloads to bypass client-side CORS issues
+ */
+export async function proxyDownloadImage(req: Request, res: Response): Promise<void> {
+  try {
+    const { url, filename } = req.query;
+    if (!url || typeof url !== 'string') {
+      res.status(400).send('URL is required');
+      return;
+    }
+
+    const downloadName = typeof filename === 'string' ? filename : 'discreta_boutique_image.png';
+
+    console.log(`[ProxyDownload] Baixando de ${url}...`);
+    const imgRes = await axios.get(url, { responseType: 'arraybuffer' });
+    
+    // Set headers to trigger file download bypassing CORS
+    const contentType = imgRes.headers['content-type'] || 'image/png';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+    res.send(imgRes.data);
+  } catch (err: any) {
+    console.error('Erro no proxy de download:', err);
+    res.status(500).send('Erro ao obter a imagem: ' + err.message);
+  }
+}
+

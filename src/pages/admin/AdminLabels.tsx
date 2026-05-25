@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Package, Search, Plus, Trash2, Printer } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { productService, ProductVariant } from '../../services/productService';
+import { productService, Product, ProductVariant } from '../../services/productService';
 import { comboService } from '../../services/comboService';
-import { Product } from '../../types/catalog';
 import JsBarcode from 'jsbarcode';
 import { collectionGroup, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -58,17 +57,21 @@ export function AdminLabels() {
       const vSnap = await getDocs(collectionGroup(db, 'variants'));
       vSnap.docs.forEach(doc => {
          const v = doc.data() as ProductVariant;
+         const parentId = doc.ref.parent.parent?.id;
+         const parentProduct = data.find(p => p.id === parentId);
          allItems.push({
            id: doc.id,
            name: v.name,
            sku: v.sku,
            gtin: v.barcode || '',
-           price: v.price || v.promoPrice || 0,
+           price: v.price || v.promoPrice || (parentProduct ? parentProduct.price : 0),
            active: v.active,
            images: v.imageUrl ? [{url: v.imageUrl, path: '', isMain: true}] : [],
            categoryId: 'variant',
            slug: 'variant',
-         } as unknown as Product);
+           isVariant: true,
+           parentName: parentProduct ? parentProduct.name : '',
+         } as any);
       });
       
       // Add combos
@@ -264,7 +267,9 @@ export function AdminLabels() {
                 
                 <div className="label-brand text-black mt-3">DISCRETA</div>
                 <div className="w-full flex flex-col justify-start items-center overflow-hidden h-[32mm]">
-                   <div className="label-title text-black leading-[1.1] w-full px-1">{prod.name}</div>
+                   <div className="label-title text-black leading-[1.1] w-full px-1">
+                     {(prod as any).isVariant && (prod as any).parentName ? (prod as any).parentName : prod.name}
+                   </div>
                    <div className="label-sku text-black leading-none mt-3 truncate w-full">{prod.sku || 'UN'}</div>
                 </div>
 

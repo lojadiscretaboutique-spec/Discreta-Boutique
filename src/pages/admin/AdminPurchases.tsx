@@ -291,7 +291,9 @@ export function AdminPurchases() {
                     images: v.imageUrl ? [{url: v.imageUrl, path: '', isMain: true}] : (product.images || []),
                     categoryId: 'variant',
                     slug: 'variant',
-                  } as Product;
+                    isVariant: true,
+                    parentName: product.name,
+                  } as any;
                   itemsToLabel.push({
                     id: Math.random().toString(36).substring(7),
                     product: adaptedProduct,

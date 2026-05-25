@@ -15,7 +15,8 @@ import {
   Phone,
   Facebook,
   Bot,
-  Flame
+  Flame,
+  Trash2
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -39,6 +40,10 @@ interface BrandKitData {
     estilo_visual: string;
     referencias_visuais: string;
     site_oficial: string;
+    instrucoes_feed?: string;
+    instrucoes_story?: string;
+    instrucoes_carrossel?: string;
+    regras_area_segura?: string;
   };
   redes_sociais: {
     instagram: string;
@@ -88,7 +93,11 @@ export function BrandKitComponent({ toastSuccess, toastError }: BrandKitComponen
       fontes_preferidas: 'Inter (UI Sans), Playfair Display (Serif), Fira Code (Mono)',
       estilo_visual: 'Fotografia minimalista de alta qualidade, estúdio limpo com iluminação natural suave.',
       referencias_visuais: 'Estilo Chanel de frascos, paletas sóbrias neutras europeias.',
-      site_oficial: 'https://discretaboutique.com.br'
+      site_oficial: 'https://discretaboutique.com.br',
+      instrucoes_feed: 'PROPORÇÕES OBRIGATÓRIAS:\n* proporção 4:5\n* composição centralizada\n* área segura para Instagram',
+      instrucoes_story: 'PROPORÇÕES OBRIGATÓRIAS:\n* proporção 9:16\n* elementos centralizados\n* evitar textos próximos das bordas',
+      instrucoes_carrossel: 'PROPORÇÕES OBRIGATÓRIAS:\n* todas as páginas devem manter exatamente o mesmo layout visual\n* mesma hierarquia\n* mesma identidade\n* mesma tipografia',
+      regras_area_segura: 'REGRA DE ÁREA SEGURA:\nNenhum texto pode:\n* encostar nas bordas\n* ser cortado\n* ficar muito próximo do topo\n* ficar muito próximo da parte inferior\n\nToda composição deve possuir:\n* respiro visual\n* margens internas\n* organização limpa\n* leitura confortável'
     },
     redes_sociais: {
       instagram: '@discreta.boutique',
@@ -174,6 +183,10 @@ Siga RIGOROSAMENTE as seguintes diretrizes de Identidade de Marca e Inteligênci
 - Estilo Visual: ${visual.estilo_visual || ''}
 - Referências: ${visual.referencias_visuais || ''}
 - Site Oficial: ${visual.site_oficial || ''}
+- Diretrizes de Proporção para Feed (4:5): ${visual.instrucoes_feed || ''}
+- Diretrizes de Proporção para Story (9:16): ${visual.instrucoes_story || ''}
+- Diretrizes de Proporção para Carrossel: ${visual.instrucoes_carrossel || ''}
+- Regra de Área Segura e Respiro Visual: ${visual.regras_area_segura || ''}
 
 3. CONTATOS E LINKS:
 - Instagram: ${redes.instagram || ''}
@@ -510,7 +523,7 @@ Utilize o fluxo de funil: Atrair → Conectar → Ensinar → Gerar confiança �
                 </div>
                 <div className="flex items-center gap-4 w-full md:w-auto">
                   {formData.identidade_visual.logo ? (
-                    <div className="relative w-14 h-14 bg-slate-900 border border-amber-500/30 rounded-lg flex items-center justify-center overflow-hidden">
+                    <div className="relative w-14 h-14 bg-slate-900 border border-amber-500/30 rounded-lg flex items-center justify-center overflow-hidden animate-fade-in">
                       <img src={formData.identidade_visual.logo} referrerPolicy="no-referrer" alt="Logotipo" className="w-full h-full object-contain" />
                     </div>
                   ) : (
@@ -518,11 +531,28 @@ Utilize o fluxo de funil: Atrair → Conectar → Ensinar → Gerar confiança �
                       Nenhuma
                     </div>
                   )}
-                  <label className="flex items-center justify-center gap-2 cursor-pointer bg-slate-900 border border-slate-800 hover:border-slate-700 text-white rounded-xl px-3 py-2 text-xs transition-colors shadow-sm font-semibold flex-1 md:flex-initial">
-                    <Upload className="w-3.5 h-3.5 text-amber-500" />
-                    {logoUploading ? 'Subindo...' : 'Fazer Upload'}
-                    <input type="file" onChange={handleLogoUpload} accept="image/*" className="hidden" />
-                  </label>
+                  <div className="flex flex-wrap items-center gap-2 flex-grow md:flex-grow-0">
+                    <label className="flex items-center justify-center gap-2 cursor-pointer bg-slate-900 border border-slate-800 hover:border-slate-700 text-white rounded-xl px-3 py-2 text-xs transition-colors shadow-sm font-semibold flex-1 md:flex-initial">
+                      <Upload className="w-3.5 h-3.5 text-amber-500" />
+                      {logoUploading ? 'Subindo...' : 'Fazer Upload'}
+                      <input type="file" onChange={handleLogoUpload} accept="image/*" className="hidden" />
+                    </label>
+
+                    {formData.identidade_visual.logo && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleChange('identidade_visual', 'logo', '');
+                          toastSuccess('Logotipo removido do rascunho! Lembre-se de clicar em "Salvar Brand Kit" para gravar as alterações.');
+                        }}
+                        className="flex items-center justify-center gap-2 cursor-pointer bg-red-950/20 hover:bg-red-900/40 border border-red-500/20 text-red-450 hover:text-red-400 rounded-xl px-3 py-2 text-xs transition-colors shadow-sm font-semibold flex-1 md:flex-initial"
+                        title="Remover logotipo oficial"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Remover
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -603,6 +633,70 @@ Utilize o fluxo de funil: Atrair → Conectar → Ensinar → Gerar confiança �
                     onChange={(e) => handleChange('identidade_visual', 'site_oficial', e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-4 py-2.5 text-xs text-slate-200 outline-none transition-colors"
                   />
+                </div>
+              </div>
+
+              {/* Seção Nova: Proporções Obrigatórias e Área Segura */}
+              <div className="border-t border-slate-800/80 pt-5 mt-5 space-y-4">
+                <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1.5">
+                  📐 Proporções Obrigatórias & Composição IA Design
+                </h4>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  Estas instruções orientam o robô designer a respeitar as bordas, posicionamento e proporções ideais ao gerar imagens para seu Feed e Stories.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+                      Instruções do Feed (Proporção 4:5)
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={formData.identidade_visual.instrucoes_feed || ''}
+                      onChange={(e) => handleChange('identidade_visual', 'instrucoes_feed', e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none transition-colors font-mono resize-y"
+                      placeholder="Instruções para imagens de Feed..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+                      Instruções do Story (Proporção 9:16)
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={formData.identidade_visual.instrucoes_story || ''}
+                      onChange={(e) => handleChange('identidade_visual', 'instrucoes_story', e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none transition-colors font-mono resize-y"
+                      placeholder="Instruções para imagens de Story..."
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+                      Instruções de Carrossel (Layout Coeso)
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={formData.identidade_visual.instrucoes_carrossel || ''}
+                      onChange={(e) => handleChange('identidade_visual', 'instrucoes_carrossel', e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none transition-colors font-mono resize-y"
+                      placeholder="Instruções para posts em carrossel..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+                      Regras de Área Segura e Respiro Visual
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={formData.identidade_visual.regras_area_segura || ''}
+                      onChange={(e) => handleChange('identidade_visual', 'regras_area_segura', e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none transition-colors font-mono resize-y"
+                      placeholder="Instruções sobre margens e respiros..."
+                    />
+                  </div>
                 </div>
               </div>
             </div>

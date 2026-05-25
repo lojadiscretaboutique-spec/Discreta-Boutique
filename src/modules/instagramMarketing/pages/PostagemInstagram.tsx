@@ -66,7 +66,7 @@ const SEGMENTS = 'Cosméticos, Perfumes, Maquiagem, Skincare, Beleza';
 const DURATION_REELS = '15–60 segundos';
 
 export function PostagemInstagram() {
-  const [activeTab, setActiveTab] = useState<'gerador' | 'calendario' | 'brand_kit' | 'integracao' | 'logs'>('gerador');
+  const [activeTab, setActiveTab] = useState<'gerador' | 'calendario' | 'brand_kit'>('gerador');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -371,98 +371,51 @@ export function PostagemInstagram() {
     };
   };
 
-  // Publication Trigger
-  const handlePublishNow = async () => {
+  // Save Post to System (Storage + Calendar)
+  const handleSavePostToSystem = async () => {
     if (!selectedSug) return;
-    if (generatedImages.length === 0) {
-      toastError('Gere a arte promocional com IA antes de tentar publicar ou agendar.');
-      return;
-    }
-
-    setIsPublishingNow(true);
-    try {
-      // Clean up base64 payloads to ensure Firestore sizes remain well within limits
-      const { imageModel: uploadedImgModel, generatedImages: uploadedGenImages } = 
-        await ensureImagesUploaded(imageModel, generatedImages);
-
-      setImageModel(uploadedImgModel);
-      setGeneratedImages(uploadedGenImages);
-
-      // First save postages as a Draft
-      const saveRes = await axios.post('/api/instagram/schedule', {
-        tipo: selectedSug.tipo,
-        titulo: selectedSug.titulo,
-        descricao: selectedSug.descricao,
-        hashtags: selectedSug.hashtags,
-        imagem_modelo: uploadedImgModel,
-        modo: modoPost,
-        imagens_geradas: uploadedGenImages,
-        ordem: imagesOrder,
-        status: 'rascunho'
-      });
-
-      const savedPostId = saveRes.data.id;
-
-      // Request immediate send
-      toastSuccess('Iniciando conexões do bot. Aguarde processamento do Instagram...');
-      const sendRes = await axios.post('/api/instagram/publish', {
-        postId: savedPostId
-      });
-
-      toastSuccess('Publicado no Instagram com sucesso!');
-      setSelectedSug(null);
-      loadPosts();
-      loadLogs();
-      setActiveTab('calendario');
-    } catch (err: any) {
-      toastError(err.response?.data?.error || err.message || 'Canais ocupados. Falha na entrega imediata.');
-    } finally {
-      setIsPublishingNow(false);
-    }
-  };
-
-  // Schedule Trigger
-  const handleSchedulePost = async () => {
-    if (!selectedSug) return;
-    if (generatedImages.length === 0) {
-      toastError('Gere a arte promocional com IA antes de agendar.');
-      return;
-    }
-    if (!scheduleDate || !scheduleTime) {
-      toastError('Selecione a data e o horário para agendamento automático.');
-      return;
-    }
-
-    const isoStringScheduled = new Date(`${scheduleDate}T${scheduleTime}:00`).toISOString();
 
     setLoading(true);
     try {
-      // Clean up base64 payloads to ensure Firestore sizes remain well within limits
+      // Clean up base64 payloads to ensure Firestore sizes remain well within limits and upload graphics to Firebase Storage
       const { imageModel: uploadedImgModel, generatedImages: uploadedGenImages } = 
         await ensureImagesUploaded(imageModel, generatedImages);
 
       setImageModel(uploadedImgModel);
       setGeneratedImages(uploadedGenImages);
+
+      let isoStringScheduled = null;
+      let status = 'rascunho';
+
+      if (scheduleDate && scheduleTime) {
+        isoStringScheduled = new Date(`${scheduleDate}T${scheduleTime}:00`).toISOString();
+        status = 'agendado';
+      }
 
       await axios.post('/api/instagram/schedule', {
         tipo: selectedSug.tipo,
         titulo: selectedSug.titulo,
         descricao: selectedSug.descricao,
-        hashtags: selectedSug.hashtags,
+        hashtags: selectedSug.hashtags || [],
         imagem_modelo: uploadedImgModel,
         modo: modoPost,
         imagens_geradas: uploadedGenImages,
         ordem: imagesOrder,
         agendamento: isoStringScheduled,
-        status: 'agendado'
+        status: status
       });
 
-      toastSuccess(`Post planejado para ${scheduleDate} às ${scheduleTime}! (Timezone: America/Sao_Paulo)`);
+      if (status === 'agendado') {
+        toastSuccess(`Post planejado e salvo para ${scheduleDate} às ${scheduleTime}! (Timezone: America/Sao_Paulo)`);
+      } else {
+        toastSuccess('Discreta Boutique: Post salvo com sucesso no seu Calendário!');
+      }
+
       setSelectedSug(null);
       loadPosts();
       setActiveTab('calendario');
     } catch (err: any) {
-      toastError(err.response?.data?.error || err.message || 'Falha ao agendar post.');
+      toastError(err.response?.data?.error || err.message || 'Falha ao salvar post.');
     } finally {
       setLoading(false);
     }
@@ -477,6 +430,51 @@ export function PostagemInstagram() {
       loadPosts();
     } catch (err: any) {
       toastError('Erro ao deletar: ' + err.message);
+    }
+  };
+
+  const handleCopyText = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toastSuccess('Texto copiado com sucesso!');
+  };
+
+  const handleDownloadImage = async (url: string, filename: string) => {
+    try {
+      toastSuccess('Iniciando download da imagem...');
+      const downloadUrl = `/api/instagram/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Erro ao baixar imagem:', err);
+      // Fallback
+      window.open(url, '_blank');
+      toastSuccess('Por favor, clique com o botão direito e salve a imagem aberta na nova aba.');
+    }
+  };
+
+  const handleSaveIdeaAsDraft = async (sug: any) => {
+    try {
+      setLoading(true);
+      await axios.post('/api/instagram/schedule', {
+        tipo: sug.tipo,
+        titulo: sug.titulo,
+        descricao: sug.descricao,
+        hashtags: sug.hashtags || [],
+        imagem_modelo: '',
+        modo: 'unica',
+        imagens_geradas: [],
+        ordem: [],
+        status: 'rascunho'
+      });
+      toastSuccess('Ideia salva como rascunho no Calendário!');
+      loadPosts();
+    } catch (err: any) {
+      toastError(err.response?.data?.error || err.message || 'Erro ao salvar ideia.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -712,7 +710,7 @@ export function PostagemInstagram() {
           </div>
 
           {/* Sub Tab selection */}
-          <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800 self-start">
+          <div className="flex flex-wrap gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 self-start">
             <button
               onClick={() => { setActiveTab('gerador'); setSelectedSug(null); }}
               className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 flex items-center gap-2 ${activeTab === 'gerador' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
@@ -729,19 +727,7 @@ export function PostagemInstagram() {
               onClick={() => { setActiveTab('brand_kit'); setSelectedSug(null); }}
               className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 flex items-center gap-2 ${activeTab === 'brand_kit' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
-              <Palette className="w-3.5 h-3.5" /> Brand Kit IA
-            </button>
-            <button
-              onClick={() => { setActiveTab('integracao'); setSelectedSug(null); }}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 flex items-center gap-2 ${activeTab === 'integracao' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
-            >
-              <Settings className="w-3.5 h-3.5" /> Integração Meta
-            </button>
-            <button
-              onClick={() => { setActiveTab('logs'); setSelectedSug(null); }}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 flex items-center gap-2 ${activeTab === 'logs' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
-            >
-              <History className="w-3.5 h-3.5" /> Logs / Auditoria
+              <Palette className="w-3.5 h-3.5" /> Configurar IA (Brand Kit)
             </button>
           </div>
         </div>
@@ -1024,12 +1010,18 @@ export function PostagemInstagram() {
                           </div>
                         </div>
 
-                        <div className="pt-4 mt-4 border-t border-slate-800/60">
+                        <div className="pt-4 mt-4 border-t border-slate-800/60 flex gap-2">
                           <button
                             onClick={() => handleSelectSuggestion(s)}
-                            className="w-full bg-slate-950 hover:bg-amber-600 text-slate-300 hover:text-white transition-all duration-300 text-xs font-semibold py-2 px-3 rounded-lg flex items-center justify-center gap-2 cursor-pointer"
+                            className="flex-1 bg-slate-950 hover:bg-amber-600 text-slate-300 hover:text-white transition-all duration-300 text-xs font-semibold py-2 px-1.5 rounded-lg flex items-center justify-center gap-1 cursor-pointer"
                           >
-                            <Eye className="w-3.5 h-3.5" /> Ver Detalhes & Criar Arte
+                            <Eye className="w-3.5 h-3.5" /> Detalhes
+                          </button>
+                          <button
+                            onClick={() => handleSaveIdeaAsDraft(s)}
+                            className="flex-1 bg-slate-950 hover:bg-emerald-600 border border-emerald-900/30 text-slate-300 hover:text-white transition-all duration-300 text-xs font-semibold py-2 px-1.5 rounded-lg flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <Check className="w-3.5 h-3.5 text-emerald-400 group-hover:text-white" /> Salvar Ideia
                           </button>
                         </div>
                       </motion.div>
@@ -1081,23 +1073,39 @@ export function PostagemInstagram() {
               </button>
 
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-xl">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold tracking-widest bg-amber-600/10 text-amber-500 px-2.5 py-0.5 rounded-full uppercase border border-amber-500/20">
-                      {selectedSug.tipo}
-                    </span>
-                    <span className="text-slate-500 font-mono text-xs">• Detalhes Estratégicos</span>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center bg-slate-950/80 p-3 rounded-xl border border-slate-800">
+                    <div>
+                      <span className="text-[10px] font-bold tracking-widest bg-amber-600/10 text-amber-500 px-2 py-0.5 rounded-full uppercase border border-amber-500/20">
+                        {selectedSug.tipo}
+                      </span>
+                      <span className="text-slate-500 font-mono text-xs ml-2">• Ideia Gerada</span>
+                    </div>
+                    <button
+                      onClick={() => handleCopyText(`${selectedSug.titulo}\n\n${selectedSug.descricao}\n\n${selectedSug.hashtags?.map((t: string) => '#' + t.replace('#', '')).join(' ')}`)}
+                      className="text-[11px] font-bold text-amber-400 hover:text-white hover:bg-amber-600 px-3 py-1.5 rounded-lg border border-amber-600/30 transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Copiar Texto Completo
+                    </button>
                   </div>
-                  <h2 className="text-2xl font-bold text-white mt-1.5">{selectedSug.titulo}</h2>
-                  <p className="text-slate-400 text-sm mt-3 leading-relaxed">
-                    {selectedSug.descricao}
-                  </p>
+
+                  <div className="p-4 bg-slate-950 rounded-xl border border-slate-850 space-y-3">
+                    <h2 className="text-xl font-bold text-white">{selectedSug.titulo}</h2>
+                    <p className="text-slate-300 text-xs leading-relaxed whitespace-pre-wrap">
+                      {selectedSug.descricao}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Tags array */}
                 <div className="flex flex-wrap gap-1.5">
                   {selectedSug.hashtags?.map((tag: string, index: number) => (
-                    <span key={index} className="text-xs font-mono bg-slate-950 text-slate-400 border border-slate-800 px-2.5 py-1 rounded-md">
+                    <span 
+                      key={index} 
+                      onClick={() => handleCopyText('#' + tag.replace('#', ''))}
+                      className="text-xs font-mono bg-slate-950 text-slate-400 border border-slate-805 px-2.5 py-1 rounded-md hover:border-amber-500 hover:text-white transition-colors cursor-pointer"
+                      title="Clique para copiar esta hashtag"
+                    >
                       #{tag.replace('#', '')}
                     </span>
                   ))}
@@ -1116,9 +1124,22 @@ export function PostagemInstagram() {
                   <div className="p-4 bg-slate-950 border border-amber-500/10 rounded-xl space-y-4">
                     {selectedSug.tipo === 'story' && (
                       <div className="space-y-3">
-                        <h4 className="text-xs font-extrabold uppercase tracking-widest text-amber-500 flex items-center gap-2">
-                          <LayoutGrid className="w-4 h-4" /> Sequência Automatizada para Stories ({detailedStructure.telas?.length || 0} Telas)
-                        </h4>
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-xs font-extrabold uppercase tracking-widest text-amber-500 flex items-center gap-2">
+                            <LayoutGrid className="w-4 h-4" /> Sequência Automatizada para Stories ({detailedStructure.telas?.length || 0} Telas)
+                          </h4>
+                          <button
+                            onClick={() => {
+                              const storyScript = detailedStructure.telas?.map((t: any, idx: number) => 
+                                `Tela ${idx + 1} (${t.tipo}):\n- Fala: ${t.fala}\n- Texto na Tela: ${t.texto_tela}`
+                              ).join('\n\n');
+                              handleCopyText(storyScript);
+                            }}
+                            className="text-[10px] font-bold text-amber-400 hover:text-white hover:bg-amber-600 bg-slate-900 border border-slate-800 px-2 py-1 rounded cursor-pointer transition-colors"
+                          >
+                            Copiar Roteiro
+                          </button>
+                        </div>
                         
                         <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2">
                           {detailedStructure.telas?.map((tela: any, tIdx: number) => (
@@ -1134,9 +1155,20 @@ export function PostagemInstagram() {
 
                     {selectedSug.tipo === 'reels' && (
                       <div className="space-y-3">
-                        <h4 className="text-xs font-extrabold uppercase tracking-widest text-amber-500 flex items-center gap-2">
-                          <FileText className="w-4 h-4" /> Roteiro Multimodal Reels ({DURATION_REELS})
-                        </h4>
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-xs font-extrabold uppercase tracking-widest text-amber-500 flex items-center gap-2">
+                            <FileText className="w-4 h-4" /> Roteiro Multimodal Reels ({DURATION_REELS})
+                          </h4>
+                          <button
+                            onClick={() => {
+                              const reelsScript = `Roteiro Visual:\n${detailedStructure.roteiro}\n\nNarração Recomendada:\n${detailedStructure.falas}\n\nTempo: ${DURATION_REELS}\n\nÁudio: ${detailedStructure.sugestao_audio || ''}`;
+                              handleCopyText(reelsScript);
+                            }}
+                            className="text-[10px] font-bold text-amber-400 hover:text-white hover:bg-amber-600 bg-slate-900 border border-slate-800 px-2 py-1 rounded cursor-pointer transition-colors"
+                          >
+                            Copiar Roteiro
+                          </button>
+                        </div>
                         <div className="space-y-2 text-xs">
                           <div>
                             <span className="font-semibold text-slate-400">Roteiro Visual:</span>
@@ -1295,6 +1327,13 @@ export function PostagemInstagram() {
                                 <ArrowRight className="w-3 h-3" />
                               </button>
                             </div>
+
+                            <button
+                              onClick={() => handleDownloadImage(url, `discreta_boutique_post_${orderIdx + 1}.png`)}
+                              className="w-full bg-slate-900 hover:bg-amber-600 border border-slate-800 hover:border-amber-600 text-[9px] text-amber-500 hover:text-white font-extrabold py-1 rounded transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <Upload className="w-2.5 h-2.5 rotate-180" /> Baixar
+                            </button>
                           </div>
                         );
                       })}
@@ -1303,70 +1342,62 @@ export function PostagemInstagram() {
                 )}
               </div>
 
-              {/* SECTION: AGENDAMENTO E PUBLICAÇÃO CONTROLS */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-xl">
+              {/* SECTION: SALVAR NO SISTEMA / CALENDÁRIO CONTROLS */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5 shadow-xl">
                 <h3 className="font-bold text-lg text-white flex items-center gap-2 border-b border-slate-800 pb-3">
                   <Calendar className="w-5 h-5 text-amber-500" />
-                  Agendar ou Publicar
+                  Salvar no Sistema
                 </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Pick date and hour */}
-                  <div className="space-y-3 p-4 bg-slate-950 border border-slate-850 rounded-xl">
-                    <label className="text-xs font-extrabold text-slate-400 uppercase tracking-wider block">Definir data do Scheduler</label>
-                    
-                    <div className="grid grid-cols-2 gap-3.5">
-                      <div className="space-y-1">
-                        <span className="text-[10px] uppercase font-bold text-slate-500">Data</span>
-                        <input
-                          type="date"
-                          value={scheduleDate}
-                          onChange={(e) => setScheduleDate(e.target.value)}
-                          className="w-full bg-slate-900 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 focus:outline-none"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[10px] uppercase font-bold text-slate-500">Hora</span>
-                        <input
-                          type="time"
-                          value={scheduleTime}
-                          onChange={(e) => setScheduleTime(e.target.value)}
-                          className="w-full bg-slate-900 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Sem integração ativa com as APIs do Facebook/Instagram. Ao salvar, suas mídias promocionais serão armazenadas de forma segura no <strong>Firebase Storage</strong> e publicadas no seu calendário interno de planejamento, onde você poderá baixar as imagens e copiar as legendas a qualquer momento.
+                </p>
 
-                    <div className="pt-2 text-[10px] text-slate-500 flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-slate-600" /> Timezone ativa: <strong>America/Sao_Paulo</strong>
-                    </div>
-
-                    <button
-                      onClick={handleSchedulePost}
-                      disabled={loading || generatedImages.length === 0}
-                      className="w-full bg-slate-900 hover:bg-amber-600 text-slate-300 hover:text-white border border-slate-800 hover:border-amber-600 py-3.5 text-xs font-black rounded-lg transition-all duration-300 cursor-pointer disabled:opacity-40 uppercase tracking-wider"
-                    >
-                      Salvar / Agendar Postagem
-                    </button>
-                  </div>
-
-                  {/* Immediate send */}
-                  <div className="flex flex-col justify-between p-4 bg-slate-950 border border-slate-850 rounded-xl">
+                <div className="p-4 bg-slate-950 border border-slate-850 rounded-xl space-y-4">
+                  <span className="text-[10px] font-extrabold text-amber-500 uppercase tracking-widest block">Organização de Calendário (Opcional)</span>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <span className="text-xs font-extrabold text-slate-300 uppercase tracking-wider block">Envio Imediato</span>
-                      <p className="text-[11px] text-slate-500 leading-relaxed">
-                        Ignore o agendamento em background e envie os arquivos multimídias processados imediatamente para a conta conectada nas APIs da Meta de forma integrada.
-                      </p>
+                      <span className="text-[10px] uppercase font-bold text-slate-500">Agendar para Data</span>
+                      <input
+                        type="date"
+                        value={scheduleDate}
+                        onChange={(e) => setScheduleDate(e.target.value)}
+                        className="w-full bg-slate-900 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 focus:outline-none"
+                      />
                     </div>
-
-                    <button
-                      onClick={handlePublishNow}
-                      disabled={isPublishingNow || generatedImages.length === 0}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 text-xs rounded-lg transition-all cursor-pointer uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.15)] disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {isPublishingNow ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                      {isPublishingNow ? 'Conectando...' : 'Publicar Agora'}
-                    </button>
+                    <div className="space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-slate-500">Hora do Post</span>
+                      <input
+                        type="time"
+                        value={scheduleTime}
+                        onChange={(e) => setScheduleTime(e.target.value)}
+                        className="w-full bg-slate-900 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
                   </div>
+
+                  <div className="pt-1 text-[10px] text-slate-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-slate-600" /> Timezone ativa: <strong>America/Sao_Paulo</strong>
+                  </div>
+
+                  <button
+                    onClick={handleSavePostToSystem}
+                    disabled={loading || generatedImages.length === 0}
+                    className="w-full mt-2 bg-gradient-to-r from-red-700 to-amber-600 hover:from-red-600 hover:to-amber-500 disabled:from-slate-800 disabled:to-slate-800 text-white font-black py-3.5 text-xs rounded-lg transition-all cursor-pointer uppercase tracking-widest shadow-md flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Salvando Mídias...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        Salvar Postagem no Calendário
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
 
@@ -1569,7 +1600,7 @@ export function PostagemInstagram() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {posts.map((post) => {
+                {posts.map((post, postIdx) => {
                   const tagStyle = post.tipo === 'story' ? 'bg-pink-500/10 text-pink-400 border border-pink-500/20' : 
                                    post.tipo === 'feed' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' :
                                    'bg-amber-500/10 text-amber-400 border border-amber-500/20';
@@ -1583,7 +1614,7 @@ export function PostagemInstagram() {
 
                   return (
                     <div 
-                      key={post.id}
+                      key={post.id ? `post-${post.id}-${postIdx}` : `post-idx-${postIdx}`}
                       className="bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-slate-700 transition-all duration-300 flex flex-col justify-between shadow-md relative"
                     >
                       {/* Top banner */}
@@ -1609,9 +1640,39 @@ export function PostagemInstagram() {
                           </div>
                         )}
 
-                        <div>
+                        <div className="space-y-2 mt-2">
+                          <div className="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-850 gap-2">
+                            <span className="text-[9px] text-slate-500 font-extrabold uppercase tracking-wider block">Postagem Manual</span>
+                            <div className="flex gap-1.5 flex-wrap">
+                              <button
+                                onClick={() => handleCopyText(`${post.titulo}\n\n${post.descricao}\n\n${post.hashtags?.map((t: string) => '#' + t.replace('#', '')).join(' ')}`)}
+                                className="text-[9px] bg-slate-900 border border-slate-800 hover:border-amber-500 text-amber-500 hover:text-white px-2 py-0.5 rounded cursor-pointer font-bold transition-all"
+                                title="Copiar Legenda"
+                              >
+                                Copiar Legenda
+                              </button>
+                              {post.imagens_geradas && post.imagens_geradas.length > 0 && (
+                                <button
+                                  onClick={() => handleDownloadImage(post.imagens_geradas[0], `discreta_boutique_post_${post.id}.png`)}
+                                  className="text-[9px] bg-slate-900 border border-slate-800 hover:border-amber-500 text-slate-300 hover:text-white px-2 py-0.5 rounded cursor-pointer font-bold transition-all"
+                                  title="Baixar primeira imagem para postar manualmente"
+                                >
+                                  Baixar Foto
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
                           <h4 className="font-bold text-slate-100 text-sm">{post.titulo}</h4>
                           <p className="text-slate-400 text-xs mt-1.5 leading-relaxed line-clamp-3">{post.descricao}</p>
+                          
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {post.hashtags?.slice(0, 4).map((tag: string, tIdx: number) => (
+                              <span key={tIdx} className="text-[9px] bg-slate-950 text-slate-500 px-1.5 py-0.5 rounded">
+                                #{tag.replace('#', '')}
+                              </span>
+                            ))}
+                          </div>
                           
                           <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-3 font-mono">
                             <Clock className="w-3.5 h-3.5 text-slate-600" /> Agenda: <strong className="text-slate-400 font-bold">{formattedDate}</strong>
@@ -1672,616 +1733,6 @@ export function PostagemInstagram() {
           />
         )}
 
-        {/* ======================= TAB 3: INTEGRATION SETTINGS ======================= */}
-        {activeTab === 'integracao' && (
-          <div className="max-w-3xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-xl animate-fade-in pb-16">
-            <div>
-              <h3 className="text-xl font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
-                <Settings className="w-5 h-5 text-amber-500 animate-spin-slow" />
-                Integração Oficial Meta / Instagram
-              </h3>
-              <p className="text-slate-400 text-xs mt-1 leading-normal">
-                Gerencie sua conexão automatizada de planejamento e agendamento. Sem configurações manuais complexas ou preenchimento manual de IDs técnicos.
-              </p>
-            </div>
-
-            {/* SELECTION STATE: OAuth completed, list of pages loaded */}
-            {oauthResult && oauthResult.pages && oauthResult.pages.length > 0 && (
-              <div className="space-y-4">
-                <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-1">
-                  <h4 className="text-amber-400 text-xs font-bold flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    Páginas e Perfis do Instagram Encontrados
-                  </h4>
-                  <p className="text-slate-400 text-[11px] leading-relaxed">
-                    Selecione abaixo a conta que deseja conectar e ativar comercialmente para as publicações automatizadas.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3.5">
-                  {oauthResult.pages.map((pOpt: any) => {
-                    const hasIg = !!pOpt.instagramBusinessId;
-                    return (
-                      <div 
-                        key={pOpt.pageId} 
-                        className={`p-4 border rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-300 ${hasIg ? 'bg-slate-950 border-slate-800 hover:border-slate-700' : 'bg-slate-950/40 border-slate-900 opacity-60'}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <img 
-                            src={pOpt.instagramProfilePicture || '/avatar-placeholder.png'} 
-                            alt={pOpt.instagramUsername || 'Instagram Profile'} 
-                            referrerPolicy="no-referrer"
-                            className="w-12 h-12 rounded-full object-cover border border-slate-800 bg-slate-900"
-                          />
-                          <div>
-                            {hasIg ? (
-                              <>
-                                <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
-                                  {pOpt.instagramName || pOpt.instagramUsername}
-                                  <span className="text-xs text-slate-500 font-normal">(@{pOpt.instagramUsername})</span>
-                                </h4>
-                                <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                                  Página Facebook: <strong className="text-slate-300 font-semibold">{pOpt.pageName}</strong>
-                                </p>
-                              </>
-                            ) : (
-                              <>
-                                <h4 className="text-sm font-bold text-slate-400">{pOpt.pageName}</h4>
-                                <p className="text-[11px] text-rose-400 font-medium mt-0.5 flex items-center gap-1">
-                                  <XCircle className="w-3.5 h-3.5 text-rose-500" />
-                                  Instagram Business não conectado a esta página.
-                                </p>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        {hasIg ? (
-                          <button
-                            type="button"
-                            disabled={loading}
-                            onClick={() => handleSelectPage(pOpt)}
-                            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-lg transition-all self-end sm:self-center cursor-pointer disabled:opacity-50"
-                          >
-                            Ativar Perfil
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-slate-500 italic px-3 py-1 bg-slate-900/40 rounded border border-slate-950">Indisponível</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="flex justify-end pt-2">
-                  <button 
-                    type="button" 
-                    onClick={() => setOauthResult(null)} 
-                    className="text-xs font-semibold text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
-                  >
-                    Voltar para a tela inicial
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* SELECTION STATE: OAuth completed but NO pages found */}
-            {oauthResult && oauthResult.pages && oauthResult.pages.length === 0 && (
-              <div className="p-8 bg-slate-950 border border-slate-850 rounded-2xl text-center space-y-4 max-w-lg mx-auto">
-                <XCircle className="w-12 h-12 text-rose-500 mx-auto" strokeWidth={1.5} />
-                <div className="space-y-1">
-                  <h4 className="text-white text-md font-bold">Nenhuma página comercial encontrada</h4>
-                  <p className="text-slate-400 text-xs leading-relaxed animate-pulse">
-                    Não detectamos nenhuma página do Facebook vinculada com um perfil do Instagram comercial em sua conta Meta.
-                  </p>
-                </div>
-                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-400 rounded-lg text-left leading-relaxed">
-                  <strong>💡 Requisito obrigatório:</strong> Para usar a integração automática comercial do Instagram, sua conta do Instagram precisa ser de criador ou comercial (Business) e estar expressamente vinculada nas configurações de sua página do Facebook.
-                </div>
-                <div className="flex justify-center gap-3 pt-2">
-                  <button 
-                    type="button"
-                    onClick={() => setOauthResult(null)}
-                    className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg border border-slate-800 hover:bg-slate-850 cursor-pointer"
-                  >
-                    Tentar Novamente
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* MAIN STATE: Active Connection Status Display */}
-            {!oauthResult && integracao.access_token && integracao.perfil_conectado && (
-              <div className="space-y-6">
-                {/* Profile Card Summary */}
-                <div className="p-5 bg-slate-950 border border-slate-850 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <img
-                      src={integracao.perfil_conectado.profile_picture_url || '/avatar-placeholder.png'}
-                      alt={integracao.perfil_conectado.username || 'Perfil'}
-                      referrerPolicy="no-referrer"
-                      className="w-14 h-14 rounded-full object-cover border border-slate-800 shadow-md bg-slate-900"
-                    />
-                    <div>
-                      <h4 className="text-white text-md font-bold flex items-center gap-1.5">
-                        {integracao.perfil_conectado.name || integracao.perfil_conectado.username}
-                        <span className="text-xs text-slate-500 font-semibold">(@{integracao.perfil_conectado.username})</span>
-                      </h4>
-                      <p className="text-xs text-slate-400 flex items-center gap-1 mt-1">
-                        Página vinculada: <strong className="text-slate-300">{integracao.perfil_conectado.page_name}</strong>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-row sm:flex-col items-end gap-2 shrink-0">
-                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2.5 py-1 border border-emerald-500/10 rounded-full font-bold uppercase tracking-wide flex items-center gap-1 animate-pulse">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Ativo
-                    </span>
-                    <span className="text-[9px] text-slate-500 font-mono">Oficial Meta API</span>
-                  </div>
-                </div>
-
-                {/* Validation Status Badges Grid */}
-                <div>
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Status e Validação da Integração</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    
-                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl flex items-center justify-between">
-                      <span className="text-xs text-slate-400 flex items-center gap-2">
-                        <CheckCircle2 className={`w-4 h-4 ${integracao.checks?.token_valid !== false ? 'text-emerald-500' : 'text-slate-600'}`} />
-                        Token de Acesso válido
-                      </span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${integracao.checks?.token_valid !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                        {integracao.checks?.token_valid !== false ? 'VÁLIDO' : 'DEFEITUOSO'}
-                      </span>
-                    </div>
-
-                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl flex items-center justify-between">
-                      <span className="text-xs text-slate-400 flex items-center gap-2">
-                        <CheckCircle2 className={`w-4 h-4 ${integracao.checks?.instagram_connected !== false ? 'text-emerald-500' : 'text-slate-600'}`} />
-                        Instagram Comercial conectado
-                      </span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${integracao.checks?.instagram_connected !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                        {integracao.checks?.instagram_connected !== false ? 'OK' : 'FALHA'}
-                      </span>
-                    </div>
-
-                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl flex items-center justify-between">
-                      <span className="text-xs text-slate-400 flex items-center gap-2">
-                        <CheckCircle2 className={`w-4 h-4 ${integracao.checks?.page_linked !== false ? 'text-emerald-500' : 'text-slate-600'}`} />
-                        Página Facebook vinculada
-                      </span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${integracao.checks?.page_linked !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                        {integracao.checks?.page_linked !== false ? 'CONECTADA' : 'FALHA'}
-                      </span>
-                    </div>
-
-                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl flex items-center justify-between">
-                      <span className="text-xs text-slate-400 flex items-center gap-2">
-                        <CheckCircle2 className={`w-4 h-4 ${integracao.checks?.permissions_approved !== false ? 'text-emerald-500' : 'text-slate-600'}`} />
-                        Permissões aprovadas
-                      </span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${integracao.checks?.permissions_approved !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                        {integracao.checks?.permissions_approved !== false ? 'ACEITO' : 'AUSENTE'}
-                      </span>
-                    </div>
-
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-[11px] text-slate-500 bg-slate-950/20 p-3 rounded-lg border border-slate-850 border-dashed">
-                    <div>
-                      📅 <strong>Expiração:</strong> <span className="text-slate-400 font-semibold">Token de Longo Prazo Permanente / 60 Dias</span>
-                    </div>
-                    <div>
-                      🔄 <strong>Última Sincronização:</strong> <span className="text-slate-400 font-semibold font-mono">{integracao.last_sync ? new Date(integracao.last_sync).toLocaleString('pt-BR') : 'Agora'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Control Action Buttons */}
-                <div className="pt-4 border-t border-slate-850 flex flex-col sm:flex-row justify-between gap-4">
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={handleDisconnect}
-                    className="px-4 py-2.5 bg-slate-950 hover:bg-slate-900 border border-rose-500/20 text-rose-400 font-extrabold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
-                  >
-                    <Power className="w-3.5 h-3.5 text-rose-500 animate-pulse" /> Desconectar Perfil
-                  </button>
-
-                  <div className="flex gap-3 justify-end w-full sm:w-auto">
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={handleMetaOAuth}
-                      className="px-4 py-2.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 font-extrabold text-xs rounded-xl border border-blue-500/20 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
-                    >
-                      Trocar Página / Perfil
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={handleTestConnection}
-                      className="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-lg shadow-amber-900/10"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" /> Testar Conexão Oficial
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* MAIN STATE: No Saved Integration Setup page */}
-            {!oauthResult && (!integracao.access_token || !integracao.perfil_conectado) && (
-              <div className="p-8 bg-slate-950 border border-slate-850 rounded-2xl space-y-6 max-w-xl mx-auto">
-                <div className="text-center space-y-2">
-                  <div className="mx-auto w-12 h-12 bg-amber-600/10 border border-amber-500/20 rounded-xl flex items-center justify-center text-amber-500 shadow-inner animate-pulse">
-                    <Link2 className="w-6 h-6" />
-                  </div>
-                  <h4 className="text-white text-md font-extrabold leading-normal">Conectar sua Conta do Instagram</h4>
-                  <p className="text-slate-400 text-xs leading-relaxed max-w-sm mx-auto">
-                    Habilite a automação oficial do Instagram Meta API. Escolha o método que melhor atende às suas necessidades abaixo:
-                  </p>
-                </div>
-
-                {/* Connection Method Selector */}
-                <div className="flex bg-slate-900 border border-slate-850 p-1 rounded-xl max-w-xs mx-auto">
-                  <button
-                    type="button"
-                    onClick={() => setConnMethod('manual')}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                      connMethod === 'manual'
-                        ? 'bg-amber-600 text-white shadow'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    🔌 Conexão Manual (Sem App ID)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConnMethod('oauth')}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                      connMethod === 'oauth'
-                        ? 'bg-amber-600 text-white shadow'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    🌐 Login Popup (App ID)
-                  </button>
-                </div>
-
-                {/* METHOD 1: MANUAL DIRECT ENTRY */}
-                {connMethod === 'manual' && (
-                  <div className="bg-slate-900/60 p-5 border border-slate-850 rounded-xl text-left space-y-5">
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[10px] font-black">🔌</span>
-                      <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider block">Inserir Identificadores Manuais</h5>
-                    </div>
-
-                    <p className="text-[11px] text-slate-500 leading-normal">
-                      Insira diretamente as credenciais obtidas no portal Facebook Developers (pelo Graph Explorer ou App). Isso evita erros de IDs de aplicativo indisponíveis.
-                    </p>
-
-                    <div className="space-y-4">
-                      {/* Access Token Input */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">User Access Token Ativo (Meta API)</label>
-                        <textarea
-                          rows={3}
-                          placeholder="Cole aqui seu Token de Acesso Ativo (Começa com EAAC...)"
-                          value={integracao.access_token || ''}
-                          onChange={(e) => setIntegracao({ ...integracao, access_token: e.target.value })}
-                          className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 font-mono outline-none resize-y"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {/* Page ID Input */}
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Facebook Page ID</label>
-                          <input
-                            type="text"
-                            placeholder="Ex: 104592837283"
-                            value={integracao.page_id || ''}
-                            onChange={(e) => setIntegracao({ ...integracao, page_id: e.target.value })}
-                            className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 font-mono outline-none"
-                          />
-                        </div>
-
-                        {/* Commercial ID Input */}
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Instagram Commercial ID</label>
-                          <input
-                            type="text"
-                            placeholder="Ex: 178414012345678"
-                            value={integracao.instagram_business_id || ''}
-                            onChange={(e) => setIntegracao({ ...integracao, instagram_business_id: e.target.value })}
-                            className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 font-mono outline-none"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={handleConnectManual}
-                        className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs rounded-xl transition-all inline-flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-950/20 group hover:scale-[1.01]"
-                      >
-                        Salvar e Conectar Canal
-                        <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" strokeWidth={2.5} />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* METHOD 2: OFFICIAL OAUTH POPUP */}
-                {connMethod === 'oauth' && (
-                  <div className="space-y-5">
-                    <div className="bg-slate-900/60 p-5 border border-slate-850 rounded-xl text-left space-y-4">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[10px] font-black">1</span>
-                        <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider block">Identificadores do App de Desenvolvedor</h5>
-                      </div>
-                      
-                      <p className="text-[11px] text-slate-500 leading-normal">
-                        Crie um app do tipo <strong>"Empresa"</strong> no portal de desenvolvedores do Facebook com a permissão Instagram Graph API ativa.
-                      </p>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta App ID (ID do App)</label>
-                          <input
-                            type="text"
-                            placeholder="Ex: 1430489214227891"
-                            value={integracao.facebook_app_id || ''}
-                            onChange={(e) => setIntegracao({ ...integracao, facebook_app_id: e.target.value })}
-                            className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta App Secret (Chave Secreta)</label>
-                          <input
-                            type="password"
-                            placeholder="••••••••••••••••"
-                            value={integracao.facebook_app_secret || ''}
-                            onChange={(e) => setIntegracao({ ...integracao, facebook_app_secret: e.target.value })}
-                            className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end pt-1">
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={handleSaveDeveloperSettings}
-                          className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-white font-extrabold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          Salvar Chaves do App
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/60 p-5 border border-slate-850 rounded-xl text-left space-y-4 font-sans">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[10px] font-black font-semibold">2</span>
-                        <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Autorizar e Vincular Perfil</h5>
-                      </div>
-
-                      <p className="text-[11px] text-slate-500 leading-normal">
-                        Após preencher e salvar as chaves no Passo 1, clique abaixo para fazer login com o Facebook e selecionar sua página comercial do Instagram.
-                      </p>
-
-                      <div className="flex justify-center pt-2">
-                        {!(integracao.facebook_app_id && integracao.facebook_app_secret) ? (
-                          <div className="p-3 bg-amber-500/5 border border-amber-500/15 text-[11px] text-amber-400 rounded-lg text-center w-full leading-relaxed">
-                            ⚠️ <strong>Chaves não configuradas:</strong> Você precisa preencher e salvar o seu <strong>Meta App ID</strong> e o seu <strong>App Secret</strong> no Passo 1 para ativar o botão de login oficial.
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={loading}
-                            onClick={handleMetaOAuth}
-                            className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs rounded-xl transition-all inline-flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-950/20 group hover:scale-[1.01]"
-                          >
-                            Fazer Login com Facebook e Instagram
-                            <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" strokeWidth={2.5} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="p-3.5 bg-slate-900 border border-slate-850 text-left text-[11px] text-slate-500 rounded-xl leading-relaxed space-y-1">
-                  <strong>ℹ️ Informações sobre o processo:</strong>
-                  <p>
-                    Nosso sistema utiliza apenas as APIs Oficiais do Meta Graph API. Suas credenciais são de uso exclusivo privado em sua instância do Firebase.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* COLLAPSIBLE DEVELOPER CONFIGURATION CARD/ACCORDION */}
-            <details className="group border border-slate-800 rounded-xl bg-slate-950 overflow-hidden transition-all duration-300">
-              <summary className="flex items-center justify-between p-4 text-xs font-bold text-slate-400 cursor-pointer hover:bg-slate-900/40 select-none">
-                <span className="flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-amber-500" />
-                  Configurações Avançadas de Desenvolvedor (OAuth App Config)
-                </span>
-                <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform duration-300">▼</span>
-              </summary>
-
-              <div className="p-4 border-t border-slate-900 bg-slate-950/60 space-y-4">
-                <div className="p-3 bg-slate-900 border border-slate-850 rounded-lg text-[10px] text-slate-500 leading-normal">
-                  💡 <strong>Finalidade técnica:</strong> Se você estiver usando um aplicativo personalizado da Meta, insira aqui o App ID e o App Secret. Se estes campos estiverem vazios, a aplicação usará as variáveis de ambiente Meta/Facebook integradas.
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Meta App ID</span>
-                    <input
-                      type="text"
-                      placeholder="Ex: 1430489214227891"
-                      value={integracao.facebook_app_id || ''}
-                      onChange={(e) => setIntegracao({ ...integracao, facebook_app_id: e.target.value })}
-                      className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Meta App Secret</span>
-                    <input
-                      type="password"
-                      placeholder="••••••••••••••••"
-                      value={integracao.facebook_app_secret || ''}
-                      onChange={(e) => setIntegracao({ ...integracao, facebook_app_secret: e.target.value })}
-                      className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-2 border-b border-slate-900 pb-4">
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={handleSaveDeveloperSettings}
-                    className="px-3.5 py-2 bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-white font-extrabold text-xs rounded-lg border border-slate-850 transition-all cursor-pointer"
-                  >
-                    Guardar Chaves OAuth
-                  </button>
-                </div>
-
-                {/* Dynamic fields: Editable for direct manual saves */}
-                <div className="space-y-4 pt-4 border-t border-slate-900">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Atualização de Parâmetros Ativos (Modo Edição Manual)</h4>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <span className="text-[9px] font-bold text-slate-400">Facebook Page ID</span>
-                      <input
-                        type="text"
-                        value={integracao.page_id || ''}
-                        onChange={(e) => setIntegracao({ ...integracao, page_id: e.target.value })}
-                        placeholder="Ex: 104058912445892"
-                        className="w-full bg-slate-950 text-slate-200 border border-slate-850 text-[11px] p-2 rounded-lg focus:border-amber-500 font-mono outline-none"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <span className="text-[9px] font-bold text-slate-400">Instagram Commercial ID</span>
-                      <input
-                        type="text"
-                        value={integracao.instagram_business_id || ''}
-                        onChange={(e) => setIntegracao({ ...integracao, instagram_business_id: e.target.value })}
-                        placeholder="Ex: 17841401234567891"
-                        className="w-full bg-slate-950 text-slate-200 border border-slate-850 text-[11px] p-2 rounded-lg focus:border-amber-500 font-mono outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <span className="text-[9px] font-bold text-slate-400">User Access Token Ativo (Meta API)</span>
-                    <textarea
-                      rows={3}
-                      value={integracao.access_token || ''}
-                      onChange={(e) => setIntegracao({ ...integracao, access_token: e.target.value })}
-                      placeholder="Insira o token de acesso de usuário do Facebook Developers..."
-                      className="w-full bg-slate-950 text-slate-200 border border-slate-850 text-[10px] p-2.5 rounded-lg focus:border-amber-500 font-mono outline-none resize-y"
-                    />
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={handleConnectManual}
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      Salvar Alterações Manuais
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </details>
-
-          </div>
-        )}
-
-        {/* ======================= TAB 4: AUDITORIA LOGS ======================= */}
-        {activeTab === 'logs' && (
-          <div className="space-y-6 animate-fade-in pb-16">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <History className="w-5 h-5 text-amber-500" />
-                  Logs / Auditoria do Publicador
-                </h3>
-                <p className="text-slate-400 text-xs mt-1">Monitore em tempo real as chamadas de API, retornos de erro e execuções do agendador automático minuto a minuto.</p>
-              </div>
-              <button 
-                onClick={loadLogs}
-                className="bg-slate-900 text-slate-400 hover:text-white border border-slate-800 p-2 text-xs rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-slate-500" /> Atualizar Logs
-              </button>
-            </div>
-
-            {logs.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-850 p-12 text-center rounded-2xl max-w-xl mx-auto space-y-3">
-                <History className="w-10 h-10 text-slate-700 mx-auto" />
-                <h4 className="font-bold text-white text-sm">Nenhum evento registrado</h4>
-                <p className="text-slate-500 text-xs leading-normal">
-                  Após agendar ou disparar as postagens usando as APIs de integração, os buffers públicos do Facebook e do Instagram retornarão logs estruturados que serão descritos aqui.
-                </p>
-              </div>
-            ) : (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-950 text-slate-400 uppercase font-black text-[10px] tracking-wider border-b border-slate-800 border-collapse">
-                      <tr>
-                        <th className="p-4">Data/Hora</th>
-                        <th className="p-4">Post ID</th>
-                        <th className="p-4">Ação</th>
-                        <th className="p-4">Resposta / Detalhe</th>
-                        <th className="p-4">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-850/60 leading-normal">
-                      {logs.map((log) => (
-                        <tr key={log.id} className="hover:bg-slate-850/30 transition-colors">
-                          <td className="p-4 whitespace-nowrap text-slate-500 font-mono">
-                            {new Date(log.created_at).toLocaleString('pt-BR')}
-                          </td>
-                          <td className="p-4 whitespace-nowrap text-slate-500 font-mono">
-                            {log.post_id ? log.post_id.slice(0, 8) + '...' : 'Global'}
-                          </td>
-                          <td className="p-4 font-semibold text-slate-300">
-                            {log.acao}
-                          </td>
-                          <td className="p-4 text-slate-400 max-w-xs truncate" title={log.resposta}>
-                            {log.resposta}
-                          </td>
-                          <td className="p-4 whitespace-nowrap">
-                            <span className={`font-mono text-[9px] uppercase font-bold px-2 py-0.5 rounded ${log.status === 'sucesso' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
-                              {log.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
       </div>
     </div>
