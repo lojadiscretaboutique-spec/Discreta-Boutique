@@ -112,7 +112,7 @@ service cloud.firestore {
     }
 
     match /settings/instagram_brand_kit {
-      allow read, write: if true;
+      allow read, create, update: if true;
     }
 
     match /settings/{doc} {
@@ -277,17 +277,17 @@ service cloud.firestore {
     }
 
     match /instagram_brand_kits/{doc} {
-      allow read, create, update, write: if true;
+      allow read, create, update: if true;
       allow delete: if isMasterAdmin();
     }
 
     match /instagram_brandkit_data/{doc} {
-      allow read, create, update, write: if true;
+      allow read, create, update: if true;
       allow delete: if isMasterAdmin();
     }
 
     match /instagram_brand_kit_configs/{doc} {
-      allow read, create, update, write: if true;
+      allow read, create, update: if true;
       allow delete: if isMasterAdmin();
     }
 

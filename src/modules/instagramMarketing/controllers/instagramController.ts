@@ -277,7 +277,20 @@ export async function getLogs(req: Request, res: Response): Promise<void> {
  */
 export async function saveIntegration(req: Request, res: Response): Promise<void> {
   try {
-    const { access_token, page_id, instagram_business_id, facebook_page_id } = req.body;
+    const { 
+      access_token, 
+      page_id, 
+      instagram_business_id, 
+      facebook_page_id,
+      facebook_app_id,
+      facebook_app_secret,
+      perfil_conectado,
+      status,
+      status_texto,
+      checks,
+      last_sync
+    } = req.body;
+
     if (!access_token || !instagram_business_id) {
       res.status(400).json({ error: 'Os campos access_token e instagram_business_id são obrigatórios.' });
       return;
@@ -292,14 +305,21 @@ export async function saveIntegration(req: Request, res: Response): Promise<void
       handleFirestoreError(err, OperationType.LIST, 'instagram_integracoes');
     }
 
-    const dataToSave = {
+    const dataToSave: any = {
       access_token,
       page_id: page_id || '',
       instagram_business_id,
       facebook_page_id: facebook_page_id || '',
-      status: 'conectado' as const,
+      facebook_app_id: facebook_app_id || '',
+      facebook_app_secret: facebook_app_secret || '',
+      status: status || 'conectado',
       created_at: getISODate()
     };
+
+    if (perfil_conectado) dataToSave.perfil_conectado = perfil_conectado;
+    if (status_texto) dataToSave.status_texto = status_texto;
+    if (checks) dataToSave.checks = checks;
+    if (last_sync) dataToSave.last_sync = last_sync;
 
     if (!snap.empty) {
       const existingId = snap.docs[0].id;
@@ -348,24 +368,296 @@ export async function getIntegration(req: Request, res: Response): Promise<void>
 }
 
 /**
+ * Initiates the Meta OAuth flow by returning the Authorize URL
+ */
+export async function getAuthUrl(req: Request, res: Response): Promise<void> {
+  try {
+    const q = query(collection(db, 'instagram_integracoes'), limit(1));
+    const snap = await getDocs(q);
+    let appId = process.env.FACEBOOK_APP_ID || '';
+    
+    if (!snap.empty) {
+      const docData = snap.docs[0].data();
+      if (docData.facebook_app_id) {
+        appId = docData.facebook_app_id;
+      }
+    }
+
+    if (!appId) {
+      appId = process.env.FACEBOOK_APP_ID || '1430489214227891'; // Fallback sandbox App ID
+    }
+
+    let appUrl = process.env.APP_URL;
+    if (!appUrl || appUrl === 'MY_APP_URL') {
+      appUrl = `${req.protocol}://${req.get('host')}`;
+    }
+    appUrl = appUrl.replace(/\/$/, "");
+    const redirectUri = `${appUrl}/api/instagram/oauth-callback`;
+
+    const scopes = [
+      'instagram_basic',
+      'instagram_content_publish',
+      'pages_show_list',
+      'pages_read_engagement',
+      'pages_manage_posts',
+      'business_management'
+    ];
+
+    const fbAuthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes.join(',')}&response_type=code`;
+
+    res.json({ url: fbAuthUrl });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+/**
+ * Meta OAuth redirect callback page
+ */
+export async function oauthCallback(req: Request, res: Response): Promise<void> {
+  const { code, error: fbError, error_description } = req.query;
+
+  if (fbError || error_description) {
+    const errorMsg = String(error_description || fbError || 'Acesso negado pelo usuário.');
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Erro de Autenticação Meta</title>
+        <style>
+          body { background-color: #0b1329; color: #f1f5f9; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+          .error-icon { color: #f43f5e; font-size: 48px; }
+          h2 { margin: 16px 0 8px 0; }
+          p { color: #94a3b8; font-size: 14px; max-width: 320px; line-height: 1.5; }
+        </style>
+      </head>
+      <body>
+        <div class="error-icon">✗</div>
+        <h2>Falha na Integração</h2>
+        <p>${errorMsg}</p>
+        <script>
+          if (window.opener) {
+            window.opener.postMessage({ type: 'META_AUTH_ERROR', error: ${JSON.stringify(errorMsg)} }, '*');
+          }
+        </script>
+      </body>
+      </html>
+    `);
+    return;
+  }
+
+  if (!code) {
+    res.status(400).send('Código de autorização inválido.');
+    return;
+  }
+
+  try {
+    const q = query(collection(db, 'instagram_integracoes'), limit(1));
+    const snap = await getDocs(q);
+    let appId = process.env.FACEBOOK_APP_ID || '';
+    let appSecret = process.env.FACEBOOK_APP_SECRET || '';
+
+    if (!snap.empty) {
+      const docData = snap.docs[0].data();
+      if (docData.facebook_app_id) appId = docData.facebook_app_id;
+      if (docData.facebook_app_secret) appSecret = docData.facebook_app_secret;
+    }
+
+    if (!appId || !appSecret) {
+      appId = appId || process.env.FACEBOOK_APP_ID || '1430489214227891';
+      appSecret = appSecret || process.env.FACEBOOK_APP_SECRET || '';
+      
+      if (!appSecret) {
+        throw new Error('Meta App Secret não configurado. Adicione o App Secret nas Configurações Avançadas abaixo.');
+      }
+    }
+
+    let appUrl = process.env.APP_URL;
+    if (!appUrl || appUrl === 'MY_APP_URL') {
+      appUrl = `${req.protocol}://${req.get('host')}`;
+    }
+    appUrl = appUrl.replace(/\/$/, "");
+    const redirectUri = `${appUrl}/api/instagram/oauth-callback`;
+
+    // Exchange code for short-lived token
+    const shortLivedToken = await graphService.exchangeCodeForToken(
+      String(code),
+      redirectUri,
+      appId,
+      appSecret
+    );
+
+    // Exchange for long-lived token
+    const longLivedToken = await graphService.getLongLivedToken(
+      shortLivedToken,
+      appId,
+      appSecret
+    );
+
+    // Fetch pages details and Instagram商业 accounts
+    const pages = await graphService.getUserPagesAndInstagramAccounts(longLivedToken);
+
+    const pagesOptions = pages.map((page: any) => {
+      const ig = page.instagram_business_account;
+      return {
+        pageId: page.id,
+        pageName: page.name,
+        pageAccessToken: page.access_token,
+        instagramBusinessId: ig ? ig.id : null,
+        instagramUsername: ig ? ig.username : null,
+        instagramName: ig ? ig.name : null,
+        instagramProfilePicture: ig ? ig.profile_picture_url : (page.picture?.data?.url || null)
+      };
+    });
+
+    const payload = {
+      accessToken: longLivedToken,
+      pages: pagesOptions
+    };
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Autenticação Meta</title>
+        <style>
+          body { background-color: #0b1329; color: #f1f5f9; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+          .spinner { border: 4px solid rgba(255, 255, 255, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #f59e0b; animation: spin 1s linear infinite; }
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+          .success-icon { color: #10b981; font-size: 48px; }
+          h2 { margin: 16px 0 8px 0; }
+          p { color: #94a3b8; font-size: 14px; max-width: 300px; }
+        </style>
+      </head>
+      <body>
+        <div id="content">
+          <div class="spinner"></div>
+          <h2>Conectando com o Meta...</h2>
+          <p>Aguarde, processando suas páginas e perfis vinculados comercial.</p>
+        </div>
+        <script>
+          const data = ${JSON.stringify(payload)};
+          if (window.opener) {
+            window.opener.postMessage({ type: 'META_AUTH_SUCCESS', payload: data }, '*');
+            document.getElementById('content').innerHTML = \`
+              <div class="success-icon">✓</div>
+              <h2>Conectado com Sucesso!</h2>
+              <p>Esta janela já pode ser fechada automaticamente.</p>
+            \`;
+            setTimeout(() => {
+              window.close();
+            }, 1000);
+          } else {
+            document.getElementById('content').innerHTML = \`
+              <div class="error-icon">✗</div>
+              <h2>Erro de Comunicação</h2>
+              <p>Não foi possível enviar os dados de volta para a aplicação.</p>
+            \`;
+          }
+        </script>
+      </body>
+      </html>
+    `);
+  } catch (error: any) {
+    console.error('[OAuth Callback Error]:', error);
+    const errorMsg = error.message || 'Erro inesperado durante o login do Facebook.';
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Erro de Autenticação Meta</title>
+        <style>
+          body { background-color: #0b1329; color: #f1f5f9; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+          .error-icon { color: #f43f5e; font-size: 48px; }
+          h2 { margin: 16px 0 8px 0; }
+          p { color: #94a3b8; font-size: 14px; max-width: 320px; line-height: 1.5; }
+        </style>
+      </head>
+      <body>
+        <div class="error-icon">✗</div>
+        <h2>Falha na Integração</h2>
+        <p>${errorMsg}</p>
+        <script>
+          if (window.opener) {
+            window.opener.postMessage({ type: 'META_AUTH_ERROR', error: ${JSON.stringify(errorMsg)} }, '*');
+          }
+        </script>
+      </body>
+      </html>
+    `);
+  }
+}
+
+/**
  * Tests connection with Instagram credentials from Web page
  */
 export async function testConnection(req: Request, res: Response): Promise<void> {
   try {
-    const { access_token, instagram_business_id } = req.body;
+    const { access_token, instagram_business_id, page_id } = req.body;
     if (!access_token || !instagram_business_id) {
       res.status(400).json({ error: 'Token de acesso e ID do Instagram Business são requeridos para o teste.' });
       return;
     }
 
-    const testResult = await graphService.testConnection({
+    const testResult = await graphService.validateConnectionDetailed({
       accessToken: access_token,
-      instagramBusinessId: instagram_business_id
+      instagramBusinessId: instagram_business_id,
+      pageId: page_id
     });
 
     res.json(testResult);
   } catch (error: any) {
-    res.status(500).json({ status: 'erro', details: { message: error.message } });
+    res.status(500).json({ valid: false, status: 'erro', details: { message: error.message } });
+  }
+}
+
+/**
+ * Synchronizes Meta details and permissions on page load
+ */
+export async function syncIntegration(req: Request, res: Response): Promise<void> {
+  try {
+    const q = query(collection(db, 'instagram_integracoes'), limit(1));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      res.json({ integration: null });
+      return;
+    }
+
+    const docId = snap.docs[0].id;
+    const data = snap.docs[0].data();
+
+    if (!data.access_token || !data.instagram_business_id) {
+      res.json({ integration: { id: docId, ...data } });
+      return;
+    }
+
+    const validation = await graphService.validateConnectionDetailed({
+      accessToken: data.access_token,
+      instagramBusinessId: data.instagram_business_id,
+      pageId: data.page_id
+    });
+
+    const updatedData = {
+      ...data,
+      status: (validation.valid ? 'conectado' : 'erro') as any,
+      status_texto: validation.status,
+      checks: validation.checks,
+      perfil_conectado: {
+        username: validation.details.username || data.perfil_conectado?.username || '',
+        name: validation.details.name || data.perfil_conectado?.name || '',
+        profile_picture_url: validation.details.profile_picture_url || data.perfil_conectado?.profile_picture_url || '',
+        page_name: validation.details.page_name || data.perfil_conectado?.page_name || ''
+      },
+      last_sync: new Date().toISOString()
+    };
+
+    await updateDoc(doc(db, 'instagram_integracoes', docId), updatedData);
+
+    res.json({ integration: { id: docId, ...updatedData } });
+  } catch (error: any) {
+    console.error('Erro ao sincronizar integração do Instagram:', error);
+    res.status(500).json({ error: error.message });
   }
 }
 

@@ -12,7 +12,10 @@ import {
   getIntegration,
   testConnection,
   getBrandKit,
-  saveBrandKit
+  saveBrandKit,
+  getAuthUrl,
+  oauthCallback,
+  syncIntegration
 } from '../controllers/instagramController.js';
 
 const router = Router();
@@ -36,7 +39,10 @@ router.get('/posts', getPosts);
 router.get('/logs', getLogs);
 router.post('/integracao', saveIntegration);
 router.get('/integracao', getIntegration);
+router.get('/auth-url', getAuthUrl);
+router.get('/oauth-callback', oauthCallback);
 router.post('/integracao/testar', testConnection);
+router.post('/integracao/sincronizar', syncIntegration);
 router.get('/brand-kit', getBrandKit);
 router.post('/brand-kit', saveBrandKit);
 

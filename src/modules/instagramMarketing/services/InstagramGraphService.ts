@@ -10,6 +10,191 @@ export class InstagramGraphService {
   private baseUrl = 'https://graph.facebook.com';
 
   /**
+   * Exchanges an authorization code for a short-lived user access token
+   */
+  async exchangeCodeForToken(code: string, redirectUri: string, appId: string, appSecret: string): Promise<string> {
+    const url = `${this.baseUrl}/${this.apiVersion}/oauth/access_token`;
+    const response = await axios.get(url, {
+      params: {
+        client_id: appId,
+        redirect_uri: redirectUri,
+        client_secret: appSecret,
+        code
+      }
+    });
+    return response.data.access_token;
+  }
+
+  /**
+   * Exchanges a short-lived token for a long-lived user access token (60 days)
+   */
+  async getLongLivedToken(shortToken: string, appId: string, appSecret: string): Promise<string> {
+    const url = `${this.baseUrl}/${this.apiVersion}/oauth/access_token`;
+    const response = await axios.get(url, {
+      params: {
+        grant_type: 'fb_exchange_token',
+        client_id: appId,
+        client_secret: appSecret,
+        fb_exchange_token: shortToken
+      }
+    });
+    return response.data.access_token;
+  }
+
+  /**
+   * Fetches Facebook pages and their attached Instagram Business Accounts
+   */
+  async getUserPagesAndInstagramAccounts(longToken: string): Promise<any[]> {
+    const url = `${this.baseUrl}/${this.apiVersion}/me/accounts`;
+    const response = await axios.get(url, {
+      params: {
+        fields: 'id,name,access_token,picture{url},instagram_business_account{id,username,name,profile_picture_url}',
+        access_token: longToken
+      }
+    });
+    return response.data.data || [];
+  }
+
+  /**
+   * Performs real and deep Meta Graph validation for token, permissions, connected pages, and Instagram Business profile.
+   */
+  async validateConnectionDetailed(creds: {
+    accessToken: string;
+    instagramBusinessId: string;
+    pageId?: string;
+  }): Promise<{
+    valid: boolean;
+    status: string;
+    checks: {
+      token_valid: boolean;
+      instagram_connected: boolean;
+      page_linked: boolean;
+      permissions_approved: boolean;
+    };
+    details: {
+      permissions: string[];
+      granted_permissions: string[];
+      declined_permissions: string[];
+      expires_at?: string;
+      username?: string;
+      name?: string;
+      profile_picture_url?: string;
+      page_name?: string;
+    };
+  }> {
+    const checks = {
+      token_valid: false,
+      instagram_connected: false,
+      page_linked: false,
+      permissions_approved: false,
+    };
+
+    const details: any = {
+      permissions: [],
+      granted_permissions: [],
+      declined_permissions: []
+    };
+
+    try {
+      // 1. Check permissions and token validity
+      const permissionsUrl = `${this.baseUrl}/${this.apiVersion}/me/permissions`;
+      const permissionsRes = await axios.get(permissionsUrl, {
+        params: { access_token: creds.accessToken }
+      });
+      checks.token_valid = true;
+
+      const permList: any[] = permissionsRes.data.data || [];
+      const requiredPerms = [
+        'instagram_basic',
+        'instagram_content_publish',
+        'pages_show_list',
+        'pages_read_engagement',
+        'pages_manage_posts',
+        'business_management'
+      ];
+
+      const grantedSet = new Set<string>();
+      permList.forEach(p => {
+        if (p.status === 'granted') {
+          grantedSet.add(p.permission);
+          details.granted_permissions.push(p.permission);
+        } else {
+          details.declined_permissions.push(p.permission);
+        }
+      });
+
+      details.permissions = requiredPerms;
+      
+      // Check if all needed permissions are approved
+      const missingPerms = requiredPerms.filter(p => !grantedSet.has(p));
+      checks.permissions_approved = missingPerms.length === 0;
+
+      // 2. Fetch Instagram Profile details to verify Instagram connection
+      if (creds.instagramBusinessId) {
+        const igUrl = `${this.baseUrl}/${this.apiVersion}/${creds.instagramBusinessId}`;
+        try {
+          const igRes = await axios.get(igUrl, {
+            params: {
+              fields: 'id,username,name,profile_picture_url',
+              access_token: creds.accessToken
+            }
+          });
+          checks.instagram_connected = true;
+          details.username = igRes.data.username;
+          details.name = igRes.data.name;
+          details.profile_picture_url = igRes.data.profile_picture_url;
+        } catch (igErr: any) {
+          console.warn('[Validation] Falha ao consultar Instagram Business account:', igErr.message);
+        }
+      }
+
+      // 3. Verify page link
+      if (creds.pageId) {
+        const pageUrl = `${this.baseUrl}/${this.apiVersion}/${creds.pageId}`;
+        try {
+          const pageRes = await axios.get(pageUrl, {
+            params: {
+              fields: 'id,name',
+              access_token: creds.accessToken
+            }
+          });
+          checks.page_linked = true;
+          details.page_name = pageRes.data.name;
+        } catch (pErr: any) {
+          console.warn('[Validation] Falha ao consultar Facebook Page:', pErr.message);
+        }
+      }
+
+      const valid = checks.token_valid && checks.instagram_connected && checks.permissions_approved;
+      let status = 'conectado';
+      if (!checks.token_valid) status = 'Token expirado';
+      else if (!checks.instagram_connected) status = 'Página sem Instagram Business';
+      else if (!checks.permissions_approved) status = 'Permissão ausente';
+
+      return {
+        valid,
+        status,
+        checks,
+        details
+      };
+    } catch (error: any) {
+      console.error('[Validation] Erro profundo na chamada de validação do Meta:', error.response?.data || error);
+      const isExpired = error.response?.data?.error?.code === 190 || error.message?.includes('expired') || error.response?.status === 401;
+      return {
+        valid: false,
+        status: isExpired ? 'Token expirado' : 'Token inválido ou expirado',
+        checks: {
+          token_valid: false,
+          instagram_connected: false,
+          page_linked: false,
+          permissions_approved: false
+        },
+        details
+      };
+    }
+  }
+
+  /**
    * Tests connection with the Instagram Business API
    */
   async testConnection(creds: InstagramPublishCredentials): Promise<{ status: 'conectado' | 'erro'; details: any }> {

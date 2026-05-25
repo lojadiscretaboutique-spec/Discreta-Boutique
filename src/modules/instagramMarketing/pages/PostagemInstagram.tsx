@@ -25,8 +25,12 @@ import {
   Heart,
   MessageCircle,
   Bookmark,
-  Slideshow,
-  Palette
+  Palette,
+  Power,
+  Lock,
+  CheckCircle2,
+  XCircle,
+  Link2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../../../lib/firebase.js';
@@ -99,11 +103,17 @@ export function PostagemInstagram() {
   // General lists
   const [posts, setPosts] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
+  const [oauthResult, setOauthResult] = useState<{ accessToken: string; pages: any[] } | null>(null);
   const [integracao, setIntegracao] = useState<any>({
     access_token: '',
     page_id: '',
     instagram_business_id: '',
     facebook_page_id: '',
+    facebook_app_id: '',
+    facebook_app_secret: '',
+    perfil_conectado: null,
+    checks: null,
+    status_texto: ''
   });
 
   // Load Data
@@ -131,12 +141,22 @@ export function PostagemInstagram() {
 
   const loadIntegration = async () => {
     try {
-      const res = await axios.get('/api/instagram/integracao');
+      // Automatic real-time synchronization on page load as requested
+      const res = await axios.post('/api/instagram/integracao/sincronizar');
       if (res.data && res.data.integration) {
         setIntegracao(res.data.integration);
       }
     } catch (err: any) {
-      console.error('Erro ao buscar integracao:', err);
+      console.error('Erro ao sincronizar integracao:', err);
+      // Fallback simple fetch if synchronization hits a temporary network error
+      try {
+        const fallbackRes = await axios.get('/api/instagram/integracao');
+        if (fallbackRes.data && fallbackRes.data.integration) {
+          setIntegracao(fallbackRes.data.integration);
+        }
+      } catch (fErr) {
+        console.error('Erro no fallback de carregar integracao:', fErr);
+      }
     }
   };
 
@@ -144,6 +164,20 @@ export function PostagemInstagram() {
     loadPosts();
     loadLogs();
     loadIntegration();
+
+    // Listen to child auth popup messages safely
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'META_AUTH_SUCCESS') {
+        const { accessToken, pages } = event.data.payload;
+        setOauthResult({ accessToken, pages });
+        toastSuccess('Login realizado! Selecione seu perfil do Instagram abaixo para ativar.');
+      } else if (event.data?.type === 'META_AUTH_ERROR') {
+        toastError('Erro no Login Meta: ' + event.data.error);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   const toastSuccess = (msg: string) => {
@@ -439,20 +473,104 @@ export function PostagemInstagram() {
     }
   };
 
-  // Save integration credentials
-  const handleSaveIntegration = async () => {
-    if (!integracao.access_token || !integracao.instagram_business_id) {
-      toastError('Os campos Token de Acesso e ID Comercial são obrigatórios.');
-      return;
-    }
-
+  // Initiate Meta OAuth pop-up flow
+  const handleMetaOAuth = async () => {
     setLoading(true);
     try {
-      await axios.post('/api/instagram/integracao', integracao);
-      toastSuccess('Integração salva e ativa!');
+      const res = await axios.get('/api/instagram/auth-url');
+      if (res.data?.url) {
+        // Open Facebook Auth login dialog as a popup center
+        const width = 600;
+        const height = 750;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        window.open(
+          res.data.url, 
+          'meta_auth_popup', 
+          `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,status=yes`
+        );
+      } else {
+        toastError('Não foi possível obter a URL de autenticação do Meta.');
+      }
+    } catch (err: any) {
+      toastError('Erro ao iniciar login: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Connect specific Page + Instagram Account selection
+  const handleSelectPage = async (page: any) => {
+    if (!oauthResult?.accessToken) return;
+    setLoading(true);
+    try {
+      const payload = {
+        access_token: oauthResult.accessToken,
+        page_id: page.pageId,
+        instagram_business_id: page.instagramBusinessId,
+        facebook_page_id: page.pageId,
+        facebook_app_id: integracao.facebook_app_id || '',
+        facebook_app_secret: integracao.facebook_app_secret || '',
+        perfil_conectado: {
+          username: page.instagramUsername || '',
+          name: page.instagramName || '',
+          profile_picture_url: page.instagramProfilePicture || '',
+          page_name: page.pageName || ''
+        },
+        status: 'conectado'
+      };
+
+      await axios.post('/api/instagram/integracao', payload);
+      toastSuccess(`Instagram @${page.instagramUsername || page.pageName} conectado!`);
+      setOauthResult(null); // Clear selections
+      loadIntegration(); // Reload live status checks
+    } catch (err: any) {
+      toastError('Erro ao finalizar conexão: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Disconnect / Clear active connection settings
+  const handleDisconnect = async () => {
+    if (!window.confirm('Deseja realmente desconectar seu perfil do Instagram? Isso impossibilitará novas postagens automatizadas.')) return;
+    setLoading(true);
+    try {
+      const payload = {
+        access_token: '',
+        page_id: '',
+        instagram_business_id: '',
+        facebook_page_id: '',
+        facebook_app_id: integracao.facebook_app_id || '',
+        facebook_app_secret: integracao.facebook_app_secret || '',
+        perfil_conectado: null,
+        checks: null,
+        status: 'Não configurado'
+      };
+      await axios.post('/api/instagram/integracao', payload);
+      toastSuccess('Perfil desconectado com sucesso.');
       loadIntegration();
     } catch (err: any) {
-      toastError(err.message);
+      toastError('Erro ao desconectar: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Save Developer/App settings manually if changed
+  const handleSaveDeveloperSettings = async () => {
+    setLoading(true);
+    try {
+      const payload = {
+        ...integracao,
+        facebook_app_id: integracao.facebook_app_id || '',
+        facebook_app_secret: integracao.facebook_app_secret || ''
+      };
+      await axios.post('/api/instagram/integracao', payload);
+      toastSuccess('Configurações de Desenvolvedor salvas com sucesso.');
+      loadIntegration();
+    } catch (err: any) {
+      toastError('Erro ao salvar configurações avançadas.');
     } finally {
       setLoading(false);
     }
@@ -460,7 +578,7 @@ export function PostagemInstagram() {
 
   const handleTestConnection = async () => {
     if (!integracao.access_token || !integracao.instagram_business_id) {
-      toastError('Preencha as credenciais antes de testar.');
+      toastError('Por favor, conecte a uma conta comercial antes de testar.');
       return;
     }
 
@@ -468,24 +586,18 @@ export function PostagemInstagram() {
     try {
       const res = await axios.post('/api/instagram/integracao/testar', {
         access_token: integracao.access_token,
-        instagram_business_id: integracao.instagram_business_id
+        instagram_business_id: integracao.instagram_business_id,
+        page_id: integracao.page_id
       });
 
-      if (res.data.status === 'conectado') {
-        const name = res.data.details?.username || 'Conectado';
-        toastSuccess(`Conexão bem sucedida com @${name}! Estabilidade Green.`);
-        
-        // Update DB integration profile status
-        await axios.post('/api/instagram/integracao', {
-          ...integracao,
-          status: 'conectado'
-        });
-        loadIntegration();
+      if (res.data?.valid) {
+        toastSuccess(`Teste bem sucedido! Status: ${res.data.status_texto || res.data.status || 'Instagram Conectado com Sucesso'}`);
       } else {
-        toastError('Falha: ' + (res.data.details?.message || 'Token expirado ou inválido.'));
+        toastError(`Falha na validação: ${res.data?.status_texto || res.data?.status || 'Erro detectado'}`);
       }
+      loadIntegration();
     } catch (err: any) {
-      toastError('Erro ao conectar ao Facebook Graph API.');
+      toastError('Erro ao testar a conexão com o Meta.');
     } finally {
       setLoading(false);
     }
@@ -1410,93 +1522,425 @@ export function PostagemInstagram() {
             <div>
               <h3 className="text-xl font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
                 <Settings className="w-5 h-5 text-amber-500 animate-spin-slow" />
-                Configuração de APIs Meta / Instagram
+                Integração Oficial Meta / Instagram
               </h3>
               <p className="text-slate-400 text-xs mt-1 leading-normal">
-                Conecte seu sistema à API Oficial do Instagram Graf para que o cron service possa publicar os agendamentos de forma transparente e segura.
+                Gerencie sua conexão automatizada de planejamento e agendamento. Sem configurações manuais complexas ou preenchimento manual de IDs técnicos.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              <div className="space-y-1.5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Instagram Business account ID</span>
-                <input
-                  type="text"
-                  placeholder="Ex: 178414013401934"
-                  value={integracao.instagram_business_id}
-                  onChange={(e) => setIntegracao({ ...integracao, instagram_business_id: e.target.value })}
-                  className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-sm p-3 rounded-xl focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
-                />
-                <span className="text-[10px] text-slate-500 block">Identificador exclusivo da conta comercial vinculada ao Instagram</span>
+            {/* SELECTION STATE: OAuth completed, list of pages loaded */}
+            {oauthResult && oauthResult.pages && oauthResult.pages.length > 0 && (
+              <div className="space-y-4">
+                <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-1">
+                  <h4 className="text-amber-400 text-xs font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    Páginas e Perfis do Instagram Encontrados
+                  </h4>
+                  <p className="text-slate-400 text-[11px] leading-relaxed">
+                    Selecione abaixo a conta que deseja conectar e ativar comercialmente para as publicações automatizadas.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3.5">
+                  {oauthResult.pages.map((pOpt: any) => {
+                    const hasIg = !!pOpt.instagramBusinessId;
+                    return (
+                      <div 
+                        key={pOpt.pageId} 
+                        className={`p-4 border rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-300 ${hasIg ? 'bg-slate-950 border-slate-800 hover:border-slate-700' : 'bg-slate-950/40 border-slate-900 opacity-60'}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={pOpt.instagramProfilePicture || '/avatar-placeholder.png'} 
+                            alt={pOpt.instagramUsername || 'Instagram Profile'} 
+                            referrerPolicy="no-referrer"
+                            className="w-12 h-12 rounded-full object-cover border border-slate-800 bg-slate-900"
+                          />
+                          <div>
+                            {hasIg ? (
+                              <>
+                                <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                                  {pOpt.instagramName || pOpt.instagramUsername}
+                                  <span className="text-xs text-slate-500 font-normal">(@{pOpt.instagramUsername})</span>
+                                </h4>
+                                <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                  Página Facebook: <strong className="text-slate-300 font-semibold">{pOpt.pageName}</strong>
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <h4 className="text-sm font-bold text-slate-400">{pOpt.pageName}</h4>
+                                <p className="text-[11px] text-rose-400 font-medium mt-0.5 flex items-center gap-1">
+                                  <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                                  Instagram Business não conectado a esta página.
+                                </p>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {hasIg ? (
+                          <button
+                            type="button"
+                            disabled={loading}
+                            onClick={() => handleSelectPage(pOpt)}
+                            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-lg transition-all self-end sm:self-center cursor-pointer disabled:opacity-50"
+                          >
+                            Ativar Perfil
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 italic px-3 py-1 bg-slate-900/40 rounded border border-slate-950">Indisponível</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setOauthResult(null)} 
+                    className="text-xs font-semibold text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                  >
+                    Voltar para a tela inicial
+                  </button>
+                </div>
               </div>
+            )}
 
-              <div className="space-y-1.5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Fan Page ID (Facebook)</span>
-                <input
-                  type="text"
-                  placeholder="Ex: 10928340123"
-                  value={integracao.page_id}
-                  onChange={(e) => setIntegracao({ ...integracao, page_id: e.target.value })}
-                  className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-sm p-3 rounded-xl focus:border-amber-500 outline-none"
-                />
-                <span className="text-[10px] text-slate-500 block animate-pulse">Página conectada ao perfil do Instagram comercial</span>
+            {/* SELECTION STATE: OAuth completed but NO pages found */}
+            {oauthResult && oauthResult.pages && oauthResult.pages.length === 0 && (
+              <div className="p-8 bg-slate-950 border border-slate-850 rounded-2xl text-center space-y-4 max-w-lg mx-auto">
+                <XCircle className="w-12 h-12 text-rose-500 mx-auto" strokeWidth={1.5} />
+                <div className="space-y-1">
+                  <h4 className="text-white text-md font-bold">Nenhuma página comercial encontrada</h4>
+                  <p className="text-slate-400 text-xs leading-relaxed animate-pulse">
+                    Não detectamos nenhuma página do Facebook vinculada com um perfil do Instagram comercial em sua conta Meta.
+                  </p>
+                </div>
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-400 rounded-lg text-left leading-relaxed">
+                  <strong>💡 Requisito obrigatório:</strong> Para usar a integração automática comercial do Instagram, sua conta do Instagram precisa ser de criador ou comercial (Business) e estar expressamente vinculada nas configurações de sua página do Facebook.
+                </div>
+                <div className="flex justify-center gap-3 pt-2">
+                  <button 
+                    type="button"
+                    onClick={() => setOauthResult(null)}
+                    className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg border border-slate-800 hover:bg-slate-850 cursor-pointer"
+                  >
+                    Tentar Novamente
+                  </button>
+                </div>
               </div>
+            )}
 
-            </div>
+            {/* MAIN STATE: Active Connection Status Display */}
+            {!oauthResult && integracao.access_token && integracao.perfil_conectado && (
+              <div className="space-y-6">
+                {/* Profile Card Summary */}
+                <div className="p-5 bg-slate-950 border border-slate-850 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <img
+                      src={integracao.perfil_conectado.profile_picture_url || '/avatar-placeholder.png'}
+                      alt={integracao.perfil_conectado.username || 'Perfil'}
+                      referrerPolicy="no-referrer"
+                      className="w-14 h-14 rounded-full object-cover border border-slate-800 shadow-md bg-slate-900"
+                    />
+                    <div>
+                      <h4 className="text-white text-md font-bold flex items-center gap-1.5">
+                        {integracao.perfil_conectado.name || integracao.perfil_conectado.username}
+                        <span className="text-xs text-slate-500 font-semibold">(@{integracao.perfil_conectado.username})</span>
+                      </h4>
+                      <p className="text-xs text-slate-400 flex items-center gap-1 mt-1">
+                        Página vinculada: <strong className="text-slate-300">{integracao.perfil_conectado.page_name}</strong>
+                      </p>
+                    </div>
+                  </div>
 
-            <div className="space-y-1.5">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">User Meta Access Token (Graf API)</span>
-              <textarea
-                rows={3}
-                placeholder="Insira o Access Token fornecido pelo painel do Facebook Developer"
-                value={integracao.access_token}
-                onChange={(e) => setIntegracao({ ...integracao, access_token: e.target.value })}
-                className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-sm p-3 rounded-xl focus:border-amber-500 outline-none resize-none font-mono"
-              />
-              <span className="text-[10px] text-slate-500 block">Token de longo prazo com as permissões: target_publish_pages, instagram_basic, instagram_content_publish</span>
-            </div>
+                  <div className="flex flex-row sm:flex-col items-end gap-2 shrink-0">
+                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2.5 py-1 border border-emerald-500/10 rounded-full font-bold uppercase tracking-wide flex items-center gap-1 animate-pulse">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Ativo
+                    </span>
+                    <span className="text-[9px] text-slate-500 font-mono">Oficial Meta API</span>
+                  </div>
+                </div>
 
-            {/* Save controls & connection testing buttons */}
-            <div className="pt-4 border-t border-slate-850 flex flex-col md:flex-row gap-4 items-center justify-between">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-500">Status atual:</span>
-                <span className={`font-bold px-2.5 py-0.5 rounded-full uppercase text-[10px] ${integracao.status === 'conectado' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'}`}>
-                  {integracao.status || 'Não configurado'}
+                {/* Validation Status Badges Grid */}
+                <div>
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Status e Validação da Integração</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    
+                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl flex items-center justify-between">
+                      <span className="text-xs text-slate-400 flex items-center gap-2">
+                        <CheckCircle2 className={`w-4 h-4 ${integracao.checks?.token_valid !== false ? 'text-emerald-500' : 'text-slate-600'}`} />
+                        Token de Acesso válido
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${integracao.checks?.token_valid !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                        {integracao.checks?.token_valid !== false ? 'VÁLIDO' : 'DEFEITUOSO'}
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl flex items-center justify-between">
+                      <span className="text-xs text-slate-400 flex items-center gap-2">
+                        <CheckCircle2 className={`w-4 h-4 ${integracao.checks?.instagram_connected !== false ? 'text-emerald-500' : 'text-slate-600'}`} />
+                        Instagram Comercial conectado
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${integracao.checks?.instagram_connected !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                        {integracao.checks?.instagram_connected !== false ? 'OK' : 'FALHA'}
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl flex items-center justify-between">
+                      <span className="text-xs text-slate-400 flex items-center gap-2">
+                        <CheckCircle2 className={`w-4 h-4 ${integracao.checks?.page_linked !== false ? 'text-emerald-500' : 'text-slate-600'}`} />
+                        Página Facebook vinculada
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${integracao.checks?.page_linked !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                        {integracao.checks?.page_linked !== false ? 'CONECTADA' : 'FALHA'}
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl flex items-center justify-between">
+                      <span className="text-xs text-slate-400 flex items-center gap-2">
+                        <CheckCircle2 className={`w-4 h-4 ${integracao.checks?.permissions_approved !== false ? 'text-emerald-500' : 'text-slate-600'}`} />
+                        Permissões aprovadas
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${integracao.checks?.permissions_approved !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                        {integracao.checks?.permissions_approved !== false ? 'ACEITO' : 'AUSENTE'}
+                      </span>
+                    </div>
+
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-[11px] text-slate-500 bg-slate-950/20 p-3 rounded-lg border border-slate-850 border-dashed">
+                    <div>
+                      📅 <strong>Expiração:</strong> <span className="text-slate-400 font-semibold">Token de Longo Prazo Permanente / 60 Dias</span>
+                    </div>
+                    <div>
+                      🔄 <strong>Última Sincronização:</strong> <span className="text-slate-400 font-semibold font-mono">{integracao.last_sync ? new Date(integracao.last_sync).toLocaleString('pt-BR') : 'Agora'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Control Action Buttons */}
+                <div className="pt-4 border-t border-slate-850 flex flex-col sm:flex-row justify-between gap-4">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={handleDisconnect}
+                    className="px-4 py-2.5 bg-slate-950 hover:bg-slate-900 border border-rose-500/20 text-rose-400 font-extrabold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    <Power className="w-3.5 h-3.5 text-rose-500 animate-pulse" /> Desconectar Perfil
+                  </button>
+
+                  <div className="flex gap-3 justify-end w-full sm:w-auto">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={handleMetaOAuth}
+                      className="px-4 py-2.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 font-extrabold text-xs rounded-xl border border-blue-500/20 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    >
+                      Trocar Página / Perfil
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={handleTestConnection}
+                      className="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-lg shadow-amber-900/10"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Testar Conexão Oficial
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* MAIN STATE: No Saved Integration Setup page */}
+            {!oauthResult && (!integracao.access_token || !integracao.perfil_conectado) && (
+              <div className="p-8 bg-slate-950 border border-slate-850 rounded-2xl space-y-6 max-w-xl mx-auto">
+                <div className="text-center space-y-2">
+                  <div className="mx-auto w-12 h-12 bg-blue-600/10 border border-blue-500/20 rounded-xl flex items-center justify-center text-blue-500 shadow-inner animate-pulse">
+                    <Link2 className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-white text-md font-extrabold leading-normal">Conectar sua Conta Comercial do Instagram</h4>
+                  <p className="text-slate-400 text-xs leading-relaxed max-w-sm mx-auto">
+                    Para habilitar o agendamento e publicação automatizada via Meta API, configure os passos abaixo usando as chaves do seu aplicativo do Facebook Developers.
+                  </p>
+                </div>
+
+                <div className="bg-slate-900/60 p-5 border border-slate-850 rounded-xl text-left space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[10px] font-black">1</span>
+                    <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider block">Identificadores do App de Desenvolvedor</h5>
+                  </div>
+                  
+                  <p className="text-[11px] text-slate-500 leading-normal">
+                    Se você ainda não tem, crie um aplicativo do tipo <strong>"Empresa"</strong> (Business) no portal <a href="https://developers.facebook.com" target="_blank" rel="noreferrer" className="text-amber-500 hover:underline">developers.facebook.com</a> com a permissão do Instagram Graph API ativa.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta App ID (ID do App)</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: 1430489214227891"
+                        value={integracao.facebook_app_id || ''}
+                        onChange={(e) => setIntegracao({ ...integracao, facebook_app_id: e.target.value })}
+                        className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta App Secret (Chave Secreta)</label>
+                      <input
+                        type="password"
+                        placeholder="••••••••••••••••"
+                        value={integracao.facebook_app_secret || ''}
+                        onChange={(e) => setIntegracao({ ...integracao, facebook_app_secret: e.target.value })}
+                        className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={handleSaveDeveloperSettings}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-white font-extrabold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      Salvar Chaves do App
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900/60 p-5 border border-slate-850 rounded-xl text-left space-y-4 font-sans">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[10px] font-black font-semibold">2</span>
+                    <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Autorizar e Vincular Perfil</h5>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 leading-normal">
+                    Após preencher e salvar as chaves no Passo 1, clique abaixo para fazer login com o Facebook e selecionar sua página comercial do Instagram.
+                  </p>
+
+                  <div className="flex justify-center pt-2">
+                    {!(integracao.facebook_app_id && integracao.facebook_app_secret) ? (
+                      <div className="p-3 bg-amber-500/5 border border-amber-500/15 text-[11px] text-amber-400 rounded-lg text-center w-full leading-relaxed">
+                        ⚠️ <strong>Chaves não configuradas:</strong> Você precisa preencher e salvar o seu <strong>Meta App ID</strong> e o seu <strong>App Secret</strong> no Passo 1 para ativar o botão de login oficial.
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={handleMetaOAuth}
+                        className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs rounded-xl transition-all inline-flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-950/20 group hover:scale-[1.01]"
+                      >
+                        Fazer Login com Facebook e Instagram
+                        <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" strokeWidth={2.5} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-slate-900 border border-slate-850 text-left text-[11px] text-slate-500 rounded-xl leading-relaxed space-y-1">
+                  <strong>ℹ️ Informações sobre o processo:</strong>
+                  <p>
+                    Nosso sistema utiliza apenas as APIs Oficiais do Meta Graph API. Suas credenciais são salvas de forma estritamente privada apenas em sua instância do Firebase.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* COLLAPSIBLE DEVELOPER CONFIGURATION CARD/ACCORDION */}
+            <details className="group border border-slate-800 rounded-xl bg-slate-950 overflow-hidden transition-all duration-300">
+              <summary className="flex items-center justify-between p-4 text-xs font-bold text-slate-400 cursor-pointer hover:bg-slate-900/40 select-none">
+                <span className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-500" />
+                  Configurações Avançadas de Desenvolvedor (OAuth App Config)
                 </span>
+                <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform duration-300">▼</span>
+              </summary>
+
+              <div className="p-4 border-t border-slate-900 bg-slate-950/60 space-y-4">
+                <div className="p-3 bg-slate-900 border border-slate-850 rounded-lg text-[10px] text-slate-500 leading-normal">
+                  💡 <strong>Finalidade técnica:</strong> Se você estiver usando um aplicativo personalizado da Meta, insira aqui o App ID e o App Secret. Se estes campos estiverem vazios, a aplicação usará as variáveis de ambiente Meta/Facebook integradas.
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Meta App ID</span>
+                    <input
+                      type="text"
+                      placeholder="Ex: 1430489214227891"
+                      value={integracao.facebook_app_id || ''}
+                      onChange={(e) => setIntegracao({ ...integracao, facebook_app_id: e.target.value })}
+                      className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Meta App Secret</span>
+                    <input
+                      type="password"
+                      placeholder="••••••••••••••••"
+                      value={integracao.facebook_app_secret || ''}
+                      onChange={(e) => setIntegracao({ ...integracao, facebook_app_secret: e.target.value })}
+                      className="w-full bg-slate-950 text-slate-200 border border-slate-800 text-xs p-2.5 rounded-lg focus:border-amber-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2 border-b border-slate-900 pb-4">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={handleSaveDeveloperSettings}
+                    className="px-3.5 py-2 bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-white font-extrabold text-xs rounded-lg border border-slate-850 transition-all cursor-pointer"
+                  >
+                    Guardar Chaves OAuth
+                  </button>
+                </div>
+
+                {/* Legacy stats: Read Only and for diagnostics review */}
+                <div className="space-y-3 pt-2">
+                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Parâmetros Técnicos Ativos (Somente Leitura para Depuração)</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <span className="text-[9px] font-bold text-slate-500">Facebook Page ID</span>
+                      <input
+                        type="text"
+                        readOnly
+                        value={integracao.page_id || 'Não conectado'}
+                        className="w-full bg-slate-950/40 text-slate-500 border border-slate-900 text-[11px] p-2 rounded-lg cursor-not-allowed font-mono outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-[9px] font-bold text-slate-500">Instagram Commercial ID</span>
+                      <input
+                        type="text"
+                        readOnly
+                        value={integracao.instagram_business_id || 'Não conectado'}
+                        className="w-full bg-slate-950/40 text-slate-500 border border-slate-900 text-[11px] p-2 rounded-lg cursor-not-allowed font-mono outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-bold text-slate-500">User Access Token Ativo (Meta API)</span>
+                    <textarea
+                      rows={2}
+                      readOnly
+                      value={integracao.access_token ? `${integracao.access_token.substring(0, 30)}... [Chave Ocultada por Segurança]` : 'Nenhum token ativo'}
+                      className="w-full bg-slate-950/40 text-slate-500 border border-slate-900 text-[10px] p-2.5 rounded-lg cursor-not-allowed font-mono outline-none resize-none"
+                    />
+                  </div>
+                </div>
               </div>
-
-              <div className="flex gap-3 justify-end w-full md:w-auto">
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={handleTestConnection}
-                  className="bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/30 text-amber-500 font-bold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" /> Testar Conexão
-                </button>
-
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={handleSaveIntegration}
-                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs py-2.5 px-6 rounded-xl transition-all cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
-                >
-                  <Check className="w-3.5 h-3.5" /> Salvar Configurações
-                </button>
-              </div>
-            </div>
-
-            {/* Instruction Panel */}
-            <div className="p-4 bg-slate-950 border border-slate-850/60 rounded-xl space-y-2.5">
-              <h4 className="text-white text-xs font-bold leading-none">⚠️ Como conseguir as Credenciais?</h4>
-              <ol className="text-[11px] text-slate-500 space-y-1.5 list-decimal list-inside leading-relaxed">
-                <li>Acesse o painel do <strong>Facebook Developers</strong> em developers.facebook.com;</li>
-                <li>Gere ou faça login com um aplicativo comercial habilitado com <strong>Instagram Graph API</strong>;</li>
-                <li>Adicione as permissões comerciais para sua página e o seu Instagram Business Account no Gerenciador;</li>
-                <li>Gere um token de acesso de usuário de longo prazo e adicione acima.</li>
-              </ol>
-            </div>
+            </details>
 
           </div>
         )}
