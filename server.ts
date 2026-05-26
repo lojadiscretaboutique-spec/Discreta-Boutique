@@ -38,15 +38,6 @@ async function startServer() {
   // AI Routes
   app.use('/api/ia', aiRoutes);
 
-  // Instagram Marketing Routes
-  try {
-    const instagramRoutes = (await import('./src/modules/instagramMarketing/routes/instagramRoutes.js')).default;
-    app.use('/api/instagram', instagramRoutes);
-    console.log("⭐ [Instagram Routing] Router mounted successfully.");
-  } catch (err: any) {
-    console.error("❌ [Instagram Routing] Failed to mount routes:", err.message);
-  }
-
   // Endpoint to create order and trigger webhook
   app.post("/api/pedidos", async (req, res) => {
     try {
@@ -428,17 +419,6 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
     setupOrderListener();
-
-    // Background Job: Instagram Scheduler Daemon (runs every 1 minute)
-    (async () => {
-      try {
-        const { InstagramSchedulerService } = await import('./src/modules/instagramMarketing/services/InstagramSchedulerService.js');
-        const scheduler = new InstagramSchedulerService();
-        scheduler.startScheduler();
-      } catch (e: any) {
-        console.error("❌ [Instagram Scheduler Error]:", e.message);
-      }
-    })();
     
     // Background Job: Abandoned Cart Recovery (every 5 minutes)
     console.log("⏱️  [Recovery] Background monitor started.");

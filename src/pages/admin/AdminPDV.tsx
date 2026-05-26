@@ -179,6 +179,7 @@ export function AdminPDV() {
 
   // Checkout state
   const [step, setStep] = useState<"cart" | "payment" | "success">("cart");
+  const [saveAsNewOrder, setSaveAsNewOrder] = useState(false);
   const [activeTab, setActiveTab] = useState<"pdv" | "customer">("pdv");
   const [payments, setPayments] = useState<
     { method: string; amount: number }[]
@@ -206,6 +207,7 @@ export function AdminPDV() {
     setNotes("");
     setSearchTerm("");
     setSearchResults([]);
+    setSaveAsNewOrder(false);
     setStep("cart");
   }, []);
 
@@ -315,6 +317,11 @@ export function AdminPDV() {
 
             if (data.notes) {
               setNotes(data.notes);
+            }
+            if (data.status === "NOVO") {
+              setSaveAsNewOrder(true);
+            } else {
+              setSaveAsNewOrder(false);
             }
             toast("Resumo do pedido carregado para edição.");
           } else {
@@ -969,7 +976,7 @@ export function AdminPDV() {
     }
 
     const paidTotal = payments.reduce((acc, p) => acc + p.amount, 0);
-    if (paidTotal < total - 0.01) {
+    if (!saveAsNewOrder && paidTotal < total - 0.01) {
       toast(
         `O valor pago (${formatCurrency(paidTotal)}) deve ser pelo menos igual ao total do pedido (${formatCurrency(total)})`,
         "error",
@@ -1015,7 +1022,7 @@ export function AdminPDV() {
           .map((p) => `${p.method} (${formatCurrency(p.amount)})`)
           .join(" + "),
         payments: payments,
-        status: "ENTREGUE",
+        status: saveAsNewOrder ? "NOVO" : "ENTREGUE",
         type: editingOrderId ? editingOrderType : "pdv",
         customerId: selectedCustomer?.id || null,
         customerName: selectedCustomer?.nome || "Cliente Balcão",
@@ -1128,18 +1135,20 @@ export function AdminPDV() {
       const orderRefTag = currentOrderId!.slice(-6).toUpperCase();
 
       // 1. Registro Financeiro Inteligente (DRE + Caixa)
-      await pdvFinancialService.finalizeSaleFinancials({
-        orderId: currentOrderId!,
-        orderRefTag,
-        customerName: orderData.customerName,
-        totalVenda: total,
-        totalRecebido: finalPaidTotal,
-        paymentMethod: orderData.paymentMethod,
-        payments: payments,
-        userId: user!.uid,
-        userEmail: user!.email || "system",
-        sessionId: currentSession.id!,
-      });
+      if (!saveAsNewOrder) {
+        await pdvFinancialService.finalizeSaleFinancials({
+          orderId: currentOrderId!,
+          orderRefTag,
+          customerName: orderData.customerName,
+          totalVenda: total,
+          totalRecebido: finalPaidTotal,
+          paymentMethod: orderData.paymentMethod,
+          payments: payments,
+          userId: user!.uid,
+          userEmail: user!.email || "system",
+          sessionId: currentSession!.id!,
+        });
+      }
 
       // ==========================================
 
@@ -2402,6 +2411,29 @@ export function AdminPDV() {
                    </div>
 
                    {/* BOTTOM SHEET / STICKY FOOTER */}
+                  {/* OPÇÃO DE SALVAR COMO NOVO PEDIDO TRATADO INTELIGENTEMENTE */}
+                  <div className={`mb-6 p-4 rounded-2xl border transition-all duration-300 ${
+                    saveAsNewOrder 
+                      ? "bg-red-950/20 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
+                      : "bg-black/30 border-slate-800"
+                  }`}>
+                    <label className="flex items-start gap-3.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={saveAsNewOrder}
+                        onChange={(e) => setSaveAsNewOrder(e.target.checked)}
+                        className="mt-1 h-5 w-5 rounded border-slate-700 bg-slate-900 text-red-600 focus:ring-red-500 focus:ring-offset-slate-900 transition-colors cursor-pointer"
+                      />
+                      <div className="flex-1">
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-100 flex items-center gap-1.5">
+                          📌 Salvar como "Novo" Pedido (WhatsApp / Rascunho)
+                        </span>
+                        <p className="text-[10px] text-slate-400 mt-1 lowercase first-letter:uppercase leading-relaxed font-semibold">
+                          Ative esta caixa para salvar este pedido diretamente com o status <span className="text-red-500 font-extrabold uppercase mb-1">"Novo"</span>. O estoque será reservado, mas o recebimento financeiro poderá ser preenchido e finalizado posteriormente em /admin/pedidos ou reabrindo o pedido no PDV.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
                    <div className="bg-slate-900 border-t border-slate-800 p-6 md:p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.5)] z-30">
                      <div className="flex justify-between items-end mb-6">
                        <div>
@@ -2425,7 +2457,7 @@ export function AdminPDV() {
 
                      <Button
                        onClick={handleFinishOrder}
-                       disabled={isFinishing || totalPaid < total - 0.01}
+                       disabled={isFinishing || (!saveAsNewOrder && totalPaid < total - 0.01)}
                        className="w-full h-20 md:h-24 bg-green-600 hover:bg-green-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:opacity-100 disabled:border-b-0 border-b-8 border-green-800 text-white rounded-[1.5rem] text-lg md:text-xl font-black uppercase tracking-[0.1em] flex items-center justify-center gap-4 transition-all relative overflow-hidden group active:border-b-0 active:translate-y-2"
                      >
                        {isFinishing ? (

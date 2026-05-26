@@ -46,8 +46,9 @@ export function AdminLayout() {
         { name: 'Popups', path: '/admin/marketing/popups', permission: 'banners' },
         { name: 'Cupons', path: '/admin/marketing/cupons', permission: 'banners' },
         { name: 'Promoções Automáticas', path: '/admin/marketing/promocoes', permission: 'banners' },
-        { name: 'Postagem Instagram', path: '/admin/marketing/postagem-instagram', permission: 'banners' },
+        { name: 'Postagens', path: '/admin/marketing/postagem', permission: 'banners' },
         { name: 'Bot Conversa / Webhooks', path: '/admin/marketing/webhooks', permission: 'logs' },
+        { name: 'Programa de Afiliados', path: '/admin/marketing/afiliados', permission: 'banners' },
     ]},
     { name: 'Configurações', path: '/admin/config', icon: Settings, permission: 'settings', submenu: [
         { name: 'Dados da Loja', path: '/admin/config', permission: 'settings' },

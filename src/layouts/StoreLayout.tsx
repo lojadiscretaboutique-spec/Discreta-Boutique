@@ -70,6 +70,24 @@ export function StoreLayout() {
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
 
+  // Affiliate Traffic & Click Tracking System
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) {
+      const cleanedRef = ref.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      if (cleanedRef) {
+        localStorage.setItem('discreta_ref', cleanedRef);
+        // Track click asynchronously to preserve fast page loading speed
+        import('../modules/afiliados/services/affiliateService')
+          .then(({ affiliateService }) => {
+            affiliateService.trackClick(cleanedRef);
+          })
+          .catch(err => console.error("Error loading affiliate tracking inside router:", err));
+      }
+    }
+  }, [location.search]);
+
   return (
     <div className="dark min-h-screen bg-black text-white flex flex-col font-sans relative">
       <PopupOverlay />
@@ -167,7 +185,7 @@ export function StoreLayout() {
       )}
 
       {/* Footer */}
-      {!['/carrinho', '/sucesso'].includes(location.pathname) && (
+      {!['/carrinho', '/sucesso', '/afiliados'].includes(location.pathname) && (
         <footer className="bg-zinc-950 text-white py-16 px-4 border-t border-zinc-900">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12">
             <div className="max-w-md">
@@ -195,6 +213,7 @@ export function StoreLayout() {
                 <Link to="/politica-de-privacidade" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Privacidade</Link>
                 <Link to="/politica-de-troca" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Trocas e Devoluções</Link>
                 <Link to="/lgpd" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">LGPD</Link>
+                <Link to="/afiliados" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Afiliados</Link>
                 <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2 mt-4">Suporte</h3>
                 <a href="mailto:contato@discretaboutique.com.br" className="text-zinc-500 hover:text-red-500 text-sm transition-colors break-all">contato@discretaboutique.com.br</a>
                 <a href="https://wa.me/5588992340317" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">WhatsApp</a>

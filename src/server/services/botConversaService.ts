@@ -66,7 +66,8 @@ function gerarMensagem(pedido: Pedido, customTemplate?: string | null): string {
         return customTemplate
             .replace(/{nome}/g, nome)
             .replace(/{pedido_id}/g, pid)
-            .replace(/{status}/g, statusLabel);
+            .replace(/{status}/g, statusLabel)
+            .replace(/{forma_pagamento}/g, pedido.paymentMethod || 'A combinar');
     }
 
     switch (status) {
@@ -167,6 +168,8 @@ export async function sendWebhook(pedido: Pedido, attempts = 1) {
         pedido_id_curto: pedido.id ? pedido.id.slice(-6).toUpperCase() : 'N/A',
         data_agendamento: pedido.scheduledDate || '',
         hora_agendamento: pedido.scheduledTime || '',
+        forma_pagamento: pedido.paymentMethod || '',
+        payment_method: pedido.paymentMethod || '',
         mensagem: gerarMensagem({ ...pedido, nome }, customTemplate),
         source: 'DiscretaBoutique_Status_Notification'
     };

@@ -192,7 +192,7 @@ export function AdminWebhooks() {
                     className="min-h-[120px] dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm"
                   />
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {['{nome}', '{pedido_id}', '{status}'].map(tag => (
+                    {['{nome}', '{pedido_id}', '{status}', '{forma_pagamento}'].map(tag => (
                       <button 
                         key={tag}
                         onClick={() => setConfig(prev => ({ ...prev, statusTemplate: (prev.statusTemplate || '') + tag }))}
@@ -206,7 +206,7 @@ export function AdminWebhooks() {
             </div>
 
             <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800">
-               <h3 className="text-[10px] font-black uppercase text-slate-400 mb-2">Payload Enviado (v2)</h3>
+               <h3 className="text-[10px] font-black uppercase text-slate-400 mb-2">Payload Enviado (v3)</h3>
                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-500">
                   <div className="flex items-center gap-1"><Check size={10} /> nome</div>
                   <div className="flex items-center gap-1"><Check size={10} /> whatsapp</div>
@@ -214,6 +214,7 @@ export function AdminWebhooks() {
                   <div className="flex items-center gap-1"><Check size={10} /> pedido_id_curto</div>
                   <div className="flex items-center gap-1"><Check size={10} /> data_agendamento</div>
                   <div className="flex items-center gap-1"><Check size={10} /> hora_agendamento</div>
+                  <div className="flex items-center gap-1 text-red-500 font-bold"><Check size={10} /> forma_pagamento</div>
                </div>
             </div>
           </div>

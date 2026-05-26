@@ -835,6 +835,7 @@ export function CartPage() {
         }),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        refAffiliate: localStorage.getItem('discreta_ref') || null
       };
 
       const response = await fetch('/api/pedidos', {

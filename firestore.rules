@@ -291,6 +291,20 @@ service cloud.firestore {
       allow delete: if isMasterAdmin();
     }
 
+    match /affiliates/{doc} {
+      allow get: if true;
+      allow list: if can('banners', 'visualizar') || isMasterAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if can('banners', 'editar') || isMasterAdmin() || 
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clicks'])) || 
+        (signedIn() && resource.data.uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pixKey', 'pixType', 'whatsapp']));
+      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+    }
+
+    match /marketing_calendar/{doc} {
+      allow read, write: if true;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
