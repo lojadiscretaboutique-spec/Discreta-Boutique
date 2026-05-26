@@ -24,7 +24,8 @@ import {
   Edit2, 
   X, 
   FileText, 
-  Megaphone 
+  Megaphone,
+  Sparkles
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 
@@ -82,11 +83,24 @@ export function AdminPostagem() {
   const [isAddMode, setIsAddMode] = useState(false);
   const [editingPost, setEditingPost] = useState<PostIdea | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedRawId, setCopiedRawId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Form States
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
   const [hashtags, setHashtags] = useState('');
+
+  // AI Generator States
+  const [showAiGenerator, setShowAiGenerator] = useState(false);
+  const [aiBrandRules, setAiBrandRules] = useState('Tom elegante, sensual, discreto e premium (Discreta Boutique). Foco no empoderamento, curiosidade refinada e descrição de benefícios práticos e sensoriais (ex: texturas de lingeries, vibrações silenciosas, aromas estimulantes). Evite termos chulos ou vulgares.');
+  const [aiObjectives, setAiObjectives] = useState<string[]>(['Desejo', 'Conversão']);
+  const [customObjective, setCustomObjective] = useState('');
+  const [aiPostsPerDay, setAiPostsPerDay] = useState(1);
+  const [aiStartDate, setAiStartDate] = useState('');
+  const [aiEndDate, setAiEndDate] = useState('');
+  const [aiSelectedWeekdays, setAiSelectedWeekdays] = useState<number[]>([1, 2, 3, 4, 5]); // Mon to Fri by default
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Days in month calculation
   const year = currentDate.getFullYear();
@@ -94,6 +108,19 @@ export function AdminPostagem() {
 
   const firstDayOfMonth = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Update dates on calendar transition
+  useEffect(() => {
+    const startObj = new Date(year, month, 1);
+    const endObj = new Date(year, month + 1, 0);
+
+    const pad = (num: number) => String(num).padStart(2, '0');
+    const startStr = `${startObj.getFullYear()}-${pad(startObj.getMonth() + 1)}-01`;
+    const endStr = `${endObj.getFullYear()}-${pad(endObj.getMonth() + 1)}-${pad(endObj.getDate())}`;
+
+    setAiStartDate(startStr);
+    setAiEndDate(endStr);
+  }, [currentDate, year, month]);
 
   // Load configuration and data
   useEffect(() => {
@@ -112,6 +139,19 @@ export function AdminPostagem() {
         } else {
           // Initialize in firestore if not exists
           await setDoc(configRef, { promptTemplate: DEFAULT_PROMPT_TEMPLATE });
+        }
+
+        // 1.2 Get AI Generator Settings (if any)
+        try {
+          const aiConfigRef = doc(db, 'settings', 'postagem_ai_generator');
+          const aiConfigSnap = await getDoc(aiConfigRef);
+          if (aiConfigSnap.exists()) {
+            const aiData = aiConfigSnap.data();
+            if (aiData.brandRules) setAiBrandRules(aiData.brandRules);
+            if (aiData.objectives) setAiObjectives(aiData.objectives);
+          }
+        } catch (aiErr) {
+          console.warn("Could not load ai rules:", aiErr);
         }
 
         // 2. Load Post Ideas
@@ -254,7 +294,6 @@ export function AdminPostagem() {
 
   // Delete action
   const handleDeletePost = async (id: string) => {
-    if (!confirm('Deseja realmente remover esta postagem do calendário?')) return;
     try {
       await deleteDoc(doc(db, 'marketing_calendar', id));
       setPostIdeias(prev => prev.filter(p => p.id !== id));
@@ -297,9 +336,145 @@ export function AdminPostagem() {
       });
   };
 
+  // Copy raw text for the feed description
+  const copyRawFeedText = (post: PostIdea) => {
+    const rawText = `${post.titulo}\n\n${post.descricao}\n\n${post.hashtags || '#discretaboutique'}`;
+
+    navigator.clipboard.writeText(rawText)
+      .then(() => {
+        setCopiedRawId(post.id);
+        toast('Texto completo para o feed copiado!', 'success');
+        setTimeout(() => setCopiedRawId(null), 2500);
+      })
+      .catch(() => {
+        const textarea = document.createElement('textarea');
+        textarea.value = rawText;
+        textarea.style.position = 'fixed';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          setCopiedRawId(post.id);
+          toast('Texto copiado para o feed! (fallback)', 'success');
+          setTimeout(() => setCopiedRawId(null), 2500);
+        } catch {
+          toast('Não foi possível copiar o texto automaticamente', 'error');
+        }
+        document.body.removeChild(textarea);
+      });
+  };
+
   // Help organize day contents
   const getPostsForDay = (dayStr: string) => {
     return postIdeias.filter(post => post.date === dayStr);
+  };
+
+  // Generate post ideas using OpenAI
+  const handleGenerateAiPosts = async () => {
+    if (!aiStartDate || !aiEndDate) {
+      toast('As datas de início e fim são obrigatórias.', 'warning');
+      return;
+    }
+
+    const start = new Date(aiStartDate + 'T12:00:00');
+    const end = new Date(aiEndDate + 'T12:00:00');
+
+    if (end < start) {
+      toast('A data final deve ser posterior ou igual à data inicial.', 'warning');
+      return;
+    }
+
+    // List all dates in the range that match checked weekdays
+    const daysToGenerate: string[] = [];
+    const tempDate = new Date(start);
+
+    // Safety limit: generate up to 31 days at once to prevent high token usage
+    let safeLoopCount = 0;
+    while (tempDate <= end && safeLoopCount < 60) {
+      safeLoopCount++;
+      const currentDayOfWeek = tempDate.getDay(); // 0 is Sunday, 1 is Monday...
+      if (aiSelectedWeekdays.includes(currentDayOfWeek)) {
+        const yearStr = tempDate.getFullYear();
+        const monthStr = String(tempDate.getMonth() + 1).padStart(2, '0');
+        const dateStr = String(tempDate.getDate()).padStart(2, '0');
+        daysToGenerate.push(`${yearStr}-${monthStr}-${dateStr}`);
+      }
+      tempDate.setDate(tempDate.getDate() + 1);
+    }
+
+    if (daysToGenerate.length === 0) {
+      toast('Nenhum dia correspondente aos dias da semana selecionados foi encontrado no período.', 'warning');
+      return;
+    }
+
+    if (daysToGenerate.length > 31) {
+      toast('Por questões de performance, você pode gerar no máximo 31 dias por vez.', 'warning');
+      return;
+    }
+
+    try {
+      setIsGenerating(true);
+
+      // Save AI settings for the future
+      const aiConfigRef = doc(db, 'settings', 'postagem_ai_generator');
+      await setDoc(aiConfigRef, {
+        brandRules: aiBrandRules,
+        objectives: aiObjectives
+      }, { merge: true });
+
+      // Call API
+      const response = await fetch('/api/ia/gerar-posts-calendario', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          brandRules: aiBrandRules,
+          objectives: [...aiObjectives, customObjective].filter(Boolean).join(", "),
+          days: daysToGenerate,
+          postsPerDay: Number(aiPostsPerDay)
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('A API retornou um erro ao processar a solicitação com OpenAI');
+      }
+
+      const resData = await response.json();
+      if (!resData.success || !resData.ideas) {
+        throw new Error(resData.error || 'Erro na resposta da inteligência artificial');
+      }
+
+      const generatedIdeas = resData.ideas; // array of { date, titulo, descricao, hashtags }
+      
+      // Save all generated ideas to firestore and update local state
+      const savedIdeas: PostIdea[] = [];
+      
+      for (const idea of generatedIdeas) {
+        const payload = {
+          date: idea.date,
+          titulo: idea.titulo,
+          descricao: idea.descricao,
+          hashtags: idea.hashtags || '',
+          createdAt: new Date().toISOString()
+        };
+
+        const docRef = await addDoc(collection(db, 'marketing_calendar'), payload);
+        savedIdeas.push({
+          id: docRef.id,
+          ...payload
+        });
+      }
+
+      setPostIdeias(prev => [...prev, ...savedIdeas]);
+      toast(`Pronto! Geradas com sucesso ${savedIdeas.length} ideias de post pelo robô da Discreta Boutique.`, 'success');
+      setShowAiGenerator(false);
+    } catch (err: any) {
+      console.error('Erro ao gerar postagens por IA:', err);
+      toast(err.message || 'Erro inesperado ao gerar ideias por IA. Tente novamente.', 'error');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -317,7 +492,16 @@ export function AdminPostagem() {
           </p>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button 
+            onClick={() => setShowAiGenerator(prev => !prev)} 
+            variant="outline" 
+            className="gap-2 border-red-500/20 text-slate-100 hover:bg-slate-800"
+          >
+            <Sparkles className="w-4 h-4 text-red-500 animate-pulse" />
+            Gerador Inteligente por IA
+          </Button>
+
           <Button 
             onClick={() => {
               setTempPrompt(promptTemplate);
@@ -331,6 +515,193 @@ export function AdminPostagem() {
           </Button>
         </div>
       </div>
+
+      {/* AI Post Generator Panel */}
+      {showAiGenerator && (
+        <div className={cn("rounded-3xl border p-6 shadow-md transition-all space-y-4", theme === 'dark' ? "bg-slate-900 border-slate-800 text-slate-100" : "bg-white border-slate-200 text-slate-800")}>
+           <div className="flex justify-between items-center border-b border-rose-500/10 pb-3">
+              <h3 className="text-md font-black uppercase text-red-500 flex items-center gap-2">
+                 <Sparkles className="text-red-500 w-5 h-5 animate-pulse" />
+                 Módulo de Geração em Massa com IA (OpenAI)
+              </h3>
+              <button onClick={() => setShowAiGenerator(false)} className="text-slate-400 hover:text-white transition-colors cursor-pointer">
+                 <X size={18} />
+              </button>
+           </div>
+
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left Side: Setup & Objectives */}
+              <div className="space-y-4">
+                 <div>
+                    <label className="block text-xs font-black uppercase tracking-wider text-slate-400 mb-1">
+                       Regras de Adequação da Marca (Tom & Diretrizes)
+                    </label>
+                    <textarea
+                       value={aiBrandRules}
+                       onChange={(e) => setAiBrandRules(e.target.value)}
+                       rows={4}
+                       className="w-full text-xs p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:ring-1 focus:ring-red-500"
+                       placeholder="Diretrizes gerais de estilo, restrições e tom de voz..."
+                    />
+                 </div>
+
+                 <div>
+                    <label className="block text-xs font-black uppercase tracking-wider text-slate-400 mb-2">
+                       Objetivos das Campanhas
+                    </label>
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                       {[
+                         'Criar expectativa', 
+                         'Engajamento', 
+                         'Prova social', 
+                         'Desejo', 
+                         'Conversão', 
+                         'Autoridade', 
+                         'Cliques no site', 
+                         'Pré-vendas Dia dos Namorados'
+                       ].map((obj) => {
+                          const isSelected = aiObjectives.includes(obj);
+                          return (
+                             <button
+                                key={obj}
+                                type="button"
+                                onClick={() => {
+                                   if (isSelected) {
+                                      setAiObjectives(prev => prev.filter(x => x !== obj));
+                                   } else {
+                                      setAiObjectives(prev => [...prev, obj]);
+                                   }
+                                }}
+                                className={cn(
+                                   "text-[10px] px-2.5 py-1 rounded-full border transition-all font-bold uppercase cursor-pointer",
+                                   isSelected 
+                                     ? "bg-red-650 text-white border-red-500 shadow-sm" 
+                                     : "bg-slate-950 text-slate-500 border-slate-800 hover:border-slate-700 hover:text-slate-300"
+                                )}
+                             >
+                                {obj}
+                             </button>
+                          );
+                       })}
+                    </div>
+                    <Input
+                       placeholder="Outro objetivo da sua campanha? Digite aqui..."
+                       value={customObjective}
+                       onChange={(e) => setCustomObjective(e.target.value)}
+                       className="text-xs h-9 bg-slate-950 border-slate-800 text-slate-100"
+                    />
+                 </div>
+              </div>
+
+              {/* Right Side: Frequency, Period & Weekdays */}
+              <div className="space-y-4 flex flex-col justify-between">
+                 <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-2">
+                       <div>
+                          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                             Feeds / Dia
+                          </label>
+                          <select
+                             value={aiPostsPerDay}
+                             onChange={(e) => setAiPostsPerDay(Number(e.target.value))}
+                             className="w-full text-xs h-9 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:ring-1 focus:ring-red-500 px-2"
+                          >
+                             <option value={1}>1 feed</option>
+                             <option value={2}>2 feeds</option>
+                             <option value={3}>3 feeds</option>
+                          </select>
+                       </div>
+
+                       <div>
+                          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                             De (Data Inicial)
+                          </label>
+                          <Input
+                             type="date"
+                             value={aiStartDate}
+                             onChange={(e) => setAiStartDate(e.target.value)}
+                             className="text-xs h-9 bg-slate-950 border-slate-800 text-slate-100"
+                          />
+                       </div>
+
+                       <div>
+                          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                             Até (Data Final)
+                          </label>
+                          <Input
+                             type="date"
+                             value={aiEndDate}
+                             onChange={(e) => setAiEndDate(e.target.value)}
+                             className="text-xs h-9 bg-slate-950 border-slate-800 text-slate-100"
+                          />
+                       </div>
+                    </div>
+
+                    <div>
+                       <label className="block text-xs font-black uppercase tracking-wider text-slate-400 mb-2">
+                          Quais dias das semanas serão preenchidos?
+                       </label>
+                       <div className="flex gap-1.5 justify-between">
+                          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((wd, dayIdx) => {
+                             const isSelected = aiSelectedWeekdays.includes(dayIdx);
+                             return (
+                                <button
+                                   key={wd}
+                                   type="button"
+                                   onClick={() => {
+                                      if (isSelected) {
+                                         setAiSelectedWeekdays(prev => prev.filter(x => x !== dayIdx));
+                                      } else {
+                                         setAiSelectedWeekdays(prev => [...prev, dayIdx]);
+                                      }
+                                   }}
+                                   className={cn(
+                                      "flex-1 text-[10px] py-2 rounded-lg border text-center transition-all font-bold cursor-pointer",
+                                      isSelected 
+                                        ? "bg-red-600 text-white border-red-500" 
+                                        : "bg-slate-950 text-slate-500 border-slate-800 hover:border-slate-700"
+                                   )}
+                                >
+                                   {wd}
+                                </button>
+                             );
+                          })}
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="pt-4 flex justify-end gap-3 border-t border-rose-500/10">
+                    <Button
+                       variant="outline"
+                       size="sm"
+                       onClick={() => setShowAiGenerator(false)}
+                       className="text-xs"
+                    >
+                       Cancelar
+                    </Button>
+                    <Button
+                       disabled={isGenerating}
+                       onClick={handleGenerateAiPosts}
+                       size="sm"
+                       className="bg-red-600 hover:bg-red-700 font-bold uppercase tracking-wider text-xs gap-1.5 cursor-pointer text-white"
+                    >
+                       {isGenerating ? (
+                          <>
+                             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                             Gerando Ideias por IA...
+                          </>
+                       ) : (
+                          <>
+                             <Sparkles size={14} className="text-white" />
+                             Gerar Cronograma por IA
+                          </>
+                       )}
+                    </Button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
@@ -545,43 +916,92 @@ export function AdminPostagem() {
                             )}
                           </div>
 
-                          <div className="flex items-center justify-between pt-2 border-t border-rose-500/5">
-                            <div className="flex gap-2">
-                              <button 
-                                onClick={() => startEdit(post)}
-                                className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-                                title="Editar postagem"
-                              >
-                                <Edit2 size={12} />
-                              </button>
-                              <button 
-                                onClick={() => handleDeletePost(post.id)}
-                                className="p-1.5 rounded-md hover:bg-red-500/10 text-slate-500 hover:text-red-500 transition-colors"
-                                title="Remover postagem"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-
-                            {/* Copy for ChatGPT template button */}
-                            <Button 
-                              onClick={() => copyFormattedPrompt(post)}
-                              size="sm" 
-                              className={cn(
-                                "text-[10px] h-7 gap-1 font-bold uppercase tracking-wider",
-                                copiedId === post.id ? "bg-emerald-600 text-white" : "bg-red-600"
-                              )}
-                            >
-                              {copiedId === post.id ? (
-                                <>
-                                  <Check size={11} /> Copiado!
-                                </>
+                          <div className="flex flex-col gap-2 pt-2 border-t border-rose-500/5">
+                            <div className="flex items-center justify-between">
+                              {deleteConfirmId === post.id ? (
+                                <div className="flex items-center gap-1 bg-red-950/40 p-0.5 rounded-lg border border-red-500/30">
+                                  <span className="text-[9px] font-bold uppercase text-red-400 px-1">Excluir?</span>
+                                  <button 
+                                    onClick={() => {
+                                      handleDeletePost(post.id);
+                                      setDeleteConfirmId(null);
+                                    }}
+                                    type="button"
+                                    className="text-[9px] font-bold text-white bg-red-650 hover:bg-red-700 px-1.5 py-0.5 rounded transition-all uppercase cursor-pointer"
+                                  >
+                                    Sim
+                                  </button>
+                                  <button 
+                                    onClick={() => setDeleteConfirmId(null)}
+                                    type="button"
+                                    className="text-[9px] font-bold text-slate-400 hover:text-white px-1.5 py-0.5 rounded transition-all uppercase cursor-pointer"
+                                  >
+                                    Não
+                                  </button>
+                                </div>
                               ) : (
-                                <>
-                                  <Copy size={11} /> Copiar ChatGPT
-                                </>
+                                <div className="flex gap-1.5">
+                                  <button 
+                                    onClick={() => startEdit(post)}
+                                    className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors border border-transparent hover:border-slate-700"
+                                    title="Editar postagem"
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                  <button 
+                                    onClick={() => setDeleteConfirmId(post.id)}
+                                    className="p-1.5 rounded-md hover:bg-red-500/10 text-slate-500 hover:text-red-500 transition-colors border border-transparent hover:border-red-500/20"
+                                    title="Remover postagem"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
                               )}
-                            </Button>
+
+                              <div className="flex gap-1">
+                                {/* Copy raw post text button */}
+                                <Button 
+                                  onClick={() => copyRawFeedText(post)}
+                                  size="sm" 
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[9px] h-7 px-2 gap-1 font-bold uppercase tracking-wider",
+                                    theme === 'dark' ? "border-slate-800 hover:bg-slate-800 hover:text-white" : "border-slate-200 hover:bg-slate-100",
+                                    copiedRawId === post.id ? "bg-emerald-950 text-emerald-400 border-emerald-500" : ""
+                                  )}
+                                >
+                                  {copiedRawId === post.id ? (
+                                    <>
+                                      <Check size={10} /> Copiado!
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy size={10} /> Copiar Feed
+                                    </>
+                                  )}
+                                </Button>
+
+                                {/* Copy for ChatGPT template button */}
+                                <Button 
+                                  onClick={() => copyFormattedPrompt(post)}
+                                  size="sm" 
+                                  className={cn(
+                                    "text-[9px] h-7 px-2 gap-1 font-bold uppercase tracking-wider",
+                                    copiedId === post.id ? "bg-emerald-600 text-white" : "bg-red-600 hover:bg-red-700"
+                                  )}
+                                >
+                                  {copiedId === post.id ? (
+                                    <>
+                                      <Check size={10} /> Copiado!
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy size={10} /> ChatGPT
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       ))}

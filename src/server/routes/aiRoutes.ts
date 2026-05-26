@@ -38,6 +38,7 @@ router.post('/bot-consulta', storeAiLimiter, aiController.botConsult);
 router.post('/ranquear-ofertas', storeAiLimiter, aiController.rankOffers);
 router.post('/generate-home-curadoria', adminAiLimiter, aiController.generateHomeCuratory);
 router.post('/strategic-report', adminAiLimiter, aiController.generateStrategicReport);
+router.post('/gerar-posts-calendario', adminAiLimiter, aiController.generatePostsCalendar);
 
 // CRON SCHEDULER ENDPOINT (No rate limit, protected by API Key or accessible only by Cron)
 router.all('/cron/update-home', async (req, res) => {

@@ -811,6 +811,84 @@ class AIService {
     }
   }
 
+  async generateMarketingCalendarPosts(
+    brandRules: string,
+    objectives: string,
+    days: string[],
+    postsPerDay: number
+  ) {
+    const startTime = Date.now();
+    console.log(`[AI] Generating marketing posts calendar for ${days.length} days, style: ${postsPerDay} posts/day`);
+
+    const prompt = `
+      Você é o Gerente Criativo de Mídias Sociais da Discreta Boutique (um sexshop premium e romântico, elegante, especialista em lingeries sensuais e bem-estar íntimo da marca discretaboutique.com.br).
+      Sua missão é desenvolver legendas e ideias de postagem ricas, elaboradas, provocativas, sofisticadas e prontas para uso para o feed do Instagram da marca nas seguintes datas específicas (formato YYYY-MM-DD):
+      ${days.join(', ')}
+
+      QUANTIDADE: Para CADA uma das datas fornecidas enumeradas, você deve gerar exatamente ${postsPerDay} ideias de postagem.
+      
+      DIRETRIZES DE MARCA / REGRAS DE ADEQUAÇÃO:
+      ${brandRules || "Tom elegante, sensual, discreto e premium. Evitar termos chulos ou vulgars. Focar no empoderamento, prazer saudável, mistério e sofisticação."}
+
+      OBJETIVO(S) DA CAMPANHA DE FEED:
+      ${objectives}
+
+      REGRAS COMPORTAMENTAIS DE REDAÇÃO (COPYWRITING):
+      1. NÃO descreva de forma abstrata o que deve estar na foto ou na arte (evite termos como "Uma imagem de lingerie preta..."). Em vez disso, assuma o papel de redator de elite e escreva a LEGENDA REAL DO FEED, pronta para o lojista copiar e publicar!
+      2. Use excelente espaçamento com quebras de linha duplas para deixar o texto leve e esteticamente escaneável no Instagram.
+      3. Use emojis elegantes, sensuais e profissionais para destacar as frases e tópicos (como: 🖤, 👀, 🚚, 🎁, ✨, 💋, 🥂, 🕊️, 🔥).
+      4. Crie listas charmosas com bullet points para reforçar vantagens e diferenciais da Discreta Boutique.
+      5. Redija em um estilo elaborado e envolvente, igual ou superior ao exemplo de referência a seguir:
+         
+         "Estamos preparando novidades especiais para tornar esse momento ainda mais inesquecível 👀
+         
+         🖤 envio discreto
+         🚚 entrega rápida
+         🎁 novidades exclusivas
+         
+         Fique de olho nos próximos posts ✨"
+
+      6. Garanta uma ótima Chamada para Ação (CTA) ao final, convidando discretamente à consulta na bio, no site ou via atendimento privativo no WhatsApp.
+
+      ESTRUTURA DO JSON (Retorne estritamente um JSON com este formato exato):
+      {
+        "ideas": [
+          {
+            "date": "YYYY-MM-DD",
+            "titulo": "Título de Impacto ou Headline",
+            "descricao": "Legenda real altamente elaborada e pronta para o feed (com quebras de linha e emojis no estilo exigido)",
+            "hashtags": "#discretaboutique #sexshoppremium #bemestarintimo #casal"
+          }
+        ]
+      }
+      
+      IMPORTANTE: A resposta deve ser EXCLUSIVAMENTE um objeto JSON válido, contendo as ideias devidamente mapeadas para as datas passadas. Não inclua blocos markdown como \`\`\`json em torno do resultado.
+    `;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é um estrategista de conteúdo premium. Retorne APENAS um objeto JSON válido no formato solicitado, sem markdown ou textos adicionais.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.7
+      });
+
+      const rawContent = response.choices[0].message.content || '{}';
+      const parsed = JSON.parse(rawContent);
+
+      const duration = Date.now() - startTime;
+      console.log(`[AI] Calendar Posts Generated: success (${duration}ms)`);
+      return parsed;
+    } catch (error: any) {
+      console.error('Erro no generateMarketingCalendarPosts (AI):', error.message);
+      throw new Error(`Falha ao gerar ideias de postagem: ${error.message}`);
+    }
+  }
+
   async generateStrategicReport(data: any): Promise<any> {
     console.log(`[AI] Gerando Relatorio Estrategico (PROMPT MASTER - DISCRETA BOUTIQUE)`);
     const startTime = Date.now();

@@ -518,6 +518,24 @@ export const rankOffers = async (req: Request, res: Response) => {
   }
 };
 
+const GeneratePostsCalendarInput = z.object({
+  brandRules: z.string(),
+  objectives: z.string(),
+  days: z.array(z.string()),
+  postsPerDay: z.number().min(1).max(5)
+});
+
+export const generatePostsCalendar = async (req: Request, res: Response) => {
+  try {
+    const { brandRules, objectives, days, postsPerDay } = GeneratePostsCalendarInput.parse(req.body);
+    const result = await aiService.generateMarketingCalendarPosts(brandRules, objectives, days, postsPerDay);
+    res.json({ success: true, ideas: result.ideas || [] });
+  } catch (error: any) {
+    console.error('Erro ao gerar posts de marketing por IA:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const aiController = {
   generateProduct,
   generateCategory,
@@ -532,5 +550,6 @@ export const aiController = {
   enrichProduct,
   generateEmbedding,
   rankOffers,
-  getSearchSuggestions
+  getSearchSuggestions,
+  generatePostsCalendar
 };
