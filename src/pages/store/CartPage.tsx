@@ -204,7 +204,12 @@ export function CartPage() {
     for (let i = 0; i < 14 && days.length < 2; i++) {
       const current = new Date(today);
       current.setDate(today.getDate() + i);
-      const dateStr = current.toISOString().split('T')[0];
+      
+      const yearStr = current.getFullYear();
+      const monthStr = String(current.getMonth() + 1).padStart(2, '0');
+      const dayStr = String(current.getDate()).padStart(2, '0');
+      const dateStr = `${yearStr}-${monthStr}-${dayStr}`;
+      
       const slots = generateSlots(dateStr);
       
       if (slots.length > 0) {
