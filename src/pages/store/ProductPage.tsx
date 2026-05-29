@@ -16,6 +16,7 @@ export function ProductPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const searchId = searchParams.get('sid') || undefined;
+  const productIdParam = searchParams.get('id') || undefined;
   const navigate = useNavigate();
   const [product, setProduct] = useState<Product | null>(null);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -45,11 +46,29 @@ export function ProductPage() {
     async function loadData() {
       if (!slug) return;
       try {
-        const pSnap = await getDocs(query(collection(db, 'products'), where('seo.slug', '==', slug)));
         let productData: Product | null = null;
         let productId: string = '';
 
-        if (pSnap.empty) {
+        if (productIdParam) {
+          // 1. Direct fetch by ID param to resolve exact match (handles duplicate slugs!)
+          const exactSnap = await getDoc(doc(db, 'products', productIdParam));
+          if (exactSnap.exists()) {
+            productData = { id: exactSnap.id, ...exactSnap.data() } as Product;
+            productId = exactSnap.id;
+          }
+        }
+
+        // 2. If not loaded yet (no ID param or not found), search by slug
+        if (!productData) {
+          const pSnap = await getDocs(query(collection(db, 'products'), where('seo.slug', '==', slug)));
+          if (!pSnap.empty) {
+            productData = { id: pSnap.docs[0].id, ...pSnap.docs[0].data() } as Product;
+            productId = pSnap.docs[0].id;
+          }
+        }
+
+        // 3. Fallbacks
+        if (!productData) {
           // Check by ID in products
           const fallbackSnap = await getDoc(doc(db, 'products', slug));
           if (fallbackSnap.exists()) {
@@ -58,7 +77,9 @@ export function ProductPage() {
             
             // Redirect to slug URL if it has a slug
             if (productData.seo?.slug) {
-              navigate(`/produto/${productData.seo.slug}${location.search}`, { replace: true });
+              const newSearch = new URLSearchParams(location.search);
+              newSearch.set('id', fallbackSnap.id);
+              navigate(`/produto/${productData.seo.slug}?${newSearch.toString()}`, { replace: true });
               return;
             }
           } else {
@@ -78,8 +99,6 @@ export function ProductPage() {
               } as any;
             }
           }
-        } else {
-          productData = { id: pSnap.docs[0].id, ...pSnap.docs[0].data() } as Product;
         }
 
         if (productData) {
@@ -124,7 +143,7 @@ export function ProductPage() {
       }
     }
     loadData();
-  }, [slug]);
+  }, [slug, productIdParam]);
 
   if (loading) {
     return (
@@ -453,7 +472,7 @@ export function ProductPage() {
                     transition={{ delay: idx * 0.1 }}
                     key={p.id}
                     onClick={() => {
-                      navigate(`/produto/${p.seo?.slug || p.id}`);
+                      navigate(`/produto/${p.seo?.slug || p.id}?id=${p.id}`);
                       window.scrollTo(0, 0);
                     }}
                     className="group cursor-pointer"

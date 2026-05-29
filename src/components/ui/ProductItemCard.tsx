@@ -53,7 +53,7 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
     }
 
     if (hasVariants) {
-      navigate(`/produto/${product.seo?.slug || product.id}`);
+      navigate(`/produto/${product.seo?.slug || product.id}?id=${product.id}`);
     } else {
       addItem({
         id: `${product.id}-base`,
@@ -79,7 +79,7 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
   
   return (
     <Link 
-      to={`/produto/${product.seo?.slug || product.id}`} 
+      to={`/produto/${product.seo?.slug || product.id}?id=${product.id}`} 
       className={cn(
         "group relative bg-zinc-950/40 rounded-[2.5rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-700 h-full",
         isOut ? "grayscale opacity-40 shadow-none border-zinc-950" : "hover:border-red-600/30 hover:bg-zinc-950 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:shadow-red-900/10"

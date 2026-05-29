@@ -1249,7 +1249,7 @@ export function CartPage() {
                           {aiSuggestions.produtos.map((p) => (
                             <div 
                               key={p.id} 
-                              onClick={() => navigate(`/produto/${p.seo?.slug || p.id}`)}
+                              onClick={() => navigate(`/produto/${p.seo?.slug || p.id}?id=${p.id}`)}
                               className="cursor-pointer flex flex-col p-5 bg-zinc-950/50 rounded-3xl border border-zinc-800 hover:border-red-600/30 transition-all duration-500 group/item"
                             >
                               <div className="flex gap-4 mb-4">

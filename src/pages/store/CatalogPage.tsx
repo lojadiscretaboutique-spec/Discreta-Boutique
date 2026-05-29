@@ -740,7 +740,7 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
     e.preventDefault();
     e.stopPropagation();
     if (hasVariants) {
-      navigate(`/produto/${product.seo?.slug || product.id}`);
+      navigate(`/produto/${product.seo?.slug || product.id}?id=${product.id}`);
     } else {
       addItem({
         id: `${product.id}-base`,
@@ -764,7 +764,7 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
   
   return (
     <Link 
-      to={`/produto/${product.seo?.slug || product.id}`} 
+      to={`/produto/${product.seo?.slug || product.id}?id=${product.id}`} 
       onClick={() => onItemClick?.()}
       className={cn(
         "group relative bg-zinc-950/40 rounded-[2.5rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-700 h-full",
