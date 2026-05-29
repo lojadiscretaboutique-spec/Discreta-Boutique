@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, getDocs, where } from 'firebase/firestore';
+import { collection, query, getDocs, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Customer, customerService } from '../../services/customerService';
 import { State, City, DeliveryArea, deliveryAreaService } from '../../services/deliveryAreaService';
@@ -39,20 +39,18 @@ export function AdminCustomers() {
   const [editForm, setEditForm] = useState<Partial<Customer>>({});
 
   const loadData = async () => {
+    // No-op because we listen to Firestore onSnapshot live!
+  };
+
+  useEffect(() => {
     setLoading(true);
-    try {
-      const customerData = await customerService.listCustomers();
+    let rawCustomers: Customer[] = [];
+    let rawUsers: any[] = [];
+
+    const updateCombined = () => {
+      const merged: Customer[] = [...rawCustomers];
       
-      // Also fetch users who might be just "registered" but don't have a record in customers yet
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const registeredUsers = usersSnap.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as any))
-        .filter(u => !u.roles || u.roles.length === 0 || u.role === 'cliente'); // Simple filter for non-staff
-        
-      // Merge: priority to customer record if it exists (by email or phone)
-      const merged: Customer[] = [...customerData];
-      
-      registeredUsers.forEach((u: any) => {
+      rawUsers.forEach((u: any) => {
           const alreadyIn = merged.find(c => (u.email && c.email === u.email) || (u.phone && c.whatsapp === u.phone));
           if (!alreadyIn) {
               merged.push({
@@ -68,7 +66,6 @@ export function AdminCustomers() {
           }
       });
 
-      // Re-sort after merge
       merged.sort((a, b) => {
           const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : (a.createdAt ? new Date(a.createdAt) : new Date(0));
           const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : (b.createdAt ? new Date(b.createdAt) : new Date(0));
@@ -76,14 +73,31 @@ export function AdminCustomers() {
       });
 
       setCustomers(merged);
-    } catch (err) {
-      toast("Erro ao carregar clientes", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
-  useEffect(() => { loadData(); }, []);
+    const unsubscribeCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
+      rawCustomers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+      updateCombined();
+      setLoading(false);
+    }, (error) => {
+      console.error("Error listening to customers:", error);
+      setLoading(false);
+    });
+
+    const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      rawUsers = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as any))
+        .filter(u => !u.roles || u.roles.length === 0 || u.role === 'cliente');
+      updateCombined();
+    }, (error) => {
+      console.error("Error listening to users:", error);
+    });
+
+    return () => {
+      unsubscribeCustomers();
+      unsubscribeUsers();
+    };
+  }, []);
 
   // Pre-fetch states for forms
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, getDocs, doc, deleteDoc, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, deleteDoc, addDoc, serverTimestamp, updateDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../lib/firebase';
 import { Plus, Trash2, X, Upload, Calendar, Link as LinkIcon, Eye, MousePointer, Tag } from 'lucide-react';
@@ -47,11 +47,14 @@ export function AdminPopups() {
   const [submitting, setSubmitting] = useState(false);
 
   const loadData = async () => {
+    // No-op because we listen to Firestore onSnapshot live!
+  };
+
+  useEffect(() => {
     setLoading(true);
-    try {
-      const q = query(collection(db, 'popups'));
-      const snap = await getDocs(q);
-      const data = snap.docs.map(d => {
+    const q = query(collection(db, 'popups'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => {
         const docData = d.data();
         return {
           id: d.id,
@@ -67,18 +70,14 @@ export function AdminPopups() {
           createdAt: docData.createdAt
         } as PopupBanner;
       });
-      // Sort by creation date or name
       setPopups(data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
-    } catch (e) {
-      console.error(e);
-      toast("Erro ao carregar popups", 'error');
-    } finally {
       setLoading(false);
-    }
-  };
+    }, (error) => {
+      console.error("Error listening to popups:", error);
+      setLoading(false);
+    });
 
-  useEffect(() => {
-    loadData();
+    return () => unsubscribe();
   }, []);
 
   const handleDelete = async (id: string, name: string) => {

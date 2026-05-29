@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage, db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, Timestamp, orderBy, collectionGroup } from 'firebase/firestore';
+import { collection, query, where, getDocs, Timestamp, orderBy, collectionGroup, onSnapshot } from 'firebase/firestore';
 
 function generateEan13() {
   let ean = "789"; 
@@ -186,50 +186,92 @@ export function AdminCombos() {
     }
   }, [startDate, endDate, perfComboId, toast]);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [combosData, productsData, categoriesData] = await Promise.all([
-        comboService.listCombos(),
-        productService.listProducts(),
-        categoryService.listCategories(),
-      ]);
-
-      // Busca todas as variações usando collectionGroup
-      const variantsSnap = await getDocs(collectionGroup(db, 'variants'));
-      const allVariants: { [productId: string]: ProductVariant[] } = {};
-      
-      variantsSnap.forEach(docSnap => {
-        const productId = docSnap.ref.parent.parent?.id;
-        if (productId) {
-           if (!allVariants[productId]) allVariants[productId] = [];
-           allVariants[productId].push({ id: docSnap.id, ...docSnap.data() } as ProductVariant);
-        }
-      });
-      
-      const hydratedProducts = productsData.map(p => {
-         // Clona o produto para não modificar o estado em cache diretamente
-         const pClone = { ...p };
-         if (pClone.hasVariants && allVariants[pClone.id!]) {
-            pClone.variants = allVariants[pClone.id!];
-         }
-         return pClone;
-      });
-
-      setCombos(combosData);
-      setProducts(hydratedProducts);
-      setCategories(categoriesData);
-    } catch (error) {
-      console.error(error);
-      toast("Erro ao carregar combos", "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
+  const loadData = useCallback(() => {
+    // No-op because we listen to Firestore onSnapshot live!
+  }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    setLoading(true);
+    let rawCombos: Combo[] = [];
+    let rawProducts: Product[] = [];
+    let rawCategories: Category[] = [];
+    let rawVariantsList: { id: string; productId: string; data: any }[] = [];
+
+    const updateAll = () => {
+      const allVariants: { [productId: string]: ProductVariant[] } = {};
+      rawVariantsList.forEach(v => {
+        if (!v.productId) return;
+        if (!allVariants[v.productId]) allVariants[v.productId] = [];
+        allVariants[v.productId].push({ id: v.id, ...v.data } as ProductVariant);
+      });
+
+      const hydratedProducts = rawProducts.map(p => {
+        const pClone = { ...p };
+        if (pClone.hasVariants && allVariants[pClone.id!]) {
+          pClone.variants = allVariants[pClone.id!];
+        }
+        return pClone;
+      });
+
+      setCombos(rawCombos);
+      setProducts(hydratedProducts);
+      setCategories(rawCategories);
+    };
+
+    const qCombos = query(collection(db, 'combos'), orderBy('updatedAt', 'desc'));
+    const unsubscribeCombos = onSnapshot(qCombos, (snapshot) => {
+      rawCombos = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Combo));
+      updateAll();
+      setLoading(false);
+    }, (error) => {
+      console.error("Error listening to combos:", error);
+      setLoading(false);
+    });
+
+    const qProducts = collection(db, 'products');
+    const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
+      rawProducts = snapshot.docs.map(doc => {
+        const data = doc.data();
+        if (data.images && Array.isArray(data.images)) {
+          data.images.sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
+        }
+        return { id: doc.id, ...data } as Product;
+      });
+      updateAll();
+    }, (error) => {
+      console.error("Error listening to products:", error);
+    });
+
+    const qCategories = query(collection(db, 'categories'), orderBy('sortOrder', 'asc'));
+    const unsubscribeCategories = onSnapshot(qCategories, (snapshot) => {
+      rawCategories = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      updateAll();
+    }, (error) => {
+      console.error("Error listening to categories:", error);
+    });
+
+    const qVariants = collectionGroup(db, 'variants');
+    const unsubscribeVariants = onSnapshot(qVariants, (snapshot) => {
+      rawVariantsList = snapshot.docs.map(docSnap => {
+        const productId = docSnap.ref.parent.parent?.id || '';
+        return {
+          id: docSnap.id,
+          productId,
+          data: docSnap.data(),
+        };
+      });
+      updateAll();
+    }, (error) => {
+      console.error("Error listening to variants:", error);
+    });
+
+    return () => {
+      unsubscribeCombos();
+      unsubscribeProducts();
+      unsubscribeCategories();
+      unsubscribeVariants();
+    };
+  }, []);
 
   useEffect(() => {
     if (view === 'list') {

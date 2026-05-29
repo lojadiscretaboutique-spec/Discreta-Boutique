@@ -44,7 +44,9 @@ export function MovEstoque() {
     
     // Filters UI
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterDate, setFilterDate] = useState<'all'|'today'|'7days'|'30days'>('all');
+    const [filterDate, setFilterDate] = useState<'all'|'today'|'7days'|'30days'|'custom'>('all');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [filterType, setFilterType] = useState<'all'|'in'|'out'>('all');
     const [filterChannel, setFilterChannel] = useState<'all' | string>('all');
 
@@ -146,12 +148,54 @@ export function MovEstoque() {
 
     // Filter processing
     const filteredMovements = movements.filter(m => {
-        // Text Match
+        // Text Match (gtin, sku, descrição, etc.)
         if (searchTerm) {
-            const term = searchTerm.toLowerCase();
+            const term = searchTerm.toLowerCase().trim();
             const reasonLabel = REASONS.find(r => r.id === m.reason)?.label.toLowerCase() || '';
             const variantStr = m.variantName?.toLowerCase() || '';
-            if (!m.productName.toLowerCase().includes(term) && !m.sku.toLowerCase().includes(term) && !reasonLabel.includes(term) && !variantStr.includes(term)) {
+            const mNotes = m.notes?.toLowerCase() || '';
+            const mSku = m.sku?.toLowerCase() || '';
+            const mProdName = m.productName?.toLowerCase() || '';
+
+            // Get original product info for extra matching
+            const p = products.find(prod => prod.id === m.productId);
+            const pGtin = p?.gtin?.toLowerCase() || '';
+            const pShortDesc = p?.shortDescription?.toLowerCase() || '';
+            const pFullDesc = p?.fullDescription?.toLowerCase() || '';
+            const pInternalCode = p?.internalCode?.toLowerCase() || '';
+
+            // Find variant barcode if applies
+            let vBarcode = '';
+            if (p) {
+                // Check if the sku/barcode matches inside variants
+                if (p.variants) {
+                    const v = p.variants.find((v: any) => v.id === m.variantId || v.sku === m.sku);
+                    if (v && v.barcode) {
+                        vBarcode = v.barcode.toLowerCase();
+                    }
+                }
+                // Check variantIdentifiers array
+                if (p.variantIdentifiers) {
+                    const hasMatch = p.variantIdentifiers.some(vi => vi.toLowerCase().includes(term));
+                    if (hasMatch) {
+                        vBarcode = term; // force match
+                    }
+                }
+            }
+
+            const matchesText = 
+                mProdName.includes(term) ||
+                mSku.includes(term) ||
+                variantStr.includes(term) ||
+                reasonLabel.includes(term) ||
+                mNotes.includes(term) ||
+                pGtin.includes(term) ||
+                pShortDesc.includes(term) ||
+                pFullDesc.includes(term) ||
+                pInternalCode.includes(term) ||
+                vBarcode.includes(term);
+
+            if (!matchesText) {
                 return false;
             }
         }
@@ -162,6 +206,16 @@ export function MovEstoque() {
             if (filterDate === 'today' && !isAfter(mDate, startOfDay(new Date()))) return false;
             if (filterDate === '7days' && !isAfter(mDate, subDays(new Date(), 7))) return false;
             if (filterDate === '30days' && !isAfter(mDate, subDays(new Date(), 30))) return false;
+            if (filterDate === 'custom') {
+                if (startDate) {
+                    const startLimit = startOfDay(new Date(startDate + 'T00:00:00'));
+                    if (mDate < startLimit) return false;
+                }
+                if (endDate) {
+                    const endLimit = new Date(endDate + 'T23:59:59');
+                    if (mDate > endLimit) return false;
+                }
+            }
         }
 
         // Type Match
@@ -283,45 +337,81 @@ export function MovEstoque() {
             {activeTab === 'movimentacoes' && (
                 <>
                     {/* Filters Bar */}
-                    <div className="bg-slate-900 p-4 rounded-xl border shadow-sm flex flex-col xl:flex-row gap-4 items-end xl:items-center transition-all w-full">
-                        <div className="flex-1 w-full relative">
-                            <Search className="absolute left-3 top-[50%] -translate-y-1/2 h-4 w-4 text-slate-400" />
-                            <Input 
-                                placeholder="Buscar por produto, SKU ou motivo..." 
-                                value={searchTerm || ''}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-9 bg-slate-800 border-slate-700 h-11"
-                            />
+                    <div className="bg-slate-900 p-4 rounded-xl border border-slate-700/60 shadow-sm flex flex-col gap-4 transition-all w-full">
+                        <div className="flex flex-col xl:flex-row gap-4 items-end xl:items-center w-full">
+                            <div className="flex-1 w-full relative">
+                                <Search className="absolute left-3 top-[50%] -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <Input 
+                                    placeholder="Buscar por produto, gtin, sku, descrição ou motivo..." 
+                                    value={searchTerm || ''}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="pl-9 bg-slate-800 border-slate-700 h-11"
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full xl:w-auto shrink-0 flex-wrap">
+                                <div className="flex flex-col space-y-1.5">
+                                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Período</label>
+                                    <select className="border border-slate-700 p-2.5 rounded-lg bg-slate-800 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 w-full text-slate-100" 
+                                        value={filterDate} onChange={e => setFilterDate(e.target.value as any)}>
+                                        <option value="all">Todo Histórico</option>
+                                        <option value="today">Hoje</option>
+                                        <option value="7days">Últimos 7 dias</option>
+                                        <option value="30days">Últimos 30 dias</option>
+                                        <option value="custom">Data Personalizada</option>
+                                    </select>
+                                </div>
+                                <div className="flex flex-col space-y-1.5">
+                                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tipo</label>
+                                    <select className="border border-slate-700 p-2.5 rounded-lg bg-slate-800 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 w-full text-slate-100" 
+                                        value={filterType} onChange={e => setFilterType(e.target.value as any)}>
+                                        <option value="all">Entradas e Saídas</option>
+                                        <option value="in">Somente Entradas (+)</option>
+                                        <option value="out">Somente Saídas (-)</option>
+                                    </select>
+                                </div>
+                                <div className="flex flex-col space-y-1.5">
+                                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Canal</label>
+                                    <select className="border border-slate-700 p-2.5 rounded-lg bg-slate-800 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 w-full text-slate-100" 
+                                        value={filterChannel} onChange={e => setFilterChannel(e.target.value)}>
+                                        <option value="all">Todos os Canais</option>
+                                        {CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full xl:w-auto shrink-0">
-                            <div className="flex flex-col space-y-1.5">
-                                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Período</label>
-                                <select className="border border-slate-700 p-2.5 rounded-lg bg-slate-800 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 w-full" 
-                                    value={filterDate} onChange={e => setFilterDate(e.target.value as any)}>
-                                    <option value="all">Todo Histórico</option>
-                                    <option value="today">Hoje</option>
-                                    <option value="7days">Últimos 7 dias</option>
-                                    <option value="30days">Últimos 30 dias</option>
-                                </select>
+
+                        {/* Custom Date Inputs (renders only when filterDate === 'custom') */}
+                        {filterDate === 'custom' && (
+                            <div className="flex flex-col sm:flex-row gap-4 items-end border-t border-slate-800/80 pt-4 w-full animate-in fade-in slide-in-from-top-1 duration-200">
+                                <div className="flex-1 w-full sm:w-auto grid grid-cols-2 gap-4 max-w-xl">
+                                    <div className="flex flex-col space-y-1.5">
+                                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Data Inicial</label>
+                                        <input 
+                                            type="date" 
+                                            value={startDate} 
+                                            onChange={(e) => setStartDate(e.target.value)}
+                                            className="border border-slate-700 p-2 rounded-lg bg-slate-800 text-slate-100 text-sm outline-none focus:ring-2 focus:ring-slate-900 h-11 w-full"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col space-y-1.5">
+                                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Data Final</label>
+                                        <input 
+                                            type="date" 
+                                            value={endDate} 
+                                            onChange={(e) => setEndDate(e.target.value)}
+                                            className="border border-slate-700 p-2 rounded-lg bg-slate-800 text-slate-100 text-sm outline-none focus:ring-2 focus:ring-slate-900 h-11 w-full"
+                                        />
+                                    </div>
+                                </div>
+                                <Button 
+                                    variant="outline" 
+                                    onClick={() => { setStartDate(''); setEndDate(''); }}
+                                    className="border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 h-11 px-4 text-xs font-bold shrink-0"
+                                >
+                                    Limpar Datas
+                                </Button>
                             </div>
-                            <div className="flex flex-col space-y-1.5">
-                                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tipo</label>
-                                <select className="border border-slate-700 p-2.5 rounded-lg bg-slate-800 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 w-full" 
-                                    value={filterType} onChange={e => setFilterType(e.target.value as any)}>
-                                    <option value="all">Entradas e Saídas</option>
-                                    <option value="in">Somente Entradas (+)</option>
-                                    <option value="out">Somente Saídas (-)</option>
-                                </select>
-                            </div>
-                            <div className="flex flex-col space-y-1.5">
-                                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Canal</label>
-                                <select className="border border-slate-700 p-2.5 rounded-lg bg-slate-800 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 w-full" 
-                                    value={filterChannel} onChange={e => setFilterChannel(e.target.value)}>
-                                    <option value="all">Todos os Canais</option>
-                                    {CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
-                        </div>
+                        )}
                     </div>
 
                     {/* Main Table */}

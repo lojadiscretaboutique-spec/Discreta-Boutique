@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../lib/firebase';
 import { couponService, Coupon } from '../../../services/couponService';
 import { settingsService } from '../../../services/settingsService';
 import { useFeedback } from '../../../contexts/FeedbackContext';
@@ -44,19 +46,21 @@ export function AdminCoupons() {
   }, []);
 
   const loadCoupons = async () => {
-    try {
-      setLoading(true);
-      const data = await couponService.getCoupons();
-      setCoupons(data);
-    } catch (e) {
-      toast("Erro ao carregar cupons", "error");
-    } finally {
-      setLoading(false);
-    }
+    // No-op because we listen to Firestore onSnapshot live!
   };
 
   useEffect(() => {
-    loadCoupons();
+    setLoading(true);
+    const unsubscribe = onSnapshot(collection(db, 'coupons'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Coupon));
+      setCoupons(data);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error listening to coupons:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {

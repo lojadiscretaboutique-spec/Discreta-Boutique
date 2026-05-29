@@ -42,6 +42,36 @@ export function AdminPurchases() {
   const [form, setForm] = useState<Omit<Purchase, 'id'>>(initialPurchase);
   const [submitting, setSubmitting] = useState(false);
 
+  // Overlay state for feedback during operations
+  const [overlayActive, setOverlayActive] = useState(false);
+  const [overlayTitle, setOverlayTitle] = useState('');
+  const [overlaySteps, setOverlaySteps] = useState<{ message: string; status: 'pending' | 'running' | 'success' | 'error' }[]>([]);
+
+  const startOverlay = (title: string, steps: string[]) => {
+    setOverlayTitle(title);
+    setOverlaySteps(steps.map(message => ({ message, status: 'pending' })));
+    setOverlayActive(true);
+  };
+
+  const updateStep = async (index: number, status: 'success' | 'running' | 'error', delay = 600) => {
+    setOverlaySteps(prev => {
+      const list = [...prev];
+      if (list[index]) {
+        list[index].status = status;
+      }
+      return list;
+    });
+    if (delay > 0) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  };
+
+  const finishOverlay = (delay = 1000) => {
+    setTimeout(() => {
+      setOverlayActive(false);
+    }, delay);
+  };
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -66,29 +96,50 @@ export function AdminPurchases() {
   }, [loadData]);
 
   const handleSave = async () => {
-    const session = await cashService.getCurrentSession();
-    if (!session) {
-      toast("Não é possível salvar compras com o caixa fechado.", "error");
-      return;
-    }
-
     if (!form.supplier || form.items.length === 0) {
       toast("Fornecedor e itens são obrigatórios", "warning");
       return;
     }
+
+    startOverlay("Salvando Compra", [
+      "Verificando status do caixa...",
+      "Validando dados da compra...",
+      "Salvando informações de itens e fornecedor...",
+      "Processo finalizado!"
+    ]);
     
     setSubmitting(true);
     try {
+      await updateStep(0, 'running', 400);
+      const session = await cashService.getCurrentSession();
+      if (!session) {
+        await updateStep(0, 'error', 0);
+        toast("Não é possível salvar compras com o caixa fechado.", "error");
+        setOverlayActive(false);
+        setSubmitting(false);
+        return;
+      }
+      await updateStep(0, 'success', 200);
+
+      await updateStep(1, 'running', 400);
+      await updateStep(1, 'success', 200);
+
+      await updateStep(2, 'running', 400);
       await purchaseService.savePurchase({ ...form, id: editingId || undefined });
+      await updateStep(2, 'success', 200);
+
+      await updateStep(3, 'success', 600);
       toast("Compra salva com sucesso!");
       setView('list');
       setEditingId(null);
       loadData();
     } catch (e) {
       console.error(e);
+      setOverlaySteps(prev => prev.map(s => s.status === 'running' ? { ...s, status: 'error' } : s));
       toast("Erro ao salvar", "error");
     } finally {
       setSubmitting(false);
+      finishOverlay();
     }
   };
 
@@ -141,12 +192,32 @@ export function AdminPurchases() {
       message: 'Ao finalizar, o estoque dos itens será atualizado automaticamente. Continuar?',
       icon: <CheckCircle2 className="text-green-500" />
     })) {
+      startOverlay("Recebendo Compra", [
+        "Iniciando recebimento de mercadorias...",
+        "Buscando itens no banco de dados...",
+        "Atualizando estoque de produtos & variações...",
+        "Finalizado com sucesso!"
+      ]);
+
       try {
+        await updateStep(0, 'running', 400);
+        await updateStep(0, 'success', 200);
+
+        await updateStep(1, 'running', 400);
+        await updateStep(1, 'success', 200);
+
+        await updateStep(2, 'running', 500);
         await purchaseService.finalizePurchase(id);
+        await updateStep(2, 'success', 200);
+
+        await updateStep(3, 'success', 600);
         toast("Estoque atualizado!");
         loadData();
       } catch (e: any) {
+        setOverlaySteps(prev => prev.map(s => s.status === 'running' ? { ...s, status: 'error' } : s));
         toast(e.message || "Erro ao finalizar", "error");
+      } finally {
+        finishOverlay();
       }
     }
   };
@@ -163,12 +234,32 @@ export function AdminPurchases() {
       message: 'Esta ação registrará uma saída no financeiro. Continuar?', 
       icon: <DollarSign className="text-blue-500" />
     })) {
+      startOverlay("Pagando Compra", [
+        "Iniciando transação financeira...",
+        "Registrando saída para fornecedor no fluxo de caixa...",
+        "Vinculando movimentação ao caixa atual...",
+        "Status atualizado!"
+      ]);
+
       try {
+        await updateStep(0, 'running', 400);
+        await updateStep(0, 'success', 200);
+
+        await updateStep(1, 'running', 500);
         await purchaseService.markAsPaid(id, 'Boleto/Transferência');
+        await updateStep(1, 'success', 200);
+
+        await updateStep(2, 'running', 400);
+        await updateStep(2, 'success', 200);
+
+        await updateStep(3, 'success', 600);
         toast("Pagamento registrado!");
         loadData();
       } catch (e: any) {
+        setOverlaySteps(prev => prev.map(s => s.status === 'running' ? { ...s, status: 'error' } : s));
         toast(e.message || "Erro ao pagar", "error");
+      } finally {
+        finishOverlay();
       }
     }
   };
@@ -185,12 +276,32 @@ export function AdminPurchases() {
       message: `Deseja realmente CANCELAR a compra de ${supplier}? O estoque e o financeiro (se pago) serão estornados automaticamente.`, 
       icon: <XCircle className="text-red-500" />
     })) {
+      startOverlay("Cancelando Compra", [
+        "Iniciando cancelamento da compra...",
+        "Estornando estoque dos produtos no sistema...",
+        "Devolvendo valores se pago anteriormente...",
+        "Compra de fornecedor desfeita!"
+      ]);
+
       try {
+        await updateStep(0, 'running', 400);
+        await updateStep(0, 'success', 200);
+
+        await updateStep(1, 'running', 500);
         await purchaseService.cancelPurchase(id);
+        await updateStep(1, 'success', 200);
+
+        await updateStep(2, 'running', 400);
+        await updateStep(2, 'success', 200);
+
+        await updateStep(3, 'success', 600);
         toast("Compra cancelada e valores estornados!");
         loadData();
       } catch (e: any) {
+        setOverlaySteps(prev => prev.map(s => s.status === 'running' ? { ...s, status: 'error' } : s));
         toast(e.message || "Erro ao cancelar", "error");
+      } finally {
+        finishOverlay();
       }
     }
   };
@@ -655,6 +766,49 @@ export function AdminPurchases() {
              </div>
           </div>
         )}
+
+        {/* Dynamic Translucent Overlay System */}
+        {overlayActive && (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700/60 p-8 rounded-3xl max-w-sm w-full shadow-2xl relative overflow-hidden">
+              <div className="absolute -top-10 -right-10 w-40 h-40 bg-red-600/10 rounded-full blur-3xl animate-pulse"></div>
+              
+              <div className="text-center mb-6">
+                <Loader2 className="animate-spin text-red-600 mx-auto mb-4" size={40} />
+                <h3 className="text-lg font-black uppercase italic tracking-wider text-white">
+                  {overlayTitle}
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-black">
+                  Por favor, aguarde...
+                </p>
+              </div>
+
+              <div className="space-y-3.5 border-t border-slate-800 pt-5">
+                {overlaySteps.map((step, idx) => (
+                  <div key={idx} className="flex items-center gap-3 text-xs">
+                    {step.status === 'success' ? (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-500/20 text-green-400 text-[10px] font-black">✓</span>
+                    ) : step.status === 'running' ? (
+                      <Loader2 size={12} className="animate-spin text-red-500 shrink-0" />
+                    ) : step.status === 'error' ? (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-500 text-[10px] font-black">✗</span>
+                    ) : (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-800 text-slate-500 text-[10px] font-black">○</span>
+                    )}
+                    <span className={cn(
+                      "font-bold uppercase text-[10px]",
+                      step.status === 'success' ? "text-slate-300" :
+                      step.status === 'running' ? "text-red-400 animate-pulse font-black" :
+                      step.status === 'error' ? "text-red-500 font-black" : "text-slate-500"
+                    )}>
+                      {step.message}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -764,6 +918,49 @@ export function AdminPurchases() {
            </table>
         </div>
       </div>
+
+        {/* Dynamic Translucent Overlay System */}
+        {overlayActive && (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700/60 p-8 rounded-3xl max-w-sm w-full shadow-2xl relative overflow-hidden">
+              <div className="absolute -top-10 -right-10 w-40 h-40 bg-red-600/10 rounded-full blur-3xl animate-pulse"></div>
+              
+              <div className="text-center mb-6">
+                <Loader2 className="animate-spin text-red-600 mx-auto mb-4" size={40} />
+                <h3 className="text-lg font-black uppercase italic tracking-wider text-white">
+                  {overlayTitle}
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-black">
+                  Por favor, aguarde...
+                </p>
+              </div>
+
+              <div className="space-y-3.5 border-t border-slate-800 pt-5">
+                {overlaySteps.map((step, idx) => (
+                  <div key={idx} className="flex items-center gap-3 text-xs">
+                    {step.status === 'success' ? (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-500/20 text-green-400 text-[10px] font-black">✓</span>
+                    ) : step.status === 'running' ? (
+                      <Loader2 size={12} className="animate-spin text-red-500 shrink-0" />
+                    ) : step.status === 'error' ? (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-500 text-[10px] font-black">✗</span>
+                    ) : (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-800 text-slate-500 text-[10px] font-black">○</span>
+                    )}
+                    <span className={cn(
+                      "font-bold uppercase text-[10px]",
+                      step.status === 'success' ? "text-slate-300" :
+                      step.status === 'running' ? "text-red-400 animate-pulse font-black" :
+                      step.status === 'error' ? "text-red-500 font-black" : "text-slate-500"
+                    )}>
+                      {step.message}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }

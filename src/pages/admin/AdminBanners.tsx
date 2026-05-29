@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, getDocs, doc, deleteDoc, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, deleteDoc, addDoc, serverTimestamp, updateDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { Plus, Trash2, X, Upload, Calendar, Image as ImageIcon } from 'lucide-react';
@@ -56,28 +56,34 @@ export function AdminBanners() {
   const [submitting, setSubmitting] = useState(false);
 
   const loadData = async () => {
-    setLoading(true);
-    try {
-      if (activeTab === 'main') {
-        const q = query(collection(db, 'banners'));
-        const snap = await getDocs(q);
-        setBanners(snap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
-      } else {
-        const q = query(collection(db, 'offer_banners'));
-        const snap = await getDocs(q);
-        setOfferBanners(snap.docs.map(d => ({ id: d.id, ...d.data() } as OfferBanner)));
-      }
-    } catch (e) {
-      console.error(e);
-      toast("Erro ao carregar dados", 'error');
-    } finally {
-      setLoading(false);
-    }
+    // No-op because we listen to Firestore onSnapshot live!
   };
 
   useEffect(() => {
-    loadData();
-  }, [activeTab]);
+    setLoading(true);
+    const qMain = query(collection(db, 'banners'));
+    const unsubscribeMain = onSnapshot(qMain, (snapshot) => {
+      setBanners(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
+      setLoading(false);
+    }, (error) => {
+      console.error("Error listening to banners:", error);
+      setLoading(false);
+    });
+
+    const qOffer = query(collection(db, 'offer_banners'));
+    const unsubscribeOffer = onSnapshot(qOffer, (snapshot) => {
+      setOfferBanners(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as OfferBanner)));
+      setLoading(false);
+    }, (error) => {
+      console.error("Error listening to offer banners:", error);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribeMain();
+      unsubscribeOffer();
+    };
+  }, []);
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({

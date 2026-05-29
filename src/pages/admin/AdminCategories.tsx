@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { useAuthStore } from '../../store/authStore';
 import { aiFrontendService } from '../../services/aiFrontendService';
 import Papa from 'papaparse';
@@ -183,21 +185,51 @@ export function AdminCategories() {
       .replace(/(^-|-$)+/g, '');
   };
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await categoryService.listCategories();
-      setCategories(data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+  const loadData = useCallback(() => {
+    // No-op because we listen to Firestore onSnapshot live!
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    setLoading(true);
+    let cats: any[] = [];
+    let prods: any[] = [];
+
+    const updateCombined = () => {
+      const combined = cats.map(cat => {
+        const productCount = prods.filter(p => {
+          if (p.categoryIds && Array.isArray(p.categoryIds)) {
+            return p.categoryIds.includes(cat.id);
+          }
+          return p.categoryId === cat.id;
+        }).length;
+        return { ...cat, productCount };
+      });
+      setCategories(combined);
+    };
+
+    const qCats = query(collection(db, 'categories'), orderBy('sortOrder', 'asc'));
+    const unsubscribeCats = onSnapshot(qCats, (snapshot) => {
+      cats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      updateCombined();
+      setLoading(false);
+    }, (error) => {
+      console.error("Error listening to categories:", error);
+      setLoading(false);
+    });
+
+    const qProds = collection(db, 'products');
+    const unsubscribeProds = onSnapshot(qProds, (snapshot) => {
+      prods = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      updateCombined();
+    }, (error) => {
+      console.error("Error listening to products for count:", error);
+    });
+
+    return () => {
+      unsubscribeCats();
+      unsubscribeProds();
+    };
+  }, []);
 
   const handleEdit = (cat: Category) => {
     setEditingId(cat.id);

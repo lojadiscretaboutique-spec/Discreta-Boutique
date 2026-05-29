@@ -99,8 +99,14 @@ export function AdminOrders() {
     "hoje",
   );
   const [datePeriod, setDatePeriod] = useState<
-    "hoje" | "semana" | "mes" | "ano" | "tudo"
+    "hoje" | "semana" | "mes" | "ano" | "tudo" | "personalizado"
   >("hoje");
+  const [customStartDate, setCustomStartDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+  const [customEndDate, setCustomEndDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
   const [limitCount, setLimitCount] = useState(10);
   const [metrics, setMetrics] = useState({
     geral: 0,
@@ -119,7 +125,7 @@ export function AdminOrders() {
     }
   };
 
-  const handleDatePeriodChange = (period: "hoje" | "semana" | "mes" | "ano" | "tudo") => {
+  const handleDatePeriodChange = (period: "hoje" | "semana" | "mes" | "ano" | "tudo" | "personalizado") => {
     setDatePeriod(period);
     // Se selecionou uma data diferente de "hoje" mas a aba atual exigiria ser só "hoje", muda a aba para "geral" automaticamente
     if (period !== "hoje" && activeTab === "hoje") {
@@ -196,7 +202,7 @@ export function AdminOrders() {
   const canDelete = hasPermission("orders", "excluir");
 
   useEffect(() => {
-    const loadMetrics = async (dateStart?: Date) => {
+    const loadMetrics = async (dateStart?: Date, dateEnd?: Date) => {
       try {
         let qGeral = collection(db, "orders");
         let qAbertos = query(
@@ -212,7 +218,13 @@ export function AdminOrders() {
           where("type", "==", "online"),
         );
 
-        if (dateStart) {
+        if (dateStart && dateEnd) {
+          qGeral = query(
+            collection(db, "orders"),
+            where("createdAt", ">=", dateStart),
+            where("createdAt", "<=", dateEnd),
+          );
+        } else if (dateStart) {
           qGeral = query(
             collection(db, "orders"),
             where("createdAt", ">=", dateStart),
@@ -239,13 +251,25 @@ export function AdminOrders() {
     };
 
     let dateStart: Date | undefined;
-    if (datePeriod === "hoje") dateStart = startOfDay(new Date());
-    else if (datePeriod === "semana") dateStart = startOfWeek(new Date());
-    else if (datePeriod === "mes") dateStart = startOfMonth(new Date());
-    else if (datePeriod === "ano") dateStart = startOfYear(new Date());
+    let dateEnd: Date | undefined;
+    if (datePeriod === "hoje") {
+      dateStart = startOfDay(new Date());
+    } else if (datePeriod === "semana") {
+      dateStart = startOfWeek(new Date());
+    } else if (datePeriod === "mes") {
+      dateStart = startOfMonth(new Date());
+    } else if (datePeriod === "ano") {
+      dateStart = startOfYear(new Date());
+    } else if (datePeriod === "personalizado") {
+      const [sYear, sMonth, sDay] = customStartDate.split('-').map(Number);
+      dateStart = new Date(sYear, sMonth - 1, sDay, 0, 0, 0, 0);
 
-    loadMetrics(dateStart);
-  }, [datePeriod]);
+      const [eYear, eMonth, eDay] = customEndDate.split('-').map(Number);
+      dateEnd = new Date(eYear, eMonth - 1, eDay, 23, 59, 59, 999);
+    }
+
+    loadMetrics(dateStart, dateEnd);
+  }, [datePeriod, customStartDate, customEndDate]);
 
   useEffect(() => {
     let q = query(
@@ -256,17 +280,42 @@ export function AdminOrders() {
 
     if (datePeriod !== "tudo") {
       let dateStart = new Date();
-      if (datePeriod === "hoje") dateStart = startOfDay(new Date());
-      else if (datePeriod === "semana") dateStart = startOfWeek(new Date());
-      else if (datePeriod === "mes") dateStart = startOfMonth(new Date());
-      else if (datePeriod === "ano") dateStart = startOfYear(new Date());
+      let dateEnd = new Date();
+      let useRange = false;
 
-      q = query(
-        collection(db, "orders"),
-        where("createdAt", ">=", dateStart),
-        orderBy("createdAt", "desc"),
-        limit(limitCount),
-      );
+      if (datePeriod === "hoje") {
+        dateStart = startOfDay(new Date());
+      } else if (datePeriod === "semana") {
+        dateStart = startOfWeek(new Date());
+      } else if (datePeriod === "mes") {
+        dateStart = startOfMonth(new Date());
+      } else if (datePeriod === "ano") {
+        dateStart = startOfYear(new Date());
+      } else if (datePeriod === "personalizado") {
+        useRange = true;
+        const [sYear, sMonth, sDay] = customStartDate.split('-').map(Number);
+        dateStart = new Date(sYear, sMonth - 1, sDay, 0, 0, 0, 0);
+
+        const [eYear, eMonth, eDay] = customEndDate.split('-').map(Number);
+        dateEnd = new Date(eYear, eMonth - 1, eDay, 23, 59, 59, 999);
+      }
+
+      if (useRange) {
+        q = query(
+          collection(db, "orders"),
+          where("createdAt", ">=", dateStart),
+          where("createdAt", "<=", dateEnd),
+          orderBy("createdAt", "desc"),
+          limit(limitCount),
+        );
+      } else {
+        q = query(
+          collection(db, "orders"),
+          where("createdAt", ">=", dateStart),
+          orderBy("createdAt", "desc"),
+          limit(limitCount),
+        );
+      }
     }
 
     const unsubscribe = onSnapshot(
@@ -291,7 +340,7 @@ export function AdminOrders() {
       },
     );
     return () => unsubscribe();
-  }, [toast, limitCount, datePeriod]);
+  }, [toast, limitCount, datePeriod, customStartDate, customEndDate]);
 
   const handleDeleteOrder = async (order: Order) => {
     const session = await cashService.getCurrentSession();
@@ -680,7 +729,7 @@ export function AdminOrders() {
           ))}
         </div>
 
-        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto px-2 pb-2 md:pb-0">
+        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto px-2 pb-2 md:pb-0 items-center">
           <select
             value={datePeriod}
             onChange={(e) => handleDatePeriodChange(e.target.value as any)}
@@ -695,7 +744,26 @@ export function AdminOrders() {
             <option value="semana">Esta Semana</option>
             <option value="mes">Este Mês</option>
             <option value="ano">Este Ano</option>
+            <option value="personalizado">Personalizado</option>
           </select>
+
+          {datePeriod === "personalizado" && (
+            <div className="flex items-center gap-1.5 w-full md:w-auto">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-full h-10 px-3 text-[10px] font-black uppercase tracking-widest text-white outline-none w-full md:w-auto"
+              />
+              <span className="text-slate-500 font-bold text-[10px]">A</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-full h-10 px-3 text-[10px] font-black uppercase tracking-widest text-white outline-none w-full md:w-auto"
+              />
+            </div>
+          )}
 
           <div className="relative flex-1 md:w-56">
             <Search

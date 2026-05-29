@@ -14,17 +14,32 @@ export function PwaInstallBanner() {
     // Show after a small delay to not overwhelm the user
     // Only show if it's installable or iOS, and not already installed
     if ((isInstallable || isIos) && !isInstalled) {
-      const hasDismissed = sessionStorage.getItem('pwa-dismissed');
-      if (!hasDismissed) {
-        const timer = setTimeout(() => setIsVisible(true), 3000);
-        return () => clearTimeout(timer);
+      try {
+        const hasDismissed = localStorage.getItem('pwa-dismissed') || localStorage.getItem('pwa-displayed');
+        if (!hasDismissed) {
+          const timer = setTimeout(() => {
+            setIsVisible(true);
+            try {
+              localStorage.setItem('pwa-displayed', 'true');
+            } catch (err) {
+              console.error(err);
+            }
+          }, 3000);
+          return () => clearTimeout(timer);
+        }
+      } catch (e) {
+        console.error(e);
       }
     }
   }, [isInstallable, isInstalled, isIos]);
 
   const handleDismiss = () => {
     setIsVisible(false);
-    sessionStorage.setItem('pwa-dismissed', 'true');
+    try {
+      localStorage.setItem('pwa-dismissed', 'true');
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleInstallClick = () => {

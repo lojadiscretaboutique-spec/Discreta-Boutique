@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { collection, getDocs, orderBy, query, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, doc, writeBatch, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { aiFrontendService } from '../../services/aiFrontendService';
 import { 
@@ -537,24 +537,41 @@ export function AdminProducts() {
     }
   };
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const pData = await productService.listProducts();
-      setProducts(pData);
-      
-      const cSnap = await getDocs(query(collection(db, 'categories'), orderBy('sortOrder', 'asc')));
-      setCategories(cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
-    } catch (e: unknown) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+  const loadData = useCallback(() => {
+    // No-op because we listen to Firestore onSnapshot live!
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    setLoading(true);
+    const qProd = query(collection(db, 'products'), orderBy('updatedAt', 'desc'));
+    const unsubscribeProducts = onSnapshot(qProd, (snapshot) => {
+      const productsData = snapshot.docs.map(doc => {
+        const data = doc.data();
+        if (data.images && Array.isArray(data.images)) {
+          data.images.sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
+        }
+        return { id: doc.id, ...data } as Product;
+      });
+      setProducts(productsData);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error listening to products:", error);
+      setLoading(false);
+    });
+
+    const qCats = query(collection(db, 'categories'), orderBy('sortOrder', 'asc'));
+    const unsubscribeCategories = onSnapshot(qCats, (snapshot) => {
+      const categoriesData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      setCategories(categoriesData);
+    }, (error) => {
+      console.error("Error listening to categories:", error);
+    });
+
+    return () => {
+      unsubscribeProducts();
+      unsubscribeCategories();
+    };
+  }, []);
 
   const handleEdit = async (prod: Product) => {
     setLoading(true);

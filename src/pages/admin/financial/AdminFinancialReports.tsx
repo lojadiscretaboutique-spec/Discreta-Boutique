@@ -36,9 +36,11 @@ export function AdminFinancialReports() {
       const { collection, getDocs, query, orderBy, where, Timestamp } = await import('firebase/firestore');
       const { db } = await import('../../../lib/firebase');
       
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
+      const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+      const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+
+      const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+      const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
 
       // Try date range query. If it fails (index missing), fallback to simple query
       let orderSnap;

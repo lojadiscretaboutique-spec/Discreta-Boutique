@@ -5,7 +5,7 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { MegaMenu, Tag, Trash2, Edit2, Plus, Percent, Truck, DollarSign, Calendar, Eye, Search } from 'lucide-react';
 import { formatCurrency, cn } from '../../../lib/utils';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { settingsService } from '../../../services/settingsService';
@@ -51,9 +51,35 @@ export function AdminPromotions() {
   });
 
   useEffect(() => {
-    loadData();
-    loadScopeOptions();
     loadPaymentMethods();
+
+    setLoading(true);
+    const unsubscribePromotions = onSnapshot(collection(db, 'promotions'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Promotion));
+      setPromotions(data);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error listening to promotions:", error);
+      setLoading(false);
+    });
+
+    const unsubscribeCategories = onSnapshot(query(collection(db, 'categories'), orderBy('name')), (snapshot) => {
+      setCategories(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    }, (error) => {
+      console.error("Error listening to promotion categories:", error);
+    });
+
+    const unsubscribeProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), (snapshot) => {
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    }, (error) => {
+      console.error("Error listening to promotion products:", error);
+    });
+
+    return () => {
+      unsubscribePromotions();
+      unsubscribeCategories();
+      unsubscribeProducts();
+    };
   }, []);
 
   const loadPaymentMethods = async () => {
@@ -68,28 +94,11 @@ export function AdminPromotions() {
   };
 
   const loadData = async () => {
-    try {
-      setLoading(true);
-      const data = await promotionService.getAll();
-      setPromotions(data);
-    } catch (e) {
-      console.error(e);
-      toast("Erro ao carregar promoções", "error");
-    } finally {
-      setLoading(false);
-    }
+    // No-op because we listen to Firestore onSnapshot live!
   };
 
   const loadScopeOptions = async () => {
-    try {
-      const catSnap = await getDocs(query(collection(db, 'categories'), orderBy('name')));
-      setCategories(catSnap.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
-      
-      const prodSnap = await getDocs(query(collection(db, 'products'), orderBy('name')));
-      setProducts(prodSnap.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
-    } catch (e) {
-      console.error(e);
-    }
+    // No-op because we listen to Firestore onSnapshot live!
   };
 
   const handleSave = async () => {

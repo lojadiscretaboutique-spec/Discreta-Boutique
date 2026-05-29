@@ -18,6 +18,7 @@ import {
   Wallet,
   FileText,
   Loader2,
+  Printer,
 } from "lucide-react";
 import {
   collection,
@@ -187,6 +188,9 @@ export function AdminPDV() {
   const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [receivedAmount, setReceivedAmount] = useState("");
   const [isFinishing, setIsFinishing] = useState(false);
+  const [checkoutStatus, setCheckoutStatus] = useState("");
+  const [lastFinishedOrder, setLastFinishedOrder] = useState<any>(null);
+  const printRef = useRef<HTMLDivElement>(null);
   const [lastOrderId, setLastOrderId] = useState("");
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
   const [discountType, setDiscountType] = useState<'value' | 'percent'>('value');
@@ -194,7 +198,7 @@ export function AdminPDV() {
   const [shipping, setShipping] = useState<number>(0);
   const [partialAmount, setPartialAmount] = useState<string>("");
 
-  const resetPDV = useCallback(() => {
+  const resetPDV = useCallback((targetStep: "cart" | "payment" | "success" = "cart") => {
     setCart([]);
     setSelectedCustomer(null);
     setPayments([]);
@@ -208,8 +212,9 @@ export function AdminPDV() {
     setSearchTerm("");
     setSearchResults([]);
     setSaveAsNewOrder(false);
-    setStep("cart");
-  }, []);
+    setStep(targetStep);
+    setSearchParams({});
+  }, [setSearchParams]);
 
   useEffect(() => {
       if (discountType === 'value') {
@@ -968,6 +973,7 @@ export function AdminPDV() {
 
   const handleFinishOrder = async () => {
     if (cart.length === 0) return;
+    if (isFinishing) return;
 
     if (!currentSession) {
       toast("Para realizar vendas, o caixa deve estar ABERTO.", "error");
@@ -985,12 +991,16 @@ export function AdminPDV() {
     }
 
     setIsFinishing(true);
+    setCheckoutStatus("Iniciando finalização...");
+
     try {
       const finalPaidTotal = roundTo2(
         payments.reduce((acc, p) => acc + p.amount, 0),
       );
       const finalAdditionalAmount =
         finalPaidTotal > total ? roundTo2(finalPaidTotal - total) : 0;
+
+      setCheckoutStatus("Preparando dados do pedido...");
 
       // 1. Prepare order data
       const orderData: any = {
@@ -1039,20 +1049,22 @@ export function AdminPDV() {
       let currentOrderId = editingOrderId;
 
       if (editingOrderId) {
+        setCheckoutStatus("Estornando estoque antigo...");
         // 1. REVERTER ESTOQUE ANTIGO (Para pedidos que já foram finalizados)
-        // Isso garante que se o usuário removeu ou adicionou itens na edição, o estoque se ajuste corretamente
         await stockMovementService.deleteMovementsByOrderId(editingOrderId);
 
+        setCheckoutStatus("Atualizando pedido no banco de dados...");
         // 2. UPDATE EXISTING
         await updateDoc(doc(db, "orders", editingOrderId), orderData);
 
-        // 3. REGISTRAR NOVAS MOVIMENTAÇÕES (A partir do carrinho atual)
-        for (const item of cart) {
+        setCheckoutStatus("Registrando novas movimentações de estoque...");
+        // 3. REGISTRAR NOVAS MOVIMENTAÇÕES (A partir do carrinho atual em paralelo para máxima confiabilidade)
+        const movementPromises = cart.map(async (item) => {
           if (item.isCombo) {
             const combo = allCombos.find(c => c.id === item.comboId);
             if (combo) {
-              for (const cItem of combo.items) {
-                 await stockMovementService.registerMovement({
+              const innerPromises = combo.items.map(cItem => 
+                stockMovementService.registerMovement({
                   productId: cItem.productId,
                   productName: `${cItem.name || item.name} (Combo: ${combo.name})`,
                   variantId: cItem.variantId || undefined,
@@ -1062,8 +1074,9 @@ export function AdminPDV() {
                   reason: `Venda Combo PDV (Editado - #${editingOrderId.slice(-6).toUpperCase()})`,
                   channel: "Loja Física",
                   orderId: editingOrderId,
-                });
-              }
+                })
+              );
+              await Promise.all(innerPromises);
               await comboService.incrementSoldCount(combo.id!, item.quantity, (item.price - item.costPrice) * item.quantity);
             }
           } else {
@@ -1079,27 +1092,31 @@ export function AdminPDV() {
               orderId: editingOrderId,
             });
           }
-        }
+        });
 
+        await Promise.all(movementPromises);
+
+        setCheckoutStatus("Ajustando lançamentos financeiros...");
         // 4. Se estiver editando, limpamos os lançamentos financeiros antigos associados a este pedido
-        // para regerar os novos (caso tenha mudado valor ou forma de pagto)
         await financialService.deleteTransactionsByOrderId(editingOrderId);
         await cashService.deleteTransactionsByOrderId(editingOrderId);
 
         toast("Pedido atualizado e estoque recalculado!", "success");
       } else {
+        setCheckoutStatus("Criando novo pedido no banco de dados...");
         // CREATE NEW
         orderData.createdAt = serverTimestamp();
         const orderRef = await addDoc(collection(db, "orders"), orderData);
         currentOrderId = orderRef.id;
 
-        // Registrar movimentações de saída para cada item
-        for (const item of cart) {
+        setCheckoutStatus("Registrando saídas de estoque...");
+        // Registrar movimentações de saída para cada item em paralelo
+        const movementPromises = cart.map(async (item) => {
           if (item.isCombo) {
             const combo = allCombos.find(c => c.id === item.comboId);
             if (combo) {
-              for (const cItem of combo.items) {
-                await stockMovementService.registerMovement({
+              const innerPromises = combo.items.map(cItem => 
+                stockMovementService.registerMovement({
                   productId: cItem.productId,
                   productName: `${cItem.name || item.name} (Combo: ${combo.name})`,
                   variantId: cItem.variantId || undefined,
@@ -1109,8 +1126,9 @@ export function AdminPDV() {
                   reason: "Venda Combo PDV",
                   channel: "Loja Física",
                   orderId: currentOrderId,
-                });
-              }
+                })
+              );
+              await Promise.all(innerPromises);
               await comboService.incrementSoldCount(combo.id!, item.quantity, (item.price - item.costPrice) * item.quantity);
             }
           } else {
@@ -1126,12 +1144,15 @@ export function AdminPDV() {
               orderId: currentOrderId,
             });
           }
-        }
+        });
+
+        await Promise.all(movementPromises);
       }
 
       // ==========================================
       // LANÇAMENTO FINANCEIRO INTELIGENTE (AUTOMÁTICO)
       // ==========================================
+      setCheckoutStatus("Registrando fluxo do financeiro e fechamento...");
       const orderRefTag = currentOrderId!.slice(-6).toUpperCase();
 
       // 1. Registro Financeiro Inteligente (DRE + Caixa)
@@ -1152,53 +1173,236 @@ export function AdminPDV() {
 
       // ==========================================
 
-      setLastOrderId(currentOrderId!);
+      setCheckoutStatus("Conclpindo venda...");
+      
+      // Salvar os dados completos para fins de impressão de cupom
+      setLastFinishedOrder({
+        id: currentOrderId!,
+        createdAt: new Date(),
+        items: cart.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId || null,
+          name: item.name,
+          variantName: item.variantName || null,
+          price: item.price,
+          quantity: item.quantity,
+          sku: item.sku,
+          gtin: item.gtin || "",
+          discount: item.discount || 0
+        })),
+        subtotal: cartSubtotal,
+        total,
+        discount: totalDiscount,
+        shipping: shipping,
+        customerName: orderData.customerName,
+        customerWhatsapp: orderData.customerWhatsapp,
+        customerAddress: orderData.customerAddress,
+        type: orderData.type,
+      });
 
-      // Listener removes the need to manually trigger webhooks
-      // thus preventing duplicated events.
-      setStep("success");
-      resetPDV();
+      setLastOrderId(currentOrderId!);
+      resetPDV("success");
     } catch (error) {
       console.error("PDV Order error:", error);
       toast("Erro ao processar pedido. Verifique sua conexão.", "error");
     } finally {
       setIsFinishing(false);
+      setCheckoutStatus("");
     }
   };
 
+  const handlePrintReceipt = () => {
+    const printContent = printRef.current;
+    if (!printContent) return;
+
+    const printWindow = window.open("", "", "width=300,height=600");
+    if (!printWindow) {
+      toast("Popups bloqueados! Ative a permissão de popups para poder imprimir o cupom do pedido.", "warning");
+      return;
+    }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Cupom do Pedido</title>
+          <style>
+            @page { margin: 0; }
+            body { 
+              font-family: 'Courier New', Courier, monospace; 
+              font-size: 13px; 
+              width: 58mm; 
+              margin: 0; 
+              padding: 5mm;
+              color: black;
+              font-weight: bold;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .text-center { text-align: center; }
+            .font-bold { font-weight: 900; }
+            .divider { border-top: 1px dashed black; margin: 5px 0; }
+            .item { display: flex; justify-content: space-between; gap: 5px; margin-bottom: 2px; }
+            .totals { margin-top: 10px; font-weight: 900; }
+            .header-info { margin-bottom: 10px; font-weight: bold;}
+            .footer { margin-top: 20px; text-align: center; font-size: 11px; font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; font-weight: bold;}
+            th { text-align: left; border-bottom: 1px solid #000; font-weight: 900;}
+          </style>
+        </head>
+        <body>
+          ${printContent.innerHTML}
+          <script>
+            window.onload = () => {
+              window.print();
+              window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const handleNewSale = () => {
+    setLastFinishedOrder(null);
+    resetPDV("cart");
+  };
+
   if (step === "success") {
+    const formattedDate = lastFinishedOrder?.createdAt
+      ? new Date(lastFinishedOrder.createdAt).toLocaleDateString("pt-BR") + " " + new Date(lastFinishedOrder.createdAt).toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' })
+      : "";
+
     return (
       <div className="fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-4">
+        {/* Hidden thermal receipt for print */}
+        <div className="hidden">
+          <div ref={printRef} className="thermal-receipt">
+            <div className="text-center font-bold" style={{ fontSize: "16px", marginBottom: "4px" }}>
+              DISCRETA BOUTIQUE
+            </div>
+            <div className="text-center" style={{ fontSize: "10px", marginBottom: "8px", color: "#333" }}>
+              Sua boutique especializada em momentos inesquecíveis.
+            </div>
+            <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
+            
+            <div className="header-info" style={{ fontSize: "12px", marginBottom: "8px" }}>
+              <div>PEDIDO: #{lastFinishedOrder?.id?.slice(-6).toUpperCase()}</div>
+              <div>DATA: {formattedDate}</div>
+              <div>TIPO: {lastFinishedOrder?.type === "pdv" ? "BALCAO" : "ONLINE"}</div>
+              <div>OPERADOR: {user?.email?.split("@")[0].toUpperCase()}</div>
+            </div>
+            <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
+            
+            <div style={{ fontSize: "12px", marginBottom: "8px" }}>
+              <div>CLIENTE: {lastFinishedOrder?.customerName || "Cliente Balcão"}</div>
+              {lastFinishedOrder?.customerWhatsapp && <div>WHATSAPP: {lastFinishedOrder.customerWhatsapp}</div>}
+              {lastFinishedOrder?.customerAddress && <div>ENDEREÇO: {lastFinishedOrder.customerAddress}</div>}
+            </div>
+            <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
+            
+            <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse", textAlign: "left" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid black" }}>
+                  <th style={{ width: "10%" }}>QTD</th>
+                  <th style={{ width: "65%" }}>DESC</th>
+                  <th style={{ width: "25%", textAlign: "right" }}>TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lastFinishedOrder?.items?.map((item: any, idx: number) => (
+                  <tr key={idx} style={{ borderBottom: "1px dashed #eee" }}>
+                    <td style={{ verticalAlign: "top", padding: "3px 0" }}>{item.quantity}</td>
+                    <td style={{ padding: "3px 0" }}>
+                      {item.name}
+                      {item.variantName ? ` (${item.variantName})` : ""}
+                      {item.sku && <div style={{ fontSize: "9px", color: "#666" }}>SKU: {item.sku}</div>}
+                    </td>
+                    <td style={{ verticalAlign: "top", textAlign: "right", padding: "3px 0" }}>
+                      {formatCurrency(item.price * item.quantity)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            
+            <div className="divider" style={{ borderTop: "1px dashed black", margin: "4px 0" }}></div>
+            
+            <div className="totals" style={{ fontSize: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", margin: "2px 0" }}>
+                <span>Subtotal: </span>
+                <span>{formatCurrency(lastFinishedOrder?.subtotal || 0)}</span>
+              </div>
+              {lastFinishedOrder?.shipping > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", margin: "2px 0" }}>
+                  <span>Frete/Entrega: </span>
+                  <span>{formatCurrency(lastFinishedOrder.shipping)}</span>
+                </div>
+              )}
+              {lastFinishedOrder?.discount > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", margin: "2px 0", color: "red" }}>
+                  <span>Desconto: </span>
+                  <span>-{formatCurrency(lastFinishedOrder.discount)}</span>
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", margin: "4px 0", fontWeight: "900", borderTop: "1px solid black", paddingTop: "4px", fontSize: "14px" }}>
+                <span>Total: </span>
+                <span>{formatCurrency(lastFinishedOrder?.total || 0)}</span>
+              </div>
+            </div>
+            
+            <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
+            <div className="footer" style={{ textAlign: "center", fontSize: "10px", marginTop: "15px" }}>
+              Obrigado pela preferência!<br />
+              Visite: discretaboutique.com.br
+            </div>
+          </div>
+        </div>
+
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-slate-900 rounded-3xl p-12 max-w-md w-full text-center shadow-2xl overflow-hidden relative"
+          className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-10 max-w-md w-full text-center shadow-2xl overflow-hidden relative"
         >
-          <div className="absolute top-0 left-0 w-full h-2 bg-green-500"></div>
-          <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="absolute top-0 left-0 w-full h-3 bg-red-600 animate-pulse"></div>
+          <div className="w-20 h-20 bg-green-950/30 border-2 border-green-500 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/10">
             <CheckCircle2 size={40} />
           </div>
-          <h1 className="text-3xl font-black text-white mb-2">
-            VENDA REALIZADA!
+          <h1 className="text-3xl font-black text-white italic tracking-tight uppercase leading-none mb-3">
+            Venda Realizada!
           </h1>
-          <p className="text-slate-400 mb-8 font-medium italic">
-            Pedido #{lastOrderId.slice(-6).toUpperCase()}
+          <p className="text-sm text-slate-300 font-bold tracking-wide mb-2">
+            Pedido finalizado com sucesso.
+          </p>
+          <p className="inline-block bg-slate-950/85 border border-slate-800 text-red-500 text-xl font-mono px-6 py-2 rounded-2xl mb-8 font-black tracking-widest">
+            #{lastOrderId.slice(-6).toUpperCase()}
           </p>
 
-          <div className="space-y-3">
-            <Button
-              onClick={() => setStep("cart")}
-              className="w-full h-14 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold uppercase tracking-widest"
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={handlePrintReceipt}
+              className="w-full h-14 bg-white hover:bg-slate-100 text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 border-2 border-white transition-all hover:scale-[1.01]"
             >
-              Nova Venda (F2)
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full h-14 border-2 border-slate-700 text-slate-300 rounded-xl font-bold uppercase tracking-widest"
-              onClick={() => navigate("/admin/pedidos")}
+              <Printer size={18} />
+              Imprimir Pedido
+            </button>
+            <button
+              onClick={handleNewSale}
+              className="w-full h-14 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.01]"
             >
+              <ShoppingCart size={18} />
+              Novo Pedido
+            </button>
+            <button
+              onClick={() => {
+                setStep("cart");
+                navigate("/admin/pedidos");
+              }}
+              className="w-full h-14 border-2 border-slate-800 bg-slate-950 hover:bg-slate-900 text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all hover:scale-[1.01]"
+            >
+              <FileText size={18} />
               Ver Pedidos
-            </Button>
+            </button>
           </div>
         </motion.div>
       </div>
@@ -1258,6 +1462,27 @@ export function AdminPDV() {
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-950 text-slate-100 flex flex-col font-sans overflow-hidden">
+      {/* Dynamic Saving Overlay to prevent concurrent operations & show detailed status */}
+      {isFinishing && (
+        <div className="fixed inset-0 z-[999] bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+          <div className="relative mb-8">
+            <div className="w-24 h-24 rounded-full border-4 border-slate-800 border-t-red-600 animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <ShoppingCart size={32} className="text-red-500 animate-pulse" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-black uppercase tracking-tight text-white mb-2 italic">
+            Gravando Pedido
+          </h2>
+          <p className="text-xs uppercase font-black text-red-500 tracking-widest min-h-[20px] animate-pulse">
+            {checkoutStatus || "Salvando..."}
+          </p>
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide mt-4 max-w-sm">
+            Por favor, não feche esta janela ou recarregue a página até que a transação termine.
+          </p>
+        </div>
+      )}
+
       {/* Header PDV */}
       <header className="h-16 bg-slate-900 border-b border-white/10 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">

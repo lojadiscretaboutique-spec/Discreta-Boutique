@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { motion } from 'motion/react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -68,20 +70,47 @@ export function AdminCaixa() {
     methodTotals['Dinheiro'] = roundTo2((methodTotals['Dinheiro'] || 0) + (currentSession.initialBalance || 0));
   }
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(() => {
+    // No-op because we listen to Firestore onSnapshot live!
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
-    try {
-      const current = await cashService.getCurrentSession();
+    let sessionsList: CashSession[] = [];
+    let transactionsList: CashTransaction[] = [];
+
+    const handleUpdates = () => {
+      const current = sessionsList.find(s => s.status === 'aberto') || null;
       setCurrentSession(current);
-      
-      const sessList = await cashService.listRecentSessions();
-      
-      // Calculate cash-only (Dinheiro) totals for each recent session to find the true cash difference
+      setSessions(sessionsList);
+
+      const currentTrans = current 
+        ? transactionsList.filter(t => t.sessionId === current.id)
+        : [];
+      setTransactions(currentTrans);
+
+      if (current) {
+        const mTotals = currentTrans.reduce((acc, t) => {
+          const method = t.paymentMethod || 'Dinheiro';
+          if (!acc[method]) acc[method] = 0;
+          if (t.type === 'entrada') acc[method] = roundTo2(acc[method] + t.amount);
+          else acc[method] = roundTo2(acc[method] - t.amount);
+          return acc;
+        }, {} as Record<string, number>);
+        const expectedCash = roundTo2((mTotals['Dinheiro'] || 0) + (current.initialBalance || 0));
+        setClosingBalance(expectedCash.toString());
+      }
+
+      if (selectedSession) {
+        const selectedTrans = transactionsList.filter(t => t.sessionId === selectedSession.id);
+        setSessionTransactions(selectedTrans);
+      }
+
       const cashTotalsMap: Record<string, number> = {};
-      await Promise.all(sessList.map(async (s) => {
+      sessionsList.forEach(s => {
         if (s.id) {
-          const transList = await cashService.listTransactions(s.id);
-          const dineroTotal = transList.reduce((sum, t) => {
+          const sTrans = transactionsList.filter(t => t.sessionId === s.id);
+          const dineroTotal = sTrans.reduce((sum, t) => {
             const method = t.paymentMethod || 'Dinheiro';
             if (method === 'Dinheiro') {
               if (t.type === 'entrada') return sum + t.amount;
@@ -91,41 +120,33 @@ export function AdminCaixa() {
           }, 0);
           cashTotalsMap[s.id] = roundTo2(dineroTotal);
         }
-      }));
+      });
       setSessionsCashTotals(cashTotalsMap);
-      setSessions(sessList);
+    };
 
-      if (current) {
-          const transList = await cashService.listTransactions(current.id);
-          setTransactions(transList);
-          
-          // Calculate expected cash balance (only Dinheiro method)
-          const mTotals = transList.reduce((acc, t) => {
-            const method = t.paymentMethod || 'Dinheiro';
-            if (!acc[method]) acc[method] = 0;
-            if (t.type === 'entrada') acc[method] = roundTo2(acc[method] + t.amount);
-            else acc[method] = roundTo2(acc[method] - t.amount);
-            return acc;
-          }, {} as Record<string, number>);
-          
-          const expectedCash = roundTo2((mTotals['Dinheiro'] || 0) + (current.initialBalance || 0));
-          setClosingBalance(expectedCash.toString());
-      } else {
-          setTransactions([]);
-      }
-
-      if (selectedSession) {
-        const transList = await cashService.listTransactions(selectedSession.id);
-        setSessionTransactions(transList);
-      }
-    } catch (err: unknown) {
-      toast(err instanceof Error ? err.message : "Erro ao carregar dados do caixa", 'error');
-    } finally {
+    const qSessions = query(collection(db, 'cashSessions'), orderBy('openedAt', 'desc'), limit(50));
+    const unsubscribeSessions = onSnapshot(qSessions, (snapshot) => {
+      sessionsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashSession));
+      handleUpdates();
       setLoading(false);
-    }
-  }, [toast, selectedSession]);
+    }, (error) => {
+      console.error("Error listening to cash sessions:", error);
+      setLoading(false);
+    });
 
-  useEffect(() => { loadData(); }, [loadData]);
+    const qTransactions = query(collection(db, 'cashTransactions'), orderBy('createdAt', 'desc'), limit(2000));
+    const unsubscribeTransactions = onSnapshot(qTransactions, (snapshot) => {
+      transactionsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashTransaction));
+      handleUpdates();
+    }, (error) => {
+      console.error("Error listening to transactions:", error);
+    });
+
+    return () => {
+      unsubscribeSessions();
+      unsubscribeTransactions();
+    };
+  }, [selectedSession]);
 
   const handleOpenCaixa = async (e: React.FormEvent) => {
       e.preventDefault();

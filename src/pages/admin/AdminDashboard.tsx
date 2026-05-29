@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { 
   Package, Users, TrendingUp, AlertCircle, 
@@ -31,73 +31,76 @@ export function AdminDashboard() {
   const [customersCount, setCustomersCount] = useState(0);
 
   useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      try {
-        let qOrders = collection(db, 'orders');
-        
-        let start: Date | null = null;
-        let end: Date | null = null;
-        const now = new Date();
+    setLoading(true);
+    let start: Date | null = null;
+    let end: Date | null = null;
+    const now = new Date();
 
-        switch (period) {
-          case 'hoje':
-            start = startOfDay(now);
-            end = endOfDay(now);
-            break;
-          case 'ontem': {
-            const ontem = subDays(now, 1);
-            start = startOfDay(ontem);
-            end = endOfDay(ontem);
-            break;
-          }
-          case '7dias':
-            start = subDays(now, 7);
-            end = now;
-            break;
-          case '30dias':
-            start = subDays(now, 30);
-            end = now;
-            break;
-          case 'mes':
-            start = startOfMonth(now);
-            end = endOfMonth(now);
-            break;
-          case 'ano':
-            start = startOfYear(now);
-            end = endOfYear(now);
-            break;
-        }
-
-        if (start && end) {
-          qOrders = query(
-            collection(db, 'orders'), 
-            where('createdAt', '>=', start),
-            where('createdAt', '<=', end)
-          ) as any;
-        }
-
-        const [orderSnap, prodSnap, custSnap] = await Promise.all([
-          getDocs(qOrders),
-          getDocs(collection(db, 'products')),
-          getDocs(collection(db, 'customers'))
-        ]);
-
-        const loadedOrders = orderSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Filter out CANCELADO manually to avoid composite index requirements
-        const validOrders = loadedOrders.filter(o => o.status !== 'CANCELADO');
-        
-        setOrders(validOrders);
-        setProducts(prodSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setCustomersCount(custSnap.size);
-
-      } catch (error) {
-        console.error("Error loading dashboard data:", error);
-      } finally {
-        setLoading(false);
+    switch (period) {
+      case 'hoje':
+        start = startOfDay(now);
+        end = endOfDay(now);
+        break;
+      case 'ontem': {
+        const ontem = subDays(now, 1);
+        start = startOfDay(ontem);
+        end = endOfDay(ontem);
+        break;
       }
+      case '7dias':
+        start = subDays(now, 7);
+        end = now;
+        break;
+      case '30dias':
+        start = subDays(now, 30);
+        end = now;
+        break;
+      case 'mes':
+        start = startOfMonth(now);
+        end = endOfMonth(now);
+        break;
+      case 'ano':
+        start = startOfYear(now);
+        end = endOfYear(now);
+        break;
     }
-    loadData();
+
+    let qOrders = collection(db, 'orders');
+    if (start && end) {
+      qOrders = query(
+        collection(db, 'orders'), 
+        where('createdAt', '>=', start),
+        where('createdAt', '<=', end)
+      ) as any;
+    }
+
+    const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
+      const loadedOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      const validOrders = loadedOrders.filter((o: any) => o.status !== 'CANCELADO');
+      setOrders(validOrders);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error listening to dashboard orders:", error);
+      setLoading(false);
+    });
+
+    const unsubscribeProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+      setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (error) => {
+      console.error("Error listening to dashboard products:", error);
+    });
+
+    const unsubscribeCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
+      setCustomersCount(snapshot.size);
+    }, (error) => {
+      console.error("Error listening to dashboard customers:", error);
+    });
+
+    return () => {
+      unsubscribeOrders();
+      unsubscribeProducts();
+      unsubscribeCustomers();
+    };
   }, [period]);
 
   // Derived metrics
