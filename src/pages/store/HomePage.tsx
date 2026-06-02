@@ -44,6 +44,7 @@ export function HomePage() {
     ofertas: Product[]
   }>({ lancamentos: [], destaques: [], maisVendidos: [], emAlta: [], recomendados: [], ofertas: [] });
   const [categories, setCategories] = useState<Category[]>([]);
+  const [featuredCategorySections, setFeaturedCategorySections] = useState<{ category: Category; products: Product[] }[]>([]);
   const [currentBanner, setCurrentBanner] = useState(0);
   const [loading, setLoading] = useState(true);
   const [aiFrase, setAiFrase] = useState("");
@@ -200,6 +201,42 @@ export function HomePage() {
       });
 
       setCategories(categoriesWithImages);
+
+      // Map and extract featured categories that are marked as showInHome: true
+      const isProductInCategory = (product: Product, categoryId: string, listCats: Category[]): boolean => {
+        if (product.categoryId === categoryId) return true;
+        if (product.categoryIds && Array.isArray(product.categoryIds) && product.categoryIds.includes(categoryId)) {
+          return true;
+        }
+        
+        const checkParent = (catId: string | null | undefined): boolean => {
+          if (!catId) return false;
+          if (catId === categoryId) return true;
+          const cat = listCats.find(c => c.id === catId);
+          if (!cat) return false;
+          if (cat.parentId === categoryId) return true;
+          return checkParent(cat.parentId);
+        };
+
+        if (checkParent(product.categoryId)) return true;
+        if (product.categoryIds && Array.isArray(product.categoryIds)) {
+          if (product.categoryIds.some(cid => checkParent(cid))) return true;
+        }
+
+        return false;
+      };
+
+      const categoriesWithHomeSec = allCats.filter(c => c.showInHome === true);
+      const featuredSecs = categoriesWithHomeSec.map(cat => {
+        const productsOfThisCat = visibleProducts.filter(p => isProductInCategory(p, cat.id, allCats));
+        return {
+          category: cat,
+          products: productsOfThisCat
+        };
+      }).filter(sec => sec.products.length > 0);
+
+      setFeaturedCategorySections(featuredSecs);
+
       // Wait for everything to be set before releasing the global splash
       setHomeReady(true);
     } catch(e) {
@@ -394,6 +431,17 @@ export function HomePage() {
             {/* 2. DESTAQUES - Carrega imediatamente */}
             {sections.destaques.length > 0 && <ProductCarousel title="Destaques" products={sections.destaques} link="/catalogo?secao=destaques" />}
             
+            {/* Dynamic Featured Category Sections */}
+            {featuredCategorySections.map(sec => (
+              <LazyLoad key={sec.category.id} rootMargin="300px">
+                <ProductCarousel 
+                  title={sec.category.name} 
+                  products={sec.products} 
+                  link={`/catalogo?categoria=${sec.category.slug || sec.category.id}`} 
+                />
+              </LazyLoad>
+            ))}
+
             {/* Sessões carregadas conforme o scroll para performance */}
             <LazyLoad rootMargin="300px">
               {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo?secao=mais-vendidos" />}

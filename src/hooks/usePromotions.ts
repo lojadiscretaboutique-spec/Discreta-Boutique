@@ -42,9 +42,12 @@ export function usePromotions() {
   }, []);
 
   const calculateProductPrice = (product: { id: string; categoryId: string; price: number; promoPrice?: number }) => {
-    // 1. Get base price
-    const basePrice = product.promoPrice || product.price;
-    let finalPrice = basePrice;
+    // 1. Get table price and catalog discount
+    const tablePrice = product.price;
+    const catalogDiscount = (product.promoPrice && product.promoPrice < product.price) ? (product.price - product.promoPrice) : 0;
+    
+    let bestDiscount = catalogDiscount;
+    let finalPrice = (product.promoPrice && product.promoPrice < product.price) ? product.promoPrice : product.price;
     let appliedPromo: Promotion | null = null;
     let isFreeShipping = false;
 
@@ -66,27 +69,25 @@ export function usePromotions() {
         continue;
       }
 
-      // Calculate discount
-      let discount = 0;
+      // Calculate discount in relation to table price (product.price)
+      let promoDiscount = 0;
       if (promo.type === 'percentage') {
-        discount = basePrice * (promo.value / 100);
+        promoDiscount = tablePrice * (promo.value / 100);
       } else if (promo.type === 'fixed') {
-        discount = promo.value;
+        promoDiscount = promo.value;
       }
 
-      const candidatePrice = basePrice - discount;
-      
-      // If we already have a promo, only replace if this one is better or has higher priority
-      // (Since we sorted by priority, the first one that qualifies and isn't just free shipping is usually the one)
-      if (!appliedPromo || candidatePrice < finalPrice) {
-        finalPrice = candidatePrice;
+      // If the marketing promo discount is strictly greater than the catalog/previous discount, prioritize it
+      if (promoDiscount > bestDiscount) {
+        bestDiscount = promoDiscount;
+        finalPrice = tablePrice - promoDiscount;
         appliedPromo = promo;
       }
     }
 
     return {
       price: Math.max(0, finalPrice),
-      originalPrice: basePrice,
+      originalPrice: tablePrice,
       promotion: appliedPromo,
       isFreeShipping
     };

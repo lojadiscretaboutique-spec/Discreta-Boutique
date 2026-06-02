@@ -255,6 +255,16 @@ export function CartPage() {
     }
     return roundTo2(sum);
   }, [items, paymentMethod]);
+
+  const tableSubTotal = useMemo(() => {
+    let sum = 0;
+    for (const item of items) {
+      const originalPrice = (item.originalPrice && item.originalPrice > 0) ? item.originalPrice : item.price;
+      sum += originalPrice * item.quantity;
+    }
+    return roundTo2(sum);
+  }, [items]);
+
   let couponDiscount = 0;
   if (appliedCoupon) {
     const isPaymentAllowed = !appliedCoupon.allowedPaymentMethods || 
@@ -264,7 +274,7 @@ export function CartPage() {
 
     if (isPaymentAllowed) {
       if (appliedCoupon.type === 'percentage') {
-        couponDiscount = subTotal * (appliedCoupon.value / 100);
+        couponDiscount = tableSubTotal * (appliedCoupon.value / 100);
       } else if (appliedCoupon.type === 'fixed') {
         couponDiscount = appliedCoupon.value;
       }

@@ -66,6 +66,14 @@ export function AdminCategories() {
   const [forceRegen, setForceRegen] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ total: 0, processed: 0, updated: 0, skipped: 0, logs: [] as string[] });
   const [isBulkRunning, setIsBulkRunning] = useState(false);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkUpdateProgress, setBulkUpdateProgress] = useState<{
+    current: number;
+    total: number;
+    categoryName: string;
+    stage: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportCSV = () => {
@@ -502,6 +510,77 @@ export function AdminCategories() {
     }
   };
 
+  const handleToggleSelect = (id: string) => {
+    setSelectedCategoryIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkUpdateField = async (field: 'isActive' | 'isFeatured' | 'showInMenu' | 'showInHome', value: boolean) => {
+    const labelMap = {
+      isActive: 'Categoria Ativa',
+      isFeatured: 'Categoria em Destaque',
+      showInMenu: 'Exibir no Menu',
+      showInHome: 'Destaque na Home (Sessão de Produtos)'
+    };
+    
+    const ok = await confirm({
+      title: 'Alteração em Massa',
+      message: `Tem certeza que deseja alterar o campo "${labelMap[field]}" para ${value ? 'Ativado/Sim' : 'Desativado/Não'} de ${selectedCategoryIds.length} categorias selecionadas?`,
+      confirmText: 'Confirmar'
+    });
+
+    if (!ok) return;
+
+    setBulkUpdating(true);
+    setBulkUpdateProgress({
+      current: 0,
+      total: selectedCategoryIds.length,
+      categoryName: 'Preparando...',
+      stage: 'Iniciando o processo de alteração em massa...'
+    });
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (let i = 0; i < selectedCategoryIds.length; i++) {
+        const id = selectedCategoryIds[i];
+        const catObj = categories.find(c => c.id === id);
+        const catName = catObj ? catObj.name : `ID: ${id}`;
+        
+        setBulkUpdateProgress({
+          current: i + 1,
+          total: selectedCategoryIds.length,
+          categoryName: catName,
+          stage: `Atualizando "${catName}" para ${value ? 'Ativado' : 'Desativado'}...`
+        });
+
+        try {
+          await categoryService.updateCategory(id, { [field]: value });
+          successCount++;
+        } catch (err) {
+          console.error(`Erro ao atualizar categoria ${id}:`, err);
+          errorCount++;
+        }
+      }
+
+      if (errorCount === 0) {
+        toast(`${successCount} categorias atualizadas com sucesso!`, 'success');
+      } else {
+        toast(`${successCount} atualizadas, ${errorCount} falhas.`, 'warning');
+      }
+
+      setSelectedCategoryIds([]);
+    } catch (err) {
+      console.error("Erro geral na atualização em massa:", err);
+      toast("Ocorreu um erro ao realizar a alteração em massa.", "error");
+    } finally {
+      setBulkUpdating(false);
+      setBulkUpdateProgress(null);
+    }
+  };
+
   const filteredCategories = categories.filter(cat => {
     const matchesSearch = cat.name.toLowerCase().includes(searchTerm.toLowerCase()) || cat.slug.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || (filterStatus === 'active' ? cat.isActive : !cat.isActive);
@@ -792,8 +871,8 @@ export function AdminCategories() {
                   </div>
                   <div className="flex items-center justify-between p-4 bg-slate-800 rounded-xl border border-slate-700">
                     <div>
-                      <p className="font-bold text-sm">Exibir na Home</p>
-                      <p className="text-xs text-slate-400">Aparece na página inicial.</p>
+                      <p className="font-bold text-sm">Destaque na Home (Sessão de Produtos)</p>
+                      <p className="text-xs text-slate-400">Exibe uma seção/carrossel especial com todos os produtos desta categoria na página inicial.</p>
                     </div>
                     <input type="checkbox" checked={form.showInHome} onChange={e => setForm({ ...form, showInHome: e.target.checked })} className="w-5 h-5 accent-red-600" />
                   </div>
@@ -923,6 +1002,111 @@ export function AdminCategories() {
         </div>
       </div>
 
+      {selectedCategoryIds.length > 0 && (
+        <div className="bg-slate-900 border-2 border-red-600/30 rounded-2xl p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4 motion-safe:animate-in slide-in-from-top-4 shadow-xl shadow-red-950/10 mb-4 animate-none">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-red-600/20 flex items-center justify-center text-red-500 font-black">
+              {selectedCategoryIds.length}
+            </div>
+            <div>
+              <p className="font-bold text-sm text-white">Categorias Selecionadas</p>
+              <p className="text-xs text-slate-400">Escolha uma ação em massa para aplicar às categorias selecionadas.</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Categoria Ativa (Status) */}
+            <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 items-center">
+              <span className="text-[10px] font-bold uppercase text-slate-400 px-2">Ativa:</span>
+              <button 
+                onClick={() => handleBulkUpdateField('isActive', true)}
+                disabled={bulkUpdating}
+                className="bg-slate-900 hover:bg-slate-950 hover:text-red-500 text-[11.5px] px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 font-bold transition-all"
+              >
+                Ativar
+              </button>
+              <span className="w-1"></span>
+              <button 
+                onClick={() => handleBulkUpdateField('isActive', false)}
+                disabled={bulkUpdating}
+                className="bg-slate-900 hover:bg-slate-950 hover:text-red-500 text-[11.5px] px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 font-bold transition-all"
+              >
+                Desativar
+              </button>
+            </div>
+
+            {/* Categoria em Destaque */}
+            <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 items-center">
+              <span className="text-[10px] font-bold uppercase text-slate-400 px-2">Destaque:</span>
+              <button 
+                onClick={() => handleBulkUpdateField('isFeatured', true)}
+                disabled={bulkUpdating}
+                className="bg-slate-900 hover:bg-slate-950 hover:text-red-500 text-[11.5px] px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 font-bold transition-all"
+              >
+                Sim
+              </button>
+              <span className="w-1"></span>
+              <button 
+                onClick={() => handleBulkUpdateField('isFeatured', false)}
+                disabled={bulkUpdating}
+                className="bg-slate-900 hover:bg-slate-950 hover:text-red-500 text-[11.5px] px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 font-bold transition-all"
+              >
+                Não
+              </button>
+            </div>
+
+            {/* Exibir no Menu */}
+            <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 items-center">
+              <span className="text-[10px] font-bold uppercase text-slate-400 px-2">No Menu:</span>
+              <button 
+                onClick={() => handleBulkUpdateField('showInMenu', true)}
+                disabled={bulkUpdating}
+                className="bg-slate-900 hover:bg-slate-950 hover:text-red-500 text-[11.5px] px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 font-bold transition-all"
+              >
+                Sim
+              </button>
+              <span className="w-1"></span>
+              <button 
+                onClick={() => handleBulkUpdateField('showInMenu', false)}
+                disabled={bulkUpdating}
+                className="bg-slate-900 hover:bg-slate-950 hover:text-red-500 text-[11.5px] px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 font-bold transition-all"
+              >
+                Não
+              </button>
+            </div>
+
+            {/* Destaque na Home */}
+            <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 items-center">
+              <span className="text-[10px] font-bold uppercase text-slate-400 px-2">Sessão Home:</span>
+              <button 
+                onClick={() => handleBulkUpdateField('showInHome', true)}
+                disabled={bulkUpdating}
+                className="bg-slate-900 hover:bg-slate-950 hover:text-red-500 text-[11.5px] px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 font-bold transition-all"
+              >
+                Sim
+              </button>
+              <span className="w-1"></span>
+              <button 
+                onClick={() => handleBulkUpdateField('showInHome', false)}
+                disabled={bulkUpdating}
+                className="bg-slate-900 hover:bg-slate-950 hover:text-red-500 text-[11.5px] px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 font-bold transition-all"
+              >
+                Não
+              </button>
+            </div>
+
+            <Button 
+              variant="outline" 
+              onClick={() => setSelectedCategoryIds([])}
+              disabled={bulkUpdating}
+              className="text-xs h-9 border-slate-700 hover:bg-slate-800"
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-slate-900 rounded-2xl shadow-sm border border-slate-700 overflow-hidden min-h-[500px]">
         {/* Barra de Ferramentas */}
         <div className="p-4 border-b bg-slate-800/50 space-y-4">
@@ -967,6 +1151,20 @@ export function AdminCategories() {
           <table className="w-full text-left text-sm min-w-[800px]">
              <thead className="bg-slate-800 text-slate-400 font-bold border-b text-[11px] uppercase tracking-widest">
                 <tr>
+                   <th className="px-6 py-4 w-12 text-center">
+                     <input 
+                       type="checkbox" 
+                       checked={filteredCategories.length > 0 && selectedCategoryIds.length === filteredCategories.length}
+                       onChange={(e) => {
+                         if (e.target.checked) {
+                           setSelectedCategoryIds(filteredCategories.map(c => c.id));
+                         } else {
+                           setSelectedCategoryIds([]);
+                         }
+                       }}
+                       className="w-4 h-4 accent-red-600 rounded cursor-pointer"
+                     />
+                   </th>
                    <th className="px-6 py-4">Nome / Slug</th>
                    <th className="px-6 py-4 text-center">Produtos</th>
                    <th className="px-6 py-4 text-center">Ordem</th>
@@ -976,14 +1174,14 @@ export function AdminCategories() {
              </thead>
              <tbody className="divide-y">
                 {loading ? (
-                  <tr><td colSpan={5} className="p-20 text-center">
+                  <tr><td colSpan={6} className="p-20 text-center">
                     <div className="flex flex-col items-center gap-2">
                        <div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Carregando categorias...</p>
                     </div>
                   </td></tr>
                 ) : rootCategories.length === 0 ? (
-                  <tr><td colSpan={5} className="p-20 text-center text-slate-300">Nenhuma categoria encontrada.</td></tr>
+                  <tr><td colSpan={6} className="p-20 text-center text-slate-300">Nenhuma categoria encontrada.</td></tr>
                 ) : rootCategories.map(cat => (
                   <CategoryRow 
                     key={cat.id} 
@@ -995,6 +1193,8 @@ export function AdminCategories() {
                     canEdit={canEdit}
                     canDelete={canDelete}
                     canCreate={canCreate}
+                    selectedIds={selectedCategoryIds}
+                    onToggleSelect={handleToggleSelect}
                   />
                 ))}
              </tbody>
@@ -1143,6 +1343,51 @@ export function AdminCategories() {
           </div>
         </div>
       )}
+
+      {/* Overlay de Bloqueio para Alteração em Massa */}
+      {bulkUpdating && bulkUpdateProgress && (
+        <div id="bulk-update-progress-overlay" className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 backdrop-blur-md transition-all duration-300">
+          <div className="bg-slate-900 border border-red-600/30 rounded-3xl p-8 max-w-md w-full shadow-2xl flex flex-col items-center text-center gap-6 motion-safe:animate-in zoom-in-95 duration-200">
+            {/* Spinning/pulsing graphic with Discreta styling */}
+            <div className="relative flex items-center justify-center">
+              <div className="w-20 h-20 rounded-full border-4 border-red-600/20 border-t-red-600 animate-spin"></div>
+              <Sparkles className="absolute text-red-500 animate-pulse" size={28} />
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-xl font-bold text-white tracking-tight">Alteração em Massa</h2>
+              <p className="text-sm text-slate-400">Por favor, aguarde. Estamos atualizando as categorias selecionadas.</p>
+            </div>
+
+            {/* Informações da etapa */}
+            <div className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span>Passo {bulkUpdateProgress.current} de {bulkUpdateProgress.total}</span>
+                <span className="text-red-500">{Math.round((bulkUpdateProgress.current / bulkUpdateProgress.total) * 100)}%</span>
+              </div>
+              
+              {/* Progress bar */}
+              <div className="w-full h-2 bg-slate-850 rounded-full overflow-hidden border border-slate-800">
+                <div 
+                  className="h-full bg-red-600 rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(220,38,38,0.5)]"
+                  style={{ width: `${(bulkUpdateProgress.current / bulkUpdateProgress.total) * 100}%` }}
+                />
+              </div>
+
+              <div className="text-left pt-2 border-t border-slate-950">
+                <p className="text-[10px] uppercase font-bold text-slate-550 tracking-wider">Processando item</p>
+                <p className="text-sm font-semibold text-white truncate mt-0.5">{bulkUpdateProgress.categoryName}</p>
+                <p className="text-xs text-slate-400 mt-1 italic leading-relaxed">{bulkUpdateProgress.stage}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs font-mono text-amber-500 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-1.5 pointer-events-none">
+              <span className="w-1.5 h-1.5 bg-amber-500 animate-ping rounded-full inline-block mr-1"></span>
+              SISTEMA BLOQUEADO • NÃO RECARREGUE A PÁGINA
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1156,6 +1401,8 @@ interface CategoryRowProps {
   canEdit: boolean;
   canDelete: boolean;
   canCreate: boolean;
+  selectedIds: string[];
+  onToggleSelect: (id: string) => void;
 }
 
 function CategoryRow({ 
@@ -1166,7 +1413,9 @@ function CategoryRow({
   onDuplicate,
   canEdit,
   canDelete,
-  canCreate
+  canCreate,
+  selectedIds,
+  onToggleSelect
 }: CategoryRowProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [imgError, setImgError] = useState(false);
@@ -1174,6 +1423,14 @@ function CategoryRow({
   return (
     <>
       <tr className="group hover:bg-slate-800 transition-colors">
+         <td className="px-6 py-3 text-center">
+            <input 
+              type="checkbox" 
+              checked={selectedIds.includes(category.id)}
+              onChange={() => onToggleSelect(category.id)}
+              className="w-4 h-4 accent-red-600 rounded cursor-pointer"
+            />
+         </td>
          <td className="px-6 py-3">
             <div className="flex items-center gap-3">
                {subcategories.length > 0 ? (
@@ -1251,17 +1508,39 @@ function CategoryRow({
           sub={sub} 
           onEdit={onEdit} 
           onDelete={onDelete} 
+          selectedIds={selectedIds}
+          onToggleSelect={onToggleSelect}
         />
       ))}
     </>
   );
 }
 
-function SubcategoryRow({ sub, onEdit, onDelete }: { sub: Category, onEdit: (cat: Category) => void, onDelete: (id: string, name: string) => void }) {
+function SubcategoryRow({ 
+  sub, 
+  onEdit, 
+  onDelete,
+  selectedIds,
+  onToggleSelect
+}: { 
+  sub: Category; 
+  onEdit: (cat: Category) => void; 
+  onDelete: (id: string, name: string) => void;
+  selectedIds: string[];
+  onToggleSelect: (id: string) => void;
+}) {
   const [imgError, setImgError] = useState(false);
 
   return (
     <tr key={sub.id} className="group bg-slate-800/30 hover:bg-slate-800 transition-colors border-l-2 border-slate-700">
+      <td className="px-6 py-3 text-center w-12">
+         <input 
+           type="checkbox" 
+           checked={selectedIds.includes(sub.id)}
+           onChange={() => onToggleSelect(sub.id)}
+           className="w-4 h-4 accent-red-600 rounded cursor-pointer"
+         />
+      </td>
       <td className="px-6 py-3 pl-12 border-l-2 border-red-600/20">
          <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-slate-900 border rounded-lg overflow-hidden flex items-center justify-center shrink-0">
