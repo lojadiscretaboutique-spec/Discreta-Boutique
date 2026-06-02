@@ -270,7 +270,7 @@ export function ProductPage() {
                      onClick={() => setSelectedVariant(prev => ({...prev!, imageUrl: img.url}))}
                      className={cn(
                        "w-20 h-20 rounded-2xl border-2 overflow-hidden shrink-0 transition-all",
-                       currentImage === img.url ? "border-red-600 scale-105" : "border-zinc-800 opacity-50 grayscale hover:grayscale-0 hover:opacity-100"
+                       currentImage === img.url ? "border-red-600 scale-105" : "border-zinc-800"
                      )}
                    >
                      <img src={img.url || undefined} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
