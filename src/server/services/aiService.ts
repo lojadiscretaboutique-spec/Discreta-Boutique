@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -974,6 +975,157 @@ RETORNE APENAS JSON NO SEGUINTE FORMATO:
     } catch (error: any) {
       console.error('Erro no generateStrategicReport (AI):', error.message);
       throw new Error(`Falha estratégica: ${error.message}`);
+    }
+  }
+
+  async generateMarketingCopywriting(topic: string, tone: string, ctaGoal: string, format: string): Promise<any> {
+    const prompt = `Você é um Copywriter Especialista da Boutique Discreta, focado em marketing de luxo, sedução e moda íntima premium.
+Escreva 3 variações de publicações de marketing para o Instagram baseadas nas seguintes diretrizes:
+
+TÓPICO/IDEIA: "${topic}"
+TOM DE VOZ: "${tone}" (por exemplo: Sensual de Luxo, Romântico, Provocativo, Sofisticado)
+OBJETIVO DO CTA: "${ctaGoal}" (por exemplo: chamar no whatsapp, comprar no site, engajar, salvar)
+FORMATO DO POST: "${format}" (por exemplo: Feed, Stories, Reels)
+
+As três opções devem ter abordagens bem distintas:
+- Opção A: Foco Sensorial, Elegância & Desejo (Poético e sofisticado)
+- Opção B: Foco no Produto & Benefícios Exclusivos (Foco em tecido, caimento e ajuste perfeito)
+- Opção C: Foco Comercial, Urgência & Escassez (Foco em cupom, poucas peças, ação imediata)
+
+Retorne estritamente um objeto JSON com a seguinte estrutura:
+{
+  "options": [
+    {
+      "label": "Abordagem sensorial...",
+      "headline": "Gancho matador e charmoso",
+      "copy": "Texto primoroso, formatado, espaçado com parágrafos curtos e emojis que valorizam lingeries e sofisticação.",
+      "cta": "Legenda ou chamada do CTA clara",
+      "hashtags": ["discretaboutique", "lingeriepremium"]
+    }
+  ]
+}
+`;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é a Inteligência Estratégica Discreta. Retorne apenas JSON válido.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.7
+      });
+      return JSON.parse(response.choices[0].message.content || '{"options": []}');
+    } catch (err: any) {
+      console.error('[AI] Copywriting failed:', err.message);
+      return {
+        options: [
+          {
+            label: "Abordagem Sensorial (Luxo & Poesia)",
+            headline: `✨ Sedução em cada detalhe: ${topic}`,
+            copy: `Sinta a sofisticação na pele com as peças mais desejadas da Discreta Boutique. Um toque sutil de renda premium redesenhando sua confiança.\n\nExperimente a coleção e descubra o poder de se sentir linda por completo.`,
+            cta: `Clique no link da nossa bio e garanta o seu hoje mesmo. Atendimento personalizado online.`,
+            hashtags: ["discretaboutique", "lingeriestudio", "autoestima", "rendadeluxo"]
+          },
+          {
+            label: "Abordagem Foco Conforto & Ajuste",
+            headline: "🌹 O toque que redefine o seu autocuidado",
+            copy: `Delicadeza que abraça seu corpo. Cada renda, costura e fecho foi selecionada para criar a harmonia ideal entre elegância insuperável e conforto absoluto.\n\nVista-se de si mesma com a Discreta Boutique.`,
+            cta: `Adicione o cupom EXCLUSIVO e compre direto pelo site oficial.`,
+            hashtags: ["discretaboutique", "mulhereselegantes", "confortoeestilo"]
+          },
+          {
+            label: "Abordagem Comercial (Urgência & Escassez)",
+            headline: "⚡ ÚLTIMO CHAMADO: Peças limitadíssimas!",
+            copy: `Seu closet merece o glamour definitivo. Unidades remanescentes da nossa coleção premium de lingeries com condições especiais de lançamento.\n\nEvite ficar sem seu tamanho! Garanta agora com frete grátis nacional acima de R$199.`,
+            cta: `Chame agora nossas consultoras no direct ou fale via WhatsApp clicando no link do perfil.`,
+            hashtags: ["discretaboutique", "lingerieexclusiva", "promocaomoda"]
+          }
+        ]
+      };
+    }
+  }
+
+  async generateMarketingImage(imagePrompt: string, referenceUrl?: string): Promise<{ imageUrl: string }> {
+    console.log(`[AI] Generating marketing image... Reference URL: ${referenceUrl}`);
+    try {
+      if (process.env.GEMINI_API_KEY) {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const response = await ai.models.generateImages({
+          model: 'imagen-4.0-generate-001',
+          prompt: `${imagePrompt}. Premium lingerie photoshoot style, professional luxury lighting, high-end editorial, elegant, highly detailed, no text. ${referenceUrl ? `Styled similarly to: ${referenceUrl}` : ''}`,
+          config: {
+            numberOfImages: 1,
+            aspectRatio: '1:1',
+            outputMimeType: 'image/jpeg'
+          }
+        });
+        if (response.generatedImages?.[0]?.image?.imageBytes) {
+          const base64Bytes = response.generatedImages[0].image.imageBytes;
+          const dataUrl = `data:image/jpeg;base64,${base64Bytes}`;
+          return { imageUrl: dataUrl };
+        }
+      }
+      
+      if (process.env.OPENAI_API_KEY) {
+        const client = this.getClient();
+        const response = await client.images.generate({
+          model: "dall-e-3",
+          prompt: `${imagePrompt}. Focus on luxurious details, sensual lace, high-end studio modeling. Elegant aesthetics, warm lighting, romantic luxury bedroom, stylish packaging. Exclude explicit content, keep it premium boutique grade. No text.`,
+          n: 1,
+          size: "1024x1024",
+          quality: "standard"
+        });
+        if (response.data?.[0]?.url) {
+          return { imageUrl: response.data[0].url };
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[AI] Real image generation failed, calling fallbacks:`, err.message);
+    }
+
+    const fallbacks = [
+      "https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=600",
+      "https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?q=80&w=600",
+      "https://images.unsplash.com/photo-1615396899839-c99c121888b0?q=80&w=600",
+      "https://images.unsplash.com/photo-1582533561751-ef6f6ab93a2e?q=80&w=600",
+      "https://images.unsplash.com/photo-1549439602-43ebcb23281f?q=80&w=600",
+      "https://images.unsplash.com/photo-1525507119028-ed4c629a60a3?q=80&w=600"
+    ];
+    const randomIndex = Math.floor(Math.random() * fallbacks.length);
+    return { imageUrl: fallbacks[randomIndex] };
+  }
+
+  async marketingRewrite(originalCopy: string, instruction: string): Promise<{ copy: string }> {
+    const prompt = `Reescreva a seguinte legenda de Instagram da Boutique Discreta baseando-se especificamente nestas instruções:
+INSTRUÇÃO: "${instruction}"
+
+LEGENDA ORIGINAL:
+"${originalCopy}"
+
+Mantenha o tom sofisticado, as formatações limpas, emojis adequados e hashtags. Retorne a legenda reescrita direta, polida e pronta para colar. Retorne no formato de texto limpo em JSON:
+{
+  "copy": "versão reescrita..."
+}
+`;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é a Inteligência Estratégica Discreta. Retorne JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.7
+      });
+      return JSON.parse(response.choices[0].message.content || `{"copy": "${originalCopy}"}`);
+    } catch (err: any) {
+      console.error('[AI] Rewrite failed:', err.message);
+      return { copy: `${originalCopy} (Reescrito com instrução: ${instruction})` };
     }
   }
 

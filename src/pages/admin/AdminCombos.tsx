@@ -416,9 +416,13 @@ export function AdminCombos() {
     }
   };
 
-  const filteredCombos = combos.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredCombos = combos.filter(c => {
+    const term = searchTerm.toLowerCase();
+    return (c.name || '').toLowerCase().includes(term) ||
+      (c.sku || '').toLowerCase().includes(term) ||
+      (c.gtin || '').toLowerCase().includes(term) ||
+      (c.description || '').toLowerCase().includes(term);
+  });
 
   // Global stats calculation
   const totalSales = combos.reduce((acc, c) => acc + (c.soldCount || 0), 0);

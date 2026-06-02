@@ -55,6 +55,7 @@ const AdminPaymentMethods = lazy(() => import('./pages/admin/financial/AdminPaym
 const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours').then(m => ({ default: m.AdminOperatingHours })));
 const AdminWebhooks = lazy(() => import('./pages/admin/AdminWebhooks').then(m => ({ default: m.AdminWebhooks })));
 const AdminSmartStock = lazy(() => import('./pages/admin/AdminSmartStock'));
+const AdminMarketingHub = lazy(() => import('./pages/admin/marketing/AdminMarketingHub'));
 
 // Loading Component (Splash Screen)
 function PageLoader() {
@@ -201,6 +202,8 @@ function AppContent() {
             <Route path="marketing/webhooks-logs" element={<AdminWebhooks />} />
             <Route path="marketing/afiliados" element={<AdminAffiliates />} />
             <Route path="estoque-inteligente" element={<AdminSmartStock />} />
+            <Route path="marketing" element={<AdminMarketingHub />} />
+            <Route path="marketing/:subpage" element={<AdminMarketingHub />} />
             <Route path="marketing/recuperador-carrinho" element={<AdminWebhooks />} />
             <Route path="marketing/recovery-logs" element={<AdminWebhooks />} />
             <Route path="config" element={<AdminConfig />} />

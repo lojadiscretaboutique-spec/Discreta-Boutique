@@ -42,6 +42,7 @@ export function AdminLayout() {
     { name: 'Áreas de Entrega', path: '/admin/areas-entrega', icon: MapPin, permission: 'areasEntrega' },
     { name: 'Horários da Loja', path: '/admin/horarios', icon: Clock, permission: 'settings' },
     { name: 'Marketing', path: '/admin/marketing', icon: Megaphone, permission: 'banners', submenu: [
+        { name: 'Hub Estratégico Pro ⭐️', path: '/admin/marketing', permission: 'banners' },
         { name: 'Banners', path: '/admin/marketing/banners', permission: 'banners' },
         { name: 'Popups', path: '/admin/marketing/popups', permission: 'banners' },
         { name: 'Cupons', path: '/admin/marketing/cupons', permission: 'banners' },

@@ -305,6 +305,42 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /mkt_campaigns/{doc} {
+      allow read, write: if true;
+    }
+
+    match /mkt_tasks/{doc} {
+      allow read, write: if true;
+    }
+
+    match /mkt_influencers/{doc} {
+      allow read, write: if true;
+    }
+
+    match /mkt_affiliates/{doc} {
+      allow read, write: if true;
+    }
+
+    match /mkt_promotions/{doc} {
+      allow read, write: if true;
+    }
+
+    match /mkt_giveaways/{doc} {
+      allow read, write: if true;
+    }
+
+    match /mkt_content/{doc} {
+      allow read, write: if true;
+    }
+
+    match /mkt_alerts/{doc} {
+      allow read, write: if true;
+    }
+
+    match /mkt_whatsapp/{doc} {
+      allow read, write: if true;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

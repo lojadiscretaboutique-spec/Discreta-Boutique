@@ -536,6 +536,48 @@ export const generatePostsCalendar = async (req: Request, res: Response) => {
   }
 };
 
+export const generateMarketingCopywriting = async (req: Request, res: Response) => {
+  try {
+    const { topic, tone, ctaGoal, format } = req.body;
+    if (!topic) {
+      return res.status(400).json({ error: 'O tópico/ideia é obrigatório para gerar copywriting' });
+    }
+    const result = await aiService.generateMarketingCopywriting(topic, tone, ctaGoal, format);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Erro ao gerar copywriting de marketing por IA:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const generateMarketingImage = async (req: Request, res: Response) => {
+  try {
+    const { prompt, referenceUrl } = req.body;
+    if (!prompt) {
+      return res.status(400).json({ error: 'O prompt visual da imagem é obrigatório' });
+    }
+    const result = await aiService.generateMarketingImage(prompt, referenceUrl);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Erro ao gerar imagem de marketing por IA:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const marketingRewrite = async (req: Request, res: Response) => {
+  try {
+    const { originalCopy, instruction } = req.body;
+    if (!originalCopy || !instruction) {
+      return res.status(400).json({ error: 'Texto original e instruções são necessários para reescrever' });
+    }
+    const result = await aiService.marketingRewrite(originalCopy, instruction);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Erro ao reescrever copywriting por IA:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const aiController = {
   generateProduct,
   generateCategory,
@@ -551,5 +593,8 @@ export const aiController = {
   generateEmbedding,
   rankOffers,
   getSearchSuggestions,
-  generatePostsCalendar
+  generatePostsCalendar,
+  generateMarketingCopywriting,
+  generateMarketingImage,
+  marketingRewrite
 };
