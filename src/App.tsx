@@ -56,6 +56,7 @@ const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours
 const AdminWebhooks = lazy(() => import('./pages/admin/AdminWebhooks').then(m => ({ default: m.AdminWebhooks })));
 const AdminSmartStock = lazy(() => import('./pages/admin/AdminSmartStock'));
 const AdminMarketingHub = lazy(() => import('./pages/admin/marketing/AdminMarketingHub'));
+const AdminVisitors = lazy(() => import('./pages/admin/analytics/AdminVisitors').then(m => ({ default: m.AdminVisitors })));
 
 // Loading Component (Splash Screen)
 function PageLoader() {
@@ -117,6 +118,20 @@ function AppContent() {
   useEffect(() => {
     cacheService.validateCache();
   }, []);
+
+  useEffect(() => {
+    // Only track storefront visitors (exclude analytics inside admin panel)
+    if (location.pathname.startsWith('/admin')) return;
+
+    const timer = setTimeout(() => {
+      const pageTitle = document.title || 'Discreta Boutique';
+      import('./services/analyticsService').then(({ analyticsService }) => {
+        analyticsService.trackPageView(pageTitle, location.pathname + location.search);
+      });
+    }, 1500); // 1.5s delay to allow dynamic lazy bundles and titles to resolve accurately
+
+    return () => clearTimeout(timer);
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     setIsNavigating(true);
@@ -206,6 +221,7 @@ function AppContent() {
             <Route path="marketing/:subpage" element={<AdminMarketingHub />} />
             <Route path="marketing/recuperador-carrinho" element={<AdminWebhooks />} />
             <Route path="marketing/recovery-logs" element={<AdminWebhooks />} />
+            <Route path="analytics/visitors" element={<AdminVisitors />} />
             <Route path="config" element={<AdminConfig />} />
           </Route>
         </Routes>

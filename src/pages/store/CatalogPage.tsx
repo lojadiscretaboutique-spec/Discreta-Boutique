@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
@@ -7,7 +7,7 @@ import { Search, X, Minus, Plus, Frown, Loader2, Truck } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
 import { getRankingProfissional } from '../../lib/ranking';
-import { Category } from '../../services/categoryService';
+import { Category, categoryService } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
 import { catalogSectionsService, SECTION_METADATA, CatalogSection } from '../../services/catalogSectionsService';
@@ -108,6 +108,13 @@ export function CatalogPage() {
     }
   }, [qSearch]);
 
+  // Track customer category accesses to rank categories
+  useEffect(() => {
+    if (selectedCat && selectedCat !== 'all') {
+      categoryService.trackCategoryAccess(selectedCat);
+    }
+  }, [selectedCat]);
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -122,7 +129,7 @@ export function CatalogPage() {
         if (cachedCats && catTime && now - parseInt(catTime) < CACHE_TTL) {
           catsData = JSON.parse(cachedCats);
         } else {
-          const cSnap = await getDocs(query(collection(db, 'categories'), orderBy('name')));
+          const cSnap = await getDocs(query(collection(db, 'categories')));
           catsData = cSnap.docs.map(d => ({id: d.id, ...d.data()} as Category));
           try {
             // Save minimized version to avoid quota issues
@@ -131,7 +138,9 @@ export function CatalogPage() {
               name: c.name,
               slug: c.slug,
               parentId: c.parentId,
-              level: c.level
+              level: c.level,
+              accessCount: c.accessCount || 0,
+              sortOrder: c.sortOrder || 0
             }));
             sessionStorage.setItem(`catalog_cats_${CACHE_VERSION}`, JSON.stringify(minimizedCats));
             sessionStorage.setItem(`catalog_cats_time_${CACHE_VERSION}`, now.toString());
@@ -139,7 +148,15 @@ export function CatalogPage() {
             // Silently fail if quota exceeded
           }
         }
-        setCategories(catsData);
+        
+        const initialSortedCats = [...catsData].sort((a, b) => {
+          const scoreB = b.accessCount || 0;
+          const scoreA = a.accessCount || 0;
+          if (scoreB !== scoreA) return scoreB - scoreA;
+          if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
+          return a.name.localeCompare(b.name);
+        });
+        setCategories(initialSortedCats);
         
         let prods: Product[] = [];
         const cachedProducts = sessionStorage.getItem(`catalog_products_${CACHE_VERSION}`);
@@ -243,7 +260,16 @@ export function CatalogPage() {
         // Filter categories: Only those that have products (directly or in subcats)
         const visibleCats = catsData.filter(c => categoryIdsWithProducts.has(c.id));
 
-        setCategories(visibleCats);
+        // Sort categories by accessCount descending, custom sortOrder, then name localeCompare
+        const sortedCats = [...visibleCats].sort((a, b) => {
+          const scoreB = b.accessCount || 0;
+          const scoreA = a.accessCount || 0;
+          if (scoreB !== scoreA) return scoreB - scoreA;
+          if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
+          return a.name.localeCompare(b.name);
+        });
+
+        setCategories(sortedCats);
 
         // Resolve params from URL
         const resolveParams = () => {

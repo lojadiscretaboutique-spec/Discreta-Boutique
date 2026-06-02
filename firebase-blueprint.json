@@ -436,6 +436,51 @@ export default {
         redes_sociais: { type: "object" },
         regras_ia: { type: "object" }
       }
+    },
+    VisitorSession: {
+      title: "Visitor Session",
+      description: "Storefront visitor active session detail",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        device: { type: "string" },
+        referrer: { type: "string" },
+        source: { type: "string" },
+        utmSource: { type: "string" },
+        utmMedium: { type: "string" },
+        utmCampaign: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+        lastActive: { type: "string", format: "date-time" },
+        isAnonymous: { type: "boolean" },
+        userId: { type: "string" },
+        country: { type: "string" },
+        regionName: { type: "string" },
+        city: { type: "string" }
+      },
+      required: ["id", "device", "source", "createdAt", "lastActive"]
+    },
+    PageView: {
+      title: "Page View",
+      description: "Logged access to a specific storefront page",
+      type: "object",
+      properties: {
+        sessionId: { type: "string" },
+        path: { type: "string" },
+        title: { type: "string" },
+        timestamp: { type: "string", format: "date-time" }
+      },
+      required: ["sessionId", "path", "timestamp"]
+    },
+    VisitorAnalytics: {
+      title: "Visitor Analytics",
+      description: "Consolidated cache or log metrics for visitors",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        metricName: { type: "string" },
+        metricValue: { type: "number" },
+        timestamp: { type: "string", format: "date-time" }
+      }
     }
   },
   firestore: {
@@ -538,6 +583,18 @@ export default {
     "instagram_brand_kit_configs": {
       schema: { $ref: "#/entities/InstagramBrandKit" },
       description: "Configuration files for specific brand requirements"
+    },
+    "visitor_sessions": {
+      schema: { $ref: "#/entities/VisitorSession" },
+      description: "Active visitor session logging"
+    },
+    "page_views": {
+      schema: { $ref: "#/entities/PageView" },
+      description: "Page view details mapping"
+    },
+    "visitor_analytics": {
+      schema: { $ref: "#/entities/VisitorAnalytics" },
+      description: "Consolidated visitor metric aggregations"
     }
   }
 }

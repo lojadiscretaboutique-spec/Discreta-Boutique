@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, Minus, Truck } from 'lucide-react';
 import { formatCurrency, cn } from '../../lib/utils';
-import { Product } from '../../services/productService';
+import { Product, productService } from '../../services/productService';
 import { useCartStore } from '../../store/cartStore';
 import { ResponsiveImage } from './ResponsiveImage';
 import { usePromotion } from '../../contexts/PromotionContext';
@@ -80,6 +80,11 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
   return (
     <Link 
       to={`/produto/${product.seo?.slug || product.id}?id=${product.id}`} 
+      onClick={() => {
+        if (product.id) {
+          productService.trackInteraction(product.id, 'click');
+        }
+      }}
       className={cn(
         "group relative bg-zinc-950/40 rounded-[2.5rem] overflow-hidden flex flex-col border border-zinc-900 transition-all duration-700 h-full",
         isOut ? "grayscale opacity-40 shadow-none border-zinc-950" : "hover:border-red-600/30 hover:bg-zinc-950 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:shadow-red-900/10"

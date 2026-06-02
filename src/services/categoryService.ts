@@ -10,7 +10,8 @@ import {
   addDoc,
   deleteDoc,
   where,
-  FieldValue
+  FieldValue,
+  increment
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
@@ -40,6 +41,7 @@ export interface Category {
   extraFee?: number;
   internalNotes?: string;
   productCount: number;
+  accessCount?: number;
   createdAt: FieldValue;
   updatedAt: FieldValue;
 }
@@ -73,8 +75,11 @@ export const categoryService = {
         productCount: counts[cat.id] || 0
       }));
 
-      // 4. Return sorted
+      // 4. Return sorted: accessCount descending, custom sortOrder, then name localeCompare
       const result = categoriesWithCount.sort((a, b) => {
+        const scoreB = b.accessCount || 0;
+        const scoreA = a.accessCount || 0;
+        if (scoreB !== scoreA) return scoreB - scoreA;
         if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
         return a.name.localeCompare(b.name);
       });
@@ -109,6 +114,7 @@ export const categoryService = {
     try {
       const data: any = {
         productCount: 0,
+        accessCount: 0,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
@@ -148,7 +154,7 @@ export const categoryService = {
         'level', 'image', 'icon', 'color', 'banner', 'sortOrder', 
         'isActive', 'isFeatured', 'showInMenu', 'showInHome', 
         'seoTitle', 'seoDescription', 'seoKeywords', 
-        'defaultCommission', 'extraFee', 'internalNotes'
+        'defaultCommission', 'extraFee', 'internalNotes', 'accessCount'
       ];
 
       allowedFields.forEach(field => {
@@ -246,6 +252,36 @@ export const categoryService = {
       await deleteObject(fileRef);
     } catch (error) {
       console.error("Error deleting category image:", error);
+    }
+  },
+
+  async trackCategoryAccess(idOrSlug: string) {
+    if (!idOrSlug || idOrSlug === 'all' || idOrSlug === 'combos') return;
+    try {
+      // 1. Try to view category by direct ID first
+      const catRef = doc(db, 'categories', idOrSlug);
+      const catSnap = await getDoc(catRef).catch(() => null);
+      if (catSnap && catSnap.exists()) {
+        await updateDoc(catRef, {
+          accessCount: increment(1),
+          updatedAt: serverTimestamp()
+        });
+        await cacheService.notifyChange();
+      } else {
+        // 2. If not found by ID, query by slug
+        const q = query(collection(db, 'categories'), where('slug', '==', idOrSlug));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          const matchedDoc = qSnap.docs[0];
+          await updateDoc(doc(db, 'categories', matchedDoc.id), {
+            accessCount: increment(1),
+            updatedAt: serverTimestamp()
+          });
+          await cacheService.notifyChange();
+        }
+      }
+    } catch (e) {
+      console.error("Error tracking category access:", e);
     }
   }
 };

@@ -94,7 +94,10 @@ service cloud.firestore {
     match /categories/{doc} {
       allow read: if true;
       allow create: if can('categorias', 'criar');
-      allow update: if can('categorias', 'editar');
+      allow update: if can('categorias', 'editar') || (
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['accessCount', 'updatedAt'])
+      );
       allow delete: if can('categorias', 'excluir');
     }
 
@@ -138,6 +141,20 @@ service cloud.firestore {
       allow create, get, update: if true;
       allow list: if can('clientes', 'visualizar');
       allow delete: if can('clientes', 'excluir');
+    }
+
+    match /visitor_sessions/{doc} {
+      allow create, get, update: if true;
+      allow list, delete: if can('dashboard', 'visualizar');
+    }
+
+    match /page_views/{doc} {
+      allow create: if true;
+      allow read, update, delete: if can('dashboard', 'visualizar');
+    }
+
+    match /visitor_analytics/{doc} {
+      allow read, write: if can('dashboard', 'visualizar');
     }
 
     match /states/{doc} {

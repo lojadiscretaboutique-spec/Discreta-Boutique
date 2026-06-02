@@ -1,5 +1,5 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Package, ShoppingCart, Users, Settings, LogOut, LayoutDashboard, Image as ImageIcon, Layers, ClipboardList, Shield, MapPin, Banknote, DollarSign, Truck, Clock, Tag, Brain, Moon, Sun, RefreshCcw, Megaphone } from 'lucide-react';
+import { Package, ShoppingCart, Users, Settings, LogOut, LayoutDashboard, Image as ImageIcon, Layers, ClipboardList, Shield, MapPin, Banknote, DollarSign, Truck, Clock, Tag, Brain, Moon, Sun, RefreshCcw, Megaphone, BarChart2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useSettings } from '../contexts/SettingsContext';
 import { useFeedback } from '../contexts/FeedbackContext';
@@ -18,6 +18,9 @@ export function AdminLayout() {
   const menu = [
     { name: 'Dashboard', path: '/admin', icon: LayoutDashboard, permission: 'dashboard' },
     { name: 'Insights IA', path: '/admin/ia-insights', icon: Brain, permission: 'dashboard' }, // Added here
+    { name: 'Analytics', path: '/admin/analytics', icon: BarChart2, permission: 'dashboard', submenu: [
+        { name: 'Visitantes', path: '/admin/analytics/visitors', permission: 'dashboard' }
+    ]},
     { name: 'PDV / Vender', path: '/admin/pdv', icon: ShoppingCart, permission: 'orders' },
     { name: 'Pedidos', path: '/admin/pedidos', icon: ShoppingCart, permission: 'orders' },
     { name: 'Caixa', path: '/admin/caixa', icon: Banknote, permission: 'caixa' },
@@ -64,6 +67,7 @@ export function AdminLayout() {
 
   const [usersSubMenuOpen, setUsersSubMenuOpen] = useState(false);
   const [financeSubMenuOpen, setFinanceSubMenuOpen] = useState(false);
+  const [analyticsSubMenuOpen, setAnalyticsSubMenuOpen] = useState(false);
   const [configSubMenuOpen, setConfigSubMenuOpen] = useState(false);
   const [productSubMenuOpen, setProductSubMenuOpen] = useState(false);
   const [marketingSubMenuOpen, setMarketingSubMenuOpen] = useState(false);
@@ -268,6 +272,7 @@ export function AdminLayout() {
                     const isConfigSub = item.name === 'Configurações';
                     const isProductSub = item.name === 'Produtos';
                     const isMarketingSub = item.name === 'Marketing';
+                    const isAnalyticsSub = item.name === 'Analytics';
                     
                     const isSubActive = isUsersSub 
                         ? (location.pathname.startsWith('/admin/usuarios') || location.pathname.startsWith('/admin/perfis') || location.pathname.startsWith('/admin/logs'))
@@ -279,9 +284,11 @@ export function AdminLayout() {
                                     ? location.pathname.startsWith('/admin/marketing')
                                 : isProductSub
                                     ? (location.pathname === '/admin/produtos' || location.pathname === '/admin/combos')
+                                : isAnalyticsSub
+                                    ? location.pathname.startsWith('/admin/analytics')
                                     : false;
                             
-                    const isOpen = isUsersSub ? usersSubMenuOpen : (isFinanceSub ? financeSubMenuOpen : (isConfigSub ? configSubMenuOpen : (isProductSub ? productSubMenuOpen : (isMarketingSub ? marketingSubMenuOpen : false))));
+                    const isOpen = isUsersSub ? usersSubMenuOpen : (isFinanceSub ? financeSubMenuOpen : (isConfigSub ? configSubMenuOpen : (isProductSub ? productSubMenuOpen : (isMarketingSub ? marketingSubMenuOpen : (isAnalyticsSub ? analyticsSubMenuOpen : false)))));
                     
                     const toggleMenu = () => {
                         if (isUsersSub) setUsersSubMenuOpen(!usersSubMenuOpen);
@@ -289,6 +296,7 @@ export function AdminLayout() {
                         if (isConfigSub) setConfigSubMenuOpen(!configSubMenuOpen);
                         if (isProductSub) setProductSubMenuOpen(!productSubMenuOpen);
                         if (isMarketingSub) setMarketingSubMenuOpen(!marketingSubMenuOpen);
+                        if (isAnalyticsSub) setAnalyticsSubMenuOpen(!analyticsSubMenuOpen);
                     };
 
                     return (

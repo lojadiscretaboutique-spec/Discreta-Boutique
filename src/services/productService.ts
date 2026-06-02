@@ -150,6 +150,8 @@ export interface Product {
   conversoes?: number;
   visualizacoes?: number;
   score?: number;
+  homeClicks?: number;
+  homeScore?: number;
 
   // IA Enhancement
   ai_keywords?: string[];
@@ -246,12 +248,16 @@ export const productService = {
       if (type === 'click') {
         updateData.cliques = increment(1);
         updateData.score = increment(2);
+        updateData.homeClicks = increment(1);
+        updateData.homeScore = increment(5);
       } else if (type === 'conversion') {
         updateData.conversoes = increment(1);
         updateData.score = increment(5);
+        updateData.homeScore = increment(15);
       } else if (type === 'view') {
         updateData.visualizacoes = increment(1);
         updateData.score = increment(1);
+        updateData.homeScore = increment(1);
       }
       
       await updateDoc(productRef, updateData);
@@ -294,6 +300,8 @@ export const productService = {
         conversoes: 0,
         visualizacoes: 0,
         score: 10, // Initial boost for new products
+        homeClicks: 0,
+        homeScore: 0,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };

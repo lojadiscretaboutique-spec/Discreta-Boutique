@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { Package, ShoppingCart, Users, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Product } from '../../services/productService';
-import { getLancamentos, getDestaques, getMaisVendidos, getEmAlta, getRecomendados, fillFallback } from '../../lib/ranking';
+import { getLancamentos, getDestaques, getMaisVendidos, getEmAlta, getRecomendados, fillFallback, getHomeScore } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { HeroBanner } from '../../components/ui/HeroBanner';
@@ -200,7 +200,15 @@ export function HomePage() {
         return cat;
       });
 
-      setCategories(categoriesWithImages);
+      const sortedCategoriesWithImages = [...categoriesWithImages].sort((a, b) => {
+        const scoreB = b.accessCount || 0;
+        const scoreA = a.accessCount || 0;
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
+        return a.name.localeCompare(b.name);
+      });
+
+      setCategories(sortedCategoriesWithImages);
 
       // Map and extract featured categories that are marked as showInHome: true
       const isProductInCategory = (product: Product, categoryId: string, listCats: Category[]): boolean => {
@@ -226,9 +234,19 @@ export function HomePage() {
         return false;
       };
 
-      const categoriesWithHomeSec = allCats.filter(c => c.showInHome === true);
+      const categoriesWithHomeSec = allCats
+        .filter(c => c.showInHome === true)
+        .sort((a, b) => {
+          const scoreB = b.accessCount || 0;
+          const scoreA = a.accessCount || 0;
+          if (scoreB !== scoreA) return scoreB - scoreA;
+          if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
+          return a.name.localeCompare(b.name);
+        });
       const featuredSecs = categoriesWithHomeSec.map(cat => {
-        const productsOfThisCat = visibleProducts.filter(p => isProductInCategory(p, cat.id, allCats));
+        const productsOfThisCat = visibleProducts
+          .filter(p => isProductInCategory(p, cat.id, allCats))
+          .sort((a, b) => getHomeScore(b) - getHomeScore(a));
         return {
           category: cat,
           products: productsOfThisCat

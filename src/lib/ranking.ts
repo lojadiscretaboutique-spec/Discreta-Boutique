@@ -26,6 +26,32 @@ export const getBaseScore = (p: Product) => {
   return (score * decay) + boost;
 };
 
+export const getHomeScore = (p: Product) => {
+  const homeClicks = p.homeClicks || 0;
+  const homeScore = p.homeScore || 0;
+  
+  // Se ainda não temos os campos novos de home nos documentos antigos, usamos o score/cliques padrão como fallback
+  const scoreVal = homeScore > 0 ? homeScore : (p.score || 0);
+  const clicksVal = homeClicks > 0 ? homeClicks : (p.cliques || 0);
+  const conversoesVal = p.conversoes || 0;
+  
+  const creationDate = getCreationDate(p.createdAt);
+  const ageInDays = (Date.now() - creationDate.getTime()) / (24 * 60 * 60 * 1000);
+  
+  // Aplica um leve decay temporal de forma que cliques recentes continuem importando, mas novos produtos tenham chance de subir
+  const decay = Math.pow(0.97, Math.floor(ageInDays / 7));
+  
+  // Se o produto for super novo (menos de 15 dias), ganha um empurrão extra para engajar nos primeiros cliques
+  let recencyBoost = 0;
+  if (ageInDays < 15) {
+    recencyBoost += 40;
+  } else if (ageInDays < 30) {
+    recencyBoost += 15;
+  }
+  
+  return (scoreVal * 3 * decay) + (clicksVal * 5 * decay) + (conversoesVal * 15 * decay) + recencyBoost;
+};
+
 export const getMatchScore = (p: Product, aiSuggestion: any) => {
     let score = 0;
     const name = p.name.toLowerCase();
@@ -150,16 +176,17 @@ const pick = (list: Product[], count: number, usedIds: Set<string>): Product[] =
     return selected;
 };
 
-export const getLancamentos = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => getCreationDate(b.createdAt).getTime() - getCreationDate(a.createdAt).getTime()), 10, used);
-export const getDestaques = (all: Product[], used: Set<string>) => pick(all.filter(p => p.featured).sort((a, b) => getBaseScore(b) - getBaseScore(a)), 10, used);
-export const getMaisVendidos = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => (b.conversoes || 0) - (a.conversoes || 0) || getBaseScore(b) - getBaseScore(a)), 10, used);
-export const getEmAlta = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => {
-    const ageA = (Date.now() - getCreationDate(a.createdAt).getTime()) / (24*60*60*1000) + 1;
-    const ageB = (Date.now() - getCreationDate(b.createdAt).getTime()) / (24*60*60*1000) + 1;
-    return ((b.score||0)/ageB) - ((a.score||0)/ageA);
+export const getLancamentos = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => {
+    const scoreB = getHomeScore(b);
+    const scoreA = getHomeScore(a);
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    return getCreationDate(b.createdAt).getTime() - getCreationDate(a.createdAt).getTime();
 }), 10, used);
-export const getRecomendados = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => getBaseScore(b) - getBaseScore(a)), 10, used);
-export const fillFallback = (all: Product[], used: Set<string>, count: number) => pick(all.sort((a, b) => getBaseScore(b) - getBaseScore(a)), count, used);
+export const getDestaques = (all: Product[], used: Set<string>) => pick(all.filter(p => p.featured).sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
+export const getMaisVendidos = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
+export const getEmAlta = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
+export const getRecomendados = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
+export const fillFallback = (all: Product[], used: Set<string>, count: number) => pick(all.sort((a, b) => getHomeScore(b) - getHomeScore(a)), count, used);
 
 export const getRankingBusca = (products: Product[], aiSuggestion: any): Product[] => {
     return getRankingHybrid(products, aiSuggestion);
