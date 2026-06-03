@@ -440,7 +440,7 @@ export function AdminProducts() {
   };
 
 
-  const handleBulkAction = async (action: 'delete' | 'activate' | 'deactivate' | 'showInCatalog' | 'hideFromCatalog') => {
+  const handleBulkAction = async (action: 'delete' | 'activate' | 'deactivate' | 'showInCatalog' | 'hideFromCatalog' | 'addToFeatured' | 'removeFromFeatured' | 'addToNewRelease' | 'removeFromNewRelease') => {
     if (selectedIds.length === 0) return;
 
     let message = '';
@@ -475,6 +475,26 @@ export function AdminProducts() {
         message = `Deseja ocultar ${selectedIds.length} produtos do catálogo do site?`;
         confirmText = 'Confirmar';
         break;
+      case 'addToFeatured':
+        confirmTitle = 'Definir como Destaque';
+        message = `Deseja definir ${selectedIds.length} produtos como Destaque?`;
+        confirmText = 'Confirmar';
+        break;
+      case 'removeFromFeatured':
+        confirmTitle = 'Remover Destaque';
+        message = `Deseja remover ${selectedIds.length} produtos dos Destaques?`;
+        confirmText = 'Confirmar';
+        break;
+      case 'addToNewRelease':
+        confirmTitle = 'Definir como Lançamento';
+        message = `Deseja definir ${selectedIds.length} produtos como Lançamento?`;
+        confirmText = 'Confirmar';
+        break;
+      case 'removeFromNewRelease':
+        confirmTitle = 'Remover Lançamento';
+        message = `Deseja remover ${selectedIds.length} produtos dos Lançamentos?`;
+        confirmText = 'Confirmar';
+        break;
     }
 
     const ok = await confirm({
@@ -505,6 +525,10 @@ export function AdminProducts() {
           if (action === 'deactivate') updateData.active = false;
           if (action === 'showInCatalog') updateData['extras.showInCatalog'] = true;
           if (action === 'hideFromCatalog') updateData['extras.showInCatalog'] = false;
+          if (action === 'addToFeatured') updateData.featured = true;
+          if (action === 'removeFromFeatured') updateData.featured = false;
+          if (action === 'addToNewRelease') updateData.newRelease = true;
+          if (action === 'removeFromNewRelease') updateData.newRelease = false;
           
           batch.update(ref, updateData);
         });
@@ -1777,6 +1801,24 @@ export function AdminProducts() {
                {selectedIds.length > 0 && (
                  <div className="flex items-center gap-2 pr-4 border-r border-slate-700">
                    <span className="text-red-500 font-black">{selectedIds.length} Selecionados:</span>
+                   <div className="relative group">
+                     <button className="flex items-center gap-1 text-[10px] uppercase font-black bg-slate-800 hover:bg-slate-700 p-1.5 rounded transition-colors text-slate-300">
+                       Destaque <ChevronDown size={12} />
+                     </button>
+                     <div className="absolute top-full right-0 mt-1 w-44 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-20 hidden group-hover:block">
+                       <button onClick={() => handleBulkAction('addToFeatured')} className="block w-full text-left px-4 py-3 text-xs font-bold hover:bg-slate-800">Definir como Destaque</button>
+                       <button onClick={() => handleBulkAction('removeFromFeatured')} className="block w-full text-left px-4 py-3 text-xs font-bold hover:bg-slate-800 text-red-500">Remover dos Destaques</button>
+                     </div>
+                   </div>
+                   <div className="relative group">
+                     <button className="flex items-center gap-1 text-[10px] uppercase font-black bg-slate-800 hover:bg-slate-700 p-1.5 rounded transition-colors text-slate-300">
+                       Lançamento <ChevronDown size={12} />
+                     </button>
+                     <div className="absolute top-full right-0 mt-1 w-46 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-20 hidden group-hover:block">
+                       <button onClick={() => handleBulkAction('addToNewRelease')} className="block w-full text-left px-4 py-3 text-xs font-bold hover:bg-slate-800">Definir como Lançamento</button>
+                       <button onClick={() => handleBulkAction('removeFromNewRelease')} className="block w-full text-left px-4 py-3 text-xs font-bold hover:bg-slate-800 text-red-500">Remover dos Lançamentos</button>
+                     </div>
+                   </div>
                    <div className="relative group">
                      <button className="flex items-center gap-1 text-[10px] uppercase font-black bg-slate-800 hover:bg-slate-700 p-1.5 rounded transition-colors text-slate-300">
                        Categorias <ChevronDown size={12} />
