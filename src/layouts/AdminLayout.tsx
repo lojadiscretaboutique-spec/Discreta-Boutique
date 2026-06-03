@@ -58,6 +58,7 @@ export function AdminLayout() {
     { name: 'Configurações', path: '/admin/config', icon: Settings, permission: 'settings', submenu: [
         { name: 'Dados da Loja', path: '/admin/config', permission: 'settings' },
         { name: 'Gerenciar Temas 🎨', path: '/admin/config/theme-manager', permission: 'settings' },
+        { name: 'Tipografia da Loja 🔤', path: '/admin/config/typography', permission: 'settings' },
     ]},
     { name: 'Contas / Equipe', path: '/admin/usuarios', icon: Shield, permission: 'users', submenu: [
         { name: 'Usuários', path: '/admin/usuarios', permission: 'users' },

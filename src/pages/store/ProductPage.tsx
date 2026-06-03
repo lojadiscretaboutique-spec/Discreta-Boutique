@@ -9,9 +9,38 @@ import { ArrowLeft, Check, ShoppingBag, Package, Zap, Share2, Truck, Tag } from 
 import { Product, ProductVariant, productService } from '../../services/productService';
 import { motion } from 'motion/react';
 import { usePromotion } from '../../contexts/PromotionContext';
+import { useTheme } from '../../contexts/ThemeContext';
+import { getAutoTextColor } from '../../utils/themeUtils';
+
+// Contrast color calculation helper
+function getContrastColor(hexColor: string): string {
+  if (!hexColor) return '#ffffff';
+  let hex = hexColor.replace('#', '');
+  if (hex.length === 3) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  }
+  if (hex.length !== 6) return '#ffffff';
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return (yiq >= 128) ? '#000000' : '#ffffff';
+}
+
+function resolveThemeColor(colorVal: string | undefined, fallbackHex: string): string {
+  if (!colorVal) return fallbackHex;
+  const trimmed = colorVal.trim().toLowerCase();
+  if (trimmed === 'light') return '#ffffff';
+  if (trimmed === 'dark') return '#000000';
+  if (trimmed.startsWith('#') || trimmed.startsWith('rgb') || trimmed.startsWith('hsl')) {
+    return colorVal;
+  }
+  return fallbackHex;
+}
 
 export function ProductPage() {
   const { calculateProductPrice } = usePromotion();
+  const { currentTheme } = useTheme();
   const { slug } = useParams();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -28,6 +57,19 @@ export function ProductPage() {
     mensagem: string;
   } | null>(null);
   const addItem = useCartStore(s => s.addItem);
+
+  // Dynamic Theme Colors
+  const bgText = resolveThemeColor(currentTheme.backgroundTextColor, getAutoTextColor(currentTheme.backgroundColor || '#0a0a0a'));
+  const isBgDark = getAutoTextColor(currentTheme.backgroundColor || '#0a0a0a') === '#ffffff';
+  const labelColor = isBgDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(9, 9, 11, 0.7)';
+  const secondaryText = isBgDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(9, 9, 11, 0.5)';
+  const cardColorBg = currentTheme.cardColor || (isBgDark ? '#161616' : '#f4f4f5');
+  const cardText = resolveThemeColor(currentTheme.cardTextColor, getAutoTextColor(cardColorBg));
+  const cardBorderHex = isBgDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(9, 9, 11, 0.1)';
+
+  // Button colors
+  const primaryBtnBg = currentTheme.buttonColor || currentTheme.primaryColor || '#D32F2F';
+  const primaryBtnText = resolveThemeColor(currentTheme.buttonTextColor, getAutoTextColor(primaryBtnBg));
 
   // Apply promotion logic
   const pricing = product ? calculateProductPrice({
@@ -147,8 +189,17 @@ export function ProductPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 bg-black flex flex-col items-center justify-center py-20 text-zinc-500">
-        <div className="w-10 h-10 border-2 border-red-600 border-t-transparent rounded-full animate-spin mb-4" />
+      <div 
+        className="flex-1 flex flex-col items-center justify-center py-20 transition-colors duration-300"
+        style={{
+          backgroundColor: currentTheme.backgroundColor,
+          color: secondaryText
+        }}
+      >
+        <div 
+          className="w-10 h-10 border-2 border-t-transparent rounded-full animate-spin mb-4" 
+          style={{ borderColor: currentTheme.primaryColor, borderTopColor: 'transparent' }}
+        />
         <p className="text-xs font-bold uppercase tracking-widest">Carregando desejo...</p>
       </div>
     );
@@ -156,9 +207,24 @@ export function ProductPage() {
 
   if (!product) {
     return (
-      <div className="flex-1 bg-black flex flex-col items-center justify-center py-20 px-4 text-center">
+      <div 
+        className="flex-1 flex flex-col items-center justify-center py-20 px-4 text-center transition-colors duration-300"
+        style={{
+          backgroundColor: currentTheme.backgroundColor,
+          color: bgText
+        }}
+      >
         <h2 className="text-3xl font-black uppercase tracking-tighter mb-4">Produto não encontrado</h2>
-        <Button onClick={() => navigate('/catalogo')} className="rounded-full font-bold">Voltar para o Catálogo</Button>
+        <Button 
+          onClick={() => navigate('/catalogo')} 
+          className="rounded-full font-bold"
+          style={{
+            backgroundColor: primaryBtnBg,
+            color: primaryBtnText
+          }}
+        >
+          Voltar para o Catálogo
+        </Button>
       </div>
     );
   }
@@ -233,16 +299,34 @@ export function ProductPage() {
   };
 
   return (
-    <div className="flex-1 bg-black text-white">
-      <div className="max-w-7xl mx-auto w-full px-4 pb-8 pt-4 md:pt-6">
-        <Link to="/catalogo" className="inline-flex items-center text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-red-500 transition-colors mb-8">
-          <ArrowLeft size={16} className="mr-2" /> Voltar ao catálogo
+    <div 
+      className="flex-1 transition-colors duration-300"
+      style={{
+        backgroundColor: currentTheme.backgroundColor,
+        color: bgText
+      }}
+    >
+      <div className="max-w-7xl mx-auto w-full px-4 pb-12 pt-4 md:pt-6">
+        <Link 
+          to="/catalogo" 
+          className="inline-flex items-center text-xs font-bold uppercase tracking-widest transition-colors mb-8"
+          style={{ color: labelColor }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = currentTheme.primaryColor; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = labelColor; }}
+        >
+          <ArrowLeft size={16} className="mr-2" style={{ color: currentTheme.primaryColor }} /> Voltar ao catálogo
         </Link>
 
         <div className="flex flex-col lg:flex-row gap-12 items-start">
           {/* Gallery Area */}
           <div className="w-full lg:w-1/2 flex flex-col gap-4">
-            <div className="bg-zinc-900 rounded-[3rem] border border-zinc-800 overflow-hidden aspect-[4/5] relative shadow-2xl">
+            <div 
+              className="rounded-[3rem] border overflow-hidden aspect-[4/5] relative shadow-2xl transition-all"
+              style={{
+                backgroundColor: cardColorBg,
+                borderColor: cardBorderHex
+              }}
+            >
               {currentImage ? (
                  <motion.img 
                    key={currentImage}
@@ -254,27 +338,43 @@ export function ProductPage() {
                    referrerPolicy="no-referrer"
                  />
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-zinc-700 font-bold uppercase tracking-widest">Sem Imagem</div>
+                <div 
+                  className="absolute inset-0 flex items-center justify-center font-bold uppercase tracking-widest"
+                  style={{ color: secondaryText }}
+                >
+                  Sem Imagem
+                </div>
               )}
               
               {product.newRelease && (
-                 <div className="absolute top-8 left-8 bg-red-600 text-white px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-[2px]">Lançamento</div>
+                 <div 
+                   className="absolute top-8 left-8 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-[2px]"
+                   style={{
+                     backgroundColor: currentTheme.primaryColor,
+                     color: currentTheme.primaryTextColor || getContrastColor(currentTheme.primaryColor)
+                   }}
+                 >
+                   Lançamento
+                 </div>
               )}
             </div>
             
             {product.images && product.images.length > 1 && (
               <div className="flex gap-4 overflow-x-auto no-scrollbar py-2">
                  {product.images.map((img, idx) => (
-                   <button 
-                     key={idx}
-                     onClick={() => setSelectedVariant(prev => ({...prev!, imageUrl: img.url}))}
-                     className={cn(
-                       "w-20 h-20 rounded-2xl border-2 overflow-hidden shrink-0 transition-all",
-                       currentImage === img.url ? "border-red-600 scale-105" : "border-zinc-800"
-                     )}
-                   >
-                     <img src={img.url || undefined} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                   </button>
+                    <button 
+                      key={idx}
+                      onClick={() => setSelectedVariant(prev => ({...prev!, imageUrl: img.url}))}
+                      className={cn(
+                        "w-20 h-20 rounded-2xl border-2 overflow-hidden shrink-0 transition-all cursor-pointer",
+                        currentImage === img.url ? "scale-105" : ""
+                      )}
+                      style={{
+                        borderColor: currentImage === img.url ? currentTheme.primaryColor : cardBorderHex
+                      }}
+                    >
+                      <img src={img.url || undefined} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </button>
                  ))}
               </div>
             )}
@@ -283,41 +383,78 @@ export function ProductPage() {
           {/* Info Area */}
           <div className="w-full lg:w-1/2 flex flex-col lg:sticky lg:top-24">
             <div className="mb-8">
-              <div className="flex justify-between items-start">
-                  <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter leading-none mb-4 italic">{product.name}</h1>
-                  <button onClick={handleShare} className="text-zinc-500 hover:text-red-500 transition-colors p-2">
-                    <Share2 size={24} />
+              <div className="flex justify-between items-start gap-4">
+                  <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter leading-none mb-4 italic" style={{ color: bgText }}>
+                    {product.name}
+                  </h1>
+                  <button 
+                    onClick={handleShare} 
+                    className="transition-colors p-2 rounded-full border cursor-pointer"
+                    style={{
+                      borderColor: cardBorderHex,
+                      color: labelColor
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = currentTheme.primaryColor; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = labelColor; }}
+                  >
+                    <Share2 size={20} />
                   </button>
               </div>
-              {product.subtitle && <p className="text-red-500 font-bold uppercase tracking-[4px] text-[10px] mb-4">{product.subtitle}</p>}
-              <div className="flex items-center gap-4 text-xs font-bold text-zinc-500 uppercase tracking-widest">
+              {product.subtitle && (
+                <p 
+                  className="font-bold uppercase tracking-[4px] text-[10px] mb-4"
+                  style={{ color: currentTheme.primaryColor }}
+                >
+                  {product.subtitle}
+                </p>
+              )}
+              <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-widest" style={{ color: labelColor }}>
                  <span>SKU: {selectedVariant?.sku || product.sku}</span>
-                 <div className="w-1 h-1 bg-zinc-800 rounded-full"></div>
+                 <div className="w-1 h-1 rounded-full" style={{ backgroundColor: cardBorderHex }} />
                  {isOutOfStock() ? (
-                   <span className="text-zinc-600">Sem estoque disponível</span>
+                   <span style={{ color: secondaryText }}>Sem estoque disponível</span>
                  ) : (
-                   <span className="text-red-600">Disponível em estoque</span>
+                   <span style={{ color: currentTheme.primaryColor }}>Disponível em estoque</span>
                  )}
               </div>
             </div>
 
-            <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-8 mb-8 relative overflow-hidden">
+            {/* Price Box */}
+            <div 
+              className="border rounded-[2rem] p-8 mb-8 relative overflow-hidden"
+              style={{
+                backgroundColor: cardColorBg,
+                borderColor: cardBorderHex,
+                color: cardText
+              }}
+            >
               {/* Promotion Badge Background Glow */}
               {isPromoActive && (
-                <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 blur-3xl -z-0" />
+                <div 
+                  className="absolute top-0 right-0 w-32 h-32 blur-3xl -z-0 pointer-events-none" 
+                  style={{
+                    background: `radial-gradient(circle, ${currentTheme.primaryColor}20 0%, transparent 70%)`
+                  }}
+                />
               )}
               
               <div className="flex flex-col gap-4 mb-6 relative z-10">
                 <div className="flex flex-col gap-1">
                   {(isPromoActive && originalPrice > currentPrice) && (
-                    <span className="text-xl md:text-2xl text-zinc-500 line-through font-bold tracking-tighter">{formatCurrency(Number(originalPrice))}</span>
+                    <span className="text-xl md:text-2xl line-through font-bold tracking-tighter" style={{ color: secondaryText }}>
+                      {formatCurrency(Number(originalPrice))}
+                    </span>
                   )}
                   <div className="flex items-baseline gap-3">
-                    <span className="text-4xl md:text-6xl font-black text-white tracking-tighter">{formatCurrency(Number(currentPrice))}</span>
-                    <span className="text-sm md:text-lg font-bold text-red-600 uppercase tracking-widest">no pix</span>
+                    <span className="text-4xl md:text-6xl font-black tracking-tighter" style={{ color: cardText }}>
+                      {formatCurrency(Number(currentPrice))}
+                    </span>
+                    <span className="text-sm md:text-lg font-bold uppercase tracking-widest" style={{ color: currentTheme.primaryColor }}>
+                      no pix
+                    </span>
                   </div>
                   
-                  <div className="flex items-center gap-2 text-zinc-400 font-bold uppercase tracking-wider text-xs md:text-sm mt-1">
+                  <div className="flex items-center gap-2 font-bold uppercase tracking-wider text-xs md:text-sm mt-1" style={{ color: labelColor }}>
                     <Zap className="fill-yellow-500 text-yellow-500" size={16} />
                     OU 10X DE {(() => {
                       const promo = pricing.promotion;
@@ -330,13 +467,27 @@ export function ProductPage() {
 
                 <div className="flex flex-wrap gap-2">
                   {pricing.promotion && (
-                    <div className="flex items-center gap-1.5 bg-red-600/10 border border-red-600/30 text-red-500 px-3 py-1 rounded-full">
-                      <Tag size={12} className="fill-red-500" />
+                    <div 
+                      className="flex items-center gap-1.5 border px-3 py-1 rounded-full"
+                      style={{
+                        backgroundColor: `${currentTheme.primaryColor}15`,
+                        borderColor: `${currentTheme.primaryColor}30`,
+                        color: currentTheme.primaryColor
+                      }}
+                    >
+                      <Tag size={12} style={{ fill: currentTheme.primaryColor }} />
                       <span className="text-[10px] font-black uppercase tracking-widest">{pricing.promotion.name}</span>
                     </div>
                   )}
                   {pricing.isFreeShipping && (
-                    <div className="flex items-center gap-1.5 bg-emerald-600/10 border border-emerald-600/30 text-emerald-500 px-3 py-1 rounded-full">
+                    <div 
+                      className="flex items-center gap-1.5 border px-3 py-1 rounded-full"
+                      style={{
+                        backgroundColor: `${currentTheme.highlightColor || '#10b981'}15`,
+                        borderColor: `${currentTheme.highlightColor || '#10b981'}30`,
+                        color: currentTheme.highlightColor || '#10b981'
+                      }}
+                    >
                       <Truck size={12} />
                       <span className="text-[10px] font-black uppercase tracking-widest">Frete Grátis</span>
                     </div>
@@ -345,31 +496,44 @@ export function ProductPage() {
               </div>
 
               {variants.length > 0 && (
-                <div className="mb-8 p-6 bg-zinc-950 rounded-2xl border border-zinc-800">
+                <div 
+                  className="mb-8 p-6 rounded-2xl border"
+                  style={{
+                    backgroundColor: currentTheme.backgroundColor,
+                    borderColor: cardBorderHex
+                  }}
+                >
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-[10px] font-black uppercase tracking-[3px] text-zinc-500">Escolha a Opção</h3>
+                    <h3 className="text-[10px] font-black uppercase tracking-[3px]" style={{ color: labelColor }}>Escolha a Opção</h3>
                     {product.controlStock && selectedVariant && (
-                      <span className={cn("text-[10px] font-bold uppercase", selectedVariant.stock > 0 ? "text-green-500" : "text-red-500")}>
+                      <span className="text-[10px] font-bold uppercase" style={{ color: selectedVariant.stock > 0 ? '#10b981' : '#ef4444' }}>
                         {selectedVariant.stock > 0 ? `Estoque: ${selectedVariant.stock}` : 'Esgotado'}
                       </span>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {variants.map(v => (
-                      <button
-                        key={v.id}
-                        onClick={() => setSelectedVariant(v)}
-                        className={cn(
-                          "px-6 py-3 text-xs font-bold uppercase tracking-widest rounded-full border transition-all",
-                          selectedVariant?.id === v.id 
-                            ? "border-red-600 bg-red-600 text-white shadow-lg shadow-red-900/40" 
-                            : "border-zinc-800 text-zinc-400 hover:border-red-600",
-                          product.controlStock && !product.allowBackorder && v.stock <= 0 && "opacity-50 grayscale cursor-not-allowed"
-                        )}
-                      >
-                        {formatVariantName(v.name)}
-                      </button>
-                    ))}
+                    {variants.map(v => {
+                      const isSelected = selectedVariant?.id === v.id;
+                      const isOutOfStk = product.controlStock && !product.allowBackorder && v.stock <= 0;
+                      return (
+                        <button
+                          key={v.id}
+                          onClick={() => setSelectedVariant(v)}
+                          disabled={isOutOfStk}
+                          className={cn(
+                            "px-6 py-3 text-xs font-bold uppercase tracking-widest rounded-full border transition-all cursor-pointer",
+                            isOutOfStk && "opacity-50 grayscale cursor-not-allowed"
+                          )}
+                          style={{
+                            backgroundColor: isSelected ? currentTheme.primaryColor : 'transparent',
+                            color: isSelected ? (currentTheme.primaryTextColor || '#ffffff') : labelColor,
+                            borderColor: isSelected ? currentTheme.primaryColor : cardBorderHex
+                          }}
+                        >
+                          {formatVariantName(v.name)}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -380,9 +544,16 @@ export function ProductPage() {
                   disabled={isOutOfStock()}
                   onClick={() => handleAddToCart(true)}
                   className={cn(
-                    "w-full h-16 rounded-full font-black uppercase tracking-widest text-base shadow-xl transition-all bg-red-600 hover:bg-red-700 border-b-4 border-red-900 active:border-b-0 active:translate-y-1",
+                    "w-full h-16 rounded-full font-black uppercase tracking-widest text-base shadow-xl transition-all border-b-4 active:border-b-0 active:translate-y-1",
                     isOutOfStock() && "opacity-50 grayscale cursor-not-allowed border-none translate-y-0"
                   )}
+                  style={{
+                    backgroundColor: primaryBtnBg,
+                    color: primaryBtnText,
+                    borderColor: `${primaryBtnBg}dd`,
+                    borderBottomColor: 'rgba(0,0,0,0.3)',
+                    boxShadow: isOutOfStock() ? 'none' : `0 10px 15px -3px ${primaryBtnBg}30, 0 4px 6px -4px ${primaryBtnBg}20`
+                  }}
                 >
                   <Zap className="mr-2" /> {isOutOfStock() ? 'Produto Esgotado' : 'Comprar Agora'}
                 </Button>
@@ -393,10 +564,14 @@ export function ProductPage() {
                   disabled={isOutOfStock()}
                   onClick={() => handleAddToCart(false)}
                   className={cn(
-                    "w-full h-16 rounded-full border-2 border-zinc-800 hover:bg-zinc-800/50 font-black uppercase text-xs tracking-widest transition-all",
-                    added && "border-green-600 text-green-500",
+                    "w-full h-16 rounded-full border-2 font-black uppercase text-xs tracking-widest transition-all",
                     isOutOfStock() && "opacity-50 grayscale cursor-not-allowed pointer-events-none"
                   )}
+                  style={{
+                    backgroundColor: 'transparent',
+                    borderColor: added ? '#10b981' : (currentTheme.buttonColor || currentTheme.primaryColor || '#D32F2F'),
+                    color: added ? '#10b981' : (currentTheme.buttonColor || currentTheme.primaryColor || '#D32F2F')
+                  }}
                 >
                   {added ? (
                     <><Check className="mr-2" /> Adicionado!</>
@@ -408,9 +583,12 @@ export function ProductPage() {
             </div>
 
             <div className="space-y-6">
-               <div className="border-l-4 border-red-600 pl-6">
-                 <h4 className="text-sm font-black uppercase tracking-widest mb-2">Descrição dos Desejos</h4>
-                 <div className="text-sm text-zinc-400 leading-relaxed font-medium">
+               <div 
+                 className="border-l-4 pl-6"
+                 style={{ borderLeftColor: currentTheme.primaryColor }}
+               >
+                 <h4 className="text-sm font-black uppercase tracking-widest mb-2" style={{ color: bgText }}>Descrição dos Desejos</h4>
+                 <div className="text-sm leading-relaxed font-medium" style={{ color: labelColor }}>
                     {product.fullDescription ? (
                       <div dangerouslySetInnerHTML={{__html: product.fullDescription.replace(/\n/g, '<br/>')}} />
                     ) : product.shortDescription ? (
@@ -421,18 +599,38 @@ export function ProductPage() {
                  </div>
                </div>
 
-               <div className="bg-zinc-950 p-6 rounded-2xl grid grid-cols-2 gap-4">
+               <div 
+                 className="p-6 rounded-2xl grid grid-cols-2 gap-4 border"
+                 style={{
+                   backgroundColor: cardColorBg,
+                   borderColor: cardBorderHex
+                 }}
+               >
                   <div className="flex items-center gap-3">
-                     <div className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center text-red-500 border border-zinc-800">
+                     <div 
+                       className="w-10 h-10 rounded-full flex items-center justify-center border"
+                       style={{
+                         backgroundColor: currentTheme.backgroundColor,
+                         borderColor: cardBorderHex,
+                         color: currentTheme.primaryColor
+                       }}
+                     >
                         <Package size={18} />
                      </div>
-                     <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Embalagem Discreta</span>
+                     <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: labelColor }}>Embalagem Discreta</span>
                   </div>
                   <div className="flex items-center gap-3">
-                     <div className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center text-red-500 border border-zinc-800">
+                     <div 
+                       className="w-10 h-10 rounded-full flex items-center justify-center border"
+                       style={{
+                         backgroundColor: currentTheme.backgroundColor,
+                         borderColor: cardBorderHex,
+                         color: currentTheme.primaryColor
+                       }}
+                     >
                         <Zap size={18} />
                      </div>
-                     <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Entrega Expressa</span>
+                     <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: labelColor }}>Entrega Expressa</span>
                   </div>
                </div>
             </div>
@@ -443,14 +641,20 @@ export function ProductPage() {
 
       {/* IA Suggestions Section */}
       {aiSuggestions && aiSuggestions.produtos.length > 0 && (
-        <div className="bg-zinc-950/50 py-20 border-t border-zinc-900">
+        <div 
+          className="py-20 border-t transition-all"
+          style={{
+            backgroundColor: cardColorBg,
+            borderColor: cardBorderHex
+          }}
+        >
           <div className="max-w-7xl mx-auto px-4">
             <div className="flex flex-col mb-12">
               <div className="flex items-center gap-2 mb-2">
-                <Zap className="text-red-600 animate-pulse" size={16} />
-                <span className="text-xs font-black uppercase tracking-[4px] text-red-600">Discreta AI Curadoria</span>
+                <Zap className="animate-pulse" size={16} style={{ color: currentTheme.primaryColor }} />
+                <span className="text-xs font-black uppercase tracking-[4px]" style={{ color: currentTheme.primaryColor }}>Discreta AI Curadoria</span>
               </div>
-              <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic">
+              <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic" style={{ color: cardText }}>
                 {aiSuggestions.mensagem}
               </h2>
             </div>
@@ -477,7 +681,13 @@ export function ProductPage() {
                     }}
                     className="group cursor-pointer"
                   >
-                    <div className="aspect-[3/4] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 mb-4 relative">
+                    <div 
+                      className="aspect-[3/4] rounded-[2rem] overflow-hidden mb-4 relative border"
+                      style={{
+                        backgroundColor: currentTheme.backgroundColor,
+                        borderColor: cardBorderHex
+                      }}
+                    >
                       <img 
                         src={p.imageUrl || undefined} 
                         alt={p.name} 
@@ -485,31 +695,60 @@ export function ProductPage() {
                         referrerPolicy="no-referrer"
                       />
                       {sHasPromo && (
-                        <div className="absolute top-4 left-4 bg-red-600 text-white text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-xl z-20">
+                        <div 
+                          className="absolute top-4 left-4 text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-xl z-20"
+                          style={{
+                            backgroundColor: currentTheme.primaryColor,
+                            color: currentTheme.primaryTextColor || getContrastColor(currentTheme.primaryColor)
+                          }}
+                        >
                           {sPricing.promotion?.name || 'Oferta'}
                         </div>
                       )}
                       {sPricing.isFreeShipping && (
-                        <div className="absolute top-4 right-4 bg-emerald-600 text-white p-1.5 rounded-full shadow-xl z-20">
+                        <div 
+                          className="absolute top-4 right-4 p-1.5 rounded-full shadow-xl z-20 text-white"
+                          style={{
+                            backgroundColor: currentTheme.highlightColor || '#10b981'
+                          }}
+                        >
                           <Truck size={12} />
                         </div>
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-6">
-                        <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 px-4 rounded-full w-fit tracking-widest">
+                        <div 
+                          className="text-[10px] font-black uppercase py-2 px-4 rounded-full w-fit tracking-widest"
+                          style={{
+                            backgroundColor: currentTheme.primaryColor,
+                            color: currentTheme.primaryTextColor || getContrastColor(currentTheme.primaryColor)
+                          }}
+                        >
                           Ver Detalhes
                         </div>
                       </div>
                     </div>
-                    <h3 className="text-sm font-bold uppercase tracking-tight line-clamp-1 group-hover:text-red-500 transition-colors">{p.name}</h3>
+                    <h3 
+                      className="text-sm font-bold uppercase tracking-tight line-clamp-1 transition-colors"
+                      style={{ color: cardText }}
+                    >
+                      {p.name}
+                    </h3>
+                    
                     <div className="flex flex-col gap-0.5 mt-1">
                       {sHasPromo && sPricing.originalPrice > sPricing.price && (
-                        <p className="text-zinc-600 text-[10px] font-bold line-through tracking-tighter opacity-70">{formatCurrency(sPricing.originalPrice)}</p>
+                        <p className="text-[10px] font-bold line-through tracking-tighter opacity-70" style={{ color: secondaryText }}>
+                          {formatCurrency(sPricing.originalPrice)}
+                        </p>
                       )}
+                      
                       <div className="flex items-baseline gap-1.5">
-                        <p className="text-red-500 text-sm font-black uppercase tracking-widest">{formatCurrency(sPricing.price)}</p>
-                        <p className="text-[8px] font-bold text-red-500 uppercase">no pix</p>
+                        <p className="text-sm font-black uppercase tracking-widest" style={{ color: currentTheme.primaryColor }}>
+                          {formatCurrency(sPricing.price)}
+                        </p>
+                        <p className="text-[8px] font-bold uppercase" style={{ color: currentTheme.primaryColor }}>no pix</p>
                       </div>
-                      <p className="text-zinc-500 text-[8px] font-black uppercase tracking-tight whitespace-nowrap">
+                      
+                      <p className="text-[8px] font-black uppercase tracking-tight whitespace-nowrap" style={{ color: secondaryText }}>
                         OU 10X DE {(() => {
                           const sPromo = sPricing.promotion;
                           const sRestricted = !!(sPromo && sPromo.allowedPaymentMethods && sPromo.allowedPaymentMethods.length > 0 && !sPromo.allowedPaymentMethods.includes('credit_card'));
@@ -528,4 +767,3 @@ export function ProductPage() {
     </div>
   );
 }
-

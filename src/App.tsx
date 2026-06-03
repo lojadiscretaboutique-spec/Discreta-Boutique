@@ -7,6 +7,7 @@ import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { PromotionProvider } from './contexts/PromotionContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { TypographyProvider } from './contexts/TypographyContext';
 import { useUIStore } from './store/uiStore';
 import { cacheService } from './services/cacheService';
 
@@ -60,6 +61,7 @@ const AdminSmartStock = lazy(() => import('./pages/admin/AdminSmartStock'));
 const AdminMarketingHub = lazy(() => import('./pages/admin/marketing/AdminMarketingHub'));
 const AdminVisitors = lazy(() => import('./pages/admin/analytics/AdminVisitors').then(m => ({ default: m.AdminVisitors })));
 const AdminThemeManager = lazy(() => import('./pages/admin/AdminThemeManager').then(m => ({ default: m.AdminThemeManager })));
+const AdminTypography = lazy(() => import('./pages/admin/AdminTypography').then(m => ({ default: m.AdminTypography })));
 
 // Loading Component (Splash Screen)
 function PageLoader() {
@@ -228,6 +230,7 @@ function AppContent() {
             <Route path="analytics/visitors" element={<AdminVisitors />} />
             <Route path="config" element={<AdminConfig />} />
             <Route path="config/theme-manager" element={<AdminThemeManager />} />
+            <Route path="config/typography" element={<AdminTypography />} />
           </Route>
         </Routes>
       </Suspense>
@@ -250,11 +253,13 @@ export default function App() {
 
   return (
     <SettingsProvider>
-      <ThemeProvider>
-        <PromotionProvider>
-          <AppContent />
-        </PromotionProvider>
-      </ThemeProvider>
+      <TypographyProvider>
+        <ThemeProvider>
+          <PromotionProvider>
+            <AppContent />
+          </PromotionProvider>
+        </ThemeProvider>
+      </TypographyProvider>
     </SettingsProvider>
   );
 }
