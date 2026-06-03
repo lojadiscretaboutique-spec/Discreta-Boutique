@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { PromotionProvider } from './contexts/PromotionContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { useUIStore } from './store/uiStore';
 import { cacheService } from './services/cacheService';
 
@@ -35,6 +36,7 @@ const AdminPopups = lazy(() => import('./pages/admin/marketing/AdminPopups').the
 const AdminCoupons = lazy(() => import('./pages/admin/marketing/AdminCoupons').then(m => ({ default: m.AdminCoupons })));
 const AdminPromotions = lazy(() => import('./pages/admin/marketing/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
 const AdminPostagem = lazy(() => import('./pages/admin/marketing/AdminPostagem').then(m => ({ default: m.AdminPostagem })));
+const AdminVisualHome = lazy(() => import('./pages/admin/marketing/AdminVisualHome').then(m => ({ default: m.AdminVisualHome })));
 const MovEstoque = lazy(() => import('./pages/admin/MovEstoque').then(m => ({ default: m.MovEstoque })));
 const AdminCustomers = lazy(() => import('./pages/admin/AdminCustomers').then(m => ({ default: m.AdminCustomers })));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers').then(m => ({ default: m.AdminUsers })));
@@ -57,6 +59,7 @@ const AdminWebhooks = lazy(() => import('./pages/admin/AdminWebhooks').then(m =>
 const AdminSmartStock = lazy(() => import('./pages/admin/AdminSmartStock'));
 const AdminMarketingHub = lazy(() => import('./pages/admin/marketing/AdminMarketingHub'));
 const AdminVisitors = lazy(() => import('./pages/admin/analytics/AdminVisitors').then(m => ({ default: m.AdminVisitors })));
+const AdminThemeManager = lazy(() => import('./pages/admin/AdminThemeManager').then(m => ({ default: m.AdminThemeManager })));
 
 // Loading Component (Splash Screen)
 function PageLoader() {
@@ -193,6 +196,7 @@ function AppContent() {
             <Route path="usuarios" element={<AdminUsers />} />
             <Route path="perfis" element={<AdminRoles />} />
             <Route path="logs" element={<AdminLogs />} />
+            <Route path="marketing/visual-home" element={<AdminVisualHome />} />
             <Route path="marketing/banners" element={<AdminBanners />} />
             <Route path="marketing/popups" element={<AdminPopups />} />
             <Route path="marketing/cupons" element={<AdminCoupons />} />
@@ -223,6 +227,7 @@ function AppContent() {
             <Route path="marketing/recovery-logs" element={<AdminWebhooks />} />
             <Route path="analytics/visitors" element={<AdminVisitors />} />
             <Route path="config" element={<AdminConfig />} />
+            <Route path="config/theme-manager" element={<AdminThemeManager />} />
           </Route>
         </Routes>
       </Suspense>
@@ -245,9 +250,11 @@ export default function App() {
 
   return (
     <SettingsProvider>
-      <PromotionProvider>
-        <AppContent />
-      </PromotionProvider>
+      <ThemeProvider>
+        <PromotionProvider>
+          <AppContent />
+        </PromotionProvider>
+      </ThemeProvider>
     </SettingsProvider>
   );
 }

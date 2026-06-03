@@ -13,6 +13,7 @@ import { ImperdiveisCarousel } from '../../components/home/ImperdiveisCarousel';
 import { useUIStore } from '../../store/uiStore';
 import { ProductItemCard, SkeletonCard } from '../../components/ui/ProductItemCard';
 import { LazyLoad } from '../../components/ui/LazyLoad';
+import { visualHomeService } from '../../services/visualHomeService';
 
 interface Banner {
   id: string;
@@ -49,6 +50,14 @@ export function HomePage() {
   const [loading, setLoading] = useState(true);
   const [aiFrase, setAiFrase] = useState("");
   const setHomeReady = useUIStore(s => s.setHomeReady);
+
+  const [visibleProducts, setVisibleProducts] = useState<Product[]>([]);
+  const [visualStructure, setVisualStructure] = useState<{
+    settings: Record<string, any>;
+    layouts: Record<string, any>;
+    schedules: Record<string, any>;
+    order: string[];
+  } | null>(null);
 
   const loadCriticalData = useCallback(async () => {
     try {
@@ -125,6 +134,8 @@ export function HomePage() {
         (p.extras?.showInCatalog !== false) &&
         (p.isCombo || !p.controlStock || p.allowBackorder || (Number((p as any).stock) || 0) > 0)
       );
+
+      setVisibleProducts(visibleProducts);
 
       const usedIds = new Set<string>();
       
@@ -255,6 +266,14 @@ export function HomePage() {
 
       setFeaturedCategorySections(featuredSecs);
 
+      // Fetch dynamic homepage structures from Firestore
+      try {
+        const visualData = await visualHomeService.getFullHomeStructure();
+        setVisualStructure(visualData);
+      } catch (err) {
+        console.error('Error loading visual home structure:', err);
+      }
+
       // Wait for everything to be set before releasing the global splash
       setHomeReady(true);
     } catch(e) {
@@ -283,6 +302,109 @@ export function HomePage() {
     }, 5000);
     return () => clearInterval(timer);
   }, [banners.length]);
+
+  const getProductsForSection = (id: string, settings: any, layout: any) => {
+    if (!settings) return [];
+    
+    let result: Product[] = [];
+    
+    // 1. Resolve product source
+    switch (settings.source) {
+      case 'promo':
+        result = visibleProducts.filter(p => !!p.onSale || (p.promoPrice && p.promoPrice < p.price));
+        break;
+      case 'categories':
+        if (settings.sourceDetails && settings.sourceDetails.length > 0) {
+          result = visibleProducts.filter(p => 
+            p.categoryId && settings.sourceDetails.includes(p.categoryId)
+          );
+        } else {
+          result = [];
+        }
+        break;
+      case 'custom_products':
+        if (settings.sourceDetails && settings.sourceDetails.length > 0) {
+          result = settings.sourceDetails
+            .map((prodId: string) => visibleProducts.find(p => p.id === prodId))
+            .filter((p: any) => !!p) as Product[];
+        } else {
+          result = [];
+        }
+        break;
+      case 'best_seller':
+        result = [...sections.maisVendidos];
+        if (result.length === 0) result = getMaisVendidos(visibleProducts, new Set());
+        break;
+      case 'views':
+        result = [...sections.emAlta];
+        if (result.length === 0) result = getEmAlta(visibleProducts, new Set());
+        break;
+      case 'recent':
+        result = [...sections.lancamentos];
+        if (result.length === 0) result = getLancamentos(visibleProducts, new Set());
+        break;
+      case 'ai_recs':
+        result = [...sections.recomendados];
+        if (result.length === 0) result = getRecomendados(visibleProducts, new Set());
+        break;
+      case 'random':
+        result = [...visibleProducts].sort(() => Math.random() - 0.5);
+        break;
+      case 'stock':
+        result = [...visibleProducts].sort((a, b) => (Number(b.stock) || 0) - (Number(a.stock) || 0));
+        break;
+      case 'auto':
+      default:
+        // Default standard fallbacks based on id
+        if (id === 'lancamentos') result = sections.lancamentos;
+        else if (id === 'destaques') result = sections.destaques;
+        else if (id === 'maisVendidos') result = sections.maisVendidos;
+        else if (id === 'emAlta') result = sections.emAlta;
+        else if (id === 'recomendados') result = sections.recomendados;
+        else if (id === 'ofertas') result = sections.ofertas;
+        else result = sections.destaques; // fallback for custom sections
+        break;
+    }
+
+    // 2. Perform advanced ordering on the resulting array if specified
+    if (settings.orderByField && settings.orderByField !== 'manual') {
+      switch (settings.orderByField) {
+        case 'recent':
+          result = [...result].sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt as any).getTime() : 0;
+            return dateB - dateA;
+          });
+          break;
+        case 'sales':
+          result = [...result].sort((a, b) => getHomeScore(b) - getHomeScore(a));
+          break;
+        case 'discount':
+          result = [...result].sort((a, b) => {
+            const dA = a.promoPrice ? (a.price - a.promoPrice) : 0;
+            const dB = b.promoPrice ? (b.price - b.promoPrice) : 0;
+            return dB - dA;
+          });
+          break;
+        case 'price_asc':
+          result = [...result].sort((a, b) => (a.promoPrice || a.price) - (b.promoPrice || b.price));
+          break;
+        case 'price_desc':
+          result = [...result].sort((a, b) => (b.promoPrice || b.price) - (a.promoPrice || a.price));
+          break;
+        case 'random':
+          result = [...result].sort(() => Math.random() - 0.5);
+          break;
+      }
+    }
+
+    // 3. Slice according to limit
+    if (layout?.limit) {
+      result = result.slice(0, layout.limit);
+    }
+
+    return result;
+  };
 
   return (
     <div className="flex-1 flex flex-col bg-black text-white">
@@ -443,39 +565,92 @@ export function HomePage() {
           </>
         ) : (
           <>
-            {/* 1. LANÇAMENTOS - Carrega imediatamente */}
-            {sections.lancamentos.length > 0 && <ProductCarousel title="Lançamentos" products={sections.lancamentos} link="/catalogo?secao=lancamentos" />}
-            
-            {/* 2. DESTAQUES - Carrega imediatamente */}
-            {sections.destaques.length > 0 && <ProductCarousel title="Destaques" products={sections.destaques} link="/catalogo?secao=destaques" />}
-            
-            {/* Dynamic Featured Category Sections */}
+            {/* Dynamic Featured Category Sections at the very top (first session on the Home Page below daily offer banners) */}
             {featuredCategorySections.map(sec => (
-              <LazyLoad key={sec.category.id} rootMargin="300px">
-                <ProductCarousel 
-                  title={sec.category.name} 
-                  products={sec.products} 
-                  link={`/catalogo?categoria=${sec.category.slug || sec.category.id}`} 
-                />
-              </LazyLoad>
+              <ProductCarousel 
+                key={sec.category.id}
+                title={sec.category.name} 
+                products={sec.products} 
+                link={`/catalogo?categoria=${sec.category.slug || sec.category.id}`} 
+              />
             ))}
 
-            {/* Sessões carregadas conforme o scroll para performance */}
-            <LazyLoad rootMargin="300px">
-              {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo?secao=mais-vendidos" />}
-            </LazyLoad>
- 
-            <LazyLoad rootMargin="300px">
-              <ImperdiveisCarousel products={sections.ofertas} loading={loading} />
-            </LazyLoad>
- 
-            <LazyLoad rootMargin="300px">
-              {sections.emAlta.length > 0 && <ProductCarousel title="Em Alta" products={sections.emAlta} link="/catalogo?secao=em-alta" />}
-            </LazyLoad>
- 
-            <LazyLoad rootMargin="300px">
-              {sections.recomendados.length > 0 && <ProductCarousel title="Recomendados" products={sections.recomendados} link="/catalogo?secao=recomendados" />}
-            </LazyLoad>
+            {visualStructure && visualStructure.order && visualStructure.order.length > 0 ? (
+              visualStructure.order.map((sectionId: string) => {
+                const sectionSettings = visualStructure.settings[sectionId];
+                const sectionLayout = visualStructure.layouts[sectionId];
+                const sectionSchedule = visualStructure.schedules[sectionId];
+
+                if (!sectionSettings || !sectionSettings.active) return null;
+
+                // Check schedule
+                if (sectionSchedule?.hasSchedule) {
+                  const now = new Date();
+                  if (sectionSchedule.startDate) {
+                    const startStr = `${sectionSchedule.startDate}T${sectionSchedule.startTime || '00:00'}:00`;
+                    if (now < new Date(startStr)) return null;
+                  }
+                  if (sectionSchedule.endDate) {
+                    const endStr = `${sectionSchedule.endDate}T${sectionSchedule.endTime || '23:59'}:59`;
+                    if (now > new Date(endStr)) return null;
+                  }
+                }
+
+                const sectionProducts = getProductsForSection(sectionId, sectionSettings, sectionLayout);
+                if (!sectionProducts || sectionProducts.length === 0) return null;
+
+                if (sectionId === 'ofertas' && (!sectionLayout || sectionLayout.style === 'standard')) {
+                  return (
+                    <LazyLoad key={sectionId} rootMargin="300px">
+                      <ImperdiveisCarousel products={sectionProducts} loading={loading} />
+                    </LazyLoad>
+                  );
+                }
+
+                return (
+                  <LazyLoad key={sectionId} rootMargin="300px">
+                    <ProductCarousel 
+                      title={sectionSettings.title}
+                      subtitle={sectionSettings.subtitle}
+                      emoji={sectionSettings.emoji}
+                      alignment={sectionSettings.alignment}
+                      products={sectionProducts}
+                      link={sectionSettings.buttonUrl || `/catalogo?secao=${sectionId}`}
+                      showButton={sectionSettings.showButton ?? true}
+                      buttonText={sectionSettings.buttonText || 'Ver Todos'}
+                      themeColor={sectionSettings.themeColor}
+                      themeBg={sectionSettings.themeBg}
+                      layout={sectionLayout}
+                    />
+                  </LazyLoad>
+                );
+              })
+            ) : (
+              <>
+                {/* 1. LANÇAMENTOS - Carrega imediatamente */}
+                {sections.lancamentos.length > 0 && <ProductCarousel title="Lançamentos" products={sections.lancamentos} link="/catalogo?secao=lancamentos" />}
+                
+                {/* 2. DESTAQUES - Carrega imediatamente */}
+                {sections.destaques.length > 0 && <ProductCarousel title="Destaques" products={sections.destaques} link="/catalogo?secao=destaques" />}
+
+                {/* Sessões carregadas conforme o scroll para performance */}
+                <LazyLoad rootMargin="300px">
+                  {sections.maisVendidos.length > 0 && <ProductCarousel title="Mais Vendidos" products={sections.maisVendidos} link="/catalogo?secao=mais-vendidos" />}
+                </LazyLoad>
+     
+                <LazyLoad rootMargin="300px">
+                  <ImperdiveisCarousel products={sections.ofertas} loading={loading} />
+                </LazyLoad>
+     
+                <LazyLoad rootMargin="300px">
+                  {sections.emAlta.length > 0 && <ProductCarousel title="Em Alta" products={sections.emAlta} link="/catalogo?secao=em-alta" />}
+                </LazyLoad>
+     
+                <LazyLoad rootMargin="300px">
+                  {sections.recomendados.length > 0 && <ProductCarousel title="Recomendados" products={sections.recomendados} link="/catalogo?secao=recomendados" />}
+                </LazyLoad>
+              </>
+            )}
           </>
         )}
       </div>
@@ -509,7 +684,33 @@ export function HomePage() {
   );
 }
 
-function ProductCarousel({ title, products, link, loading }: { title: string, products: Product[], link: string, loading?: boolean }) {
+function ProductCarousel({ 
+  title, 
+  subtitle,
+  emoji,
+  alignment = 'left',
+  products, 
+  link, 
+  showButton = true,
+  buttonText = 'Ver tudo',
+  themeColor,
+  themeBg,
+  layout,
+  loading 
+}: { 
+  title: string, 
+  subtitle?: string,
+  emoji?: string,
+  alignment?: 'left' | 'center' | 'right',
+  products: Product[], 
+  link: string, 
+  showButton?: boolean,
+  buttonText?: string,
+  themeColor?: string,
+  themeBg?: string,
+  layout?: any,
+  loading?: boolean 
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(6);
 
@@ -534,49 +735,104 @@ function ProductCarousel({ title, products, link, loading }: { title: string, pr
 
   const displayProducts = loading ? Array(4).fill(0) : products.slice(0, visibleCount);
 
+  const isVertical = layout?.orientation === 'vertical';
+  const isCompactStyle = layout?.style === 'compact';
+
+  // Build responsive column classes for vertical layout
+  const gridColsClass = isVertical 
+    ? cn(
+        "grid gap-4",
+        layout?.mobileCols === 1 ? "grid-cols-1" : "grid-cols-2",
+        layout?.colsDesktop === 1 && "md:grid-cols-1 lg:grid-cols-1",
+        layout?.colsDesktop === 2 && "md:grid-cols-2 lg:grid-cols-2",
+        layout?.colsDesktop === 3 && "md:grid-cols-3 lg:grid-cols-3",
+        (!layout?.colsDesktop || layout?.colsDesktop === 4) && "md:grid-cols-3 lg:grid-cols-4"
+      )
+    : "flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-4 no-scrollbar";
+
   return (
-    <section className="relative group/carousel">
-      <div className="flex justify-between items-end mb-8 border-b border-zinc-900 pb-4">
-        <div className="flex items-center gap-3">
-          <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tighter italic">{title}</h2>
+    <section 
+      className={cn(
+        "relative group/carousel py-6 md:py-8 transition-all duration-500"
+      )}
+    >
+      <div className={cn(
+        "flex flex-col md:flex-row justify-between mb-8 border-b border-zinc-900 pb-4 gap-4",
+        alignment === 'center' ? 'items-center text-center' : alignment === 'right' ? 'items-end text-right' : 'items-start md:items-end'
+      )}>
+        <div className={cn(
+          "flex flex-col",
+          alignment === 'center' ? 'items-center' : alignment === 'right' ? 'items-end' : 'items-start'
+        )}>
+          <div className="flex items-center gap-3">
+            {emoji && <span className="text-xl md:text-2xl">{emoji}</span>}
+            <h2 
+              style={{ color: themeColor || undefined }}
+              className={cn(
+                "font-black uppercase tracking-tighter italic",
+                isCompactStyle ? "text-xl md:text-2xl" : "text-2xl md:text-3xl"
+              )}
+            >
+              {title}
+            </h2>
+          </div>
+          {subtitle && (
+            <p className="text-xs text-zinc-400 mt-1 max-w-md">{subtitle}</p>
+          )}
         </div>
-        {!loading && <Link to={link} className="text-[10px] font-black text-zinc-500 uppercase tracking-[3px] hover:text-red-500 transition-colors">Ver tudo</Link>}
+
+        {!loading && showButton && (
+          <Link 
+            to={link} 
+            className="text-[10px] font-black text-zinc-400 uppercase tracking-[3px] hover:text-red-500 hover:scale-105 active:scale-95 transition-all text-shadow-glow"
+          >
+            {buttonText}
+          </Link>
+        )}
       </div>
 
       <div className="relative">
         <div 
           ref={scrollRef}
-          onScroll={handleScroll}
-          className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-4 no-scrollbar"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          onScroll={isVertical ? undefined : handleScroll}
+          className={gridColsClass}
+          style={isVertical ? undefined : { scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {loading ? (
              displayProducts.map((_, i) => (
-              <div key={i} className="min-w-[42%] sm:min-w-[240px] snap-start h-full">
+              <div 
+                key={i} 
+                className={cn(isVertical ? "w-full" : "min-w-[42%] sm:min-w-[240px] snap-start h-full")}
+              >
                 <SkeletonCard />
               </div>
             ))
           ) : displayProducts.length > 0 ? (
             displayProducts.map((product: any, idx: number) => (
-              <div key={product.id} className="min-w-[42%] sm:min-w-[240px] snap-start h-full">
+              <div 
+                key={product.id} 
+                className={cn(isVertical ? "w-full" : "min-w-[42%] sm:min-w-[240px] snap-start h-full")}
+              >
                 <ProductItemCard product={product} isPriority={idx < 2} />
               </div>
             ))
-          ) : null}
+          ) : (
+            <div className="py-8 text-center text-xs text-zinc-600 font-bold uppercase w-full">Nenhum produto encontrado nesta seção</div>
+          )}
         </div>
 
-        {/* Navigation Buttons */}
-        {!loading && products.length > 0 && (
+        {/* Navigation Buttons for sliders only */}
+        {!isVertical && !loading && products.length > 0 && (
           <>
             <button 
               onClick={() => scroll('left')}
-              className="absolute left-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:left-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0"
+              className="absolute left-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:left-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0 shadow-[0_0_10px_rgba(0,0,0,0.5)]"
             >
               <ChevronLeft size={16} />
             </button>
             <button 
               onClick={() => scroll('right')}
-              className="absolute right-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:right-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0"
+              className="absolute right-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:right-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0 shadow-[0_0_10px_rgba(0,0,0,0.5)]"
             >
               <ChevronRight size={16} />
             </button>

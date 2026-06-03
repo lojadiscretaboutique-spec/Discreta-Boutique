@@ -481,6 +481,34 @@ export default {
         metricValue: { type: "number" },
         timestamp: { type: "string", format: "date-time" }
       }
+    },
+    ThemeConfig: {
+      title: "Theme Config",
+      description: "Saved custom color themes and campaigns",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        isCustom: { type: "boolean" },
+        primaryColor: { type: "string" },
+        secondaryColor: { type: "string" },
+        backgroundColor: { type: "string" },
+        cardColor: { type: "string" },
+        buttonColor: { type: "string" },
+        linkColor: { type: "string" },
+        highlightColor: { type: "string" },
+        primaryTextColor: { type: "string" },
+        secondaryTextColor: { type: "string" },
+        backgroundTextColor: { type: "string" },
+        cardTextColor: { type: "string" },
+        buttonTextColor: { type: "string" },
+        linkTextColor: { type: "string" },
+        highlightTextColor: { type: "string" },
+        scheduled: { type: "boolean" },
+        startDate: { type: "string" },
+        endDate: { type: "string" }
+      },
+      required: ["name", "primaryColor", "secondaryColor", "backgroundColor", "cardColor", "buttonColor"]
     }
   },
   firestore: {
@@ -519,6 +547,10 @@ export default {
     "settings": {
       schema: { $ref: "#/entities/StoreSettings" },
       description: "Global store settings"
+    },
+    "themes": {
+      schema: { $ref: "#/entities/ThemeConfig" },
+      description: "Saved custom color themes and campaigns"
     },
     "users": {
       schema: { $ref: "#/entities/User" },
@@ -595,6 +627,26 @@ export default {
     "visitor_analytics": {
       schema: { $ref: "#/entities/VisitorAnalytics" },
       description: "Consolidated visitor metric aggregations"
+    },
+    "home_section_settings": {
+      schema: { type: "object" },
+      description: "Visual settings of home sections"
+    },
+    "home_section_layouts": {
+      schema: { type: "object" },
+      description: "Layout configurations of home sections"
+    },
+    "home_section_schedules": {
+      schema: { type: "object" },
+      description: "Schedule configurations of home sections"
+    },
+    "home_custom_sections": {
+      schema: { type: "object" },
+      description: "List of custom sections"
+    },
+    "home_section_order": {
+      schema: { type: "object" },
+      description: "Order mapping of homepage sections"
     }
   }
 }

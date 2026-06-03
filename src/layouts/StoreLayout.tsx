@@ -11,6 +11,8 @@ import { PopupOverlay } from '../components/PopupOverlay';
 import { Truck } from 'lucide-react';
 import { usePromotion } from '../contexts/PromotionContext';
 import { cn } from '../lib/utils';
+import { useTheme } from '../contexts/ThemeContext';
+import { hexToRgb } from '../utils/themeUtils';
 
 function FreeShippingBar() {
   const { activePromotions } = usePromotion();
@@ -33,6 +35,7 @@ function FreeShippingBar() {
 }
 
 export function StoreLayout() {
+  const { currentTheme } = useTheme();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const cartItems = useCartStore(state => state.items);
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
@@ -47,6 +50,37 @@ export function StoreLayout() {
   const hasGlobalFreeShipping = activePromotions.some(
     p => p.active && p.type === 'free_shipping' && p.scope === 'all'
   );
+
+  // Sync variables to root for full dynamic style updates
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!root) return;
+
+    root.style.setProperty('--primary-color', currentTheme.primaryColor);
+    root.style.setProperty('--secondary-color', currentTheme.secondaryColor);
+    root.style.setProperty('--button-color', currentTheme.buttonColor);
+    root.style.setProperty('--background-color', currentTheme.backgroundColor);
+    root.style.setProperty('--card-color', currentTheme.cardColor);
+    root.style.setProperty('--text-color', currentTheme.backgroundTextColor);
+    root.style.setProperty('--link-color', currentTheme.linkColor);
+    root.style.setProperty('--highlight-color', currentTheme.highlightColor);
+
+    root.style.setProperty('--primary-color-text', currentTheme.primaryTextColor);
+    root.style.setProperty('--secondary-color-text', currentTheme.secondaryTextColor);
+    root.style.setProperty('--button-color-text', currentTheme.buttonTextColor);
+    root.style.setProperty('--card-color-text', currentTheme.cardTextColor);
+    root.style.setProperty('--link-color-text', currentTheme.linkTextColor);
+    root.style.setProperty('--highlight-color-text', currentTheme.highlightTextColor);
+
+    // Map to legacy index.css classes for transparent compatibility
+    root.style.setProperty('--color-primary', currentTheme.primaryColor);
+    root.style.setProperty('--color-bg', currentTheme.backgroundColor);
+    root.style.setProperty('--color-surface', currentTheme.cardColor);
+    root.style.setProperty('--color-text-main', currentTheme.backgroundTextColor);
+
+    const rgb = hexToRgb(currentTheme.primaryColor);
+    root.style.setProperty('--color-primary-glow', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.25)`);
+  }, [currentTheme]);
 
   useEffect(() => {
     const version = localStorage.getItem('app_code_version') || '1.1.0';
@@ -88,44 +122,101 @@ export function StoreLayout() {
     }
   }, [location.search]);
 
+  const isDarkBackground = currentTheme.backgroundTextColor === '#ffffff';
+  const textSecondaryColor = isDarkBackground ? '#a0a0a0' : '#4b5563';
+  const borderColor = isDarkBackground ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+
+  const themeStyles = {
+    '--primary-color': currentTheme.primaryColor,
+    '--secondary-color': currentTheme.secondaryColor,
+    '--background-color': currentTheme.backgroundColor,
+    '--surface-color': currentTheme.cardColor,
+    '--card-color': currentTheme.cardColor,
+    '--button-color': currentTheme.buttonColor,
+    '--button-text-color': currentTheme.buttonTextColor,
+    '--border-color': borderColor,
+    '--text-color': currentTheme.backgroundTextColor,
+    '--text-secondary-color': textSecondaryColor,
+  } as React.CSSProperties;
+
   return (
-    <div className="dark min-h-screen bg-black text-white flex flex-col font-sans relative">
+    <div className="storefront-theme-container dark min-h-screen flex flex-col font-sans relative" style={themeStyles}>
       <PopupOverlay />
       {/* Header */}
-      <header className="bg-black text-white fixed top-0 w-full z-50 border-b border-zinc-900">
+      <header 
+        className="fixed top-0 w-full z-50 border-b backdrop-blur-md transition-colors duration-300"
+        style={{
+          backgroundColor: currentTheme.cardColor,
+          color: currentTheme.cardTextColor,
+          borderColor: borderColor
+        }}
+      >
         <FreeShippingBar />
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between relative">
           
           <div className="flex items-center">
             {/* Mobile Menu Button */}
             <button 
-              className="md:hidden p-2 -ml-2 text-zinc-400 hover:text-red-500"
+              className="md:hidden p-2 -ml-2 transition-colors duration-300"
+              style={{ color: textSecondaryColor }}
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             >
               {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
 
             {/* Desktop Nav */}
-            <nav className="hidden md:flex items-center space-x-8 text-[10px] font-bold uppercase tracking-[3px]">
-              <Link to="/" className="hover:text-red-500 transition-colors">Início</Link>
-              <Link to="/catalogo" className="hover:text-red-500 transition-colors">Produtos</Link>
+            <nav className="hidden md:flex items-center space-x-8 text-[11px] font-bold uppercase tracking-[3px]">
+              <Link 
+                to="/" 
+                className="transition-colors duration-300 hover:opacity-80"
+                style={{ color: currentTheme.cardTextColor }}
+              >
+                Início
+              </Link>
+              <Link 
+                to="/catalogo" 
+                className="transition-colors duration-300 hover:opacity-80"
+                style={{ color: currentTheme.cardTextColor }}
+              >
+                Produtos
+              </Link>
             </nav>
           </div>
 
           {/* Logo Text Only - Absolute Centered */}
           <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center">
-            <span className="text-xl font-black tracking-tighter text-white uppercase italic">DISCRETA</span>
+            <span 
+              className="text-2xl font-black tracking-tighter uppercase italic transition-colors duration-500 animate-pulse"
+              style={{ color: currentTheme.primaryColor }}
+            >
+              DISCRETA
+            </span>
           </Link>
 
           {/* Actions */}
           <div className="flex items-center space-x-2 sm:space-x-4">
-            <Link to="/area-cliente" className="p-2 text-zinc-400 hover:text-red-500 flex items-center">
+            <Link 
+              to="/area-cliente" 
+              className="p-2 flex items-center transition-colors duration-300 hover:opacity-80"
+              style={{ color: textSecondaryColor }}
+            >
                <span className="hidden md:inline mr-2 text-[10px] font-bold uppercase tracking-widest">Conta</span>
             </Link>
-            <Link to="/carrinho" className="p-2 text-zinc-400 hover:text-red-500 relative transition-colors">
+            <Link 
+              to="/carrinho" 
+              className="p-2 relative transition-colors duration-300 hover:opacity-80"
+              style={{ color: textSecondaryColor }}
+            >
               <ShoppingBag size={20} />
               {cartCount > 0 && (
-                <span className="absolute top-0 right-0 bg-red-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-black">
+                <span 
+                  className="absolute top-0 right-0 text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2"
+                  style={{
+                    backgroundColor: currentTheme.primaryColor,
+                    color: currentTheme.primaryTextColor,
+                    borderColor: currentTheme.cardColor
+                  }}
+                >
                   {cartCount}
                 </span>
               )}
@@ -133,9 +224,15 @@ export function StoreLayout() {
           </div>
         </div>
 
-        {/* Global Search Bar - Clean & Dark - Only on Home and Catalog */}
+        {/* Global Search Bar - Premium & Seamless */}
         {(location.pathname === '/' || location.pathname === '/catalogo') && (
-          <div className="bg-black py-4 border-b border-zinc-900/50">
+          <div 
+            className="py-4 border-b transition-colors duration-300"
+            style={{ 
+              backgroundColor: currentTheme.backgroundColor, 
+              borderColor: borderColor 
+            }}
+          >
              <SearchBar placeholder="O que você busca hoje? Encontre prazer..." />
           </div>
         )}
@@ -147,13 +244,38 @@ export function StoreLayout() {
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="md:hidden border-t border-zinc-900 bg-black absolute w-full left-0 overflow-hidden shadow-2xl"
+              className="md:hidden border-t absolute w-full left-0 overflow-hidden shadow-2xl"
+              style={{
+                backgroundColor: currentTheme.cardColor,
+                borderColor: borderColor
+              }}
             >
               <div className="p-6 flex flex-col space-y-6">
-                <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="text-2xl font-black uppercase tracking-tighter hover:text-red-600 transition-colors">Início</Link>
-                <Link to="/catalogo" onClick={() => setIsMobileMenuOpen(false)} className="text-2xl font-black uppercase tracking-tighter hover:text-red-600 transition-colors">Catálogo Completo</Link>
-                <Link to="/area-cliente" onClick={() => setIsMobileMenuOpen(false)} className="text-2xl font-black uppercase tracking-tighter hover:text-red-600 transition-colors">Área do Cliente</Link>
-                <div className="pt-4 flex gap-4 text-zinc-500">
+                <Link 
+                  to="/" 
+                  onClick={() => setIsMobileMenuOpen(false)} 
+                  className="text-2xl font-black uppercase tracking-tighter transition-colors"
+                  style={{ color: currentTheme.cardTextColor }}
+                >
+                  Início
+                </Link>
+                <Link 
+                  to="/catalogo" 
+                  onClick={() => setIsMobileMenuOpen(false)} 
+                  className="text-2xl font-black uppercase tracking-tighter transition-colors"
+                  style={{ color: currentTheme.cardTextColor }}
+                >
+                  Catálogo Completo
+                </Link>
+                <Link 
+                  to="/area-cliente" 
+                  onClick={() => setIsMobileMenuOpen(false)} 
+                  className="text-2xl font-black uppercase tracking-tighter transition-colors"
+                  style={{ color: currentTheme.cardTextColor }}
+                >
+                  Área do Cliente
+                </Link>
+                <div className="pt-4 flex gap-4" style={{ color: textSecondaryColor }}>
                    <span className="text-xs font-bold uppercase tracking-widest">Sigilo absoluto</span>
                    <span className="text-xs font-bold uppercase tracking-widest">Entrega Discreta</span>
                 </div>
@@ -186,13 +308,28 @@ export function StoreLayout() {
 
       {/* Footer */}
       {!['/carrinho', '/sucesso', '/afiliados'].includes(location.pathname) && (
-        <footer className="bg-zinc-950 text-white py-16 px-4 border-t border-zinc-900">
+        <footer 
+          className="transition-colors duration-300 py-16 px-4 border-t"
+          style={{
+            backgroundColor: currentTheme.cardColor,
+            color: currentTheme.cardTextColor,
+            borderColor: borderColor
+          }}
+        >
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12">
             <div className="max-w-md">
               <div className="flex items-center gap-3 mb-4">
-                 <h2 className="text-2xl font-black tracking-tighter italic">DISCRETA BOUTIQUE</h2>
+                 <h2 
+                   className="text-2xl font-black tracking-tighter italic transition-colors duration-300"
+                   style={{ color: currentTheme.primaryColor }}
+                 >
+                   DISCRETA BOUTIQUE
+                 </h2>
               </div>
-              <p className="text-zinc-500 text-sm leading-relaxed">
+              <p 
+                className="text-sm leading-relaxed"
+                style={{ color: textSecondaryColor }}
+              >
                 Sua boutique especializada em momentos inesquecíveis. Produtos selecionados com rigor, 
                 garantindo máxima qualidade, prazer e segurança.
               </p>
@@ -200,33 +337,67 @@ export function StoreLayout() {
             
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-8">
               <div className="flex flex-col space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2">Shopping</h3>
+                <h3 
+                  className="text-xs font-bold uppercase tracking-[3px] mb-2"
+                  style={{ color: currentTheme.primaryColor }}
+                >
+                  Shopping
+                </h3>
                 {categories.map(cat => (
-                  <Link key={cat.id} to={`/catalogo?categoria=${cat.slug || cat.id}`} className="text-zinc-500 hover:text-red-500 text-sm transition-colors">
+                  <Link 
+                    key={cat.id} 
+                    to={`/catalogo?categoria=${cat.slug || cat.id}`} 
+                    className="text-sm transition-colors hover:opacity-80"
+                    style={{ color: textSecondaryColor }}
+                  >
                     {cat.name}
                   </Link>
                 ))}
               </div>
               <div className="flex flex-col space-y-3 min-w-0">
-                <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2">Institucional</h3>
-                <Link to="/quem-somos" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Quem Somos</Link>
-                <Link to="/politica-de-privacidade" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Privacidade</Link>
-                <Link to="/politica-de-troca" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Trocas e Devoluções</Link>
-                <Link to="/lgpd" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">LGPD</Link>
-                <Link to="/afiliados" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">Afiliados</Link>
-                <h3 className="text-xs font-bold uppercase tracking-[3px] text-zinc-300 mb-2 mt-4">Suporte</h3>
-                <a href="mailto:contato@discretaboutique.com.br" className="text-zinc-500 hover:text-red-500 text-sm transition-colors break-all">contato@discretaboutique.com.br</a>
-                <a href="https://wa.me/5588992340317" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-red-500 text-sm transition-colors">WhatsApp</a>
-                <Link to="/admin" className="text-zinc-500 hover:text-red-500 text-sm transition-colors mt-2">Painel Admin</Link>
+                <h3 
+                  className="text-xs font-bold uppercase tracking-[3px] mb-2"
+                  style={{ color: currentTheme.primaryColor }}
+                >
+                  Institucional
+                </h3>
+                <Link to="/quem-somos" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Quem Somos</Link>
+                <Link to="/politica-de-privacidade" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Privacidade</Link>
+                <Link to="/politica-de-troca" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Trocas e Devoluções</Link>
+                <Link to="/lgpd" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>LGPD</Link>
+                <Link to="/afiliados" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Afiliados</Link>
+                <h3 
+                  className="text-xs font-bold uppercase tracking-[3px] mb-2 mt-4"
+                  style={{ color: currentTheme.primaryColor }}
+                >
+                  Suporte
+                </h3>
+                <a href="mailto:contato@discretaboutique.com.br" className="text-sm transition-colors break-all hover:opacity-80" style={{ color: textSecondaryColor }}>contato@discretaboutique.com.br</a>
+                <a href="https://wa.me/5588992340317" target="_blank" rel="noopener noreferrer" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>WhatsApp</a>
+                <Link to="/admin" className="text-sm transition-colors hover:opacity-80 font-bold" style={{ color: currentTheme.primaryColor }}>Painel Admin</Link>
               </div>
             </div>
           </div>
-          <div className="max-w-7xl mx-auto mt-16 pt-8 border-t border-zinc-900 flex flex-col md:flex-row justify-between items-center gap-6 text-zinc-600 text-[10px] font-bold uppercase tracking-widest text-center md:text-left">
-             <p className="whitespace-normal break-words max-w-[300px] md:max-w-none px-4 md:px-0">© 2026 Discreta Boutique. Todos os direitos reservados. CNPJ: 37.633.308/0001-84</p>
-             <div className="flex flex-wrap justify-center gap-4 px-4">
+          <div 
+            className="max-w-7xl mx-auto mt-16 pt-8 border-t flex flex-col md:flex-row justify-between items-center gap-6 text-[10px] font-bold uppercase tracking-widest text-center md:text-left"
+            style={{ borderColor: borderColor }}
+          >
+             <p className="whitespace-normal break-words max-w-[300px] md:max-w-none px-4 md:px-0" style={{ color: textSecondaryColor }}>
+               © 2026 Discreta Boutique. Todos os direitos reservados. CNPJ: 37.633.308/0001-84
+             </p>
+             <div className="flex flex-wrap justify-center gap-4 px-4" style={{ color: textSecondaryColor }}>
                 <span className="whitespace-nowrap">Proibido para menores de 18 anos</span>
                 <span className="whitespace-nowrap">Sigilo garantido</span>
-                <span className="whitespace-nowrap bg-zinc-900/50 border border-white/5 py-0.5 px-2 rounded text-[8px] font-mono text-zinc-500 font-medium tracking-normal lowercase">v{appVersion}</span>
+                <span 
+                  className="whitespace-nowrap border py-0.5 px-2 rounded text-[8px] font-mono font-medium tracking-normal lowercase"
+                  style={{ 
+                    backgroundColor: currentTheme.backgroundColor, 
+                    borderColor: borderColor,
+                    color: textSecondaryColor 
+                  }}
+                >
+                  v{appVersion}
+                </span>
              </div>
           </div>
         </footer>

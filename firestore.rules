@@ -108,6 +108,36 @@ service cloud.firestore {
       allow delete: if can('banners', 'excluir');
     }
 
+    match /home_section_settings/{doc} {
+      allow read: if true;
+      allow create, update: if can('banners', 'editar') || isMasterAdmin();
+      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+    }
+
+    match /home_section_layouts/{doc} {
+      allow read: if true;
+      allow create, update: if can('banners', 'editar') || isMasterAdmin();
+      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+    }
+
+    match /home_section_schedules/{doc} {
+      allow read: if true;
+      allow create, update: if can('banners', 'editar') || isMasterAdmin();
+      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+    }
+
+    match /home_custom_sections/{doc} {
+      allow read: if true;
+      allow create, update: if can('banners', 'editar') || isMasterAdmin();
+      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+    }
+
+    match /home_section_order/{doc} {
+      allow read: if true;
+      allow create, update: if can('banners', 'editar') || isMasterAdmin();
+      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+    }
+
     match /offer_banners/{doc} {
       allow read: if true;
       allow create, update: if isMasterAdmin() || can('banners', 'criar');
@@ -122,6 +152,13 @@ service cloud.firestore {
       allow read: if true;
       allow update: if can('settings', 'editar');
       allow create: if can('settings', 'criar');
+    }
+
+    match /themes/{doc} {
+      allow read: if true;
+      allow create: if can('settings', 'criar');
+      allow update: if can('settings', 'editar');
+      allow delete: if can('settings', 'excluir') || can('settings', 'editar');
     }
 
     match /auditLogs/{doc} {

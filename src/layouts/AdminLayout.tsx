@@ -46,6 +46,7 @@ export function AdminLayout() {
     { name: 'Horários da Loja', path: '/admin/horarios', icon: Clock, permission: 'settings' },
     { name: 'Marketing', path: '/admin/marketing', icon: Megaphone, permission: 'banners', submenu: [
         { name: 'Hub Estratégico Pro ⭐️', path: '/admin/marketing', permission: 'banners' },
+        { name: 'Visual Home 🎨', path: '/admin/marketing/visual-home', permission: 'banners' },
         { name: 'Banners', path: '/admin/marketing/banners', permission: 'banners' },
         { name: 'Popups', path: '/admin/marketing/popups', permission: 'banners' },
         { name: 'Cupons', path: '/admin/marketing/cupons', permission: 'banners' },
@@ -56,6 +57,7 @@ export function AdminLayout() {
     ]},
     { name: 'Configurações', path: '/admin/config', icon: Settings, permission: 'settings', submenu: [
         { name: 'Dados da Loja', path: '/admin/config', permission: 'settings' },
+        { name: 'Gerenciar Temas 🎨', path: '/admin/config/theme-manager', permission: 'settings' },
     ]},
     { name: 'Contas / Equipe', path: '/admin/usuarios', icon: Shield, permission: 'users', submenu: [
         { name: 'Usuários', path: '/admin/usuarios', permission: 'users' },
@@ -92,6 +94,31 @@ export function AdminLayout() {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
+    }
+
+    // Clear dynamic storefront variables when in admin area so it keeps its default design
+    const root = document.documentElement;
+    if (root) {
+      root.style.removeProperty('--primary-color');
+      root.style.removeProperty('--secondary-color');
+      root.style.removeProperty('--button-color');
+      root.style.removeProperty('--background-color');
+      root.style.removeProperty('--card-color');
+      root.style.removeProperty('--text-color');
+      root.style.removeProperty('--link-color');
+      root.style.removeProperty('--highlight-color');
+      root.style.removeProperty('--primary-color-text');
+      root.style.removeProperty('--secondary-color-text');
+      root.style.removeProperty('--button-color-text');
+      root.style.removeProperty('--card-color-text');
+      root.style.removeProperty('--link-color-text');
+      root.style.removeProperty('--highlight-color-text');
+
+      root.style.removeProperty('--color-primary');
+      root.style.removeProperty('--color-bg');
+      root.style.removeProperty('--color-surface');
+      root.style.removeProperty('--color-text-main');
+      root.style.removeProperty('--color-primary-glow');
     }
   }, [theme]);
 

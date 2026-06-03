@@ -278,4 +278,142 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* ==========================================
+     EXCLUSIVO ÁREA DO CLIENTE / STOREFRONT THEME
+     ========================================== */
+  .storefront-theme-container {
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+    min-height: 100vh;
+  }
+
+  /* Force background changes for core storefront elements */
+  .storefront-theme-container,
+  .storefront-theme-container main,
+  .storefront-theme-container .bg-black,
+  .storefront-theme-container .bg-zinc-950,
+  .storefront-theme-container .bg-zinc-900,
+  .storefront-theme-container .bg-neutral-900,
+  .storefront-theme-container .bg-neutral-950,
+  .storefront-theme-container .bg-neutral-800,
+  .storefront-theme-container .bg-zinc-800,
+  .storefront-theme-container .bg-zinc-950\/50,
+  .storefront-theme-container .bg-zinc-900\/50 {
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+  }
+
+  /* Storefront Header & Footer Wrapper */
+  .storefront-theme-container header,
+  .storefront-theme-container header.bg-black,
+  .storefront-theme-container .bg-black.fixed,
+  .storefront-theme-container footer,
+  .storefront-theme-container footer.bg-zinc-950 {
+    background-color: var(--surface-color, var(--card-color)) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-color) !important;
+  }
+
+  /* Specific overriding of headers/footers to solve hardcoded colors */
+  .storefront-theme-container header *,
+  .storefront-theme-container footer * {
+    border-color: var(--border-color) !important;
+  }
+
+  /* Cards inside storefront */
+  .storefront-theme-container .group,
+  .storefront-theme-container .storefront-card,
+  .storefront-theme-container .bg-zinc-900\/50,
+  .storefront-theme-container .bg-zinc-900,
+  .storefront-theme-container .bg-stone-900,
+  .storefront-theme-container .bg-zinc-950 {
+    background-color: var(--card-color) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-color) !important;
+  }
+
+  /* Product catalog page elements & filter buttons */
+  .storefront-theme-container .storefront-card *,
+  .storefront-theme-container .group *,
+  .storefront-theme-container footer a {
+    color: var(--text-color);
+  }
+
+  /* Interactive Secondary & Tertiary text */
+  .storefront-theme-container .text-zinc-400,
+  .storefront-theme-container .text-zinc-500,
+  .storefront-theme-container .text-slate-400,
+  .storefront-theme-container .text-slate-500,
+  .storefront-theme-container .text-neutral-400,
+  .storefront-theme-container .text-neutral-500,
+  .storefront-theme-container footer p {
+    color: var(--text-secondary-color) !important;
+  }
+
+  /* Buttons inside storefront map to custom theme settings */
+  .storefront-theme-container .bg-red-600,
+  .storefront-theme-container .bg-red-700,
+  .storefront-theme-container button.bg-red-600,
+  .storefront-theme-container .storefront-btn-primary {
+    background-color: var(--button-color) !important;
+    color: var(--button-text-color) !important;
+    border: none !important;
+    box-shadow: 0 4px 14px var(--color-primary-glow) !important;
+  }
+
+  .storefront-theme-container .bg-red-600:hover,
+  .storefront-theme-container .bg-red-600:active,
+  .storefront-theme-container button.bg-red-600:hover,
+  .storefront-theme-container .bg-red-700:hover {
+    background-color: var(--button-color) !important;
+    opacity: 0.9 !important;
+  }
+
+  /* Button text/accent mappings */
+  .storefront-theme-container .text-red-500,
+  .storefront-theme-container .text-red-600,
+  .storefront-theme-container .text-red-700,
+  .storefront-theme-container .hover\:text-red-500:hover,
+  .storefront-theme-container .hover\:text-red-600:hover,
+  .storefront-theme-container a:hover,
+  .storefront-theme-container footer a:hover {
+    color: var(--primary-color) !important;
+  }
+
+  /* Interactive form element focus */
+  .storefront-theme-container input,
+  .storefront-theme-container textarea,
+  .storefront-theme-container select {
+    background-color: var(--card-color) !important;
+    color: var(--text-color) !important;
+    border-color: var(--border-color) !important;
+  }
+
+  .storefront-theme-container input:focus,
+  .storefront-theme-container textarea:focus,
+  .storefront-theme-container select:focus {
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 8px var(--color-primary-glow) !important;
+  }
+
+  /* Specific borders in client experience layouts */
+  .storefront-theme-container .border-zinc-900,
+  .storefront-theme-container .border-zinc-800,
+  .storefront-theme-container .border-zinc-700,
+  .storefront-theme-container .border-white\/10,
+  .storefront-theme-container .border-white\/5 {
+    border-color: var(--border-color) !important;
+  }
+
+  /* Glow accents */
+  .storefront-theme-container .shadow-xl {
+    box-shadow: 0 8px 16px var(--color-primary-glow) !important;
+  }
+
+  /* Successful/Alert components adaptation */
+  .storefront-theme-container .bg-red-600\/10 {
+    background-color: rgba(var(--primary-color), 0.1) !important;
+    border-color: var(--primary-color) !important;
+  }
 }

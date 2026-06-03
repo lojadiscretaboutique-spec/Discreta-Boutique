@@ -47,39 +47,53 @@ export const catalogSectionsService = {
    * Filtra e ordena produtos com base na seção solicitada
    */
   applySectionLogic(products: Product[], section: CatalogSection): Product[] {
-    // As funções do ranking.ts usam o método 'pick' que internamente filtra e fatia.
-    // Para o catálogo, queremos APENAS ORDENAÇÃO sem remover nenhum item da lista.
-    
+    const getCreationTime = (createdAt?: any) => {
+      if (!createdAt) return 0;
+      if (createdAt.seconds) return createdAt.seconds * 1000;
+      return new Date(createdAt).getTime() || 0;
+    };
+
     switch (section) {
-      case 'lancamentos':
-        // Todos os itens, mas os mais recentes e marcados como lançamento primeiro
-        return [...products].sort((a, b) => {
+      case 'lancamentos': {
+        const fortyFiveDaysAgo = Date.now() - 45 * 24 * 60 * 60 * 1000;
+        const filtered = products.filter(p => !!p.newRelease || (p.createdAt && getCreationTime(p.createdAt) > fortyFiveDaysAgo));
+        const finalProds = filtered.length > 0 ? filtered : products;
+        
+        return [...finalProds].sort((a, b) => {
           if (a.newRelease && !b.newRelease) return -1;
           if (!a.newRelease && b.newRelease) return 1;
           const dateA = a.createdAt?.seconds || 0;
           const dateB = b.createdAt?.seconds || 0;
           return dateB - dateA;
         });
+      }
 
-      case 'destaques':
-        // Todos os itens, mas os marcados como featured primeiro
-        return [...products].sort((a, b) => {
+      case 'destaques': {
+        const filtered = products.filter(p => !!p.featured);
+        const finalProds = filtered.length > 0 ? filtered : products;
+        
+        return [...finalProds].sort((a, b) => {
           if (a.featured && !b.featured) return -1;
           if (!a.featured && b.featured) return 1;
           return (b.score || 0) - (a.score || 0);
         });
+      }
 
-      case 'mais-vendidos':
-        // Ordenação por conversões (vendas)
-        return [...products].sort((a, b) => (b.conversoes || 0) - (a.conversoes || 0));
+      case 'mais-vendidos': {
+        const filtered = products.filter(p => (p.conversoes || 0) > 0);
+        const finalProds = filtered.length > 0 ? filtered : products;
+        return [...finalProds].sort((a, b) => (b.conversoes || 0) - (a.conversoes || 0));
+      }
 
-      case 'em-alta':
-        // Ordenação por engajamento/tendência (cliques)
-        return [...products].sort((a, b) => (b.cliques || 0) - (a.cliques || 0));
+      case 'em-alta': {
+        const filtered = products.filter(p => (p.cliques || 0) > 0);
+        const finalProds = filtered.length > 0 ? filtered : products;
+        return [...finalProds].sort((a, b) => (b.cliques || 0) - (a.cliques || 0));
+      }
 
-      case 'promocoes':
-        // Itens em promoção no topo, ordenados pelo maior desconto
-        return [...products].sort((a, b) => {
+      case 'promocoes': {
+        const filtered = products.filter(p => !!p.onSale || (p.promoPrice && p.promoPrice < p.price));
+        return [...filtered].sort((a, b) => {
           const isAPromo = !!a.onSale || (a.promoPrice && a.promoPrice < a.price);
           const isBPromo = !!b.onSale || (b.promoPrice && b.promoPrice < b.price);
           
@@ -94,10 +108,13 @@ export const catalogSectionsService = {
           
           return 0;
         });
+      }
 
-      case 'recomendados':
-        // Recomendados no catálogo usa o score base da IA
-        return [...products].sort((a, b) => (b.score || 0) - (a.score || 0));
+      case 'recomendados': {
+        const filtered = products.filter(p => (p.score || 0) > 0);
+        const finalProds = filtered.length > 0 ? filtered : products;
+        return [...finalProds].sort((a, b) => (b.score || 0) - (a.score || 0));
+      }
 
       default:
         return products;

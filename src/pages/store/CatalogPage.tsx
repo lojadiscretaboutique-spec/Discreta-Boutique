@@ -12,8 +12,45 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
 import { catalogSectionsService, SECTION_METADATA, CatalogSection } from '../../services/catalogSectionsService';
 import { usePromotion } from '../../contexts/PromotionContext';
+import { visualHomeService, VisualHomeSettings } from '../../services/visualHomeService';
+import { Combo } from '../../services/comboService';
+import { useTheme } from '../../contexts/ThemeContext';
+
+function hexToRgb(hexColor: string) {
+  let hex = hexColor.replace('#', '');
+  if (hex.length === 3) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  }
+  if (hex.length !== 6) return { r: 5, g: 5, b: 5 };
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  return { r, g, b };
+}
+
+function getContrastColor(hexColor: string): string {
+  if (!hexColor) return '#ffffff';
+  let hex = hexColor.replace('#', '');
+  if (hex.length === 3) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  }
+  if (hex.length !== 6) return '#ffffff';
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return (yiq >= 128) ? '#000000' : '#ffffff';
+}
+
+function normalizeSectionId(secId: string): string {
+  if (secId === 'mais-vendidos') return 'maisVendidos';
+  if (secId === 'em-alta') return 'emAlta';
+  if (secId === 'promocoes' || secId === 'ofertas') return 'ofertas';
+  return secId;
+}
 
 export function CatalogPage() {
+  const { currentTheme } = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const qCat = searchParams.get('categoria');
   const qSearch = searchParams.get('q');
@@ -34,6 +71,10 @@ export function CatalogPage() {
   const lastRankedSection = useRef<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
+
+  const [fullHomeStructure, setFullHomeStructure] = useState<any | null>(null);
+  const [activeSectionSettings, setActiveSectionSettings] = useState<VisualHomeSettings | null>(null);
+  const [sectionLoadError, setSectionLoadError] = useState<string | null>(null);
 
   const updateCategoryParam = (catValue: string | 'all', clearSearch = true) => {
     const newParams = new URLSearchParams(searchParams);
@@ -271,6 +312,15 @@ export function CatalogPage() {
 
         setCategories(sortedCats);
 
+        // Load Full Home Structure
+        let fStructure = null;
+        try {
+          fStructure = await visualHomeService.getFullHomeStructure();
+          setFullHomeStructure(fStructure);
+        } catch (err) {
+          console.error("Error loading home layout structure in catalog:", err);
+        }
+
         // Resolve params from URL
         const resolveParams = () => {
           const s = searchParams.get('secao');
@@ -290,6 +340,21 @@ export function CatalogPage() {
             else setSelectedCat('all');
           } else {
             setSelectedCat('all');
+          }
+
+          if (s) {
+            const normalizedId = normalizeSectionId(s);
+            const settings = fStructure?.settings?.[normalizedId];
+            if (!settings || !settings.active) {
+              setSectionLoadError("Esta coleção ou seção não está ativa no momento. Confira nossos outros produtos incríveis abaixo!");
+              setActiveSectionSettings(null);
+            } else {
+              setSectionLoadError(null);
+              setActiveSectionSettings(settings);
+            }
+          } else {
+            setSectionLoadError(null);
+            setActiveSectionSettings(null);
           }
         };
 
@@ -333,17 +398,196 @@ export function CatalogPage() {
       return ids;
     };
 
+    const getCreationTime = (createdAt?: any) => {
+      if (!createdAt) return 0;
+      if (createdAt.seconds) return createdAt.seconds * 1000;
+      return new Date(createdAt).getTime() || 0;
+    };
+
     let result = [...products];
     const startTime = Date.now();
 
     // 1. Filtro de Seção (Home Context)
     if (selectedSection) {
-      result = catalogSectionsService.applySectionLogic(result, selectedSection as CatalogSection);
-      
-      // Se for recomendados, podemos tentar um ranqueamento IA se houver poucos itens
-      // ou apenas registrar que estamos em uma sessão especial.
-      if (selectedSection === 'recomendados' && result.length > 0) {
-        // AI logic could go here if needed, but for now we follow the centralized service
+      const normalizedId = normalizeSectionId(selectedSection);
+      const settings = fullHomeStructure?.settings?.[normalizedId];
+
+      if (settings) {
+        let sectionProds: Product[] = [];
+        
+        switch (settings.source) {
+          case 'promo':
+            sectionProds = products.filter(p => !!p.onSale || (p.promoPrice && p.promoPrice < p.price));
+            break;
+          case 'categories':
+            if (settings.sourceDetails && settings.sourceDetails.length > 0) {
+              const allTargetCatIds = [...settings.sourceDetails];
+              settings.sourceDetails.forEach((catId: string) => {
+                const getChildIds = (id: string): string[] => {
+                  const children = categories.filter(c => c.parentId === id);
+                  let ids: string[] = [];
+                  children.forEach(child => {
+                    ids = [...ids, child.id, ...getChildIds(child.id)];
+                  });
+                  return ids;
+                };
+                allTargetCatIds.push(...getChildIds(catId));
+              });
+              sectionProds = products.filter(p => p.categoryId && allTargetCatIds.includes(p.categoryId));
+            }
+            break;
+          case 'brands':
+            if (settings.sourceDetails && settings.sourceDetails.length > 0) {
+              sectionProds = products.filter(p => p.brand && settings.sourceDetails.includes(p.brand));
+            }
+            break;
+          case 'custom_products':
+            if (settings.sourceDetails && settings.sourceDetails.length > 0) {
+              sectionProds = settings.sourceDetails
+                .map((prodId: string) => products.find(p => p.id === prodId))
+                .filter(Boolean) as Product[];
+            }
+            break;
+          case 'best_seller':
+            sectionProds = products.filter(p => (p.conversoes || 0) > 0);
+            if (sectionProds.length === 0) {
+              sectionProds = [...products];
+            }
+            sectionProds = [...sectionProds].sort((a, b) => (b.conversoes || 0) - (a.conversoes || 0));
+            break;
+          case 'views':
+            sectionProds = products.filter(p => (p.cliques || 0) > 0);
+            if (sectionProds.length === 0) {
+              sectionProds = [...products];
+            }
+            sectionProds = [...sectionProds].sort((a, b) => (b.cliques || 0) - (a.cliques || 0));
+            break;
+          case 'recent':
+            const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+            sectionProds = products.filter(p => !!p.newRelease || (p.createdAt && getCreationTime(p.createdAt) > thirtyDaysAgo));
+            if (sectionProds.length === 0) {
+              sectionProds = [...products];
+            }
+            sectionProds = [...sectionProds].sort((a, b) => {
+              const dateA = a.createdAt?.seconds || 0;
+              const dateB = b.createdAt?.seconds || 0;
+              return dateB - dateA;
+            });
+            break;
+          case 'ai_recs':
+          case 'recomendados':
+            sectionProds = products.filter(p => (p.score || 0) > 0);
+            if (sectionProds.length === 0) {
+              sectionProds = [...products];
+            }
+            sectionProds = [...sectionProds].sort((a, b) => (b.score || 0) - (a.score || 0));
+            break;
+          case 'random':
+            sectionProds = [...products];
+            break;
+          case 'stock':
+            sectionProds = products.filter(p => (Number(p.stock) || 0) > 0);
+            sectionProds = [...sectionProds].sort((a, b) => (Number(b.stock) || 0) - (Number(a.stock) || 0));
+            break;
+          case 'auto':
+          default:
+            if (normalizedId === 'lancamentos') {
+              const fortyFiveDaysAgo = Date.now() - 45 * 24 * 60 * 60 * 1000;
+              sectionProds = products.filter(p => !!p.newRelease || (p.createdAt && getCreationTime(p.createdAt) > fortyFiveDaysAgo));
+              if (sectionProds.length === 0) {
+                sectionProds = [...products];
+              }
+              sectionProds = [...sectionProds].sort((a, b) => {
+                if (a.newRelease && !b.newRelease) return -1;
+                if (!a.newRelease && b.newRelease) return 1;
+                const dA = a.createdAt?.seconds || 0;
+                const dB = b.createdAt?.seconds || 0;
+                return dB - dA;
+              });
+            } else if (normalizedId === 'destaques') {
+              sectionProds = products.filter(p => !!p.featured);
+              sectionProds = [...sectionProds].sort((a, b) => {
+                if (a.featured && !b.featured) return -1;
+                if (!a.featured && b.featured) return 1;
+                return (b.score || 0) - (a.score || 0);
+              });
+            } else if (normalizedId === 'maisVendidos') {
+              sectionProds = products.filter(p => (p.conversoes || 0) > 0);
+              if (sectionProds.length === 0) {
+                sectionProds = [...products];
+              }
+              sectionProds = [...sectionProds].sort((a, b) => (b.conversoes || 0) - (a.conversoes || 0));
+            } else if (normalizedId === 'emAlta') {
+              sectionProds = products.filter(p => (p.cliques || 0) > 0);
+              if (sectionProds.length === 0) {
+                sectionProds = [...products];
+              }
+              sectionProds = [...sectionProds].sort((a, b) => (b.cliques || 0) - (a.cliques || 0));
+            } else if (normalizedId === 'recomendados') {
+              sectionProds = products.filter(p => (p.score || 0) > 0);
+              if (sectionProds.length === 0) {
+                sectionProds = [...products];
+              }
+              sectionProds = [...sectionProds].sort((a, b) => (b.score || 0) - (a.score || 0));
+            } else if (normalizedId === 'ofertas') {
+              sectionProds = products.filter(p => !!p.onSale || (p.promoPrice && p.promoPrice < p.price));
+              sectionProds = [...sectionProds].sort((a, b) => {
+                const isAPromo = !!a.onSale || (a.promoPrice && a.promoPrice < a.price);
+                const isBPromo = !!b.onSale || (b.promoPrice && b.promoPrice < b.price);
+                if (isAPromo && !isBPromo) return -1;
+                if (!isAPromo && isBPromo) return 1;
+                if (isAPromo && isBPromo) {
+                  const discA = (a.price - (a.promoPrice || a.price)) / a.price;
+                  const discB = (b.price - (b.promoPrice || b.price)) / b.price;
+                  return discB - discA;
+                }
+                return 0;
+              });
+            } else {
+              sectionProds = [...products];
+            }
+            break;
+        }
+
+        // Apply advanced sorting on the resolved section array
+        if (settings.orderByField && settings.orderByField !== 'manual') {
+          switch (settings.orderByField) {
+            case 'recent':
+              sectionProds = [...sectionProds].sort((a, b) => {
+                const dateA = a.createdAt?.seconds || 0;
+                const dateB = b.createdAt?.seconds || 0;
+                return dateB - dateA;
+              });
+              break;
+            case 'sales':
+              sectionProds = [...sectionProds].sort((a, b) => (b.conversoes || 0) - (a.conversoes || 0));
+              break;
+            case 'discount':
+              sectionProds = [...sectionProds].sort((a, b) => {
+                const dA = a.promoPrice ? (a.price - a.promoPrice) : 0;
+                const dB = b.promoPrice ? (b.price - b.promoPrice) : 0;
+                return dB - dA;
+              });
+              break;
+            case 'price_asc':
+              sectionProds = [...sectionProds].sort((a, b) => (a.promoPrice || a.price) - (b.promoPrice || b.price));
+              break;
+            case 'price_desc':
+              sectionProds = [...sectionProds].sort((a, b) => (b.promoPrice || b.price) - (a.promoPrice || a.price));
+              break;
+            case 'random':
+              sectionProds = [...sectionProds].sort((a, b) => {
+                const codeA = a.id ? a.id.charCodeAt(0) : 0;
+                const codeB = b.id ? b.id.charCodeAt(0) : 0;
+                return codeA - codeB;
+              });
+              break;
+          }
+        }
+
+        result = sectionProds;
+      } else {
+        result = catalogSectionsService.applySectionLogic(result, selectedSection as CatalogSection);
       }
     }
 
@@ -383,15 +627,19 @@ export function CatalogPage() {
     
     setFiltered(result);
     setCurrentPage(1);
-  }, [search, selectedCat, selectedSection, selectedSubcat, selectedCollection, products, categories]);
+  }, [search, selectedCat, selectedSection, selectedSubcat, selectedCollection, products, categories, fullHomeStructure]);
 
   const getContextTitle = () => {
     if (search) return `Resultados para "${search}"`;
     
     let baseTitle = '';
     if (selectedSection) {
-      const meta = SECTION_METADATA[selectedSection as CatalogSection];
-      baseTitle = meta?.title || 'Coleção';
+      if (activeSectionSettings) {
+        baseTitle = (activeSectionSettings.emoji ? activeSectionSettings.emoji + ' ' : '') + activeSectionSettings.title;
+      } else {
+        const meta = SECTION_METADATA[selectedSection as CatalogSection];
+        baseTitle = meta?.title || 'Coleção';
+      }
     } else if (selectedSubcat) {
       baseTitle = selectedSubcat.charAt(0).toUpperCase() + selectedSubcat.slice(1);
     } else if (selectedCollection) {
@@ -403,7 +651,7 @@ export function CatalogPage() {
     if (baseTitle && cat) {
       return `${baseTitle} > ${cat.name}`;
     } else if (baseTitle) {
-      return `Explorando ${baseTitle}`;
+      return baseTitle;
     } else if (cat) {
       return `Produtos ${cat.name}`;
     }
@@ -447,9 +695,14 @@ export function CatalogPage() {
                 className={cn(
                   "whitespace-nowrap px-3.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border",
                   selectedCat === 'all' 
-                    ? "bg-red-600 text-white border-red-600 shadow-md shadow-red-900/20" 
+                    ? "shadow-md shadow-red-900/20" 
                     : "bg-zinc-900/50 text-zinc-500 border-zinc-800/50 hover:border-zinc-700"
                 )}
+                style={selectedCat === 'all' ? {
+                  backgroundColor: currentTheme.primaryColor,
+                  borderColor: currentTheme.primaryColor,
+                  color: currentTheme.primaryTextColor === 'light' ? '#ffffff' : (currentTheme.primaryTextColor === 'dark' ? '#000000' : getContrastColor(currentTheme.primaryColor))
+                } : {}}
               >
                 Todos
               </button>
@@ -460,9 +713,14 @@ export function CatalogPage() {
                   className={cn(
                     "whitespace-nowrap px-3.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border",
                     activeRootId === c.id 
-                      ? "bg-white text-red-600 border-white shadow-sm" 
+                      ? "shadow-sm" 
                       : "bg-zinc-900/50 text-zinc-500 border-zinc-800/50 hover:border-zinc-700"
                   )}
+                  style={activeRootId === c.id ? {
+                    backgroundColor: currentTheme.primaryColor,
+                    borderColor: currentTheme.primaryColor,
+                    color: currentTheme.primaryTextColor === 'light' ? '#ffffff' : (currentTheme.primaryTextColor === 'dark' ? '#000000' : getContrastColor(currentTheme.primaryColor))
+                  } : {}}
                 >
                   {c.name}
                 </button>
@@ -481,11 +739,14 @@ export function CatalogPage() {
                   <button 
                     onClick={() => updateCategoryParam(activeRootId!)}
                     className={cn(
-                      "whitespace-nowrap px-3 py-1 rounded-md text-[8px] font-bold uppercase tracking-widest transition-all",
-                      selectedCat === activeRootId 
-                        ? "text-red-500 bg-red-500/5" 
-                        : "text-zinc-600 hover:text-zinc-400"
+                      "whitespace-nowrap px-3 py-1 rounded-md text-[8px] font-bold uppercase tracking-widest transition-all"
                     )}
+                    style={selectedCat === activeRootId ? {
+                      backgroundColor: `${currentTheme.primaryColor}15`,
+                      color: currentTheme.primaryColor,
+                    } : {
+                      color: 'rgb(113, 113, 122)'
+                    }}
                   >
                     Tudo
                   </button>
@@ -494,11 +755,14 @@ export function CatalogPage() {
                       key={sub.id}
                       onClick={() => updateCategoryParam(sub.id)}
                       className={cn(
-                        "whitespace-nowrap px-3 py-1 rounded-md text-[8px] font-bold uppercase tracking-widest transition-all",
-                        selectedCat === sub.id 
-                          ? "text-red-500 bg-red-500/5" 
-                          : "text-zinc-600 hover:text-zinc-400"
+                        "whitespace-nowrap px-3 py-1 rounded-md text-[8px] font-bold uppercase tracking-widest transition-all"
                       )}
+                      style={selectedCat === sub.id ? {
+                        backgroundColor: `${currentTheme.primaryColor}15`,
+                        color: currentTheme.primaryColor,
+                      } : {
+                        color: 'rgb(113, 113, 122)'
+                      }}
                     >
                       {sub.name}
                     </button>
@@ -511,62 +775,157 @@ export function CatalogPage() {
       </section>
 
       <div className="max-w-7xl mx-auto w-full px-4 py-8">
-        {/* Context Header */}
-        {(selectedSection || selectedSubcat || selectedCollection || (selectedCat !== 'all' && !search)) && (
-          <div className="mb-10">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="relative p-8 md:p-12 rounded-[2rem] md:rounded-[4rem] overflow-hidden bg-zinc-950 border border-zinc-900 border-dashed"
-            >
-              {/* Decorative elements for sections */}
-              <div className="absolute top-0 right-0 w-64 h-64 bg-red-600/10 blur-[100px] -z-10 rounded-full" />
-              
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10 text-center md:text-left">
-                <div>
-                  {selectedSection && (
-                    <span className="inline-block bg-red-600 text-white text-[9px] font-black uppercase tracking-[3px] px-4 py-1.5 rounded-full mb-4 shadow-xl shadow-red-900/20">
-                      {SECTION_METADATA[selectedSection as CatalogSection]?.badge || 'Coleção'}
-                    </span>
-                  )}
-                  <h1 className="text-4xl md:text-7xl font-black uppercase tracking-tighter italic text-white mb-4 leading-[0.9]">
-                    {getContextTitle()}
-                  </h1>
-                  {selectedSection && (
-                    <p className="text-zinc-500 font-bold text-sm md:text-lg max-w-2xl leading-relaxed">
-                      {SECTION_METADATA[selectedSection as CatalogSection]?.description}
-                    </p>
-                  )}
-                  <div className="w-20 h-1.5 bg-red-600 rounded-full mt-6 mx-auto md:mx-0"></div>
-                </div>
-
-                <div className="flex justify-center md:justify-end">
-                  <Button 
-                    variant="outline" 
-                    size="lg"
-                    className="text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-white border-zinc-800 rounded-2xl px-8 py-7 h-auto bg-black/40 backdrop-blur-sm"
-                    onClick={() => {
-                      setSearchParams({});
-                      setSelectedCat('all');
-                      setSelectedSection(null);
-                      setSelectedSubcat(null);
-                      setSelectedCollection(null);
-                      setSearch('');
+        {/* Context Header with Custom Banner Image Support */}
+        {(selectedSection || selectedSubcat || selectedCollection || (selectedCat !== 'all' && !search)) && (() => {
+          const cardBg = activeSectionSettings?.bannerImageUrl ? (activeSectionSettings.themeBg || currentTheme.backgroundColor) : currentTheme.cardColor;
+          const cardText = getContrastColor(cardBg);
+          const isCardDark = cardText === '#ffffff';
+          const cardSecondaryText = isCardDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(9, 9, 11, 0.8)';
+          
+          return (
+            <div className="mb-10">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="relative p-8 md:p-16 rounded-[2rem] md:rounded-[4rem] overflow-hidden border border-dashed min-h-[220px] flex items-center shadow-xl"
+                style={{
+                  backgroundColor: activeSectionSettings?.bannerImageUrl ? 'transparent' : currentTheme.cardColor,
+                  borderColor: currentTheme.primaryColor,
+                }}
+              >
+                {activeSectionSettings?.bannerImageUrl ? (
+                  <div className="absolute inset-0 -z-10">
+                    <img 
+                      src={activeSectionSettings.bannerImageUrl} 
+                      alt={activeSectionSettings.title} 
+                      className="w-full h-full object-cover select-none"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div 
+                      className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r"
+                      style={{
+                        background: `linear-gradient(to right, ${currentTheme.backgroundColor} 0%, rgba(${hexToRgb(currentTheme.backgroundColor).r}, ${hexToRgb(currentTheme.backgroundColor).g}, ${hexToRgb(currentTheme.backgroundColor).b}, 0.85) 60%, transparent 100%)`
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div 
+                    className="absolute top-0 right-0 w-64 h-64 blur-[100px] -z-10 rounded-full opacity-35"
+                    style={{
+                      backgroundColor: currentTheme.highlightColor || currentTheme.primaryColor
                     }}
-                  >
-                    Ver catálogo completo
-                  </Button>
+                  />
+                )}
+                
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10 text-center md:text-left w-full">
+                  <div>
+                    {selectedSection && (
+                      <span 
+                        className="inline-block text-[9px] font-black uppercase tracking-[3px] px-4 py-1.5 rounded-full mb-4 shadow-xl"
+                        style={{
+                          backgroundColor: currentTheme.primaryColor,
+                          color: currentTheme.primaryTextColor === 'light' ? '#ffffff' : (currentTheme.primaryTextColor === 'dark' ? '#000000' : getContrastColor(currentTheme.primaryColor))
+                        }}
+                      >
+                        {activeSectionSettings?.emoji ? activeSectionSettings.emoji + ' ' : ''}
+                        {activeSectionSettings?.title || SECTION_METADATA[selectedSection as CatalogSection]?.badge || 'Coleção'}
+                      </span>
+                    )}
+                    <h1 
+                      className="text-4xl md:text-7xl font-black uppercase tracking-tighter italic mb-4 leading-[0.9]"
+                      style={{ color: cardText }}
+                    >
+                      {getContextTitle()}
+                    </h1>
+                    {selectedSection && (
+                      <p 
+                        className="font-bold text-sm md:text-lg max-w-2xl leading-relaxed"
+                        style={{ color: cardSecondaryText }}
+                      >
+                        {activeSectionSettings?.subtitle || SECTION_METADATA[selectedSection as CatalogSection]?.description}
+                      </p>
+                    )}
+                    <div 
+                      className="w-20 h-1.5 rounded-full mt-6 mx-auto md:mx-0"
+                      style={{ backgroundColor: currentTheme.primaryColor }}
+                    />
+                  </div>
+
+                  <div className="flex justify-center md:justify-end">
+                    <Button 
+                      variant="outline" 
+                      size="lg"
+                      className="text-[10px] font-black uppercase tracking-widest rounded-2xl px-8 py-7 h-auto bg-black/45 backdrop-blur-md hover:scale-105 transition-transform"
+                      style={{
+                        borderColor: currentTheme.primaryColor,
+                        color: currentTheme.primaryColor,
+                      }}
+                      onClick={() => {
+                        setSearchParams({});
+                        setSelectedCat('all');
+                        setSelectedSection(null);
+                        setSelectedSubcat(null);
+                        setSelectedCollection(null);
+                        setSearch('');
+                        setSectionLoadError(null);
+                        setActiveSectionSettings(null);
+                      }}
+                    >
+                      Ver catálogo completo
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+
+        {/* Section Error Notification with clean fallback container */}
+        {sectionLoadError && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 p-8 bg-zinc-950/80 border border-zinc-900 rounded-[2.5rem] text-center max-w-4xl mx-auto flex flex-col items-center"
+          >
+            <div className="w-12 h-12 bg-red-650/10 rounded-full flex items-center justify-center text-red-500 mb-3 border border-red-900/30">
+              <Frown size={24} />
+            </div>
+            <p className="text-sm font-bold text-zinc-300 mb-5 leading-relaxed max-w-md">
+              {sectionLoadError}
+            </p>
+            <Button 
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearchParams({});
+                setSelectedSection(null);
+                setSectionLoadError(null);
+                setActiveSectionSettings(null);
+              }}
+              className="text-[9px] font-black uppercase tracking-widest border-zinc-850 hover:bg-zinc-900 rounded-xl px-6 py-4 bg-zinc-950"
+            >
+              Explorar todo o catálogo
+            </Button>
+          </motion.div>
         )}
 
-        {/* Results Info */}
-        <div className="flex justify-between items-center mb-8">
-          <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[2px]">
-            {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}
-          </p>
+        {/* Results Info and Visual Badges for active section filter */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8 border-b border-zinc-900 pb-4">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3">
+            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[2px]">
+              {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}
+            </p>
+            {activeSectionSettings && (
+              <span className="bg-red-600/10 border border-red-650/25 text-red-500 text-[8px] md:text-[9.5px] font-black uppercase tracking-[2.5px] px-3.5 py-1.5 rounded-full">
+                Exibindo Seção: {activeSectionSettings.title}
+              </span>
+            )}
+            {selectedCat !== 'all' && (
+              <span className="bg-zinc-900/60 border border-zinc-800 text-zinc-400 text-[8px] md:text-[9.5px] font-black uppercase tracking-[2.5px] px-3.5 py-1.5 rounded-full">
+                Categoria: {categories.find(c => c.id === selectedCat)?.name}
+              </span>
+            )}
+          </div>
           {(selectedCat !== 'all' || search || selectedSection || selectedSubcat || selectedCollection) && (
             <button 
               onClick={() => { 
@@ -575,12 +934,14 @@ export function CatalogPage() {
                 setSelectedSection(null);
                 setSelectedSubcat(null);
                 setSelectedCollection(null);
+                setSectionLoadError(null);
+                setActiveSectionSettings(null);
                 const newParams = new URLSearchParams();
                 setSearchParams(newParams);
               }}
-              className="text-[10px] font-black text-red-500 uppercase tracking-[2px] hover:underline flex items-center gap-1"
+              className="text-[10px] font-black text-red-500 uppercase tracking-[2px] hover:underline flex items-center gap-1 self-start sm:self-auto"
             >
-              <X size={12} /> Limpar
+              <X size={12} /> Limpar Filtros
             </button>
           )}
         </div>
