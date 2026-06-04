@@ -18,8 +18,49 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useTypography } from '../../contexts/TypographyContext';
+
+function getContrastColor(hexColor: string): string {
+  if (!hexColor) return '#ffffff';
+  let hex = hexColor.replace('#', '');
+  if (hex.length === 3) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  }
+  if (hex.length !== 6) return '#ffffff';
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return (yiq >= 128) ? '#000000' : '#ffffff';
+}
 
 export function CartPage() {
+  const { currentTheme } = useTheme();
+  const { config: typographyConfig } = useTypography();
+
+  // Color combinations derived from the active admin theme configuration
+  const bgText = currentTheme.backgroundTextColor || getContrastColor(currentTheme.backgroundColor);
+  const isBgDark = bgText === '#ffffff';
+
+  const cardBg = currentTheme.cardColor || (isBgDark ? 'rgba(24, 24, 27, 0.5)' : 'rgba(244, 244, 245, 0.5)');
+  const cardText = currentTheme.cardTextColor || getContrastColor(cardBg);
+  const isCardDark = cardText === '#ffffff';
+
+  const borderHex = isBgDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(9, 9, 11, 0.08)';
+  const borderCardHex = isCardDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(9, 9, 11, 0.08)';
+
+  const subTextColor = isBgDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(9, 9, 11, 0.5)';
+  const subTextCardColor = isCardDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(9, 9, 11, 0.5)';
+
+  const labelTextColor = isCardDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(9, 9, 11, 0.6)';
+
+  const primaryColorText = currentTheme.primaryTextColor || getContrastColor(currentTheme.primaryColor);
+  const highlightColor = currentTheme.highlightColor || currentTheme.primaryColor;
+
+  const actionButtonBg = currentTheme.buttonColor || currentTheme.primaryColor;
+  const actionButtonText = currentTheme.buttonTextColor || getContrastColor(actionButtonBg);
+
   const { items, updateQuantity, removeItem, clearCart, total, appliedCoupon, applyCoupon, removeCoupon } = useCartStore();
   const { currentCustomer, setCustomer } = useCustomerAuthStore();
   const navigate = useNavigate();
@@ -684,13 +725,13 @@ export function CartPage() {
   }, [cartItemIds]); // Depende da string de IDs para atualizar quando o conteúdo muda
   if (items.length === 0) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-20 text-center">
-        <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
+      <div className="max-w-4xl mx-auto px-4 py-20 text-center transition-colors duration-300" style={{ color: bgText }}>
+        <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 transition-all" style={{ backgroundColor: cardBg, color: subTextColor }}>
           <Trash2 size={40} />
         </div>
-        <h2 className="text-2xl font-bold mb-4 text-slate-900">Seu carrinho está vazio</h2>
-        <p className="text-slate-500 mb-8">Adicione produtos para continuar sua compra.</p>
-        <Button size="lg" asChild>
+        <h2 className="text-2xl font-bold mb-4 storefront-check-title" style={{ color: bgText }}>Seu carrinho está vazio</h2>
+        <p className="mb-8 storefront-check-summary" style={{ color: subTextColor }}>Adicione produtos para continuar sua compra.</p>
+        <Button size="lg" asChild className="storefront-cart-btn" style={{ backgroundColor: actionButtonBg, color: actionButtonText }}>
           <Link to="/catalogo">Ir para o Catálogo</Link>
         </Button>
       </div>
@@ -957,10 +998,10 @@ export function CartPage() {
 
   if (showMpBrick && createdOrderId) {
     return (
-      <div className="flex-1 bg-black text-white min-h-screen pb-20 justify-center">
+      <div className="flex-1 min-h-screen pb-20 justify-center transition-colors duration-300" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText }}>
          <div className="max-w-2xl mx-auto px-4 py-12">
-            <h2 className="text-2xl font-black uppercase italic text-center mb-6 text-white tracking-tighter">Concluir Pagamento</h2>
-            <div className="bg-white rounded-[2rem] p-6 shadow-2xl relative">
+            <h2 className="text-2xl font-black uppercase italic text-center mb-6 tracking-tighter storefront-check-title" style={{ color: bgText }}>Concluir Pagamento</h2>
+            <div className="rounded-[2rem] p-6 shadow-2xl relative border" style={{ backgroundColor: cardBg, borderColor: borderCardHex }}>
               <Payment 
                 initialization={{ 
                   amount: orderTotal
@@ -983,7 +1024,8 @@ export function CartPage() {
                 clearCart();
                 navigate('/sucesso', { state: { orderId: createdOrderId, whatsapp: whatsapp } });
               }}
-              className="mt-6 text-zinc-500 hover:text-zinc-300 text-xs text-center w-full block uppercase font-bold tracking-widest font-sans"
+              className="mt-6 hover:opacity-80 text-xs text-center w-full block uppercase font-bold tracking-widest font-sans transition-all"
+              style={{ color: subTextColor }}
             >
               Cancelar Pagamento
             </button>
@@ -993,9 +1035,9 @@ export function CartPage() {
   }
 
   return (
-    <div className="flex-1 bg-black text-white min-h-screen pb-20">
+    <div className="flex-1 min-h-screen pb-20 transition-colors duration-300" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText }}>
       {/* Header / Progress bar */}
-      <div className="bg-zinc-950 border-b border-zinc-900 sticky top-16 z-40">
+      <div className="sticky top-16 z-40 border-b transition-colors duration-300" style={{ backgroundColor: currentTheme.backgroundColor, borderColor: borderHex }}>
         <div className="max-w-7xl mx-auto px-4 py-3 overflow-x-auto no-scrollbar">
           <div className="flex items-center justify-between gap-1 min-w-[500px] py-1">
             {steps.filter(s => receiveMethod === 'retirada' ? s.id !== 'ENDERECO' : true).map((s, idx, filteredSteps) => {
@@ -1008,25 +1050,41 @@ export function CartPage() {
                   <button 
                     onClick={() => isPast && setCheckoutStep(s.id)}
                     disabled={!isPast && !isActive}
-                    className={cn(
-                      "flex flex-col items-center gap-1.5 transition-all duration-300",
-                      isActive ? "text-red-500" : isPast ? "text-zinc-300" : "text-zinc-700"
-                    )}
+                    className="flex flex-col items-center gap-1.5 transition-all duration-300 storefront-check-label"
+                    style={{
+                      color: isActive ? currentTheme.primaryColor : isPast ? cardText : subTextColor
+                    }}
                   >
-                    <div className={cn(
-                      "w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black border-2 transition-all",
-                      isActive ? "bg-red-600 border-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.4)]" : 
-                      isPast ? "bg-zinc-800 border-zinc-700 text-white" : "bg-transparent border-zinc-800"
-                    )}>
+                    <div 
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black border-2 transition-all"
+                      style={
+                        isActive ? {
+                          backgroundColor: currentTheme.primaryColor,
+                          borderColor: currentTheme.primaryColor,
+                          color: primaryColorText,
+                          boxShadow: `0 0 10px ${currentTheme.primaryColor}40`
+                        } : isPast ? {
+                          backgroundColor: cardBg,
+                          borderColor: borderCardHex,
+                          color: cardText
+                        } : {
+                          backgroundColor: 'transparent',
+                          borderColor: borderHex,
+                          color: subTextColor
+                        }
+                      }
+                    >
                       {idx + 1}
                     </div>
                     <span className="text-[8px] font-black uppercase tracking-widest">{s.title}</span>
                   </button>
                   {idx < filteredSteps.length - 1 && (
-                    <div className={cn(
-                      "h-[1px] flex-1 mx-2",
-                      isPast ? "bg-red-600" : "bg-zinc-800"
-                    )}></div>
+                    <div 
+                      className="h-[1px] flex-1 mx-2"
+                      style={{
+                        backgroundColor: isPast ? currentTheme.primaryColor : borderHex
+                      }}
+                    ></div>
                   )}
                 </div>
               );
@@ -1042,31 +1100,36 @@ export function CartPage() {
             <AnimatePresence mode="wait">
               {checkoutStep === 'IDENTIFICACAO' && (
                 <motion.div 
-                  key="identificacao"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="space-y-8"
+                   key="identificacao"
+                   initial={{ opacity: 0, y: 20 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   exit={{ opacity: 0, y: -20 }}
+                   className="space-y-8"
                 >
-                  <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 sm:p-10 shadow-2xl text-center">
-                    <div className="w-16 h-16 bg-red-600/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                  <div className="rounded-[2rem] border p-6 sm:p-10 shadow-2xl text-center transition-all duration-300" style={{ backgroundColor: cardBg, borderColor: borderCardHex }}>
+                    <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner transition-colors duration-300" style={{ backgroundColor: `${currentTheme.primaryColor}20`, color: currentTheme.primaryColor }}>
                       <Search size={28} />
                     </div>
-                    <h2 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter text-white mb-2">Identificação</h2>
-                    <p className="text-zinc-500 text-xs sm:text-sm font-medium mb-8 max-w-sm mx-auto">
+                    <h2 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter mb-2 storefront-check-title" style={{ color: cardText }}>Identificação</h2>
+                    <p className="text-xs sm:text-sm font-medium mb-8 max-w-sm mx-auto storefront-check-summary" style={{ color: subTextCardColor }}>
                       Para continuar sua compra, precisamos saber quem você é.
                     </p>
 
                     <form onSubmit={handleIdentification} className="max-w-sm mx-auto space-y-4">
                       <div className="space-y-3">
                         <div className="relative">
-                          <label className="block text-[10px] font-black mb-2 uppercase tracking-[3px] text-zinc-500 text-left px-2">WhatsApp *</label>
+                          <label className="block text-[10px] font-black mb-2 uppercase tracking-[3px] text-left px-2 storefront-check-label" style={{ color: subTextCardColor }}>WhatsApp *</label>
                           <input 
                             required 
                             type="tel"
                             value={whatsapp} 
                             onChange={e => setWhatsapp(e.target.value)}
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-3 text-white focus:ring-2 focus:ring-red-600 transition-all font-black text-lg sm:text-xl"
+                            className="w-full rounded-xl px-5 py-3 transition-all font-black text-lg sm:text-xl border storefront-check-field"
+                            style={{ 
+                              backgroundColor: currentTheme.backgroundColor, 
+                              color: bgText, 
+                              borderColor: borderHex 
+                            }}
                             placeholder="(00) 00000-0000" 
                           />
                         </div>
@@ -1076,12 +1139,17 @@ export function CartPage() {
                             animate={{ opacity: 1, height: 'auto' }}
                             className="relative"
                           >
-                            <label className="block text-[10px] font-black mb-2 uppercase tracking-[3px] text-zinc-500 text-left px-2">Como podemos te chamar? *</label>
+                            <label className="block text-[10px] font-black mb-2 uppercase tracking-[3px] text-left px-2 storefront-check-label" style={{ color: subTextCardColor }}>Como podemos te chamar? *</label>
                             <input 
                               required 
                               value={name} 
                               onChange={e => setName(e.target.value)}
-                              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-3 text-white focus:ring-2 focus:ring-red-600 transition-all font-bold text-base sm:text-lg"
+                              className="w-full rounded-xl px-5 py-3 transition-all font-bold text-base sm:text-lg border storefront-check-field"
+                              style={{ 
+                                backgroundColor: currentTheme.backgroundColor, 
+                                color: bgText, 
+                                borderColor: borderHex 
+                              }}
                               placeholder="Seu Nome ou Apelido" 
                             />
                           </motion.div>
@@ -1101,12 +1169,12 @@ export function CartPage() {
                   className="space-y-8"
                 >
                   {/* Items List */}
-                  <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden">
-                    <div className="p-4 sm:p-6 border-b border-zinc-800 bg-zinc-950/50 flex items-center justify-between">
-                      <h2 className="text-lg font-black uppercase italic tracking-tighter">Sua Sacola</h2>
-                      <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">{items.length} ITENS</span>
+                  <div className="rounded-[2rem] border shadow-2xl overflow-hidden transition-all duration-300" style={{ backgroundColor: cardBg, borderColor: borderCardHex, color: cardText }}>
+                    <div className="p-4 sm:p-6 border-b flex items-center justify-between" style={{ backgroundColor: `${currentTheme.backgroundColor}40`, borderColor: borderCardHex }}>
+                      <h2 className="text-lg font-black uppercase italic tracking-tighter storefront-check-title" style={{ color: cardText }}>Sua Sacola</h2>
+                      <span className="text-[9px] font-black uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>{items.length} ITENS</span>
                     </div>
-                    <ul className="divide-y divide-zinc-800/50">
+                    <ul className="divide-y" style={{ borderColor: borderCardHex }}>
                       <AnimatePresence initial={false}>
                         {items.map((item) => {
                           const isPromoInvalid = item.promoAllowedPaymentMethods && 
@@ -1121,15 +1189,16 @@ export function CartPage() {
                               initial={{ opacity: 0, x: -10 }}
                               animate={{ opacity: 1, x: 0 }}
                               exit={{ opacity: 0, scale: 0.95 }}
-                              className="p-5 sm:p-7 flex flex-col gap-5 group relative hover:bg-zinc-800/40 transition-all duration-500"
+                              className="p-5 sm:p-7 flex flex-col gap-5 group relative hover:opacity-95 transition-all duration-500"
+                              style={{ borderBottom: `1px solid ${borderCardHex}` }}
                             >
                               {/* Item Header: Title & Variations spanning the width */}
-                              <div className="w-full flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 border-b border-zinc-800/30 pb-3">
-                                <h3 className="font-medium text-[10px] sm:text-[11px] text-zinc-400 uppercase tracking-[0.15em] leading-relaxed group-hover:text-red-500 transition-colors duration-300">
+                              <div className="w-full flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 border-b pb-3" style={{ borderColor: borderCardHex }}>
+                                <h3 className="font-medium text-[10px] sm:text-[11px] uppercase tracking-[0.15em] leading-relaxed transition-colors duration-300 storefront-cart-title" style={{ color: cardText }}>
                                   {item.name}
                                 </h3>
                                 {item.variantName && (
-                                  <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest italic sm:text-right">
+                                  <span className="text-[9px] font-bold uppercase tracking-widest italic sm:text-right storefront-check-label" style={{ color: subTextCardColor }}>
                                     {formatVariantName(item.variantName)}
                                   </span>
                                 )}
@@ -1137,18 +1206,18 @@ export function CartPage() {
 
                               <div className="flex flex-row gap-5 sm:gap-8 items-center">
                                 {/* Product Image with glass effect on quantity tag */}
-                                <div className="w-20 h-20 sm:w-28 sm:h-28 bg-zinc-950 rounded-[1.5rem] overflow-hidden shrink-0 border border-zinc-800 shadow-2xl relative group/img">
+                                <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-[1.5rem] overflow-hidden shrink-0 border shadow-2xl relative group/img" style={{ backgroundColor: currentTheme.backgroundColor, borderColor: borderHex }}>
                                   {item.imageUrl ? (
                                     <img src={item.imageUrl || undefined} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 ease-out" />
                                   ) : (
-                                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 to-black border border-zinc-800">
-                                      <Sparkles size={18} className="text-zinc-800 mb-1 animate-pulse" />
-                                      <span className="text-[8px] font-black tracking-widest text-zinc-700 uppercase">Premium</span>
+                                    <div className="w-full h-full flex flex-col items-center justify-center border" style={{ backgroundColor: currentTheme.backgroundColor, borderColor: borderHex }}>
+                                      <Sparkles size={18} className="mb-1 animate-pulse" style={{ color: currentTheme.primaryColor }} />
+                                      <span className="text-[8px] font-black tracking-widest uppercase" style={{ color: subTextColor }}>Premium</span>
                                     </div>
                                   )}
                                   {/* Quantity Badge for Mobile */}
                                   {item.quantity > 1 && (
-                                    <div className="absolute top-2 right-2 bg-red-600/90 backdrop-blur-md text-white w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shadow-lg sm:hidden border border-white/20">
+                                    <div className="absolute top-2 right-2 text-white w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shadow-lg sm:hidden border border-white/20" style={{ backgroundColor: currentTheme.primaryColor }}>
                                       {item.quantity}
                                     </div>
                                   )}
@@ -1159,8 +1228,8 @@ export function CartPage() {
                                 <div className="flex-1 min-w-0 py-1 flex flex-col justify-center">
                                   <div className="flex flex-wrap items-center gap-3">
                                     <div className="flex flex-col">
-                                      <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-0.5">Preço Unitário</span>
-                                      <span className="font-black text-lg sm:text-2xl text-white tracking-tighter">
+                                      <span className="text-[9px] font-black uppercase tracking-widest mb-0.5 storefront-check-label" style={{ color: subTextCardColor }}>Preço Unitário</span>
+                                      <span className="font-black text-lg sm:text-2xl tracking-tighter storefront-cart-subtotal" style={{ color: cardText }}>
                                         {formatCurrency(activeItemPrice)}
                                       </span>
                                       {isPromoInvalid && (
@@ -1171,12 +1240,12 @@ export function CartPage() {
                                     </div>
                                     
                                     {item.quantity > 1 && (
-                                      <div className="h-8 w-[1px] bg-zinc-800/50 hidden sm:block mx-1" />
+                                      <div className="h-8 w-[1px] hidden sm:block mx-1" style={{ backgroundColor: borderCardHex }} />
                                     ) }
                                     {item.quantity > 1 && (
                                       <div className="flex flex-col">
-                                        <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-0.5">Subtotal Item</span>
-                                        <span className="text-[11px] sm:text-[13px] font-black text-red-500 uppercase tracking-widest bg-red-500/5 px-2 py-0.5 rounded-md border border-red-500/10">
+                                        <span className="text-[9px] font-black uppercase tracking-widest mb-0.5 storefront-check-label" style={{ color: subTextCardColor }}>Subtotal Item</span>
+                                        <span className="text-[11px] sm:text-[13px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border storefront-cart-total" style={{ backgroundColor: `${currentTheme.primaryColor}10`, color: currentTheme.primaryColor, borderColor: `${currentTheme.primaryColor}20` }}>
                                           {formatCurrency(activeItemPrice * item.quantity)}
                                         </span>
                                       </div>
@@ -1186,25 +1255,25 @@ export function CartPage() {
 
                             {/* Actions & Quantity Selector */}
                             <div className="flex flex-col items-end gap-5 shrink-0">
-                              <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-2xl border border-zinc-800 shadow-2xl relative overflow-hidden group/controls">
-                                <div className="absolute inset-x-0 bottom-0 h-[2px] bg-red-600 transform scale-x-0 group-hover/controls:scale-x-100 transition-transform duration-500" />
+                              <div className="flex items-center gap-1.5 p-1 rounded-2xl border shadow-2xl relative overflow-hidden group/controls" style={{ backgroundColor: currentTheme.backgroundColor, borderColor: borderHex }}>
+                                <div className="absolute inset-x-0 bottom-0 h-[2px] transform scale-x-0 group-hover/controls:scale-x-100 transition-transform duration-500" style={{ backgroundColor: currentTheme.primaryColor }} />
                                 
                                 <button 
                                   onClick={() => handleUpdateQuantity(item.id, item.productId, item.variantId, item.quantity, item.quantity - 1)} 
-                                  className="w-10 h-10 flex items-center justify-center text-zinc-500 hover:text-white rounded-xl hover:bg-zinc-800 transition-all active:scale-90 group/minus"
+                                  className="w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-90 group/minus" style={{ color: subTextColor }}
                                   title="Diminuir"
                                 >
                                   <Minus size={18} className="group-hover/minus:scale-110 transition-transform" />
                                 </button>
                                 
                                 <div className="w-8 flex flex-col items-center">
-                                  <span className="text-[8px] font-black text-zinc-600 uppercase tracking-tighter mb-0.5">Qtd</span>
-                                  <span className="font-black text-base text-white">{item.quantity}</span>
+                                  <span className="text-[8px] font-black uppercase tracking-tighter mb-0.5" style={{ color: subTextColor }}>Qtd</span>
+                                  <span className="font-black text-base" style={{ color: bgText }}>{item.quantity}</span>
                                 </div>
                                 
                                 <button 
                                   onClick={() => handleUpdateQuantity(item.id, item.productId, item.variantId, item.quantity, item.quantity + 1)} 
-                                  className="w-10 h-10 flex items-center justify-center text-zinc-500 hover:text-white rounded-xl hover:bg-zinc-800 transition-all active:scale-90 group/plus"
+                                  className="w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-90 group/plus" style={{ color: subTextColor }}
                                   title="Aumentar"
                                 >
                                   <Plus size={18} className="group-hover/plus:scale-110 transition-transform" />
@@ -1213,7 +1282,7 @@ export function CartPage() {
                               
                               <button 
                                 onClick={() => removeItem(item.id)} 
-                                className="flex items-center gap-2 px-3 py-2 rounded-xl text-zinc-700 hover:text-red-500 hover:bg-red-500/5 transition-all duration-300 group/remove border border-transparent hover:border-red-500/10"
+                                className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-300 group/remove border animate-none" style={{ color: subTextColor, borderColor: 'transparent' }}
                               >
                                 <Trash2 size={16} className="group-hover/remove:rotate-12 transition-transform duration-300" />
                                 <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-0 group-hover/remove:opacity-100 transition-opacity hidden sm:inline">Excluir Item</span>
@@ -1232,26 +1301,26 @@ export function CartPage() {
                       key="suggestions"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="bg-zinc-900 border border-red-500/10 rounded-[2.5rem] p-8 shadow-2xl overflow-hidden relative group"
+                      className="border rounded-[2.5rem] p-8 shadow-2xl overflow-hidden relative group transition-all duration-500" style={{ backgroundColor: cardBg, borderColor: `${currentTheme.primaryColor}20`, color: cardText }}
                     >
                       <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <Sparkles size={120} className="text-red-500 animate-pulse" />
+                        <Sparkles size={120} className="animate-pulse" style={{ color: currentTheme.primaryColor }} />
                       </div>
                       
                       <div className="relative z-10">
                         <div className="flex items-center gap-3 mb-6">
-                          <div className="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center shadow-lg shadow-red-600/20">
-                            <Sparkles size={16} className="text-white" />
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg" style={{ backgroundColor: currentTheme.primaryColor, boxShadow: `0 4px 14px ${currentTheme.primaryColor}40` }}>
+                            <Sparkles size={16} style={{ color: primaryColorText }} />
                           </div>
-                          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-red-500">
+                          <span className="text-[10px] font-black uppercase tracking-[0.2em] storefront-cart-messages" style={{ color: currentTheme.primaryColor }}>
                             Check-out Inteligente: Sugestões Exclusivas
                           </span>
                         </div>
                         
-                        <h4 className="text-2xl font-black text-white mb-3 tracking-tighter leading-tight">
+                        <h4 className="text-2xl font-black mb-3 tracking-tighter leading-tight storefront-check-title" style={{ color: cardText }}>
                           Complete sua experiência
                         </h4>
-                        <p className="text-zinc-500 font-medium text-sm mb-10 max-w-md italic">
+                        <p className="font-medium text-sm mb-10 max-w-md italic storefront-check-summary" style={{ color: subTextCardColor }}>
                           "{aiSuggestions.motivo}"
                         </p>
 
@@ -1260,10 +1329,10 @@ export function CartPage() {
                             <div 
                               key={p.id} 
                               onClick={() => navigate(`/produto/${p.seo?.slug || p.id}?id=${p.id}`)}
-                              className="cursor-pointer flex flex-col p-5 bg-zinc-950/50 rounded-3xl border border-zinc-800 hover:border-red-600/30 transition-all duration-500 group/item"
+                              className="cursor-pointer flex flex-col p-5 rounded-3xl border transition-all duration-500 group/item" style={{ backgroundColor: currentTheme.backgroundColor, borderColor: borderHex }}
                             >
                               <div className="flex gap-4 mb-4">
-                                <div className="w-16 h-16 bg-zinc-900 rounded-2xl overflow-hidden shrink-0 border border-zinc-800">
+                                <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 border" style={{ backgroundColor: currentTheme.backgroundColor, borderColor: borderHex }}>
                                   {p.imageUrl ? (
                                     <img src={p.imageUrl || undefined} alt={p.name} className="w-full h-full object-cover group-hover/item:scale-110 transition-transform duration-700" />
                                   ) : (
@@ -1271,13 +1340,13 @@ export function CartPage() {
                                   )}
                                 </div>
                                 <div className="flex flex-col justify-center min-w-0">
-                                  <h5 className="font-bold text-sm text-zinc-100 truncate uppercase tracking-tight mb-1">{p.name}</h5>
-                                  <div className="font-black text-lg text-white">{formatCurrency(p.price)}</div>
+                                  <h5 className="font-bold text-sm truncate uppercase tracking-tight mb-1" style={{ color: bgText }}>{p.name}</h5>
+                                  <div className="font-black text-lg" style={{ color: currentTheme.primaryColor }}>{formatCurrency(p.price)}</div>
                                 </div>
                               </div>
 
                               {p.shortDescription && (
-                                <p className="text-[10px] text-zinc-500 line-clamp-2 mb-4 leading-relaxed italic">{p.shortDescription}</p>
+                                <p className="text-[10px] line-clamp-2 mb-4 leading-relaxed italic" style={{ color: subTextColor }}>{p.shortDescription}</p>
                               )}
 
                               <button 
@@ -1296,7 +1365,7 @@ export function CartPage() {
                                   });
                                   toast(`${p.name} adicionado!`, "success");
                                 }}
-                                className="w-full py-3 bg-red-600/10 hover:bg-red-600 text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-white rounded-xl transition-all flex items-center justify-center gap-2"
+                                className="w-full py-3 text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 rounded-xl storefront-cart-btn" style={{ backgroundColor: `${currentTheme.primaryColor}20`, color: currentTheme.primaryColor }}
                               >
                                 <Plus size={14} /> ADICIONAR AO CARRINHO
                               </button>
@@ -1308,19 +1377,32 @@ export function CartPage() {
                   )}
 
                   {!aiSuggestions && loadingSuggestions && (
-                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2.5rem] p-12 flex flex-col items-center justify-center space-y-4">
-                      <div className="w-10 h-10 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">IA analisando seu carrinho...</p>
+                    <div className="border rounded-[2.5rem] p-12 flex flex-col items-center justify-center space-y-4 shadow-xl text-center" style={{ backgroundColor: cardBg, borderColor: borderCardHex }}>
+                      <div className="w-10 h-10 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: currentTheme.primaryColor, borderTopColor: 'transparent' }} />
+                      <p className="text-[10px] font-black uppercase tracking-widest storefront-check-summary" style={{ color: subTextCardColor }}>IA analisando seu carrinho...</p>
                     </div>
                   )}
                   <div className="flex flex-col sm:flex-row gap-4 pt-10">
-                    <Button variant="outline" asChild size="lg" className="flex-1 py-8 text-xs font-black uppercase tracking-widest rounded-2xl border-zinc-800 hover:bg-zinc-800">
-                      <Link to="/catalogo">Escolher mais itens</Link>
-                    </Button>
+                    <Link 
+                      to="/catalogo"
+                      className="flex-1 py-8 text-xs font-black uppercase tracking-widest rounded-2xl border transition-all hover:opacity-80 flex items-center justify-center text-center leading-none" 
+                      style={{ 
+                        borderColor: currentTheme.primaryColor, 
+                        backgroundColor: 'transparent', 
+                        color: currentTheme.primaryColor 
+                      }}
+                    >
+                      Escolher mais itens
+                    </Link>
                     <Button 
                       onClick={() => setCheckoutStep('RECEBIMENTO')} 
                       size="lg" 
-                      className="flex-[2] py-8 text-lg font-black italic uppercase tracking-widest rounded-2xl shadow-xl shadow-red-600/20"
+                      className="flex-[2] py-8 text-lg font-black italic uppercase tracking-widest rounded-2xl transition-all shadow-xl storefront-check-btn hover:opacity-90 border-0"
+                      style={{ 
+                        backgroundColor: currentTheme.primaryColor, 
+                        color: primaryColorText,
+                        boxShadow: `0 10px 25px ${currentTheme.primaryColor}30` 
+                      }}
                     >
                       Como deseja receber? <ArrowRight size={20} className="ml-2" />
                     </Button>
@@ -1337,8 +1419,8 @@ export function CartPage() {
                   className="space-y-12"
                 >
                   <div className="text-center space-y-3">
-                    <h2 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter text-white">Como deseja receber?</h2>
-                    <p className="text-zinc-500 text-xs sm:text-sm font-medium">Selecione o método de entrega de sua preferência.</p>
+                    <h2 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter storefront-check-title" style={{ color: bgText }}>Como deseja receber?</h2>
+                    <p className="text-xs sm:text-sm font-medium storefront-check-summary" style={{ color: subTextColor }}>Selecione o método de entrega de sua preferência.</p>
                   </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-2xl mx-auto">
@@ -1347,15 +1429,16 @@ export function CartPage() {
                         setReceiveMethod('entrega');
                         setCheckoutStep('ENDERECO');
                       }}
-                      className="group relative flex flex-col items-center justify-center p-8 sm:p-10 bg-zinc-900 border-2 border-zinc-800 hover:border-red-600 rounded-[2rem] transition-all duration-500"
+                      className="group relative flex flex-col items-center justify-center p-8 sm:p-10 border-2 rounded-[2rem] transition-all duration-500 hover:opacity-90"
+                      style={{ backgroundColor: cardBg, borderColor: borderCardHex, color: cardText }}
                     >
-                      <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mb-4 group-hover:bg-red-600 transition-colors">
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 transition-colors" style={{ backgroundColor: `${currentTheme.primaryColor}20`, color: currentTheme.primaryColor }}>
                         <motion.div whileHover={{ x: [0, 5, -5, 0] }}>
                           <ArrowRight size={20} />
                         </motion.div>
                       </div>
-                      <span className="text-xl sm:text-2xl font-black italic uppercase tracking-tighter text-white">Entregar em Casa</span>
-                      <p className="text-zinc-500 text-[10px] mt-2 uppercase font-bold tracking-widest">Enviamos para você</p>
+                      <span className="text-xl sm:text-2xl font-black italic uppercase tracking-tighter storefront-check-title" style={{ color: cardText }}>Entregar em Casa</span>
+                      <p className="text-[10px] mt-2 uppercase font-bold tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Enviamos para você</p>
                     </button>
 
                     <button
@@ -1363,13 +1446,14 @@ export function CartPage() {
                         setReceiveMethod('retirada');
                         setCheckoutStep('AGENDAMENTO');
                       }}
-                      className="group relative flex flex-col items-center justify-center p-8 sm:p-10 bg-zinc-900 border-2 border-zinc-800 hover:border-red-600 rounded-[2rem] transition-all duration-500"
+                      className="group relative flex flex-col items-center justify-center p-8 sm:p-10 border-2 rounded-[2rem] transition-all duration-500 hover:opacity-90"
+                      style={{ backgroundColor: cardBg, borderColor: borderCardHex, color: cardText }}
                     >
-                      <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mb-4 group-hover:bg-red-600 transition-colors">
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 transition-colors" style={{ backgroundColor: `${currentTheme.primaryColor}20`, color: currentTheme.primaryColor }}>
                         <ClockIcon size={20} />
                       </div>
-                      <span className="text-xl sm:text-2xl font-black italic uppercase tracking-tighter text-white">Receber na Loja</span>
-                      <p className="text-zinc-500 text-[10px] mt-2 uppercase font-bold tracking-widest">Você busca na loja</p>
+                      <span className="text-xl sm:text-2xl font-black italic uppercase tracking-tighter storefront-check-title" style={{ color: cardText }}>Receber na Loja</span>
+                      <p className="text-[10px] mt-2 uppercase font-bold tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Você busca na loja</p>
                     </button>
                   </div>
                 </motion.div>
@@ -1383,33 +1467,34 @@ export function CartPage() {
                   exit={{ opacity: 0, x: -20 }}
                   className="space-y-12"
                 >
-                  <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 sm:p-10 shadow-2xl relative overflow-hidden">
-                    <h3 className="text-lg font-black uppercase tracking-[3px] text-zinc-100 mb-6 flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-red-600 rounded-full"></div>
+                  <div className="rounded-[2rem] border p-6 sm:p-10 shadow-2xl relative overflow-hidden transition-all duration-300" style={{ backgroundColor: cardBg, borderColor: borderCardHex }}>
+                    <h3 className="text-lg font-black uppercase tracking-[3px] mb-6 flex items-center gap-2 storefront-check-title" style={{ color: cardText }}>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: currentTheme.primaryColor }}></div>
                       Endereço de Entrega
                     </h3>
                     
                     <div className="space-y-4 sm:space-y-6">
                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                         <div>
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Estado *</label>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Estado *</label>
                           <input 
                             required 
                             list="estados-sugestoes" 
                             value={stateName} 
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white uppercase font-bold text-sm" 
+                            className="w-full rounded-xl px-4 py-3 uppercase font-bold text-sm border storefront-check-field" 
+                            style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
                             onChange={e => setStateName(e.target.value.toUpperCase())} 
                             onBlur={handleStateBlur}
                             placeholder="UF" 
                           />
                         </div>
                         <div className="col-span-1 sm:col-span-2">
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Cidade *</label>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Cidade *</label>
                           <input 
                             required 
                             list="cidades-sugestoes" 
                             value={cityName} 
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" 
+                            className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
                             onChange={e => setCityName(e.target.value)} 
                             onBlur={handleCityBlur}
                             placeholder="Sua cidade" 
@@ -1419,37 +1504,37 @@ export function CartPage() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Bairro *</label>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Bairro *</label>
                           <input 
                             required 
                             list="bairros-sugestoes" 
                             value={areaName} 
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" 
+                            className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
                             onChange={e => setAreaName(e.target.value)} 
                             onBlur={handleAreaBlur}
                             placeholder="Seu bairro" 
                           />
                         </div>
                         <div>
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Rua / Avenida *</label>
-                          <input required value={rua} onChange={e => setRua(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" placeholder="Nome da rua" />
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Rua / Avenida *</label>
+                          <input required value={rua} onChange={e => setRua(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Nome da rua" />
                         </div>
                       </div>
 
                       <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Número *</label>
-                          <input required value={numero} onChange={e => setNumero(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" placeholder="Nº" />
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Número *</label>
+                          <input required value={numero} onChange={e => setNumero(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Nº" />
                         </div>
                         <div className="col-span-2">
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Ponto de Referência *</label>
-                          <input required value={referencia} onChange={e => setReferencia(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" placeholder="Ex: Próximo à padaria..." />
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Ponto de Referência *</label>
+                          <input required value={referencia} onChange={e => setReferencia(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Ex: Próximo à padaria..." />
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Complemento (Opcional)</label>
-                        <input value={complemento} onChange={e => setComplemento(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold text-sm" placeholder="Apto, Bloco, etc" />
+                        <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Complemento (Opcional)</label>
+                        <input value={complemento} onChange={e => setComplemento(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Apto, Bloco, etc" />
                       </div>
 
                       <Button 
@@ -1486,15 +1571,15 @@ export function CartPage() {
                   exit={{ opacity: 0, x: -20 }}
                   className="space-y-12"
                 >
-                  <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 sm:p-10 shadow-2xl">
-                    <h3 className="text-lg font-black uppercase tracking-[3px] text-zinc-100 mb-6 flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-red-600 rounded-full"></div>
+                  <div className="rounded-[2rem] border p-6 sm:p-10 shadow-2xl transition-all duration-300" style={{ backgroundColor: cardBg, borderColor: borderCardHex }}>
+                    <h3 className="text-lg font-black uppercase tracking-[3px] mb-6 flex items-center gap-2 storefront-check-title" style={{ color: cardText }}>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: currentTheme.primaryColor }}></div>
                       Agendamento do Pedido
                     </h3>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 mb-6 sm:mb-8">
                       <div className="space-y-3">
-                        <label className="block text-[9px] font-black uppercase tracking-[3px] text-zinc-500">Selecione uma Data</label>
+                        <label className="block text-[9px] font-black uppercase tracking-[3px] storefront-check-label" style={{ color: subTextCardColor }}>Selecione uma Data</label>
                         <div className="grid grid-cols-1 gap-2">
                           {getAvailableDays().map((day) => (
                             <button
@@ -1503,22 +1588,23 @@ export function CartPage() {
                                 setSelectedDate(day.date);
                                 setSelectedSlot('');
                               }}
-                              className={cn(
-                                "flex items-center justify-between px-5 py-3.5 rounded-xl border-2 transition-all group",
-                                selectedDate === day.date
-                                  ? "bg-red-600 border-red-600 text-white shadow-lg"
-                                  : "bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
-                              )}
+                              className="flex items-center justify-between px-5 py-3.5 rounded-xl border-2 transition-all group"
+                              style={selectedDate === day.date
+                                ? { backgroundColor: currentTheme.primaryColor, borderColor: currentTheme.primaryColor, color: primaryColorText }
+                                : { backgroundColor: currentTheme.backgroundColor, borderColor: borderHex, color: bgText }
+                              }
                             >
                               <div className="flex items-center gap-2.5">
-                                <Calendar size={18} className={cn(selectedDate === day.date ? "text-white" : "text-zinc-600 group-hover:text-red-500")} />
+                                <Calendar size={18} style={{ color: selectedDate === day.date ? primaryColorText : currentTheme.primaryColor }} />
                                 <span className="font-bold text-base">{day.label}</span>
                               </div>
-                              <div className={cn(
-                                "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                                selectedDate === day.date ? "border-white bg-white/20" : "border-zinc-800"
-                              )}>
-                                {selectedDate === day.date && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                              <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors"
+                                style={selectedDate === day.date
+                                  ? { borderColor: primaryColorText, backgroundColor: `${primaryColorText}20` }
+                                  : { borderColor: borderHex }
+                                }
+                              >
+                                {selectedDate === day.date && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: primaryColorText }} />}
                               </div>
                             </button>
                           ))}
@@ -1526,18 +1612,17 @@ export function CartPage() {
                       </div>
 
                       <div className="space-y-3">
-                        <label className="block text-[9px] font-black uppercase tracking-[3px] text-zinc-500">Horário Disponível</label>
+                        <label className="block text-[9px] font-black uppercase tracking-[3px] storefront-check-label" style={{ color: subTextCardColor }}>Horário Disponível</label>
                         <div className="grid grid-cols-3 gap-2">
                           {generateSlots(selectedDate).map(slot => (
                             <button
                                 key={slot}
                                 onClick={() => setSelectedSlot(slot)}
-                                className={cn(
-                                    "py-2.5 rounded-xl border font-bold text-[10px] transition-all",
-                                    selectedSlot === slot 
-                                    ? "bg-red-600 border-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.4)]" 
-                                    : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                                )}
+                                className="py-2.5 rounded-xl border font-bold text-[10px] transition-all"
+                                 style={selectedSlot === slot 
+                                   ? { backgroundColor: currentTheme.primaryColor, borderColor: currentTheme.primaryColor, color: primaryColorText, boxShadow: `0 4px 12px ${currentTheme.primaryColor}30` } 
+                                   : { backgroundColor: currentTheme.backgroundColor, borderColor: borderHex, color: subTextColor }
+                                 }
                             >
                                 {slot}
                             </button>
@@ -1557,9 +1642,9 @@ export function CartPage() {
                   exit={{ opacity: 0, x: -20 }}
                   className="space-y-12"
                 >
-                  <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 sm:p-10 shadow-2xl">
-                    <h3 className="text-lg font-black uppercase tracking-[3px] text-zinc-100 mb-6 flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-red-600 rounded-full"></div>
+                  <div className="rounded-[2rem] border p-6 sm:p-10 shadow-2xl transition-all duration-300" style={{ backgroundColor: cardBg, borderColor: borderCardHex }}>
+                    <h3 className="text-lg font-black uppercase tracking-[3px] mb-6 flex items-center gap-2 storefront-check-title" style={{ color: cardText }}>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: currentTheme.primaryColor }}></div>
                       Forma de Pagamento
                     </h3>
                     
@@ -1577,15 +1662,14 @@ export function CartPage() {
                               }
                               setPaymentMethod(method.id);
                             }}
-                            className={cn(
-                              "flex flex-col items-start p-5 rounded-2xl border-2 transition-all text-left",
-                              paymentMethod === method.id 
-                              ? "bg-red-600/10 border-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.1)]" 
-                              : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                            )}
+                            className="flex flex-col items-start p-5 rounded-2xl border-2 transition-all text-left"
+                            style={paymentMethod === method.id 
+                              ? { backgroundColor: `${currentTheme.primaryColor}15`, borderColor: currentTheme.primaryColor, color: bgText, boxShadow: `0 4px 15px ${currentTheme.primaryColor}15` } 
+                              : { backgroundColor: currentTheme.backgroundColor, borderColor: borderHex, color: subTextColor }
+                            }
                           >
-                            <span className="text-lg font-black italic tracking-tighter mb-0.5 uppercase">{method.label}</span>
-                            <span className="text-[9px] font-black uppercase tracking-widest opacity-60 italic">Disponível</span>
+                            <span className="text-lg font-black italic tracking-tighter mb-0.5 uppercase storefront-check-title" style={{ color: paymentMethod === method.id ? currentTheme.primaryColor : cardText }}>{method.label}</span>
+                            <span className="text-[9px] font-black uppercase tracking-widest opacity-60 italic storefront-check-label" style={{ color: subTextCardColor }}>Disponível</span>
                           </button>
                         ))
                       }
@@ -1593,10 +1677,11 @@ export function CartPage() {
 
                     {paymentSettings?.methods.find(m => m.id === paymentMethod)?.label.toLowerCase().includes('dinheiro') && (
                       <div className="mb-6 space-y-3">
-                        <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Troco para quanto?</label>
+                        <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Troco para quanto?</label>
                         <input 
                           type="number"
-                          className="w-full sm:w-1/2 bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-3 text-white font-bold text-sm"
+                          className="w-full sm:w-1/2 rounded-xl px-5 py-3 font-bold text-sm border storefront-check-field"
+                          style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
                           value={trocoPara} 
                           onChange={e => setTrocoPara(e.target.value)} 
                           placeholder="Ex: 50 ou 100"
@@ -1605,9 +1690,10 @@ export function CartPage() {
                     )}
 
                     <div className="space-y-3">
-                      <label className="block text-[9px] font-black mb-2 uppercase tracking-widest text-zinc-500">Observações do Pedido</label>
+                      <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Observações do Pedido</label>
                       <textarea 
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-5 py-5 text-white font-bold min-h-[80px] text-sm"
+                        className="w-full rounded-2xl px-5 py-5 font-bold min-h-[80px] text-sm border storefront-check-field"
+                        style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
                         value={notes} 
                         onChange={e => setNotes(e.target.value)} 
                         placeholder="Algo que devemos saber?"
@@ -1628,10 +1714,10 @@ export function CartPage() {
           {/* Checkout Summary - Now Below Content */}
           {(checkoutStep === 'RESUMO' || checkoutStep === 'PAGAMENTO') && (
             <div className="w-full">
-              <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 sm:p-10 shadow-2xl">
-                <h2 className="text-lg font-black tracking-tighter uppercase italic mb-6 flex items-center justify-between">
+              <div className="rounded-[2rem] border p-6 sm:p-10 shadow-2xl transition-all duration-300" style={{ backgroundColor: cardBg, borderColor: borderCardHex }}>
+                <h2 className="text-lg font-black tracking-tighter uppercase italic mb-6 flex items-center justify-between storefront-check-title" style={{ color: cardText }}>
                   Resumo do Pedido
-                  <span className="text-[10px] text-zinc-600 tracking-widest not-italic">{items.length} itens</span>
+                  <span className="text-[10px] tracking-widest not-italic storefront-check-summary" style={{ color: subTextCardColor }}>{items.length} itens</span>
                 </h2>
 
                 {/* Coupon Input Area */}
@@ -1649,26 +1735,30 @@ export function CartPage() {
                           placeholder="CÓDIGO DO CUPOM" 
                           value={couponInput}
                           onChange={e => setCouponInput(e.target.value.toUpperCase())}
-                          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-2xl px-4 text-sm font-bold placeholder:text-zinc-600 uppercase"
+                          className="flex-1 rounded-2xl px-4 py-3 text-sm font-bold border storefront-check-field uppercase outline-none"
+                          style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
                         />
-                        <Button 
+                        <button 
                           onClick={handleApplyCoupon} 
                           disabled={!couponInput || applyingCoupon}
-                          variant="outline" 
-                          className="rounded-2xl border-zinc-800 text-zinc-300 hover:bg-zinc-800"
+                          className="rounded-2xl font-bold text-sm px-6 py-3 transition-all disabled:opacity-50 hover:opacity-90 active:scale-[0.98] shrink-0"
+                          style={{ 
+                            backgroundColor: currentTheme.primaryColor, 
+                            color: primaryColorText 
+                          }}
                         >
                           {applyingCoupon ? '...' : 'Usar'}
-                        </Button>
+                        </button>
                       </>
                     )}
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center py-6 border-y border-zinc-800 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center py-6 border-y mb-6" style={{ borderColor: borderHex }}>
                   <div className="space-y-2">
-                    <div className="flex justify-between items-center text-zinc-500">
+                    <div className="flex justify-between items-center storefront-check-summary" style={{ color: subTextCardColor }}>
                       <span className="text-[9px] font-black uppercase tracking-widest">Subtotal:</span>
-                      <span className="font-bold text-sm text-white">{formatCurrency(subTotal)}</span>
+                      <span className="font-bold text-sm storefront-check-title" style={{ color: cardText }}>{formatCurrency(subTotal)}</span>
                     </div>
                     {appliedCoupon && (
                       (couponDiscount > 0 || !paymentMethod) ? (
@@ -1690,16 +1780,16 @@ export function CartPage() {
                         </div>
                       )
                     )}
-                    <div className="flex justify-between items-center text-zinc-500">
+                    <div className="flex justify-between items-center storefront-check-summary" style={{ color: subTextCardColor }}>
                       <span className="text-[9px] font-black uppercase tracking-widest">Entrega:</span>
-                      <span className="font-bold text-sm text-white">
+                      <span className="font-bold text-sm storefront-check-title" style={{ color: cardText }}>
                         {selectedAreaId ? (deliveryFee === 0 ? <span className="text-green-500 font-black">GRÁTIS</span> : formatCurrency(deliveryFee)) : '--'}
                       </span>
                     </div>
                   </div>
                   <div className="flex flex-col items-end">
-                    <span className="text-[9px] font-black uppercase tracking-[3px] text-zinc-500 mb-1">Valor Final:</span>
-                    <span className="text-4xl font-black text-red-500 tracking-tighter">{formatCurrency(orderTotal)}</span>
+                    <span className="text-[9px] font-black uppercase tracking-[3px] storefront-check-label mb-1" style={{ color: subTextCardColor }}>Valor Final:</span>
+                    <span className="text-4xl font-black tracking-tighter" style={{ color: currentTheme.primaryColor }}>{formatCurrency(orderTotal)}</span>
                   </div>
                 </div>
               </div>
@@ -1709,11 +1799,13 @@ export function CartPage() {
       </div>
 
       {/* Fixed Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 w-full bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-900 p-3 sm:p-4 z-[60] lg:z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+      <div className="fixed bottom-0 left-0 w-full backdrop-blur-xl border-t p-3 sm:p-4 z-[60] lg:z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] transition-all duration-300"
+        style={{ backgroundColor: `${currentTheme.backgroundColor}dd`, borderColor: borderHex }}
+      >
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
           <div className="flex sm:flex-col items-center sm:items-start justify-between w-full sm:w-auto px-4 sm:px-0">
-            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500 sm:mb-1">Total:</span>
-            <span className="text-xl sm:text-2xl font-black text-red-500 tracking-tighter italic">{formatCurrency(orderTotal)}</span>
+            <span className="text-[9px] font-black uppercase tracking-widest storefront-check-label sm:mb-1" style={{ color: subTextCardColor }}>Total:</span>
+            <span className="text-xl sm:text-2xl font-black tracking-tighter italic storefront-check-title" style={{ color: currentTheme.primaryColor }}>{formatCurrency(orderTotal)}</span>
           </div>
           
           <div className="w-full sm:w-auto min-w-[260px] sm:min-w-[280px]">
@@ -1721,7 +1813,8 @@ export function CartPage() {
               <Button 
                 onClick={handleIdentification}
                 disabled={loading || !whatsapp || (isNewCustomer && !name)}
-                className="w-full h-12 sm:h-14 px-8 sm:px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-30"
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-30 storefront-cart-btn hover:opacity-90"
+                style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
               >
                 {loading ? 'Processando...' : 'Continuar'} <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
@@ -1730,7 +1823,8 @@ export function CartPage() {
             {checkoutStep === 'RESUMO' && (
               <Button 
                 onClick={() => setCheckoutStep('RECEBIMENTO')}
-                className="w-full h-12 sm:h-14 px-8 sm:px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all"
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all storefront-cart-btn hover:opacity-90"
+                style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
               >
                 Como deseja receber? <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
@@ -1739,17 +1833,19 @@ export function CartPage() {
             {checkoutStep === 'ENDERECO' && (
               <Button 
                 onClick={() => validateIdentification() && setCheckoutStep('AGENDAMENTO')}
-                className="w-full h-12 sm:h-14 px-8 sm:px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all"
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all storefront-cart-btn hover:opacity-90"
+                style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
               >
                 Agendar Entrega <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             )}
 
             {checkoutStep === 'AGENDAMENTO' && (
-              <Button 
+               <Button 
                 disabled={!selectedSlot}
                 onClick={() => setCheckoutStep('PAGAMENTO')}
-                className="w-full h-12 sm:h-14 px-8 sm:px-12 bg-red-600 hover:bg-red-700 text-white font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-50"
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-50 storefront-cart-btn hover:opacity-90"
+                style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
               >
                 Escolher Pagamento <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
@@ -1759,7 +1855,8 @@ export function CartPage() {
               <Button 
                 disabled={loading || !paymentMethod}
                 onClick={handleCheckout}
-                className="w-full h-12 sm:h-14 px-8 sm:px-12 bg-green-600 hover:bg-green-700 text-white font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all"
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all storefront-cart-btn hover:opacity-90"
+                style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
               >
                 {loading ? 'Processando...' : (receiveMethod === 'retirada' ? 'Finalizar e Retirar' : 'Finalizar Pedido')}
               </Button>

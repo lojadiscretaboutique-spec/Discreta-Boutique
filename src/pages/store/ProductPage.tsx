@@ -446,7 +446,7 @@ export function ProductPage() {
                     </span>
                   )}
                   <div className="flex items-baseline gap-3">
-                    <span className="text-4xl md:text-6xl font-black tracking-tighter" style={{ color: cardText }}>
+                    <span className="text-4xl md:text-6xl font-black tracking-tighter" style={{ color: currentTheme.primaryColor }}>
                       {formatCurrency(Number(currentPrice))}
                     </span>
                     <span className="text-sm md:text-lg font-bold uppercase tracking-widest" style={{ color: currentTheme.primaryColor }}>
@@ -558,13 +558,12 @@ export function ProductPage() {
                   <Zap className="mr-2" /> {isOutOfStock() ? 'Produto Esgotado' : 'Comprar Agora'}
                 </Button>
                 
-                <Button 
-                  variant="outline"
-                  size="lg" 
+                <button 
                   disabled={isOutOfStock()}
                   onClick={() => handleAddToCart(false)}
                   className={cn(
-                    "w-full h-16 rounded-full border-2 font-black uppercase text-xs tracking-widest transition-all",
+                    "inline-flex items-center justify-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-650 disabled:pointer-events-none disabled:opacity-50",
+                    "w-full h-16 rounded-full border-2 font-black uppercase text-xs tracking-widest",
                     isOutOfStock() && "opacity-50 grayscale cursor-not-allowed pointer-events-none"
                   )}
                   style={{
@@ -578,7 +577,7 @@ export function ProductPage() {
                   ) : (
                     <><ShoppingBag className="mr-2" /> Adicionar ao Carrinho</>
                   )}
-                </Button>
+                </button>
               </div>
             </div>
 
