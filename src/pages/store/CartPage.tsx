@@ -178,6 +178,135 @@ export function CartPage() {
 
   const [showMpBrick, setShowMpBrick] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+
+  // Out of stock validation states
+  const [outOfStockItems, setOutOfStockItems] = useState<{
+    id: string;
+    name: string;
+    requestedQty: number;
+    availableStock: number;
+    status: 'out_of_stock' | 'insufficient';
+  }[]>([]);
+  const [checkingStock, setCheckingStock] = useState(false);
+
+  const checkCartStock = async () => {
+    if (items.length === 0) return true;
+    setCheckingStock(true);
+    const problems: typeof outOfStockItems = [];
+
+    try {
+      for (const item of items) {
+        let availableStock = 9999;
+        let controlStock = true;
+
+        if (item.isCombo) {
+          const comboRef = doc(db, 'combos', item.productId);
+          const comboSnap = await getDoc(comboRef);
+          if (comboSnap.exists()) {
+            const comboData = comboSnap.data();
+            const comboItems = comboData.items || [];
+            const stocks: number[] = [];
+            for (const cItem of comboItems) {
+              const pRef = doc(db, 'products', cItem.productId);
+              const pSnap = await getDoc(pRef);
+              if (!pSnap.exists()) {
+                stocks.push(0);
+                continue;
+              }
+              const pData = pSnap.data();
+              if (pData.active === false) {
+                stocks.push(0);
+                continue;
+              }
+              if (!pData.controlStock) {
+                stocks.push(9999);
+                continue;
+              }
+
+              if (cItem.variantId) {
+                const vRef = doc(db, `products/${cItem.productId}/variants/${cItem.variantId}`);
+                const vSnap = await getDoc(vRef);
+                if (vSnap.exists()) {
+                  const vData = vSnap.data();
+                  stocks.push(Math.floor((Number(vData.stock) || 0) / cItem.quantity));
+                } else {
+                  stocks.push(0);
+                }
+              } else {
+                stocks.push(Math.floor((Number(pData.stock) || 0) / cItem.quantity));
+              }
+            }
+            availableStock = stocks.length > 0 ? Math.min(...stocks) : 0;
+          } else {
+            availableStock = 0;
+          }
+        } else {
+          const pRef = doc(db, 'products', item.productId);
+          const pSnap = await getDoc(pRef);
+          if (pSnap.exists()) {
+            const pData = pSnap.data();
+            controlStock = pData.controlStock ?? true;
+
+            if (pData.active === false) {
+              availableStock = 0;
+            } else if (!controlStock || pData.allowBackorder) {
+              availableStock = 9999;
+            } else if (item.variantId) {
+              const vRef = doc(db, `products/${item.productId}/variants/${item.variantId}`);
+              const vSnap = await getDoc(vRef);
+              if (vSnap.exists()) {
+                const vData = vSnap.data();
+                availableStock = Number(vData.stock) || 0;
+              } else {
+                availableStock = 0;
+              }
+            } else {
+              availableStock = Number(pData.stock) || 0;
+            }
+          } else {
+            availableStock = 0;
+          }
+        }
+
+        if (availableStock < item.quantity) {
+          problems.push({
+            id: item.id,
+            name: item.name + (item.variantName ? ` - ${item.variantName}` : ''),
+            requestedQty: item.quantity,
+            availableStock: Math.max(0, availableStock),
+            status: availableStock <= 0 ? 'out_of_stock' : 'insufficient'
+          });
+        }
+      }
+
+      setOutOfStockItems(problems);
+      return problems.length === 0;
+    } catch (err) {
+      console.error("Erro ao verificar estoque de itens:", err);
+      return false;
+    } finally {
+      setCheckingStock(false);
+    }
+  };
+
+  const handleResolveStockProblems = () => {
+    outOfStockItems.forEach(prob => {
+      if (prob.availableStock <= 0) {
+        removeItem(prob.id);
+      } else {
+        updateQuantity(prob.id, prob.availableStock);
+      }
+    });
+    setOutOfStockItems([]);
+  };
+
+  useEffect(() => {
+    if (items.length > 0) {
+      checkCartStock();
+    } else {
+      setOutOfStockItems([]);
+    }
+  }, [items]);
   
   // ABANDONED CART RECOVERY MONITOR
   useEffect(() => {
@@ -788,6 +917,12 @@ export function CartPage() {
   };
 
   const handleCheckout = async () => {
+    const isStockOk = await checkCartStock();
+    if (!isStockOk) {
+      toast("Não foi possível finalizar o pedido. Alguns itens no seu carrinho estão com estoque insuficiente.", "error");
+      return;
+    }
+
     if (!paymentMethod) {
       toast("Selecione uma forma de pagamento.", 'warning');
       return;
@@ -1822,7 +1957,14 @@ export function CartPage() {
 
             {checkoutStep === 'RESUMO' && (
               <Button 
-                onClick={() => setCheckoutStep('RECEBIMENTO')}
+                onClick={async () => {
+                  const isStockOk = await checkCartStock();
+                  if (isStockOk) {
+                    setCheckoutStep('RECEBIMENTO');
+                  } else {
+                    toast("Por favor, solucione os problemas de estoque no seu carrinho para continuar.", "error");
+                  }
+                }}
                 className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all storefront-cart-btn hover:opacity-90"
                 style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
               >
@@ -1832,7 +1974,16 @@ export function CartPage() {
 
             {checkoutStep === 'ENDERECO' && (
               <Button 
-                onClick={() => validateIdentification() && setCheckoutStep('AGENDAMENTO')}
+                onClick={async () => {
+                  const isStockOk = await checkCartStock();
+                  if (!isStockOk) {
+                    toast("Por favor, solucione os problemas de estoque no seu carrinho para continuar.", "error");
+                    return;
+                  }
+                  if (validateIdentification()) {
+                    setCheckoutStep('AGENDAMENTO');
+                  }
+                }}
                 className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all storefront-cart-btn hover:opacity-90"
                 style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
               >
@@ -1843,7 +1994,14 @@ export function CartPage() {
             {checkoutStep === 'AGENDAMENTO' && (
                <Button 
                 disabled={!selectedSlot}
-                onClick={() => setCheckoutStep('PAGAMENTO')}
+                onClick={async () => {
+                  const isStockOk = await checkCartStock();
+                  if (!isStockOk) {
+                    toast("Por favor, solucione os problemas de estoque no seu carrinho para continuar.", "error");
+                    return;
+                  }
+                  setCheckoutStep('PAGAMENTO');
+                }}
                 className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-50 storefront-cart-btn hover:opacity-90"
                 style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
               >
@@ -1864,6 +2022,62 @@ export function CartPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal de Alerta de Estoque */}
+      <AnimatePresence>
+        {outOfStockItems.length > 0 && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => {}} 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden border transition-all duration-300"
+              style={{ backgroundColor: cardBg, borderColor: borderHex, color: cardText }}
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 bg-red-500/20 text-red-500">
+                  <span className="text-3xl font-black">!</span>
+                </div>
+                <h3 className="text-2xl font-black uppercase tracking-tight storefront-check-title" style={{ color: currentTheme.primaryColor }}>
+                  Aviso de Estoque
+                </h3>
+                <p className="text-xs sm:text-sm mt-2" style={{ color: subTextCardColor }}>
+                  Identificamos que alguns produtos no seu carrinho não possuem estoque disponível suficiente para a venda.
+                </p>
+              </div>
+
+              <div className="space-y-4 max-h-[250px] overflow-y-auto pr-2 mb-6">
+                {outOfStockItems.map(item => (
+                  <div key={item.id} className="p-4 rounded-2xl border flex flex-col gap-1" style={{ backgroundColor: `${currentTheme.backgroundColor}70`, borderColor: borderHex }}>
+                    <span className="font-bold text-sm" style={{ color: cardText }}>{item.name}</span>
+                    <div className="flex justify-between items-center text-xs" style={{ color: subTextCardColor }}>
+                      <span>Qtd. no Carrinho: <strong className="font-black" style={{ color: cardText }}>{item.requestedQty}</strong></span>
+                      <span>Disponível: <strong className="font-black text-red-500">{item.availableStock > 0 ? item.availableStock : 'Esgotado'}</strong></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={handleResolveStockProblems}
+                  className="w-full py-4 text-xs font-black uppercase tracking-[2px] rounded-full shadow-lg transition-all active:scale-[0.98] hover:opacity-90 cursor-pointer"
+                  style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
+                >
+                  Ajustar Carrinho Automaticamente
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

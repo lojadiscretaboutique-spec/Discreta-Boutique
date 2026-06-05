@@ -3,7 +3,6 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import { StoreLayout } from './layouts/StoreLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 import { motion, AnimatePresence } from 'motion/react';
-import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { PromotionProvider } from './contexts/PromotionContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -152,7 +151,6 @@ function AppContent() {
   return (
     <>
       <ScrollToTop />
-      <PwaInstallBanner />
       <AnimatePresence>
         {showSplash && (
           <motion.div

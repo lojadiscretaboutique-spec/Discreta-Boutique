@@ -132,7 +132,7 @@ export function HomePage() {
       const visibleProducts = [...allFetchedProducts, ...comboProducts].filter(p => 
         (p.images && p.images.length > 0) && 
         (p.extras?.showInCatalog !== false) &&
-        (p.isCombo || !p.controlStock || p.allowBackorder || (Number((p as any).stock) || 0) > 0)
+        (p.isCombo || (Number((p as any).stock) || 0) > 0)
       );
 
       setVisibleProducts(visibleProducts);

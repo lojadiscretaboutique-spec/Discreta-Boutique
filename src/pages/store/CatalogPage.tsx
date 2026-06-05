@@ -6,7 +6,8 @@ import { formatCurrency, cn } from '../../lib/utils';
 import { Search, X, Minus, Plus, Frown, Loader2, Truck } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
-import { getRankingProfissional } from '../../lib/ranking';
+import { getRankingProfissional, getRankingHybrid, hasDirectTextMatch } from '../../lib/ranking';
+import { aiFrontendService } from '../../services/aiFrontendService';
 import { Category, categoryService } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
@@ -71,6 +72,11 @@ export function CatalogPage() {
   const lastRankedSection = useRef<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
+
+  // Estados para Inteligência Artificial da OpenAI na Busca
+  const [aiSuggestion, setAiSuggestion] = useState<any>(null);
+  const [queryEmbedding, setQueryEmbedding] = useState<number[] | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   const [fullHomeStructure, setFullHomeStructure] = useState<any | null>(null);
   const [activeSectionSettings, setActiveSectionSettings] = useState<VisualHomeSettings | null>(null);
@@ -141,6 +147,60 @@ export function CatalogPage() {
     // Register for overall ranking
     productService.trackInteraction(productId, 'click');
   };
+
+  // Carrega interpretação e embeddings inteligentes via OpenAI ao pesquisar
+  useEffect(() => {
+    let active = true;
+    const queryStr = (qSearch || search || '').trim();
+    if (!queryStr) {
+      setAiSuggestion(null);
+      setQueryEmbedding(null);
+      return;
+    }
+
+    async function fetchAiSearchData() {
+      setIsAiLoading(true);
+      try {
+        console.log(`[CATALOG][OPENAI_SEARCH] Fetching semantic data and embedding for: "${queryStr}"`);
+        const [interpretRes, embeddingRes] = await Promise.allSettled([
+          aiFrontendService.interpretSearch(queryStr),
+          aiFrontendService.generateEmbedding(queryStr)
+        ]);
+
+        if (!active) return;
+
+        if (interpretRes.status === 'fulfilled') {
+          console.log(`[CATALOG][OPENAI_SEARCH] Interpretation loaded:`, interpretRes.value);
+          setAiSuggestion(interpretRes.value.interpretacao || interpretRes.value);
+        } else {
+          console.warn('[CATALOG][OPENAI_SEARCH] Failed to interpret search:', interpretRes.reason);
+        }
+
+        if (embeddingRes.status === 'fulfilled') {
+          console.log(`[CATALOG][OPENAI_SEARCH] 1536-dim embedding vector loaded successfully`);
+          setQueryEmbedding(embeddingRes.value);
+        } else {
+          console.warn('[CATALOG][OPENAI_SEARCH] Failed to generate embedding:', embeddingRes.reason);
+        }
+      } catch (err) {
+        console.error("Erro geral na busca inteligente OpenAI:", err);
+      } finally {
+        if (active) {
+          setIsAiLoading(false);
+        }
+      }
+    }
+
+    // Debounce leve de 150ms para evitar chamadas duplicadas
+    const timer = setTimeout(() => {
+      fetchAiSearchData();
+    }, 150);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [qSearch, search]);
 
   const isCategoriesEmpty = categories.length === 0;
   useEffect(() => {
@@ -274,12 +334,12 @@ export function CatalogPage() {
           }
         }
 
-        // Filter products: Strictly active, with at least one image and showInCatalog marked
+        // Filter products: Strictly active, with at least one image and showInCatalog marked, and positive stock (non-combos must have stock > 0)
         const visibleProds = prods.filter(p => 
           p.active !== false &&
           (p.images && p.images.length > 0) &&
           (p.extras?.showInCatalog !== false) &&
-          (!p.controlStock || p.allowBackorder || (Number(p.stock) || 0) > 0)
+          (p.isCombo || (Number(p.stock) || 0) > 0)
         );
 
         console.log(`[CATALOG][LOAD] Total Loaded: ${prods.length} | Visible: ${visibleProds.length}`);
@@ -616,18 +676,43 @@ export function CatalogPage() {
       console.log(`[FILTER][CATEGORY] Found ${result.length} products for cat ${selectedCat}`);
     }
 
-    // 5. Filtro de Busca (Profissional Local)
+    // 5. Filtro de Busca (Profissional Local / Híbrido IA OpenAI)
     if (search.trim()) {
-      // Use standard local ranking as requested by customer
-      result = getRankingProfissional(result, search, categories);
-      console.log(`[CATALOG][PROFESSIONAL_SEARCH] Found ${result.length} matches for "${search}"`);
+      // Filtrar primeiro apenas o conjunto de itens que têm correspondência textual direta exata (idêntico ao admin/produtos)
+      const exactMatched = result.filter(p => hasDirectTextMatch(p, search, categories));
+
+      if (aiSuggestion || queryEmbedding) {
+        // Busca Semântica OpenAI Inteligente Híbrida (filtra e ordena por relevância, categorias, sinônimos, descrições e vetores marcas)
+        result = getRankingHybrid(exactMatched, aiSuggestion, queryEmbedding || undefined);
+        console.log(`[CATALOG][SEMANTIC_OPENAI_SEARCH] Ranked ${result.length} matches with semantic vectors, AI synonyms, categories, description, and OpenAI AI learnings`);
+      } else {
+        // Fallback para o Ranking Profissional Local enquanto a IA carrega ou se houver erro
+        result = getRankingProfissional(exactMatched, search, categories);
+        console.log(`[CATALOG][PROFESSIONAL_SEARCH] Found ${result.length} matches for "${search}"`);
+      }
+    }
+
+    // 6. Inteligência IA & Ordenação por Notas quando nenhum filtro está ativo
+    const hasAnyFilter = !!selectedSection || !!selectedCollection || !!selectedSubcat || selectedCat !== 'all' || !!search.trim();
+    if (!hasAnyFilter) {
+      // Filtrar produtos que tenham aprendizado/pontuação da IA (score > 0)
+      const aiProducts = result.filter(p => (p.score || 0) > 0);
+      
+      // Se houver produtos com pontuação, mantemos somente eles; senão, preservamos todos para não esvaziar o catálogo
+      if (aiProducts.length > 0) {
+        result = aiProducts;
+      }
+      
+      // Ordena pelas notas (scores) aplicadas pela IA a cada produto
+      result = [...result].sort((a, b) => (b.score || 0) - (a.score || 0));
+      console.log(`[CATALOG][AI_LEARNING] Catalog organized by AI filters and learning grades. Total: ${result.length}`);
     }
 
     console.log(`[CATALOG][FILTER_COMPLETE] ${result.length} results | Time: ${Date.now() - startTime}ms`);
-    
+
     setFiltered(result);
     setCurrentPage(1);
-  }, [search, selectedCat, selectedSection, selectedSubcat, selectedCollection, products, categories, fullHomeStructure]);
+  }, [search, selectedCat, selectedSection, selectedSubcat, selectedCollection, products, categories, fullHomeStructure, aiSuggestion, queryEmbedding]);
 
   const getContextTitle = () => {
     if (search) return `Resultados para "${search}"`;
@@ -915,6 +1000,20 @@ export function CatalogPage() {
             <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[2px]">
               {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}
             </p>
+            {isAiLoading ? (
+              <span className="bg-purple-600/10 border border-purple-500/30 text-purple-400 text-[8px] md:text-[9.5px] font-black uppercase tracking-[2.5px] px-3.5 py-1.5 rounded-full flex items-center gap-1.5 animate-pulse">
+                <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-ping" />
+                IA OpenAI Analisando...
+              </span>
+            ) : (aiSuggestion || queryEmbedding) ? (
+              <span className="bg-purple-650/20 border border-purple-500/55 text-purple-300 text-[8px] md:text-[9.5px] font-black uppercase tracking-[2.5px] px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-[0_0_12px_rgba(168,85,247,0.15)]">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+                </span>
+                Busca Otimizada com IA OpenAI
+              </span>
+            ) : null}
             {activeSectionSettings && (
               <span className="bg-red-600/10 border border-red-650/25 text-red-500 text-[8px] md:text-[9.5px] font-black uppercase tracking-[2.5px] px-3.5 py-1.5 rounded-full">
                 Exibindo Seção: {activeSectionSettings.title}

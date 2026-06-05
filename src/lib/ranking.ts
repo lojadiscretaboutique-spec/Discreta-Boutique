@@ -168,6 +168,64 @@ export const getRankingHybrid = (products: Product[], aiSuggestion: any, queryEm
     });
 };
 
+export const hasDirectTextMatch = (p: Product, queryText: string, categories: any[] = []): boolean => {
+    if (!queryText.trim()) return true;
+
+    const normalizedQuery = normalizeSearchText(queryText);
+    const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
+    
+    // Se a query for muito curta (p.ex. uma palavra com menos de 2 letras), vamos usar o termo bruto minúsculo
+    const term = normalizedQuery.trim();
+    if (!term) return false;
+
+    // 1. Nome do Produto (ou todas as palavras dele se for busca multi-termo)
+    const name = normalizeSearchText(p.name || "");
+    if (name.includes(term)) return true;
+    if (queryWords.length > 0 && queryWords.every(word => name.includes(word))) return true;
+
+    // 2. SKU, Código Interno / GTIN
+    const sku = normalizeSearchText(p.sku || "");
+    const iCode = normalizeSearchText(p.internalCode || "");
+    const gtin = normalizeSearchText(p.gtin || "");
+    if (sku.includes(term) || iCode.includes(term) || gtin.includes(term)) return true;
+
+    // 3. Subcategoria
+    const subcat = normalizeSearchText(p.subcategory || "");
+    if (subcat.includes(term)) return true;
+
+    // 4. Tags / Palavras-chave / Sinônimos / Buscas
+    const tags = [
+        ...(p.tags || []),
+        ...(p.seo?.keywords || []),
+        ...(p.ai_keywords || []),
+        ...(p.ai_synonyms || []),
+        ...(p.searchTerms || []),
+        ...(p.palavras_chave || [])
+    ].map(t => normalizeSearchText(String(t)));
+
+    if (tags.some(tag => tag.includes(term) || term.includes(tag))) return true;
+    if (queryWords.length > 0 && queryWords.some(word => tags.some(tag => tag.includes(word)))) return true;
+
+    // 5. Categoria
+    if (p.categoryId) {
+        const catNameDirect = normalizeSearchText(p.categoryName || "");
+        if (catNameDirect.includes(term)) return true;
+
+        const cat = categories.find(c => c.id === p.categoryId);
+        if (cat) {
+            const catName = normalizeSearchText(cat.name || "");
+            if (catName.includes(term)) return true;
+        }
+    }
+
+    // 6. Descrição (Se as palavras da busca constam na descrição)
+    const desc = normalizeSearchText(`${p.shortDescription || ""} ${p.fullDescription || ""} ${p.subtitle || ""}`);
+    if (desc.includes(term)) return true;
+    if (queryWords.length > 0 && queryWords.every(word => desc.includes(word))) return true;
+
+    return false;
+};
+
 // Ranking Sections
 const pick = (list: Product[], count: number, usedIds: Set<string>): Product[] => {
     const available = list.filter(p => !usedIds.has(p.id!));
@@ -204,6 +262,9 @@ export const getRankingProfissional = (products: Product[], queryText: string, c
 
     const startTime = Date.now();
 
+    // Filtrar primeiro apenas o conjunto de itens que têm correspondência textual direta exata (como no admin)
+    const exactMatchedProducts = products.filter(p => hasDirectTextMatch(p, queryText, categories));
+
     // Criar mapa de categorias para busca rápida de pais
     const categoryMap = new Map();
     categories.forEach(c => categoryMap.set(c.id, c));
@@ -222,7 +283,7 @@ export const getRankingProfissional = (products: Product[], queryText: string, c
         return ancestors;
     };
 
-    const ranked = products.map(p => {
+    const ranked = exactMatchedProducts.map(p => {
         let score = 0;
         const name = normalizeSearchText(p.name);
         const desc = normalizeSearchText(`${p.shortDescription || ""} ${p.fullDescription || ""} ${p.subtitle || ""}`);
@@ -340,10 +401,7 @@ export const getRankingProfissional = (products: Product[], queryText: string, c
         return { ...p, _searchScore: score + base };
     });
 
-    // Filtrar apenas os que possuem algum match (score > 0)
-    // Se a busca for vazia ou não houver match, retornamos o que foi passado (ou tratamos no CatalogPage)
     const results = ranked
-        .filter(p => (p as any)._searchScore > 0.5) // 0.5 to allow tiny base scores if needed, but usually we want a match
         .sort((a, b) => (b as any)._searchScore - (a as any)._searchScore)
         .map(p => {
             const { _searchScore: _unusedScore, ...clean } = p as any;
