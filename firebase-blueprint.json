@@ -509,9 +509,39 @@ export default {
         endDate: { type: "string" }
       },
       required: ["name", "primaryColor", "secondaryColor", "backgroundColor", "cardColor", "buttonColor"]
+    },
+    Live: {
+      title: "Live Shop Session",
+      description: "Live commerce streaming session configuration and statistics",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        subtitle: { type: "string" },
+        description: { type: "string" },
+        coverImage: { type: "string" },
+        bannerImage: { type: "string" },
+        date: { type: "string" },
+        time: { type: "string" },
+        status: { type: "string", enum: ["agendada", "ao_vivo", "encerrada"] },
+        streamingUrl: { type: "string" },
+        settings: { type: "object" },
+        products: { type: "array" },
+        flashOffers: { type: "array" },
+        kits: { type: "array" },
+        coupons: { type: "array" },
+        statistics: { type: "object" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" }
+      },
+      required: ["title", "status", "streamingUrl"]
     }
   },
   firestore: {
+    "lives": {
+      schema: { $ref: "#/entities/Live" },
+      description: "Live commerce transmission blocks"
+    },
     "products": {
       schema: { $ref: "#/entities/Product" },
       description: "Store products"

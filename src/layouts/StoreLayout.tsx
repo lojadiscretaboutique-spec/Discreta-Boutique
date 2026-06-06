@@ -7,6 +7,7 @@ import { categoryService, Category } from '../services/categoryService';
 import { SearchBar } from '../components/ui/SearchBar';
 import { useAuthStore } from '../store/authStore';
 import { PopupOverlay } from '../components/PopupOverlay';
+import { FloatingLivePlayer } from '../components/FloatingLivePlayer';
 
 import { Truck } from 'lucide-react';
 import { usePromotion } from '../contexts/PromotionContext';
@@ -294,6 +295,9 @@ export function StoreLayout() {
       )}>
         <Outlet />
       </main>
+
+      {/* Floating Live Player & Floating Admin Button */}
+      <FloatingLivePlayer />
 
       {/* Floating Admin Button */}
       {user && (

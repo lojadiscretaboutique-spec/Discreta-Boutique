@@ -46,6 +46,7 @@ export function AdminLayout() {
     { name: 'Horários da Loja', path: '/admin/horarios', icon: Clock, permission: 'settings' },
     { name: 'Marketing', path: '/admin/marketing', icon: Megaphone, permission: 'banners', submenu: [
         { name: 'Hub Estratégico Pro ⭐️', path: '/admin/marketing', permission: 'banners' },
+        { name: 'Live Shop 🎥', path: '/admin/marketing/live-shop', permission: 'banners' },
         { name: 'Visual Home 🎨', path: '/admin/marketing/visual-home', permission: 'banners' },
         { name: 'Banners', path: '/admin/marketing/banners', permission: 'banners' },
         { name: 'Popups', path: '/admin/marketing/popups', permission: 'banners' },

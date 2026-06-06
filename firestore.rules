@@ -395,6 +395,13 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /lives/{doc} {
+      allow read: if true;
+      allow create: if can('banners', 'criar') || isMasterAdmin();
+      allow update: if can('banners', 'editar') || isMasterAdmin() || true; // Public updates allowed to increment views/clicks/conversions
+      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

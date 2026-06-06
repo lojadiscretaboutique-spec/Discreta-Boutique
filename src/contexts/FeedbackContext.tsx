@@ -20,7 +20,7 @@ interface ConfirmOptions {
 }
 
 interface FeedbackContextType {
-  toast: (message: string, type?: ToastType) => void;
+  toast: (message: any, type?: ToastType) => void;
   confirm: (options: ConfirmOptions) => Promise<boolean>;
 }
 
@@ -33,20 +33,30 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     resolve: (value: boolean) => void;
   } | null>(null);
 
-  const toast = useCallback((message: string, type: ToastType = 'success') => {
-    let finalMessage = message;
+  const toast = useCallback((message: any, type: ToastType = 'success') => {
+    let finalMessage = '';
+    let finalType = type;
+
+    if (message && typeof message === 'object') {
+      finalMessage = message.message || message.text || message.title || '';
+      if (message.type) {
+        finalType = message.type;
+      }
+    } else {
+      finalMessage = String(message || '');
+    }
     
-    if (typeof finalMessage === 'string' && (
+    if (finalMessage && (
       finalMessage.includes('permission-denied') || 
       finalMessage.includes('Missing or insufficient permissions') ||
       finalMessage.includes('Falha de permissão')
     )) {
       finalMessage = "Acesso Negado: Você não tem permissão para executar esta função. Motivo: Seu perfil não possui acesso necessário.";
-      type = 'error';
+      finalType = 'error';
     }
 
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts(prev => [...prev, { id, message: finalMessage, type }]);
+    setToasts(prev => [...prev, { id, message: finalMessage, type: finalType }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 4000);

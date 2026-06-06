@@ -1,13 +1,12 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { StoreLayout } from './layouts/StoreLayout';
 import { AdminLayout } from './layouts/AdminLayout';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { PromotionProvider } from './contexts/PromotionContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { TypographyProvider } from './contexts/TypographyContext';
-import { useUIStore } from './store/uiStore';
 import { cacheService } from './services/cacheService';
 
 // Store Pages
@@ -61,6 +60,8 @@ const AdminMarketingHub = lazy(() => import('./pages/admin/marketing/AdminMarket
 const AdminVisitors = lazy(() => import('./pages/admin/analytics/AdminVisitors').then(m => ({ default: m.AdminVisitors })));
 const AdminThemeManager = lazy(() => import('./pages/admin/AdminThemeManager').then(m => ({ default: m.AdminThemeManager })));
 const AdminTypography = lazy(() => import('./pages/admin/AdminTypography').then(m => ({ default: m.AdminTypography })));
+const AdminLiveShop = lazy(() => import('./pages/admin/marketing/AdminLiveShop').then(m => ({ default: m.AdminLiveShop })));
+const LiveShopPage = lazy(() => import('./pages/store/LiveShopPage').then(m => ({ default: m.LiveShopPage })));
 
 // Loading Component (Splash Screen)
 function PageLoader() {
@@ -115,9 +116,6 @@ function ScrollToTop() {
 
 function AppContent() {
   const location = useLocation();
-  const [isNavigating, setIsNavigating] = useState(false);
-  const isHomeReady = useUIStore(s => s.isHomeReady);
-  const isAtHome = location.pathname === '/';
 
   useEffect(() => {
     cacheService.validateCache();
@@ -137,33 +135,9 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [location.pathname, location.search]);
 
-  useEffect(() => {
-    setIsNavigating(true);
-    const timer = setTimeout(() => {
-      setIsNavigating(false);
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [location.pathname]);
-
-  // The splash should stay if we are navigating OR if we are at home and it's not ready yet
-  const showSplash = isNavigating || (isAtHome && !isHomeReady);
-
   return (
     <>
       <ScrollToTop />
-      <AnimatePresence>
-        {showSplash && (
-          <motion.div
-            key="splash-screen"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8, ease: "easeInOut" }}
-            className="fixed inset-0 z-[9999]"
-          >
-            <PageLoader />
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <Suspense fallback={<PageLoader />}>
         <Routes>
@@ -180,6 +154,7 @@ function AppContent() {
             <Route path="/produto/:slug" element={<ProductPage />} />
             <Route path="/sucesso" element={<SuccessPage />} />
             <Route path="/afiliados" element={<AffiliateLandingPage />} />
+            <Route path="/live" element={<LiveShopPage />} />
           </Route>
 
           {/* Admin Routes */}
@@ -197,6 +172,8 @@ function AppContent() {
             <Route path="perfis" element={<AdminRoles />} />
             <Route path="logs" element={<AdminLogs />} />
             <Route path="marketing/visual-home" element={<AdminVisualHome />} />
+            <Route path="marketing/live-shop" element={<AdminLiveShop />} />
+            <Route path="live-shop" element={<AdminLiveShop />} />
             <Route path="marketing/banners" element={<AdminBanners />} />
             <Route path="marketing/popups" element={<AdminPopups />} />
             <Route path="marketing/cupons" element={<AdminCoupons />} />

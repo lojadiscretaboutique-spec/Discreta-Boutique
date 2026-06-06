@@ -426,11 +426,12 @@ export const suggestRelatedProducts = async (req: Request, res: Response) => {
     const targetProduct = { id: targetSnap.docs[0].id, ...targetSnap.docs[0].data() };
     const allProducts = catalogSnap.docs
       .map(d => ({ id: d.id, ...d.data() }) as any)
-      .filter(p => 
-        p.active === true && 
-        (p.images && p.images.length > 0) && 
-        (p.extras?.showInCatalog !== false)
-      );
+      .filter(p => {
+        const hasImage = p.images && p.images.length > 0;
+        const showsInCatalog = p.extras?.showInCatalog !== false;
+        const hasStock = p.allowBackorder || !p.controlStock || (Number(p.stock) > 0);
+        return p.active === true && hasImage && showsInCatalog && hasStock;
+      });
 
     // 2. Chamar IA para seleção inteligente
     const aiRecommendation = await aiService.suggestRelatedProducts(targetProduct, allProducts);
@@ -448,8 +449,11 @@ export const suggestRelatedProducts = async (req: Request, res: Response) => {
           id: (p as any).id,
           name: (p as any).name,
           price: (p as any).price,
+          promoPrice: (p as any).promoPrice,
           imageUrl: mainImage,
-          category: (p as any).categoryId || (p as any).category || ''
+          category: (p as any).categoryId || (p as any).category || '',
+          categoryId: (p as any).categoryId || '',
+          seo: (p as any).seo || null
         };
       })
     });

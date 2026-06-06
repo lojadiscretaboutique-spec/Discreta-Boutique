@@ -328,15 +328,28 @@ export function ProductPage() {
               }}
             >
               {currentImage ? (
-                 <motion.img 
-                   key={currentImage}
-                   initial={{ opacity: 0, scale: 1.1 }}
-                   animate={{ opacity: 1, scale: 1 }}
-                   src={currentImage || undefined} 
-                   alt={product.name} 
-                   className="absolute inset-0 w-full h-full object-cover" 
-                   referrerPolicy="no-referrer"
-                 />
+                <>
+                  <motion.img 
+                    key={currentImage}
+                    initial={{ opacity: 0, scale: 1.1 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    src={currentImage || undefined} 
+                    alt={product.name} 
+                    className={cn(
+                      "absolute inset-0 w-full h-full object-cover transition-all duration-305",
+                      isOutOfStock() && "grayscale blur-sm"
+                    )}
+                    style={isOutOfStock() ? { filter: 'grayscale(100%) blur(4px)' } : {}}
+                    referrerPolicy="no-referrer"
+                  />
+                  {isOutOfStock() && (
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-10">
+                      <span className="text-white text-2xl md:text-3xl font-black uppercase tracking-[0.25em] px-8 py-3 border-2 border-white/60 bg-black/70 rounded-2xl shadow-2xl">
+                        ESGOTADO
+                      </span>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div 
                   className="absolute inset-0 flex items-center justify-center font-bold uppercase tracking-widest"
@@ -348,7 +361,7 @@ export function ProductPage() {
               
               {product.newRelease && (
                  <div 
-                   className="absolute top-8 left-8 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-[2px]"
+                   className="absolute top-8 left-8 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-[2px] z-10"
                    style={{
                      backgroundColor: currentTheme.primaryColor,
                      color: currentTheme.primaryTextColor || getContrastColor(currentTheme.primaryColor)
@@ -366,14 +379,27 @@ export function ProductPage() {
                       key={idx}
                       onClick={() => setSelectedVariant(prev => ({...prev!, imageUrl: img.url}))}
                       className={cn(
-                        "w-20 h-20 rounded-2xl border-2 overflow-hidden shrink-0 transition-all cursor-pointer",
+                        "w-20 h-20 rounded-2xl border-2 overflow-hidden shrink-0 transition-all cursor-pointer relative",
                         currentImage === img.url ? "scale-105" : ""
                       )}
                       style={{
                         borderColor: currentImage === img.url ? currentTheme.primaryColor : cardBorderHex
                       }}
                     >
-                      <img src={img.url || undefined} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img 
+                        src={img.url || undefined} 
+                        className={cn(
+                          "w-full h-full object-cover transition-all",
+                          isOutOfStock() && "grayscale blur-[2px]"
+                        )}
+                        style={isOutOfStock() ? { filter: 'grayscale(100%) blur(2px)' } : {}}
+                        referrerPolicy="no-referrer" 
+                      />
+                      {isOutOfStock() && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
+                          <span className="text-[9px] text-white font-bold tracking-wider uppercase">Esgotado</span>
+                        </div>
+                      )}
                     </button>
                  ))}
               </div>
