@@ -55,6 +55,16 @@ async function getStoreSettings(): Promise<{ webhook: string | null; template: s
     };
 }
 
+function formatPaymentMethod(method: string): string {
+    if (!method) return 'A combinar';
+    const lower = method.toLowerCase().trim();
+    if (lower === 'pix') return 'Pix';
+    if (lower === 'dinheiro') return 'Dinheiro';
+    if (lower === 'credito' || lower === 'cartao_credito') return 'Cartão de Crédito';
+    if (lower === 'debito' || lower === 'cartao_debito') return 'Cartão de Débito';
+    return method;
+}
+
 function gerarMensagem(pedido: Pedido, customTemplate?: string | null): string {
     const nome = pedido.nome || pedido.customerName || 'Cliente';
     const pid = pedido.id ? pedido.id.slice(-6).toUpperCase() : '000000';
@@ -67,7 +77,7 @@ function gerarMensagem(pedido: Pedido, customTemplate?: string | null): string {
             .replace(/{nome}/g, nome)
             .replace(/{pedido_id}/g, pid)
             .replace(/{status}/g, statusLabel)
-            .replace(/{forma_pagamento}/g, pedido.paymentMethod || 'A combinar');
+            .replace(/{forma_pagamento}/g, formatPaymentMethod(pedido.paymentMethod || 'A combinar'));
     }
 
     switch (status) {
@@ -168,8 +178,8 @@ export async function sendWebhook(pedido: Pedido, attempts = 1) {
         pedido_id_curto: pedido.id ? pedido.id.slice(-6).toUpperCase() : 'N/A',
         data_agendamento: pedido.scheduledDate || '',
         hora_agendamento: pedido.scheduledTime || '',
-        forma_pagamento: pedido.paymentMethod || '',
-        payment_method: pedido.paymentMethod || '',
+        forma_pagamento: formatPaymentMethod(pedido.paymentMethod || ''),
+        payment_method: formatPaymentMethod(pedido.paymentMethod || ''),
         mensagem: gerarMensagem({ ...pedido, nome }, customTemplate),
         source: 'DiscretaBoutique_Status_Notification'
     };

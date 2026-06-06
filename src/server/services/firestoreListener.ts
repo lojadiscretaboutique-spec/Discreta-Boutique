@@ -46,9 +46,9 @@ export function setupOrderListener() {
 
                 console.log(`[FirestoreListener] Processando evento de pedido para botconversa (Client SDK): ${order.id} - Status: ${order.status}`);
                 
-                // Ignorar se não for pedido online (ex: ignorar PDV/Loja Física)
-                if (order.type !== 'online') {
-                    console.log(`[FirestoreListener] Pedido ${order.id} ignorado (tipo: ${order.type || 'N/A'}). Webhooks apenas para pedidos online.`);
+                // Ignorar se não for pedido online ou entrega
+                if (order.type !== 'online' && order.type !== 'pdv_entrega' && !order.isDelivery) {
+                    console.log(`[FirestoreListener] Pedido ${order.id} ignorado (tipo: ${order.type || 'N/A'}, entrega: ${!!order.isDelivery}). Webhooks apenas para pedidos online ou entrega.`);
                     await updateDoc(change.doc.ref, {
                         last_status_sent: orderData.status
                     });

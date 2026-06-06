@@ -438,11 +438,32 @@ export function AdminOrders() {
         updatedAt: serverTimestamp(),
       });
 
+      // Send manual webhook notification
+      await triggerWebhookNotification(order, "CANCELADO");
+
       toast(`Pedido cancelado e estornado com sucesso!`, "success");
       if (viewingDetailsId === order.id) setViewingDetailsId(null);
     } catch (err) {
       console.error(err);
       toast("Erro ao processar cancelamento.", "error");
+    }
+  };
+
+  const triggerWebhookNotification = async (order: any, newStatus: string) => {
+    try {
+      console.log(`[AdminOrders] Enviando webhook manual para o pedido ${order.id} com status ${newStatus}`);
+      await fetch("/api/botconversa/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pedido: {
+            ...order,
+            status: newStatus
+          }
+        })
+      });
+    } catch (err) {
+      console.error("[AdminOrders] Erro ao disparar webhook manual:", err);
     }
   };
 
@@ -487,6 +508,9 @@ export function AdminOrders() {
           updatedAt: serverTimestamp(),
         });
 
+        // Send manual webhook notification
+        await triggerWebhookNotification(order, "CANCELADO");
+
         toast(`Pedido cancelado com sucesso!`, "success");
         return;
       } catch (err) {
@@ -510,6 +534,9 @@ export function AdminOrders() {
       if (newStatus === "ENTREGUE") {
         await stockMovementService.realizeMovementsByOrderId(id);
       }
+
+      // Send manual webhook notification
+      await triggerWebhookNotification(order, newStatus);
 
       toast(`Pedido atualizado!`, "success");
     } catch (err) {
@@ -1404,7 +1431,7 @@ export function AdminOrders() {
               <div className="font-bold">CLIENTE:</div>
               <div>{selectedOrder.customerName}</div>
               <div>{selectedOrder.customerWhatsapp}</div>
-              {selectedOrder.type !== "pdv" && (
+              {selectedOrder.customerAddress && (
                 <>
                   <div style={{ marginTop: "5px" }}>ENDERECO:</div>
                   <div style={{ fontSize: "12px", fontWeight: "bold" }}>

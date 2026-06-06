@@ -92,6 +92,36 @@ const playBeep = () => {
   }
 };
 
+const formatCustomerAddress = (cust: any) => {
+  if (!cust) return "";
+  const end = cust.endereco;
+  if (!end) {
+    return cust.customerAddress || "";
+  }
+  if (typeof end === "string") {
+    return end;
+  }
+  const parts = [];
+  if (end.rua) parts.push(end.rua);
+  if (end.numero) parts.push(`Nº ${end.numero}`);
+  if (end.complemento) parts.push(end.complemento);
+  if (end.bairro) parts.push(end.bairro);
+  if (end.cidade) parts.push(end.cidade);
+  if (end.estado) parts.push(end.estado);
+  if (end.referencia) parts.push(`(Ref: ${end.referencia})`);
+  return parts.join(", ");
+};
+
+const formatOrderDate = (date: any) => {
+  if (!date) return "";
+  try {
+    const d = date.toDate ? date.toDate() : new Date(date);
+    return d.toLocaleDateString("pt-BR") + " " + d.toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return "";
+  }
+};
+
 export function AdminPDV() {
   const { user, hasPermission } = useAuthStore();
   const { toast } = useFeedback();
@@ -197,6 +227,8 @@ export function AdminPDV() {
   const [discountBase, setDiscountBase] = useState<number>(0);
   const [shipping, setShipping] = useState<number>(0);
   const [partialAmount, setPartialAmount] = useState<string>("");
+  const [isDelivery, setIsDelivery] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState("");
 
   const resetPDV = useCallback((targetStep: "cart" | "payment" | "success" = "cart") => {
     setCart([]);
@@ -212,9 +244,20 @@ export function AdminPDV() {
     setSearchTerm("");
     setSearchResults([]);
     setSaveAsNewOrder(false);
+    setIsDelivery(false);
+    setDeliveryAddress("");
     setStep(targetStep);
     setSearchParams({});
   }, [setSearchParams]);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      const formatted = formatCustomerAddress(selectedCustomer);
+      setDeliveryAddress(formatted);
+    } else {
+      setDeliveryAddress("");
+    }
+  }, [selectedCustomer]);
 
   useEffect(() => {
       if (discountType === 'value') {
@@ -1033,14 +1076,12 @@ export function AdminPDV() {
           .join(" + "),
         payments: payments,
         status: saveAsNewOrder ? "NOVO" : "ENTREGUE",
-        type: editingOrderId ? editingOrderType : "pdv",
+        type: isDelivery ? "pdv_entrega" : (editingOrderId ? editingOrderType : "pdv"),
+        isDelivery: isDelivery,
         customerId: selectedCustomer?.id || null,
         customerName: selectedCustomer?.nome || "Cliente Balcão",
         customerWhatsapp: selectedCustomer?.whatsapp || null,
-        customerAddress:
-          selectedCustomer?.endereco?.rua ||
-          (selectedCustomer as any)?.customerAddress ||
-          "",
+        customerAddress: deliveryAddress || formatCustomerAddress(selectedCustomer) || "",
         sellerId: user?.uid,
         sellerName: user?.email,
         updatedAt: serverTimestamp(),
@@ -1198,6 +1239,11 @@ export function AdminPDV() {
         customerWhatsapp: orderData.customerWhatsapp,
         customerAddress: orderData.customerAddress,
         type: orderData.type,
+        payments: payments,
+        paymentMethod: orderData.paymentMethod,
+        additionalAmount: finalAdditionalAmount,
+        financialReceivedAmount: finalPaidTotal,
+        notes: notes,
       });
 
       setLastOrderId(currentOrderId!);
@@ -1278,84 +1324,182 @@ export function AdminPDV() {
         {/* Hidden thermal receipt for print */}
         <div className="hidden">
           <div ref={printRef} className="thermal-receipt">
-            <div className="text-center font-bold" style={{ fontSize: "16px", marginBottom: "4px" }}>
+            <div
+              className="text-center font-bold"
+              style={{ fontSize: "15px", marginBottom: "5px" }}
+            >
               DISCRETA BOUTIQUE
             </div>
-            <div className="text-center" style={{ fontSize: "10px", marginBottom: "8px", color: "#333" }}>
+            <div
+              className="text-center"
+              style={{ fontSize: "11px", marginBottom: "5px" }}
+            >
               Sua boutique especializada em momentos inesquecíveis.
             </div>
             <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
-            
-            <div className="header-info" style={{ fontSize: "12px", marginBottom: "8px" }}>
-              <div>PEDIDO: #{lastFinishedOrder?.id?.slice(-6).toUpperCase()}</div>
-              <div>DATA: {formattedDate}</div>
-              <div>TIPO: {lastFinishedOrder?.type === "pdv" ? "BALCAO" : "ONLINE"}</div>
-              <div>OPERADOR: {user?.email?.split("@")[0].toUpperCase()}</div>
-            </div>
-            <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
-            
-            <div style={{ fontSize: "12px", marginBottom: "8px" }}>
-              <div>CLIENTE: {lastFinishedOrder?.customerName || "Cliente Balcão"}</div>
-              {lastFinishedOrder?.customerWhatsapp && <div>WHATSAPP: {lastFinishedOrder.customerWhatsapp}</div>}
-              {lastFinishedOrder?.customerAddress && <div>ENDEREÇO: {lastFinishedOrder.customerAddress}</div>}
-            </div>
-            <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
-            
-            <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse", textAlign: "left" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid black" }}>
-                  <th style={{ width: "10%" }}>QTD</th>
-                  <th style={{ width: "65%" }}>DESC</th>
-                  <th style={{ width: "25%", textAlign: "right" }}>TOTAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lastFinishedOrder?.items?.map((item: any, idx: number) => (
-                  <tr key={idx} style={{ borderBottom: "1px dashed #eee" }}>
-                    <td style={{ verticalAlign: "top", padding: "3px 0" }}>{item.quantity}</td>
-                    <td style={{ padding: "3px 0" }}>
-                      {item.name}
-                      {item.variantName ? ` (${item.variantName})` : ""}
-                      {item.sku && <div style={{ fontSize: "9px", color: "#666" }}>SKU: {item.sku}</div>}
-                    </td>
-                    <td style={{ verticalAlign: "top", textAlign: "right", padding: "3px 0" }}>
-                      {formatCurrency(item.price * item.quantity)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            
-            <div className="divider" style={{ borderTop: "1px dashed black", margin: "4px 0" }}></div>
-            
-            <div className="totals" style={{ fontSize: "12px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", margin: "2px 0" }}>
-                <span>Subtotal: </span>
-                <span>{formatCurrency(lastFinishedOrder?.subtotal || 0)}</span>
-              </div>
-              {lastFinishedOrder?.shipping > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", margin: "2px 0" }}>
-                  <span>Frete/Entrega: </span>
-                  <span>{formatCurrency(lastFinishedOrder.shipping)}</span>
+            {lastFinishedOrder && (
+              <>
+                <div className="header-info" style={{ fontSize: "12px", marginBottom: "8px" }}>
+                  <div>PEDIDO: #{lastFinishedOrder.id.slice(-6).toUpperCase()}</div>
+                  <div>
+                    DATA: {formatOrderDate(lastFinishedOrder.createdAt)}
+                  </div>
+                  <div>
+                    TIPO: {lastFinishedOrder.type === "pdv" ? "BALCAO" : "ONLINE"}
+                  </div>
+                  {lastFinishedOrder.scheduledDate && (
+                    <div style={{ fontWeight: "bold" }}>
+                      <span style={{ fontWeight: 900 }}>ENTREGA AGENDADA:</span>
+                      <br />
+                      <span style={{ fontWeight: 900, fontSize: "14px" }}>
+                        {lastFinishedOrder.scheduledDate.split("-").reverse().join("/")}{" "}
+                        @ {lastFinishedOrder.scheduledTime}h
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-              {lastFinishedOrder?.discount > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", margin: "2px 0", color: "red" }}>
-                  <span>Desconto: </span>
-                  <span>-{formatCurrency(lastFinishedOrder.discount)}</span>
+                <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
+                <div className="font-bold">CLIENTE:</div>
+                <div>{lastFinishedOrder.customerName || "Cliente Balcão"}</div>
+                {lastFinishedOrder.customerWhatsapp && <div>{lastFinishedOrder.customerWhatsapp}</div>}
+                {lastFinishedOrder.customerAddress && (
+                  <>
+                    <div style={{ marginTop: "5px" }}>ENDERECO:</div>
+                    <div style={{ fontSize: "12px", fontWeight: "bold" }}>
+                      {lastFinishedOrder.customerAddress}
+                    </div>
+                  </>
+                )}
+                <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
+                <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse", textAlign: "left" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid black" }}>
+                      <th>QTD</th>
+                      <th>DESC</th>
+                      <th style={{ textAlign: "right" }}>VAL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lastFinishedOrder.items.map((item: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: "1px dashed #eee" }}>
+                        <td style={{ verticalAlign: "top" }}>{item.quantity}</td>
+                        <td>
+                          {item.name}
+                          {item.variantName ? ` (${item.variantName})` : ""}
+                          {(item.sku || item.gtin) && (
+                            <div style={{ fontSize: "10px" }}>
+                              {item.sku ? `SKU: ${item.sku}` : ""}
+                              {item.sku && item.gtin ? " | " : ""}
+                              {item.gtin ? `EAN: ${item.gtin}` : ""}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right", verticalAlign: "top" }}>
+                          {formatCurrency(item.price * item.quantity)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
+                <div className="totals" style={{ fontSize: "12px" }}>
+                  <div
+                    className="item"
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span>Subtotal:</span>
+                    <span>{formatCurrency(lastFinishedOrder.subtotal || lastFinishedOrder.items.reduce((acc: any, item: any) => acc + item.price * item.quantity, 0))}</span>
+                  </div>
+                  {lastFinishedOrder.shipping > 0 && (
+                    <div
+                      className="item"
+                      style={{ display: "flex", justifyContent: "space-between" }}
+                    >
+                      <span>Frete/Entrega:</span>
+                      <span>{formatCurrency(lastFinishedOrder.shipping)}</span>
+                    </div>
+                  )}
+                  {lastFinishedOrder.discount && lastFinishedOrder.discount > 0 ? (
+                    <div
+                      className="item"
+                      style={{ display: "flex", justifyContent: "space-between" }}
+                    >
+                      <span>Desconto:</span>
+                      <span>-{formatCurrency(lastFinishedOrder.discount)}</span>
+                    </div>
+                  ) : null}
+                  <div
+                    className="item"
+                    style={{ display: "flex", justifyContent: "space-between", marginTop: "4px", paddingTop: "4px", borderTop: "1px dashed #ccc" }}
+                  >
+                    <span style={{ fontWeight: "bold" }}>Total:</span>
+                    <span style={{ fontWeight: "bold" }}>{formatCurrency(lastFinishedOrder.total)}</span>
+                  </div>
+                  {lastFinishedOrder.additionalAmount &&
+                    lastFinishedOrder.additionalAmount > 0 && (
+                      <div
+                        className="item"
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <span>Acréscimo:</span>
+                        <span>
+                          +{formatCurrency(lastFinishedOrder.additionalAmount)}
+                        </span>
+                      </div>
+                    )}
+                  <div
+                    className="item"
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontWeight: "bold",
+                      fontSize: "14px",
+                      marginTop: "5px",
+                      borderTop: "1px dashed #ccc",
+                      paddingTop: "5px",
+                    }}
+                  >
+                    <span>TOTAL RECEBIDO:</span>
+                    <span>
+                      {formatCurrency(
+                        lastFinishedOrder.financialReceivedAmount ||
+                          lastFinishedOrder.total,
+                      )}
+                    </span>
+                  </div>
                 </div>
-              )}
-              <div style={{ display: "flex", justifyContent: "space-between", margin: "4px 0", fontWeight: "900", borderTop: "1px solid black", paddingTop: "4px", fontSize: "14px" }}>
-                <span>Total: </span>
-                <span>{formatCurrency(lastFinishedOrder?.total || 0)}</span>
-              </div>
-            </div>
-            
-            <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
-            <div className="footer" style={{ textAlign: "center", fontSize: "10px", marginTop: "15px" }}>
-              Obrigado pela preferência!<br />
-              Visite: discretaboutique.com.br
-            </div>
+                <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
+                <div className="font-bold">FORMA DE PAGTO:</div>
+                {lastFinishedOrder.payments && lastFinishedOrder.payments.length > 0 ? (
+                  <div>
+                    {lastFinishedOrder.payments.map((p: any, idx: number) => (
+                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px" }}>
+                        <span>- {p.method}</span>
+                        <span>{formatCurrency(p.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div>{lastFinishedOrder.paymentMethod || "A DEFINIR"}</div>
+                )}
+                {lastFinishedOrder.notes && (
+                  <>
+                    <div style={{ marginTop: "5px", fontStyle: "italic" }}>
+                      OBS: {lastFinishedOrder.notes}
+                    </div>
+                  </>
+                )}
+                <div className="divider" style={{ borderTop: "1px dashed black", margin: "5px 0" }}></div>
+                <div className="footer" style={{ textAlign: "center", fontSize: "10px", marginTop: "15px" }}>
+                  OBRIGADO PELA PREFERENCIA!
+                  <br />
+                  Siga-nos no Instagram @discretaico
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -2383,7 +2527,7 @@ export function AdminPDV() {
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
             className="fixed inset-0 z-[110] bg-slate-950 flex flex-col md:p-4 lg:p-8"
           >
-            <div className="w-full h-full max-w-7xl mx-auto flex flex-col bg-slate-900 md:rounded-[2rem] border-0 md:border border-white/10 overflow-hidden shadow-2xl relative">
+            <div className="w-full h-full max-w-7xl mx-auto flex flex-col bg-slate-900 md:rounded-[2rem] border-0 md:border border-white/10 overflow-y-auto lg:overflow-hidden shadow-2xl relative">
               {/* HEADER */}
               <div className="h-16 shrink-0 border-b border-white/10 flex items-center justify-between px-6 lg:px-8 bg-slate-950/50">
                 <h2 className="text-xl md:text-2xl font-black italic uppercase tracking-tighter flex items-center gap-3 text-white">
@@ -2398,9 +2542,9 @@ export function AdminPDV() {
               </div>
 
               {/* CONTENT WRAPPER */}
-              <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+              <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden relative">
                 {/* LEFT: PAYMENT INPUT & METHODS */}
-                <div className="flex-1 flex flex-col p-4 md:p-8 overflow-y-auto no-scrollbar lg:border-r border-white/10 bg-slate-900/50">
+                <div className="flex-1 flex flex-col p-4 md:p-8 lg:overflow-y-auto no-scrollbar lg:border-r border-white/10 bg-slate-900/50">
                   
                   {/* RESUMO FIXO / TOTAL A PAGAR */}
                   <div className="bg-black/40 border border-red-500/30 rounded-3xl p-6 md:p-8 mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 relative overflow-hidden group shrink-0">
@@ -2575,8 +2719,8 @@ export function AdminPDV() {
                 </div>
 
                 {/* RIGHT: PAYMENTS RECORDED & FINISH ACTION */}
-                <div className="w-full lg:w-[480px] bg-slate-950 flex flex-col relative z-20 shadow-[-20px_0_40px_rgba(0,0,0,0.5)]">
-                   <div className="flex-1 p-6 md:p-8 flex flex-col overflow-y-auto no-scrollbar">
+                <div className="w-full lg:w-[480px] bg-slate-950 flex flex-col relative z-20 shadow-[-20px_0_40px_rgba(0,0,0,0.5)] lg:overflow-y-auto">
+                   <div className="flex-1 p-6 md:p-8 flex flex-col lg:overflow-y-auto no-scrollbar">
                      <h4 className="text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center justify-between">
                         Pagamentos Confirmados
                         <span className="bg-red-600/20 text-red-500 px-3 py-1 rounded relative">
@@ -2585,41 +2729,88 @@ export function AdminPDV() {
                         </span>
                      </h4>
 
-                     <div className="flex-1 space-y-4 min-h-[200px]">
+                     <div className="flex-1 space-y-4 min-h-[160px]">
                        {payments.length === 0 ? (
                           <div className="h-full flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-3xl p-8 bg-slate-900/20">
                             <Wallet size={64} className="mb-6 opacity-30" />
                             <p className="text-[10px] md:text-xs font-black uppercase text-center tracking-widest leading-relaxed">Nenhum valor<br/>registrado ainda</p>
                           </div>
                        ) : (
-                         <div className="space-y-3">
-                           {payments.map((p, i) => (
-                             <div key={i} className="flex items-center gap-3 bg-slate-900 border border-slate-800 p-4 md:p-5 rounded-2xl relative overflow-hidden group hover:border-slate-700 transition-colors shadow-sm">
-                                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-green-500"></div>
-                                <div className="w-10 h-10 md:w-12 md:h-12 bg-slate-950 border border-white/5 rounded-xl flex items-center justify-center text-slate-300 shrink-0 shadow-inner">
-                                  {p.method === 'Pix' ? <QrCode size={20}/> : p.method === 'Dinheiro' ? <Banknote size={20}/> : <CreditCard size={20}/>}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
+                            {payments.map((p, i) => {
+                              const methodLower = p.method.toLowerCase();
+                              const isPix = methodLower.includes('pix');
+                              const isDinheiro = methodLower.includes('dinheiro');
+                              const borderAccent = isPix ? 'border-sky-500/40 bg-sky-950/20' : isDinheiro ? 'border-emerald-500/40 bg-emerald-950/20' : 'border-purple-500/40 bg-purple-950/20';
+                              const textAccent = isPix ? 'text-sky-400' : isDinheiro ? 'text-emerald-400' : 'text-purple-400';
+                              const indicatorBg = isPix ? 'bg-sky-500' : isDinheiro ? 'bg-emerald-500' : 'bg-purple-500';
+
+                              return (
+                                <div key={i} className={`flex items-center gap-3 border ${borderAccent} p-3.5 rounded-2xl relative overflow-hidden hover:opacity-90 transition-opacity shadow-md`}>
+                                   <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${indicatorBg}`}></div>
+                                   <div className="w-10 h-10 bg-slate-950 border border-white/10 rounded-xl flex items-center justify-center text-slate-300 shrink-0 shadow-inner">
+                                     {isPix ? <QrCode size={18} className="text-sky-400" /> : isDinheiro ? <Banknote size={18} className="text-emerald-400" /> : <CreditCard size={18} className="text-purple-400" />}
+                                   </div>
+                                   <div className="flex-1 min-w-0 pr-6">
+                                     <p className="text-xs md:text-sm font-black text-white uppercase tracking-wider truncate">{p.method}</p>
+                                     <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-white/5 ${textAccent} mt-1`}>
+                                       Recebido
+                                     </span>
+                                   </div>
+                                   <div className="text-right shrink-0 pr-6 lg:pr-8">
+                                     <p className="text-base md:text-lg font-black text-white leading-none">{formatCurrency(p.amount)}</p>
+                                     <p className="text-[9px] uppercase font-bold text-slate-500 mt-1">
+                                       {new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
+                                     </p>
+                                   </div>
+                                   <button
+                                     onClick={() => setPayments(payments.filter((_, idx) => idx !== i))}
+                                     className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-red-650 hover:bg-red-600 bg-red-500 text-white rounded-xl flex items-center justify-center transition-all shadow-md shrink-0"
+                                     title="Remover pagamento"
+                                   >
+                                     <Trash2 size={14} />
+                                   </button>
                                 </div>
-                                <div className="flex-1 overflow-hidden">
-                                  <p className="text-xs md:text-sm font-black text-white uppercase tracking-wider truncate">{p.method}</p>
-                                  <p className="text-[9px] md:text-[10px] uppercase font-bold text-slate-500 mt-1 flex items-center gap-1">
-                                    <Clock size={10} /> {new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
-                                  </p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-lg md:text-xl font-black text-white leading-none mb-1">{formatCurrency(p.amount)}</p>
-                                  <p className="text-[8px] md:text-[9px] font-bold text-green-500 uppercase tracking-widest opacity-80 mt-1">Recebido</p>
-                                </div>
-                                <button
-                                  onClick={() => setPayments(payments.filter((_, idx) => idx !== i))}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-red-600 border-b-[3px] border-red-800 text-white rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0 shadow-lg active:translate-y-[calc(-50%+3px)] active:border-b-0"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                             </div>
-                           ))}
-                         </div>
+                              );
+                            })}
+                          </div>
                        )}
                      </div>
+
+                     {/* ENTREGA / DELIVERY */}
+                      <div className="mt-6 pt-6 border-t border-slate-800">
+                        <label className="flex items-center gap-3 cursor-pointer select-none mb-3">
+                          <input
+                            type="checkbox"
+                            checked={isDelivery}
+                            onChange={(e) => setIsDelivery(e.target.checked)}
+                            className="h-5 w-5 rounded border-slate-700 bg-slate-900 text-red-600 focus:ring-red-500 focus:ring-offset-slate-900 transition-colors cursor-pointer"
+                          />
+                          <div>
+                            <span className="text-xs font-black uppercase tracking-wider text-slate-100 flex items-center gap-1.5% mb-0">
+                              🚚 Pedido para Entrega (Delivery)
+                            </span>
+                          </div>
+                        </label>
+                        {isDelivery && (
+                          <div className="mt-3 space-y-2 mb-4">
+                            <label className="text-[10px] block font-black uppercase text-slate-500 tracking-widest">
+                              Confirmar Endereço de Entrega
+                            </label>
+                            <textarea
+                              placeholder="Digite o endereço completo para entrega..."
+                              value={deliveryAddress}
+                              onChange={(e) => setDeliveryAddress(e.target.value)}
+                              className="w-full h-20 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs md:text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-red-600 resize-none transition-colors shadow-inner"
+                            />
+                            {!selectedCustomer && (
+                              <p className="text-[10px] text-orange-400 font-semibold leading-relaxed">
+                                ⚠️ Atenção: Nenhum cliente selecionado. Digite o endereço e telefone nas observações se necessário para controle do entregador.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
 
                      {/* OBSERVAÇOES */}
                      <div className="mt-8 pt-8 border-t border-slate-800">
@@ -2637,26 +2828,17 @@ export function AdminPDV() {
 
                    {/* BOTTOM SHEET / STICKY FOOTER */}
                   {/* OPÇÃO DE SALVAR COMO NOVO PEDIDO TRATADO INTELIGENTEMENTE */}
-                  <div className={`mb-6 p-4 rounded-2xl border transition-all duration-300 ${
-                    saveAsNewOrder 
-                      ? "bg-red-950/20 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
-                      : "bg-black/30 border-slate-800"
-                  }`}>
-                    <label className="flex items-start gap-3.5 cursor-pointer select-none">
+                  <div className="mb-4 px-6">
+                    <label className="flex items-center gap-2.5 cursor-pointer select-none py-2 px-1">
                       <input
                         type="checkbox"
                         checked={saveAsNewOrder}
                         onChange={(e) => setSaveAsNewOrder(e.target.checked)}
-                        className="mt-1 h-5 w-5 rounded border-slate-700 bg-slate-900 text-red-600 focus:ring-red-500 focus:ring-offset-slate-900 transition-colors cursor-pointer"
+                        className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-red-600 focus:ring-red-500 focus:ring-offset-slate-900 transition-colors cursor-pointer"
                       />
-                      <div className="flex-1">
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-100 flex items-center gap-1.5">
-                          📌 Salvar como "Novo" Pedido (WhatsApp / Rascunho)
-                        </span>
-                        <p className="text-[10px] text-slate-400 mt-1 lowercase first-letter:uppercase leading-relaxed font-semibold">
-                          Ative esta caixa para salvar este pedido diretamente com o status <span className="text-red-500 font-extrabold uppercase mb-1">"Novo"</span>. O estoque será reservado, mas o recebimento financeiro poderá ser preenchido e finalizado posteriormente em /admin/pedidos ou reabrindo o pedido no PDV.
-                        </p>
-                      </div>
+                      <span className="text-[10px] sm:text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-wider">
+                        Salvar como "Novo" Pedido (WhatsApp / Rascunho)
+                      </span>
                     </label>
                   </div>
                    <div className="bg-slate-900 border-t border-slate-800 p-6 md:p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.5)] z-30">
