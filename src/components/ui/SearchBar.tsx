@@ -155,11 +155,11 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
         
         {/* Integrated Premium Container Single Piece */}
         <div 
-          className="relative flex items-center overflow-hidden transition-all duration-300 rounded-full border shadow-lg group pr-1.5 pl-4"
+          className="relative flex items-center overflow-hidden transition-all duration-300 rounded-full border-transparent group pr-1.5 pl-4"
           style={{
-            backgroundColor: currentTheme.backgroundColor,
-            borderColor: isFocused ? currentTheme.primaryColor : borderColor,
-            boxShadow: isFocused ? `0 0 25px var(--color-primary-glow)` : 'none',
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
+            boxShadow: 'none',
             height: '56px'
           }}
         >
@@ -179,7 +179,7 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
             onChange={handleInputChange}
             onFocus={() => setIsFocused(true)}
             placeholder={placeholder}
-            className="flex-1 bg-transparent border-0 focus:ring-0 focus:ring-offset-0 focus:outline-none py-4 px-1 font-bold text-sm md:text-base h-full placeholder:font-medium appearance-none outline-none"
+            className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:border-none focus:ring-0 focus:ring-offset-0 py-4 px-1 font-bold text-lg md:text-xl h-full placeholder:text-sm md:placeholder:text-base placeholder:font-medium appearance-none"
             style={{ 
               color: currentTheme.backgroundTextColor
             }}

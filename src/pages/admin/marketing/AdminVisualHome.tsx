@@ -1233,10 +1233,10 @@ export function AdminVisualHome() {
 
                   <div>
                     <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">Fundo da Seção</label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                       <input 
                         type="color" 
-                        value={activeSecSettings.themeBg || '#050505'}
+                        value={activeSecSettings.themeBg === 'transparent' ? '#050505' : (activeSecSettings.themeBg || '#050505')}
                         onChange={e => updateSettingsField('themeBg', e.target.value)}
                         className="bg-transparent border border-zinc-800 rounded-lg w-8 h-8 cursor-pointer shrink-0"
                       />
@@ -1245,7 +1245,19 @@ export function AdminVisualHome() {
                         value={activeSecSettings.themeBg || '#050505'}
                         onChange={e => updateSettingsField('themeBg', e.target.value)}
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-1 text-xs text-white font-mono"
+                        placeholder="#050505 ou transparent"
                       />
+                      <button
+                        type="button"
+                        onClick={() => updateSettingsField('themeBg', 'transparent')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-xl border shrink-0 transition-all ${
+                          activeSecSettings.themeBg === 'transparent'
+                            ? 'bg-red-600/30 border-red-500 text-red-500 hover:bg-red-600/40'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600'
+                        }`}
+                      >
+                        Transparente
+                      </button>
                     </div>
                   </div>
 

@@ -718,7 +718,7 @@ export function HomePage() {
       )}
 
       {/* 2. CARROUSÉIS DE PRODUTOS */}
-      <div className="max-w-7xl mx-auto w-full flex flex-col pt-6 md:pt-10 pb-16 px-4 space-y-8 md:space-y-16">
+      <div className="w-full flex flex-col pt-6 md:pt-10 pb-16 space-y-8 md:space-y-16 overflow-hidden">
         
         {loading ? (
           <>
@@ -914,92 +914,95 @@ function ProductCarousel({
 
   return (
     <section 
+      style={themeBg ? { backgroundColor: themeBg } : undefined}
       className={cn(
-        "relative group/carousel py-6 md:py-8 transition-all duration-500"
+        "relative group/carousel py-6 md:py-8 transition-all duration-500 w-full"
       )}
     >
-      <div className={cn(
-        "flex flex-col md:flex-row justify-between mb-8 border-b border-zinc-900 pb-4 gap-4",
-        alignment === 'center' ? 'items-center text-center' : alignment === 'right' ? 'items-end text-right' : 'items-start md:items-end'
-      )}>
+      <div className="max-w-7xl mx-auto px-4 w-full">
         <div className={cn(
-          "flex flex-col",
-          alignment === 'center' ? 'items-center' : alignment === 'right' ? 'items-end' : 'items-start'
+          "flex flex-col md:flex-row justify-between mb-8 border-b border-zinc-900 pb-4 gap-4",
+          alignment === 'center' ? 'items-center text-center' : alignment === 'right' ? 'items-end text-right' : 'items-start md:items-end'
         )}>
-          <div className="flex items-center gap-3">
-            {emoji && <span className="text-xl md:text-2xl">{emoji}</span>}
-            <h2 
-              style={{ color: themeColor || undefined }}
-              className={cn(
-                "font-black uppercase tracking-tighter italic",
-                isCompactStyle ? "text-xl md:text-2xl" : "text-2xl md:text-3xl"
-              )}
-            >
-              {title}
-            </h2>
+          <div className={cn(
+            "flex flex-col",
+            alignment === 'center' ? 'items-center' : alignment === 'right' ? 'items-end' : 'items-start'
+          )}>
+            <div className="flex items-center gap-3">
+              {emoji && <span className="text-xl md:text-2xl">{emoji}</span>}
+              <h2 
+                style={{ color: themeColor || undefined }}
+                className={cn(
+                  "font-black uppercase tracking-tighter italic",
+                  isCompactStyle ? "text-xl md:text-2xl" : "text-2xl md:text-3xl"
+                )}
+              >
+                {title}
+              </h2>
+            </div>
+            {subtitle && (
+              <p className="text-xs text-zinc-400 mt-1 max-w-md">{subtitle}</p>
+            )}
           </div>
-          {subtitle && (
-            <p className="text-xs text-zinc-400 mt-1 max-w-md">{subtitle}</p>
+
+          {!loading && showButton && (
+            <Link 
+              to={link} 
+              className="text-[10px] font-black text-zinc-400 uppercase tracking-[3px] hover:text-red-500 hover:scale-105 active:scale-95 transition-all text-shadow-glow"
+            >
+              {buttonText}
+            </Link>
           )}
         </div>
 
-        {!loading && showButton && (
-          <Link 
-            to={link} 
-            className="text-[10px] font-black text-zinc-400 uppercase tracking-[3px] hover:text-red-500 hover:scale-105 active:scale-95 transition-all text-shadow-glow"
+        <div className="relative">
+          <div 
+            ref={scrollRef}
+            onScroll={isVertical ? undefined : handleScroll}
+            className={gridColsClass}
+            style={isVertical ? undefined : { scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            {buttonText}
-          </Link>
-        )}
-      </div>
+            {loading ? (
+               displayProducts.map((_, i) => (
+                <div 
+                  key={i} 
+                  className={cn(isVertical ? "w-full" : "min-w-[42%] sm:min-w-[240px] snap-start h-full")}
+                >
+                  <SkeletonCard />
+                </div>
+              ))
+            ) : displayProducts.length > 0 ? (
+              displayProducts.map((product: any, idx: number) => (
+                <div 
+                  key={product.id} 
+                  className={cn(isVertical ? "w-full" : "min-w-[42%] sm:min-w-[240px] snap-start h-full")}
+                >
+                  <ProductItemCard product={product} isPriority={idx < 2} />
+                </div>
+              ))
+            ) : (
+              <div className="py-8 text-center text-xs text-zinc-600 font-bold uppercase w-full">Nenhum produto encontrado nesta seção</div>
+            )}
+          </div>
 
-      <div className="relative">
-        <div 
-          ref={scrollRef}
-          onScroll={isVertical ? undefined : handleScroll}
-          className={gridColsClass}
-          style={isVertical ? undefined : { scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
-          {loading ? (
-             displayProducts.map((_, i) => (
-              <div 
-                key={i} 
-                className={cn(isVertical ? "w-full" : "min-w-[42%] sm:min-w-[240px] snap-start h-full")}
+          {/* Navigation Buttons for sliders only */}
+          {!isVertical && !loading && products.length > 0 && (
+            <>
+              <button 
+                onClick={() => scroll('left')}
+                className="absolute left-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:left-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0 shadow-[0_0_10px_rgba(0,0,0,0.5)]"
               >
-                <SkeletonCard />
-              </div>
-            ))
-          ) : displayProducts.length > 0 ? (
-            displayProducts.map((product: any, idx: number) => (
-              <div 
-                key={product.id} 
-                className={cn(isVertical ? "w-full" : "min-w-[42%] sm:min-w-[240px] snap-start h-full")}
+                <ChevronLeft size={16} />
+              </button>
+              <button 
+                onClick={() => scroll('right')}
+                className="absolute right-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:right-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0 shadow-[0_0_10px_rgba(0,0,0,0.5)]"
               >
-                <ProductItemCard product={product} isPriority={idx < 2} />
-              </div>
-            ))
-          ) : (
-            <div className="py-8 text-center text-xs text-zinc-600 font-bold uppercase w-full">Nenhum produto encontrado nesta seção</div>
+                <ChevronRight size={16} />
+              </button>
+            </>
           )}
         </div>
-
-        {/* Navigation Buttons for sliders only */}
-        {!isVertical && !loading && products.length > 0 && (
-          <>
-            <button 
-              onClick={() => scroll('left')}
-              className="absolute left-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:left-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0 shadow-[0_0_10px_rgba(0,0,0,0.5)]"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button 
-              onClick={() => scroll('right')}
-              className="absolute right-2 top-[40%] -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-10 md:right-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0 shadow-[0_0_10px_rgba(0,0,0,0.5)]"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </>
-        )}
       </div>
     </section>
   );
