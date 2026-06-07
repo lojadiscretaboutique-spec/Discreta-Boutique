@@ -14,6 +14,8 @@ import { useUIStore } from '../../store/uiStore';
 import { ProductItemCard, SkeletonCard } from '../../components/ui/ProductItemCard';
 import { LazyLoad } from '../../components/ui/LazyLoad';
 import { visualHomeService } from '../../services/visualHomeService';
+import { cacheService } from '../../services/cacheService';
+import { optimizeImageUrl } from '../../components/ui/ResponsiveImage';
 
 interface Banner {
   id: string;
@@ -31,6 +33,56 @@ interface OfferBanner {
   active: boolean;
   startDate?: string;
   endDate?: string;
+}
+
+// Progressive loader with automatic mobile quality compression and dynamic domain fallback
+function SafeOptimizedImage({ 
+  src, 
+  alt, 
+  className, 
+  width, 
+  quality = 65, 
+  ...props 
+}: { 
+  src: string; 
+  alt: string; 
+  className?: string; 
+  width?: number; 
+  quality?: number; 
+  [key: string]: any; 
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const [currentSrc, setCurrentSrc] = useState(() => optimizeImageUrl(src, { width, quality }));
+
+  useEffect(() => {
+    setCurrentSrc(optimizeImageUrl(src, { width, quality }));
+    setLoaded(false);
+  }, [src, width, quality]);
+
+  const handleError = () => {
+    if (currentSrc !== src) {
+      setCurrentSrc(src);
+    }
+  };
+
+  return (
+    <div className={cn("relative w-full h-full bg-zinc-950 overflow-hidden flex items-center justify-center", !loaded && "animate-pulse")}>
+      <img
+        src={currentSrc}
+        alt={alt}
+        loading="lazy"
+        className={cn(
+          "transition-opacity duration-1000",
+          loaded ? "opacity-100" : "opacity-0",
+          className
+        )}
+        onLoad={() => setLoaded(true)}
+        onError={handleError}
+        referrerPolicy="no-referrer"
+        {...props}
+      />
+    </div>
+  );
 }
 
 export function HomePage() {
@@ -61,15 +113,26 @@ export function HomePage() {
 
   const loadCriticalData = useCallback(async () => {
     try {
-      // Load Banners first to show Hero
-      const [bSnap, oSnap] = await Promise.all([
-        getDocs(query(collection(db, 'banners'), where('active', '==', true))),
-        getDocs(query(collection(db, 'offer_banners'), where('active', '==', true)))
-      ]);
+      const cachedBanners = cacheService.get('home_banners');
+      const cachedOffers = cacheService.get('home_offer_banners');
       
-      setBanners(bSnap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
+      if (cachedBanners && cachedOffers) {
+        setBanners(cachedBanners);
+        setOfferBanners(cachedOffers);
+        setLoading(false); // Render top elements immediately
+        return;
+      }
+
+      // Load Banners first to show Hero as fast as possible
+      const bSnap = await getDocs(query(collection(db, 'banners'), where('active', '==', true)));
+      const bannersList = bSnap.docs.map(d => ({ id: d.id, ...d.data() } as Banner));
+      setBanners(bannersList);
+      cacheService.set('home_banners', bannersList);
       
-      // Filter Offer Banners by date on client side for flexibility
+      // We can already transition from full screen loading once banners are loaded
+      setLoading(false);
+
+      const oSnap = await getDocs(query(collection(db, 'offer_banners'), where('active', '==', true)));
       const now = new Date();
       const filteredOffers = oSnap.docs
         .map(d => ({ id: d.id, ...d.data() } as OfferBanner))
@@ -80,14 +143,57 @@ export function HomePage() {
           return true;
         });
       setOfferBanners(filteredOffers);
+      cacheService.set('home_offer_banners', filteredOffers);
     } catch (e) {
       console.error(e);
+      setLoading(false);
     }
   }, []);
 
   const loadDeferredData = useCallback(async () => {
     try {
-      // 1. Get Home Curation first to know what to prioritize
+      // 1. Check memory cache for already computed home data
+      const cachedDeferred = cacheService.get('home_deferred_data');
+      if (cachedDeferred) {
+        setAiFrase(cachedDeferred.aiFrase || "");
+        setVisibleProducts(cachedDeferred.visibleProducts || []);
+        setSections(cachedDeferred.sections || {});
+        setCategories(cachedDeferred.categories || []);
+        setFeaturedCategorySections(cachedDeferred.featuredCategorySections || []);
+        setVisualStructure(cachedDeferred.visualStructure || null);
+        setHomeReady(true);
+        setLoading(false);
+        return;
+      }
+
+      // 2. Fetch visual home structure FIRST to know what extra custom elements are requested
+      let visualData = null;
+      try {
+        visualData = await visualHomeService.getFullHomeStructure();
+        setVisualStructure(visualData);
+      } catch (err) {
+        console.error("Error loading home structure:", err);
+      }
+
+      // Extract specific custom items mentioned in dynamic home configuration
+      let customProductIdsToFetch: string[] = [];
+      let categoryIdsToFetch: string[] = [];
+      if (visualData && visualData.settings) {
+        Object.values(visualData.settings).forEach((s: any) => {
+          if (s.active) {
+            if (s.source === 'custom_products' && s.sourceDetails && s.sourceDetails.length > 0) {
+              customProductIdsToFetch.push(...s.sourceDetails);
+            } else if (s.source === 'categories' && s.sourceDetails && s.sourceDetails.length > 0) {
+              categoryIdsToFetch.push(...s.sourceDetails);
+            }
+          }
+        });
+      }
+      // Deduplicate arrays
+      customProductIdsToFetch = Array.from(new Set(customProductIdsToFetch));
+      categoryIdsToFetch = Array.from(new Set(categoryIdsToFetch));
+
+      // 3. Get Home Curation (AI curation)
       let curadoria: any = null;
       try {
         const docRef = doc(db, 'ai_curation', 'home');
@@ -100,8 +206,26 @@ export function HomePage() {
         console.warn('IA Home Curatory fails:', e);
       }
 
-      // 2. Optimized fetch: Instead of ALL products, let's fetch a reasonable amount for Home
-      const [pSnap, combosSnap] = await Promise.all([
+      // 4. Fetch categories first to display category bubbles immediately!
+      let allCats: Category[] = [];
+      try {
+        const cSnap = await getDocs(query(collection(db, 'categories'), where('isActive', '==', true)));
+        allCats = cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+        // Show them immediately with a quick fallback rank
+        const initialSortedCats = [...allCats].filter(c => c.level === 0).sort((a, b) => {
+          const scoreB = b.accessCount || 0;
+          const scoreA = a.accessCount || 0;
+          if (scoreB !== scoreA) return scoreB - scoreA;
+          if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
+          return a.name.localeCompare(b.name);
+        });
+        setCategories(initialSortedCats);
+      } catch (e) {
+        console.error("Error loading categories:", e);
+      }
+
+      // 5. Fetch products and combos in background (including explicit custom targets)
+      const [pSnap, combosSnap, customProdsDocs, categoryProdsSnaps] = await Promise.all([
         getDocs(query(
           collection(db, 'products'), 
           where('active', '==', true),
@@ -111,10 +235,47 @@ export function HomePage() {
           collection(db, 'combos'),
           where('active', '==', true),
           where('showInCatalog', '==', true)
-        ))
+        )),
+        // Fetch explicit product IDs
+        customProductIdsToFetch.length > 0
+          ? Promise.all(customProductIdsToFetch.slice(0, 50).map(id => getDoc(doc(db, 'products', id))))
+          : Promise.resolve([]),
+        // Fetch category-specific products (for custom categories source)
+        categoryIdsToFetch.length > 0
+          ? Promise.all(categoryIdsToFetch.slice(0, 10).map(catId => 
+              getDocs(query(collection(db, 'products'), where('active', '==', true), where('categoryId', '==', catId), limit(24)))
+            ))
+          : Promise.resolve([])
       ]);
       
       const allFetchedProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+      
+      // Parse custom products fetched by direct ID
+      const explicitlyFetchedProducts: Product[] = [];
+      customProdsDocs.forEach((d: any) => {
+        if (d && d.exists()) {
+          explicitlyFetchedProducts.push({ id: d.id, ...d.data() } as Product);
+        }
+      });
+
+      // Parse custom category products
+      const categoryFetchedProducts: Product[] = [];
+      categoryProdsSnaps.forEach((snap: any) => {
+        if (snap) {
+          snap.docs.forEach((d: any) => {
+            categoryFetchedProducts.push({ id: d.id, ...d.data() } as Product);
+          });
+        }
+      });
+
+      // Deduplicate using Map for robust memory consolidation
+      const mergedProductsMap = new Map<string, Product>();
+      allFetchedProducts.forEach(p => mergedProductsMap.set(p.id!, p));
+      explicitlyFetchedProducts.forEach(p => mergedProductsMap.set(p.id!, p));
+      categoryFetchedProducts.forEach(p => mergedProductsMap.set(p.id!, p));
+
+      const finalFetchedProductsList = Array.from(mergedProductsMap.values());
+
       const comboProducts = combosSnap.docs.map(d => {
         const combo = d.data();
         return {
@@ -129,56 +290,17 @@ export function HomePage() {
         } as any;
       });
 
-      const visibleProducts = [...allFetchedProducts, ...comboProducts].filter(p => 
+      const actualVisibleProducts = [...finalFetchedProductsList, ...comboProducts].filter(p => 
         (p.images && p.images.length > 0) && 
         (p.extras?.showInCatalog !== false) &&
         (p.isCombo || (Number((p as any).stock) || 0) > 0)
       );
 
-      setVisibleProducts(visibleProducts);
+      setVisibleProducts(actualVisibleProducts);
 
-      const usedIds = new Set<string>();
-      
-      let lancamentos, destaques, maisVendidos, emAlta, recomendados, ofertas;
-
-      // Ofertas (Todas as ofertas disponíveis para passar pela IA)
-      ofertas = visibleProducts.filter(p => !!p.onSale || (p.promoPrice && p.promoPrice < p.price));
-
-      if (curadoria) {
-        const pickAi = (ids: string[]) => ids.map(id => visibleProducts.find(p => p.id === id)).filter(p => !!p && !usedIds.has(p.id!)) as Product[];
-        
-        lancamentos = pickAi(curadoria.lancamentos);
-        lancamentos.forEach(p => usedIds.add(p.id!));
-
-        destaques = pickAi(curadoria.destaques);
-        destaques.forEach(p => usedIds.add(p.id!));
-
-        maisVendidos = pickAi(curadoria.maisVendidos);
-        maisVendidos.forEach(p => usedIds.add(p.id!));
-
-        emAlta = pickAi(curadoria.emAlta);
-        emAlta.forEach(p => usedIds.add(p.id!));
-
-        recomendados = getRecomendados(visibleProducts, usedIds);
-      } else {
-        lancamentos = getLancamentos(visibleProducts, usedIds);
-        destaques = getDestaques(visibleProducts, usedIds);
-        maisVendidos = getMaisVendidos(visibleProducts, usedIds);
-        emAlta = getEmAlta(visibleProducts, usedIds);
-        recomendados = getRecomendados(visibleProducts, usedIds);
-      }
-
-      // Fill fallbacks if needed
-      [lancamentos, destaques, maisVendidos, emAlta, recomendados].forEach(sec => {
-          if (sec.length < 8) sec.push(...fillFallback(visibleProducts, usedIds, 8 - sec.length));
-      });
-
-      setSections({ lancamentos, destaques, maisVendidos, emAlta, recomendados, ofertas });
-
-      const cSnap = await getDocs(query(collection(db, 'categories'), where('isActive', '==', true)));
-      const allCats = cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      // Recalculate categories (filtering out those without products)
       const categoryIdsWithProducts = new Set<string>();
-      visibleProducts.forEach(p => {
+      actualVisibleProducts.forEach(p => {
         if (p.categoryId) {
           categoryIdsWithProducts.add(p.categoryId);
           let parent = allCats.find(c => c.id === p.categoryId);
@@ -193,7 +315,7 @@ export function HomePage() {
       const categoriesWithImages = visibleRootCats.map(cat => {
         if (cat.image?.url) return cat;
 
-        const productsOfThisCat = visibleProducts.filter(p => {
+        const productsOfThisCat = actualVisibleProducts.filter(p => {
           if (p.categoryId === cat.id) return true;
           const pCat = allCats.find(c => c.id === p.categoryId);
           return pCat?.parentId === cat.id;
@@ -221,7 +343,43 @@ export function HomePage() {
 
       setCategories(sortedCategoriesWithImages);
 
-      // Map and extract featured categories that are marked as showInHome: true
+      // Compute sections/curation
+      const usedIds = new Set<string>();
+      let lancamentos, destaques, maisVendidos, emAlta, recomendados, ofertas;
+      ofertas = actualVisibleProducts.filter(p => !!p.onSale || (p.promoPrice && p.promoPrice < p.price));
+
+      if (curadoria) {
+        const pickAi = (ids: string[]) => ids.map(id => actualVisibleProducts.find(p => p.id === id)).filter(p => !!p && !usedIds.has(p.id!)) as Product[];
+        
+        lancamentos = pickAi(curadoria.lancamentos);
+        lancamentos.forEach(p => usedIds.add(p.id!));
+
+        destaques = pickAi(curadoria.destaques);
+        destaques.forEach(p => usedIds.add(p.id!));
+
+        maisVendidos = pickAi(curadoria.maisVendidos);
+        maisVendidos.forEach(p => usedIds.add(p.id!));
+
+        emAlta = pickAi(curadoria.emAlta);
+        emAlta.forEach(p => usedIds.add(p.id!));
+
+        recomendados = getRecomendados(actualVisibleProducts, usedIds);
+      } else {
+        lancamentos = getLancamentos(actualVisibleProducts, usedIds);
+        destaques = getDestaques(actualVisibleProducts, usedIds);
+        maisVendidos = getMaisVendidos(actualVisibleProducts, usedIds);
+        emAlta = getEmAlta(actualVisibleProducts, usedIds);
+        recomendados = getRecomendados(actualVisibleProducts, usedIds);
+      }
+
+      [lancamentos, destaques, maisVendidos, emAlta, recomendados].forEach(sec => {
+        if (sec.length < 8) sec.push(...fillFallback(actualVisibleProducts, usedIds, 8 - sec.length));
+      });
+
+      const processedSections = { lancamentos, destaques, maisVendidos, emAlta, recomendados, ofertas };
+      setSections(processedSections);
+
+      // Create featuredCategorySections
       const isProductInCategory = (product: Product, categoryId: string, listCats: Category[]): boolean => {
         if (product.categoryId === categoryId) return true;
         if (product.categoryIds && Array.isArray(product.categoryIds) && product.categoryIds.includes(categoryId)) {
@@ -254,8 +412,9 @@ export function HomePage() {
           if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
           return a.name.localeCompare(b.name);
         });
+
       const featuredSecs = categoriesWithHomeSec.map(cat => {
-        const productsOfThisCat = visibleProducts
+        const productsOfThisCat = actualVisibleProducts
           .filter(p => isProductInCategory(p, cat.id, allCats))
           .sort((a, b) => getHomeScore(b) - getHomeScore(a));
         return {
@@ -266,17 +425,18 @@ export function HomePage() {
 
       setFeaturedCategorySections(featuredSecs);
 
-      // Fetch dynamic homepage structures from Firestore
-      try {
-        const visualData = await visualHomeService.getFullHomeStructure();
-        setVisualStructure(visualData);
-      } catch (err) {
-        console.error('Error loading visual home structure:', err);
-      }
+      // Cache all processed homepage components in MEMORY_CACHE
+      cacheService.set('home_deferred_data', {
+        aiFrase: curadoria?.fraseImpacto || "",
+        visibleProducts: actualVisibleProducts,
+        sections: processedSections,
+        categories: sortedCategoriesWithImages,
+        featuredCategorySections: featuredSecs,
+        visualStructure: visualData
+      });
 
-      // Wait for everything to be set before releasing the global splash
       setHomeReady(true);
-    } catch(e) {
+    } catch (e) {
       console.error(e);
       setHomeReady(true);
     } finally {
@@ -489,11 +649,12 @@ export function HomePage() {
                     {/* Circular Image Container - Smaller */}
                     <div className="relative w-20 h-20 md:w-28 md:h-28 rounded-full overflow-hidden bg-zinc-900 transition-all duration-500 shadow-2xl mb-3 group-hover:shadow-red-900/20 group-hover:scale-105 border border-zinc-900">
                       {cat.image?.url ? (
-                        <img 
-                          src={cat.image.url || undefined} 
+                        <SafeOptimizedImage 
+                          src={cat.image.url} 
                           alt={cat.name} 
+                          width={140}
+                          quality={60}
                           className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110" 
-                          referrerPolicy="no-referrer" 
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-xl md:text-2xl font-black italic text-zinc-800 bg-zinc-900 uppercase">
@@ -533,11 +694,12 @@ export function HomePage() {
                   to={banner.linkUrl || '#'} 
                   className="group relative flex-none w-[280px] md:w-[400px] aspect-square rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 transition-all duration-500 hover:scale-[1.02] hover:border-red-600/30"
                 >
-                  <img 
+                  <SafeOptimizedImage 
                     src={banner.imageUrl} 
                     alt={banner.name} 
+                    width={500}
+                    quality={60}
                     className="w-full h-full object-contain transition-transform duration-700 ease-out group-hover:scale-110" 
-                    referrerPolicy="no-referrer"
                   />
                   
                   {/* Glassmorphism Title Box */}

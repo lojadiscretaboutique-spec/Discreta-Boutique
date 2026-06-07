@@ -10,6 +10,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { cacheService } from './cacheService';
 
 export interface VisualHomeSettings {
   id: string;
@@ -150,6 +151,9 @@ export const visualHomeService = {
 
   // Get full merged state of all homepage sections
   async getFullHomeStructure() {
+    const cached = cacheService.get('full_home_structure');
+    if (cached) return cached;
+
     await this.seedIfNeeded();
 
     const [settingsSnap, layoutsSnap, schedulesSnap, customSnap, orderSnap] = await Promise.all([
@@ -193,13 +197,15 @@ export const visualHomeService = {
     // Remove obsolete IDs from order list (that aren't standard or custom)
     order = order.filter(id => allKnownIds.includes(id));
 
-    return {
+    const result = {
       settings: settingsMap,
       layouts: layoutsMap,
       schedules: schedulesMap,
       customSections,
       order
     };
+    cacheService.set('full_home_structure', result);
+    return result;
   },
 
   // Save the full configuration in a transaction/batch
@@ -216,11 +222,13 @@ export const visualHomeService = {
     batch.set(doc(db, 'home_section_schedules', id), { id, ...schedule }, { merge: true });
 
     await batch.commit();
+    await cacheService.notifyChange();
   },
 
   // Update order list
   async saveSectionOrder(order: string[]) {
     await setDoc(doc(db, 'home_section_order', 'main'), { order });
+    await cacheService.notifyChange();
   },
 
   // Add custom section
@@ -280,6 +288,7 @@ export const visualHomeService = {
     batch.set(orderRef, { order: [...existingOrder, customId] });
 
     await batch.commit();
+    await cacheService.notifyChange();
     return customId;
   },
 
@@ -301,6 +310,7 @@ export const visualHomeService = {
     }
 
     await batch.commit();
+    await cacheService.notifyChange();
   },
 
   // Duplicate custom or standard section as a new custom section
@@ -370,6 +380,7 @@ export const visualHomeService = {
     
     batch.set(orderRef, { order: newOrder });
     await batch.commit();
+    await cacheService.notifyChange();
     return customId;
   }
 };

@@ -14,6 +14,7 @@ import { useCartStore } from '../../store/cartStore';
 import { catalogSectionsService, SECTION_METADATA, CatalogSection } from '../../services/catalogSectionsService';
 import { usePromotion } from '../../contexts/PromotionContext';
 import { visualHomeService, VisualHomeSettings } from '../../services/visualHomeService';
+import { cacheService } from '../../services/cacheService';
 import { Combo } from '../../services/comboService';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -223,30 +224,34 @@ export function CatalogPage() {
         const now = Date.now();
         const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 
-        let catsData: Category[] = [];
+        let catsData: Category[] = cacheService.get('catalog_categories') || [];
         const cachedCats = sessionStorage.getItem(`catalog_cats_${CACHE_VERSION}`);
         const catTime = sessionStorage.getItem(`catalog_cats_time_${CACHE_VERSION}`);
         
-        if (cachedCats && catTime && now - parseInt(catTime) < CACHE_TTL) {
-          catsData = JSON.parse(cachedCats);
-        } else {
-          const cSnap = await getDocs(query(collection(db, 'categories')));
-          catsData = cSnap.docs.map(d => ({id: d.id, ...d.data()} as Category));
-          try {
-            // Save minimized version to avoid quota issues
-            const minimizedCats = catsData.map(c => ({
-              id: c.id,
-              name: c.name,
-              slug: c.slug,
-              parentId: c.parentId,
-              level: c.level,
-              accessCount: c.accessCount || 0,
-              sortOrder: c.sortOrder || 0
-            }));
-            sessionStorage.setItem(`catalog_cats_${CACHE_VERSION}`, JSON.stringify(minimizedCats));
-            sessionStorage.setItem(`catalog_cats_time_${CACHE_VERSION}`, now.toString());
-          } catch (e) {
-            // Silently fail if quota exceeded
+        if (catsData.length === 0) {
+          if (cachedCats && catTime && now - parseInt(catTime) < CACHE_TTL) {
+            catsData = JSON.parse(cachedCats);
+            cacheService.set('catalog_categories', catsData);
+          } else {
+            const cSnap = await getDocs(query(collection(db, 'categories')));
+            catsData = cSnap.docs.map(d => ({id: d.id, ...d.data()} as Category));
+            try {
+              // Save minimized version to avoid quota issues
+              const minimizedCats = catsData.map(c => ({
+                id: c.id,
+                name: c.name,
+                slug: c.slug,
+                parentId: c.parentId,
+                level: c.level,
+                accessCount: c.accessCount || 0,
+                sortOrder: c.sortOrder || 0
+              }));
+              cacheService.set('catalog_categories', catsData);
+              sessionStorage.setItem(`catalog_cats_${CACHE_VERSION}`, JSON.stringify(minimizedCats));
+              sessionStorage.setItem(`catalog_cats_time_${CACHE_VERSION}`, now.toString());
+            } catch (e) {
+              // Silently fail if quota exceeded
+            }
           }
         }
         
@@ -259,15 +264,18 @@ export function CatalogPage() {
         });
         setCategories(initialSortedCats);
         
-        let prods: Product[] = [];
+        let prods: Product[] = cacheService.get('catalog_products') || [];
         const cachedProducts = sessionStorage.getItem(`catalog_products_${CACHE_VERSION}`);
         const prodTime = sessionStorage.getItem(`catalog_products_time_${CACHE_VERSION}`);
 
-        if (cachedProducts && prodTime && now - parseInt(prodTime) < CACHE_TTL) {
-          try {
-            prods = JSON.parse(cachedProducts);
-          } catch (e) {
-            console.warn('Failed to parse cached products', e);
+        if (prods.length === 0) {
+          if (cachedProducts && prodTime && now - parseInt(prodTime) < CACHE_TTL) {
+            try {
+              prods = JSON.parse(cachedProducts);
+              cacheService.set('catalog_products', prods);
+            } catch (e) {
+              console.warn('Failed to parse cached products', e);
+            }
           }
         }
 
@@ -299,6 +307,7 @@ export function CatalogPage() {
           });
 
           prods = [...regularProds, ...combosAsProducts];
+          cacheService.set('catalog_products', prods);
           
           try {
             // Minimize product data for session storage more aggressively

@@ -142,6 +142,7 @@ export const cacheService = {
    */
   async notifyChange() {
     try {
+      this.clearAll();
       await setDoc(doc(db, 'settings', 'system_status'), {
         lastUpdate: serverTimestamp()
       }, { merge: true });
