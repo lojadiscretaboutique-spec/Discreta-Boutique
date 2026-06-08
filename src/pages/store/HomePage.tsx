@@ -10,6 +10,7 @@ import { Category } from '../../services/categoryService';
 import { motion, AnimatePresence } from 'motion/react';
 import { HeroBanner } from '../../components/ui/HeroBanner';
 import { ImperdiveisCarousel } from '../../components/home/ImperdiveisCarousel';
+import { LimitedPromoSection } from '../../components/home/LimitedPromoSection';
 import { useUIStore } from '../../store/uiStore';
 import { ProductItemCard, SkeletonCard } from '../../components/ui/ProductItemCard';
 import { LazyLoad } from '../../components/ui/LazyLoad';
@@ -181,7 +182,7 @@ export function HomePage() {
       if (visualData && visualData.settings) {
         Object.values(visualData.settings).forEach((s: any) => {
           if (s.active) {
-            if (s.source === 'custom_products' && s.sourceDetails && s.sourceDetails.length > 0) {
+            if ((s.source === 'custom_products' || s.source === 'limited_promo') && s.sourceDetails && s.sourceDetails.length > 0) {
               customProductIdsToFetch.push(...s.sourceDetails);
             } else if (s.source === 'categories' && s.sourceDetails && s.sourceDetails.length > 0) {
               categoryIdsToFetch.push(...s.sourceDetails);
@@ -470,6 +471,27 @@ export function HomePage() {
     
     // 1. Resolve product source
     switch (settings.source) {
+      case 'limited_promo':
+        if (settings.sourceDetails && settings.sourceDetails.length > 0) {
+          result = settings.sourceDetails
+            .map((prodId: string) => {
+              const originalProd = visibleProducts.find(p => p.id === prodId);
+              if (!originalProd) return null;
+              const customizedPromoPrice = settings.promoPrices?.[prodId];
+              if (customizedPromoPrice !== undefined && Number(customizedPromoPrice) > 0) {
+                return {
+                  ...originalProd,
+                  promoPrice: parseFloat(customizedPromoPrice as string),
+                  onSale: true
+                };
+              }
+              return originalProd;
+            })
+            .filter((p: any) => !!p) as Product[];
+        } else {
+          result = [];
+        }
+        break;
       case 'promo':
         result = visibleProducts.filter(p => !!p.onSale || (p.promoPrice && p.promoPrice < p.price));
         break;
@@ -760,6 +782,24 @@ export function HomePage() {
 
                 const sectionProducts = getProductsForSection(sectionId, sectionSettings, sectionLayout);
                 if (!sectionProducts || sectionProducts.length === 0) return null;
+
+                if (sectionSettings.source === 'limited_promo') {
+                  return (
+                    <LazyLoad key={sectionId} rootMargin="300px">
+                      <LimitedPromoSection 
+                        title={sectionSettings.title}
+                        subtitle={sectionSettings.subtitle}
+                        emoji={sectionSettings.emoji}
+                        products={sectionProducts}
+                        endDate={sectionSchedule?.endDate}
+                        endTime={sectionSchedule?.endTime}
+                        themeColor={sectionSettings.themeColor}
+                        themeBg={sectionSettings.themeBg}
+                        layout={sectionLayout}
+                      />
+                    </LazyLoad>
+                  );
+                }
 
                 if (sectionId === 'ofertas' && (!sectionLayout || sectionLayout.style === 'standard')) {
                   return (

@@ -335,8 +335,22 @@ export function AdminVisualHome() {
       list = list.filter(p => p.onSale || p.promoPrice);
     } else if (activeSecSettings.source === 'categories' && activeSecSettings.sourceDetails?.length) {
       // Simulate categories filtering
-    } else if (activeSecSettings.source === 'custom_products' && activeSecSettings.sourceDetails?.length) {
-      list = activeSecSettings.sourceDetails.map(id => productsList.find(p => p.id === id)).filter(p => !!p) as ProductMock[];
+    } else if ((activeSecSettings.source === 'custom_products' || activeSecSettings.source === 'limited_promo') && activeSecSettings.sourceDetails?.length) {
+      list = activeSecSettings.sourceDetails.map(id => {
+        const p = productsList.find(prod => prod.id === id);
+        if (!p) return null;
+        if (activeSecSettings.source === 'limited_promo') {
+          const promoPriceOverride = activeSecSettings.promoPrices?.[id];
+          if (promoPriceOverride !== undefined && Number(promoPriceOverride) > 0) {
+            return {
+              ...p,
+              promoPrice: Number(promoPriceOverride),
+              onSale: true
+            };
+          }
+        }
+        return p;
+      }).filter(p => !!p) as ProductMock[];
     }
 
     // Limit visible quantity in preview
@@ -360,10 +374,17 @@ export function AdminVisualHome() {
     }
 
     // No products alert
-    if (activeSecSettings.source === 'custom_products' && (!activeSecSettings.sourceDetails || activeSecSettings.sourceDetails.length === 0)) {
+    if ((activeSecSettings.source === 'custom_products' || activeSecSettings.source === 'limited_promo') && (!activeSecSettings.sourceDetails || activeSecSettings.sourceDetails.length === 0)) {
       alerts.push({
         type: 'error',
         message: 'Nenhum produto está vinculado a esta seção específica. Selecione produtos abaixo para exibi-la.',
+      });
+    }
+
+    if (activeSecSettings.source === 'limited_promo' && !activeSecSchedule?.hasSchedule) {
+      alerts.push({
+        type: 'warning',
+        message: 'Esta é uma promoção por tempo limitado, mas nenhum encerramento foi agendado. Ative o Agendamento de Exibição de Campanha e defina uma data e hora para que o cronômetro do site seja exibido e funcione perfeitamente.',
       });
     }
 
@@ -726,6 +747,7 @@ export function AdminVisualHome() {
                   >
                     <option value="auto">Regra Automática Atual</option>
                     <option value="custom_products">Produtos Específicos (Manual)</option>
+                    <option value="limited_promo">🔥 Promoção por Tempo Limitado (Com Timer)</option>
                     <option value="categories">Categorias Específicas</option>
                     <option value="promo">Produtos em Promoção</option>
                     <option value="best_seller">Produtos Mais Vendidos</option>
@@ -760,7 +782,7 @@ export function AdminVisualHome() {
                   </div>
                 )}
 
-                {activeSecSettings.source === 'custom_products' && (() => {
+                {(activeSecSettings.source === 'custom_products' || activeSecSettings.source === 'limited_promo') && (() => {
                   const getCategoryName = (catId?: string) => {
                     if (!catId) return '';
                     return categories.find(c => c.id === catId)?.name || '';
@@ -941,6 +963,30 @@ export function AdminVisualHome() {
                                   )}
                                   <p className="text-xs text-zinc-300 font-bold truncate">{p.name}</p>
                                 </div>
+
+                                {activeSecSettings.source === 'limited_promo' && (
+                                  <div className="flex items-center gap-1.5 shrink-0 bg-zinc-900 border border-zinc-800/80 px-2 py-1 rounded-xl ml-auto mr-1.5 select-none">
+                                    <span className="text-[7px] text-red-400 font-black uppercase shrink-0">Promo:</span>
+                                    <input 
+                                      type="number"
+                                      step="0.01"
+                                      placeholder={`${p.price}`}
+                                      value={activeSecSettings.promoPrices?.[p.id] !== undefined ? activeSecSettings.promoPrices[p.id] : ''}
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                      onChange={(e) => {
+                                        const val = e.target.value === '' ? '' : parseFloat(e.target.value);
+                                        const map = { ...(activeSecSettings.promoPrices || {}) };
+                                        if (val === '') {
+                                          delete map[p.id];
+                                        } else {
+                                          map[p.id] = isNaN(val as number) ? 0 : (val as number);
+                                        }
+                                        updateSettingsField('promoPrices', map);
+                                      }}
+                                      className="w-14 bg-zinc-950 border border-zinc-850 text-white rounded px-1.5 py-0.5 text-[9px] font-bold text-center focus:border-red-600 outline-none"
+                                    />
+                                  </div>
+                                )}
 
                                 <div className="flex items-center gap-1 shrink-0">
                                   {/* Reorder Arrows */}
@@ -1406,6 +1452,22 @@ export function AdminVisualHome() {
                       <p className="text-[9px] text-zinc-400 mt-0.5">{activeSecSettings.subtitle}</p>
                     )}
                   </div>
+
+                  {/* Simulated Countdown for Limited Promo */}
+                  {activeSecSettings.source === 'limited_promo' && (
+                    <div className="mb-4 bg-zinc-950 border border-zinc-900 rounded-xl p-2.5 flex flex-col items-center gap-1.5 shadow-md">
+                      <span className="text-[8px] font-black uppercase text-red-500 tracking-wider">⚡ Oferta Relâmpago Ativa:</span>
+                      <div className="flex gap-1 items-center font-mono text-[9px] font-bold text-white">
+                        <span className="bg-red-600 px-1.5 py-0.5 rounded text-center min-w-[14px]">01</span>
+                        <span className="text-zinc-700 font-black">:</span>
+                        <span className="bg-zinc-900 border border-zinc-850 px-1.5 py-0.5 rounded text-center text-red-500 min-w-[14px]">14</span>
+                        <span className="text-zinc-700 font-black">:</span>
+                        <span className="bg-zinc-900 border border-zinc-850 px-1.5 py-0.5 rounded text-center text-red-500 min-w-[14px]">45</span>
+                        <span className="text-zinc-700 font-black">:</span>
+                        <span className="bg-zinc-900 border border-zinc-850 px-1.5 py-0.5 rounded text-center text-red-500 min-w-[14px]">22</span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Simulated Carousel Grid */}
                   {activeSecLayout?.orientation === 'horizontal' && previewDevice === 'desktop' ? (

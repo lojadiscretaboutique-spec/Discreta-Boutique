@@ -187,7 +187,7 @@ export function StoreLayout() {
           {/* Logo Text Only - Absolute Centered */}
           <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center">
             <span 
-              className="brand-logo-text text-2xl font-black tracking-tighter uppercase italic transition-colors duration-500 animate-pulse"
+              className="brand-logo-text text-2xl font-black tracking-tighter uppercase italic transition-colors duration-500"
               style={{ color: currentTheme.primaryColor }}
             >
               DISCRETA

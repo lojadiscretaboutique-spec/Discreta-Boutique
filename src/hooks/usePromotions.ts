@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { promotionService, Promotion } from '../services/promotionService';
+import { visualHomeService } from '../services/visualHomeService';
 
 export function usePromotions() {
   const [activePromotions, setActivePromotions] = useState<Promotion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [limitedPromoPrices, setLimitedPromoPrices] = useState<Record<string, number>>({});
 
   useEffect(() => {
     async function loadPromotions() {
@@ -31,6 +33,48 @@ export function usePromotions() {
         });
 
         setActivePromotions(filtered);
+
+        // Fetch visual schedule settings to resolve active 'limited_promo' prices
+        try {
+          const visualData = await visualHomeService.getFullHomeStructure();
+          const pricesMap: Record<string, number> = {};
+          if (visualData && visualData.settings) {
+            Object.values(visualData.settings).forEach((s: any) => {
+              if (s.active && s.source === 'limited_promo') {
+                const sched = visualData.schedules?.[s.id];
+                let isSchedActive = true;
+                if (sched?.hasSchedule) {
+                  const currentDate = new Date();
+                  if (sched.startDate) {
+                    const startStr = `${sched.startDate}T${sched.startTime || '00:00'}:00`;
+                    if (currentDate < new Date(startStr)) {
+                      isSchedActive = false;
+                    }
+                  }
+                  if (sched.endDate) {
+                    const endStr = `${sched.endDate}T${sched.endTime || '23:59'}:59`;
+                    if (currentDate > new Date(endStr)) {
+                      isSchedActive = false;
+                    }
+                  }
+                }
+                if (isSchedActive && s.promoPrices) {
+                  Object.entries(s.promoPrices).forEach(([prodId, pVal]) => {
+                    const numVal = Number(pVal);
+                    if (numVal > 0) {
+                      if (!pricesMap[prodId] || numVal < pricesMap[prodId]) {
+                        pricesMap[prodId] = numVal;
+                      }
+                    }
+                  });
+                }
+              }
+            });
+          }
+          setLimitedPromoPrices(pricesMap);
+        } catch (vErr) {
+          console.warn("Could not load limited_promo structure prices:", vErr);
+        }
       } catch (e) {
         console.error("Error loading promotions:", e);
       } finally {
@@ -42,12 +86,16 @@ export function usePromotions() {
   }, []);
 
   const calculateProductPrice = (product: { id: string; categoryId: string; price: number; promoPrice?: number }) => {
-    // 1. Get table price and catalog discount
     const tablePrice = product.price;
-    const catalogDiscount = (product.promoPrice && product.promoPrice < product.price) ? (product.price - product.promoPrice) : 0;
+
+    // Check if there is an active custom limited promo price for this product ID
+    const customPrice = limitedPromoPrices[product.id];
+    const basePromoPrice = (customPrice !== undefined && customPrice > 0) ? customPrice : product.promoPrice;
+
+    const catalogDiscount = (basePromoPrice && basePromoPrice < product.price) ? (product.price - basePromoPrice) : 0;
     
     let bestDiscount = catalogDiscount;
-    let finalPrice = (product.promoPrice && product.promoPrice < product.price) ? product.promoPrice : product.price;
+    let finalPrice = (basePromoPrice && basePromoPrice < product.price) ? basePromoPrice : product.price;
     let appliedPromo: Promotion | null = null;
     let isFreeShipping = false;
 

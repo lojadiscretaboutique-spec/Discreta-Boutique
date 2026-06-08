@@ -510,6 +510,25 @@ export function CatalogPage() {
               sectionProds = products.filter(p => p.brand && settings.sourceDetails.includes(p.brand));
             }
             break;
+          case 'limited_promo':
+            if (settings.sourceDetails && settings.sourceDetails.length > 0) {
+              sectionProds = settings.sourceDetails
+                .map((prodId: string) => {
+                  const originalProd = products.find(p => p.id === prodId);
+                  if (!originalProd) return null;
+                  const customizedPromoPrice = settings.promoPrices?.[prodId];
+                  if (customizedPromoPrice !== undefined && Number(customizedPromoPrice) > 0) {
+                    return {
+                      ...originalProd,
+                      promoPrice: parseFloat(customizedPromoPrice as string),
+                      onSale: true
+                    };
+                  }
+                  return originalProd;
+                })
+                .filter(Boolean) as Product[];
+            }
+            break;
           case 'custom_products':
             if (settings.sourceDetails && settings.sourceDetails.length > 0) {
               sectionProds = settings.sourceDetails

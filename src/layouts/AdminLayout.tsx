@@ -17,21 +17,21 @@ export function AdminLayout() {
 
   const menu = [
     { name: 'Dashboard', path: '/admin', icon: LayoutDashboard, permission: 'dashboard' },
-    { name: 'Insights IA', path: '/admin/ia-insights', icon: Brain, permission: 'dashboard' }, // Added here
-    { name: 'Analytics', path: '/admin/analytics', icon: BarChart2, permission: 'dashboard', submenu: [
-        { name: 'Visitantes', path: '/admin/analytics/visitors', permission: 'dashboard' }
-    ]},
     { name: 'PDV / Vender', path: '/admin/pdv', icon: ShoppingCart, permission: 'orders' },
-    { name: 'Pedidos', path: '/admin/pedidos', icon: ShoppingCart, permission: 'orders' },
-    { name: 'Caixa', path: '/admin/caixa', icon: Banknote, permission: 'caixa' },
-    { name: 'Categorias', path: '/admin/categorias', icon: Layers, permission: 'categories' },
+    { name: 'Vendas', path: '/admin/vendas', icon: ShoppingCart, permission: 'orders', submenu: [
+        { name: 'Pedidos', path: '/admin/pedidos', permission: 'orders' },
+        { name: 'Caixa', path: '/admin/caixa', permission: 'caixa' },
+    ]},
     { name: 'Produtos', path: '/admin/produtos', icon: Package, permission: 'produtos', submenu: [
         { name: 'Lista de Produtos', path: '/admin/produtos', permission: 'produtos' },
         { name: 'Combos de Produtos', path: '/admin/combos', permission: 'produtos' },
+        { name: 'Categorias', path: '/admin/categorias', permission: 'categories' },
     ]},
-    { name: 'Etiquetas', path: '/admin/etiquetas', icon: Tag, permission: 'produtos' },
-    { name: 'Estoque', path: '/admin/mov_estoque', icon: ClipboardList, permission: 'stock' },
-    { name: 'Compras', path: '/admin/compras', icon: Truck, permission: 'compras' },
+    { name: 'Estoque', path: '/admin/estoque', icon: ClipboardList, permission: 'stock', submenu: [
+        { name: 'Movimentação de Estoque', path: '/admin/mov_estoque', permission: 'stock' },
+        { name: 'Etiquetas', path: '/admin/etiquetas', permission: 'produtos' },
+        { name: 'Compras', path: '/admin/compras', permission: 'compras' },
+    ]},
     { name: 'Clientes', path: '/admin/clientes', icon: Users, permission: 'clientes' },
     { name: 'Financeiro', path: '/admin/financeiro', icon: DollarSign, permission: 'financeiro', submenu: [
         { name: 'Lançamentos', path: '/admin/financeiro/lancamentos', permission: 'financeiro' },
@@ -42,10 +42,10 @@ export function AdminLayout() {
         { name: 'Integração', path: '/admin/financeiro/integracao', permission: 'financeiro' },
         { name: 'Formas de Pagamento', path: '/admin/financeiro/formas-pagamento', permission: 'financeiro' }
     ]},
-    { name: 'Áreas de Entrega', path: '/admin/areas-entrega', icon: MapPin, permission: 'areasEntrega' },
-    { name: 'Horários da Loja', path: '/admin/horarios', icon: Clock, permission: 'settings' },
     { name: 'Marketing', path: '/admin/marketing', icon: Megaphone, permission: 'banners', submenu: [
         { name: 'Hub Estratégico Pro ⭐️', path: '/admin/marketing', permission: 'banners' },
+        { name: 'Insights IA 🧠', path: '/admin/ia-insights', permission: 'dashboard' },
+        { name: 'Visitantes', path: '/admin/analytics/visitors', permission: 'dashboard' },
         { name: 'Live Shop 🎥', path: '/admin/marketing/live-shop', permission: 'banners' },
         { name: 'Visual Home 🎨', path: '/admin/marketing/visual-home', permission: 'banners' },
         { name: 'Banners', path: '/admin/marketing/banners', permission: 'banners' },
@@ -60,6 +60,8 @@ export function AdminLayout() {
         { name: 'Dados da Loja', path: '/admin/config', permission: 'settings' },
         { name: 'Gerenciar Temas 🎨', path: '/admin/config/theme-manager', permission: 'settings' },
         { name: 'Tipografia da Loja 🔤', path: '/admin/config/typography', permission: 'settings' },
+        { name: 'Áreas de Entrega', path: '/admin/areas-entrega', permission: 'areasEntrega' },
+        { name: 'Horários da Loja', path: '/admin/horarios', permission: 'settings' },
     ]},
     { name: 'Contas / Equipe', path: '/admin/usuarios', icon: Shield, permission: 'users', submenu: [
         { name: 'Usuários', path: '/admin/usuarios', permission: 'users' },
@@ -75,6 +77,8 @@ export function AdminLayout() {
   const [configSubMenuOpen, setConfigSubMenuOpen] = useState(false);
   const [productSubMenuOpen, setProductSubMenuOpen] = useState(false);
   const [marketingSubMenuOpen, setMarketingSubMenuOpen] = useState(false);
+  const [stockSubMenuOpen, setStockSubMenuOpen] = useState(false);
+  const [salesSubMenuOpen, setSalesSubMenuOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false); // Unified state for all screen sizes
   
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -167,6 +171,17 @@ export function AdminLayout() {
              }
           }
           navigate('/admin');
+        }
+
+        // Auto-expand active submenus
+        if (matchedItem.submenu) {
+          if (matchedItem.name === 'Contas / Equipe') setUsersSubMenuOpen(true);
+          if (matchedItem.name === 'Financeiro') setFinanceSubMenuOpen(true);
+          if (matchedItem.name === 'Configurações') setConfigSubMenuOpen(true);
+          if (matchedItem.name === 'Produtos') setProductSubMenuOpen(true);
+          if (matchedItem.name === 'Marketing') setMarketingSubMenuOpen(true);
+          if (matchedItem.name === 'Estoque') setStockSubMenuOpen(true);
+          if (matchedItem.name === 'Vendas') setSalesSubMenuOpen(true);
         }
       }
     }
@@ -301,6 +316,8 @@ export function AdminLayout() {
                     const isConfigSub = item.name === 'Configurações';
                     const isProductSub = item.name === 'Produtos';
                     const isMarketingSub = item.name === 'Marketing';
+                    const isStockSub = item.name === 'Estoque';
+                    const isSalesSub = item.name === 'Vendas';
                     const isAnalyticsSub = item.name === 'Analytics';
                     
                     const isSubActive = isUsersSub 
@@ -308,16 +325,27 @@ export function AdminLayout() {
                         : isFinanceSub 
                             ? location.pathname.startsWith('/admin/financeiro')
                             : isConfigSub
-                                ? location.pathname.startsWith('/admin/config')
+                                ? (location.pathname.startsWith('/admin/config') || location.pathname.startsWith('/admin/areas-entrega') || location.pathname.startsWith('/admin/horarios'))
                                 : isMarketingSub
-                                    ? location.pathname.startsWith('/admin/marketing')
+                                    ? (location.pathname.startsWith('/admin/marketing') || location.pathname.startsWith('/admin/ia-insights') || location.pathname.startsWith('/admin/analytics'))
                                 : isProductSub
-                                    ? (location.pathname === '/admin/produtos' || location.pathname === '/admin/combos')
+                                    ? (location.pathname === '/admin/produtos' || location.pathname === '/admin/combos' || location.pathname === '/admin/categorias')
+                                : isStockSub
+                                    ? (location.pathname.startsWith('/admin/mov_estoque') || location.pathname.startsWith('/admin/etiquetas') || location.pathname.startsWith('/admin/compras'))
+                                : isSalesSub
+                                    ? (location.pathname.startsWith('/admin/pedidos') || location.pathname.startsWith('/admin/caixa'))
                                 : isAnalyticsSub
                                     ? location.pathname.startsWith('/admin/analytics')
                                     : false;
                             
-                    const isOpen = isUsersSub ? usersSubMenuOpen : (isFinanceSub ? financeSubMenuOpen : (isConfigSub ? configSubMenuOpen : (isProductSub ? productSubMenuOpen : (isMarketingSub ? marketingSubMenuOpen : (isAnalyticsSub ? analyticsSubMenuOpen : false)))));
+                    const isOpen = isUsersSub ? usersSubMenuOpen 
+                        : (isFinanceSub ? financeSubMenuOpen 
+                        : (isConfigSub ? configSubMenuOpen 
+                        : (isProductSub ? productSubMenuOpen 
+                        : (isMarketingSub ? marketingSubMenuOpen 
+                        : (isStockSub ? stockSubMenuOpen 
+                        : (isSalesSub ? salesSubMenuOpen 
+                        : (isAnalyticsSub ? analyticsSubMenuOpen : false)))))));
                     
                     const toggleMenu = () => {
                         if (isUsersSub) setUsersSubMenuOpen(!usersSubMenuOpen);
@@ -325,6 +353,8 @@ export function AdminLayout() {
                         if (isConfigSub) setConfigSubMenuOpen(!configSubMenuOpen);
                         if (isProductSub) setProductSubMenuOpen(!productSubMenuOpen);
                         if (isMarketingSub) setMarketingSubMenuOpen(!marketingSubMenuOpen);
+                        if (isStockSub) setStockSubMenuOpen(!stockSubMenuOpen);
+                        if (isSalesSub) setSalesSubMenuOpen(!salesSubMenuOpen);
                         if (isAnalyticsSub) setAnalyticsSubMenuOpen(!analyticsSubMenuOpen);
                     };
 

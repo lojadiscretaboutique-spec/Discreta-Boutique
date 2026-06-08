@@ -81,7 +81,7 @@ export function ProductPage() {
 
   // Adjust currentPrice to use pricing from hook
   const currentPrice = pricing.price;
-  const isPromoActive = !!pricing.promotion || (!!product?.promoPrice && product.promoPrice! < product!.price);
+  const isPromoActive = pricing.price < pricing.originalPrice;
   const originalPrice = pricing.originalPrice;
 
   useEffect(() => {

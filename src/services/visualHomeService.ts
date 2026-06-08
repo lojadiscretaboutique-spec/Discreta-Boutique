@@ -19,7 +19,7 @@ export interface VisualHomeSettings {
   emoji?: string;
   alignment: 'left' | 'center' | 'right';
   active: boolean;
-  source: 'auto' | 'custom_products' | 'categories' | 'brands' | 'promo' | 'best_seller' | 'views' | 'recent' | 'ai_recs' | 'stock' | 'random';
+  source: 'auto' | 'custom_products' | 'categories' | 'brands' | 'promo' | 'best_seller' | 'views' | 'recent' | 'ai_recs' | 'stock' | 'random' | 'limited_promo';
   sourceDetails?: string[];
   orderByField?: 'recent' | 'sales' | 'discount' | 'price_asc' | 'price_desc' | 'random' | 'manual';
   buttonText?: string;
@@ -28,6 +28,7 @@ export interface VisualHomeSettings {
   themeColor?: string;
   themeBg?: string;
   bannerImageUrl?: string;
+  promoPrices?: Record<string, number>;
 }
 
 export interface VisualHomeLayout {
