@@ -20,6 +20,7 @@ import { db } from '../../lib/firebase';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useTypography } from '../../contexts/TypographyContext';
+import { getComboReservedStocks } from '../../utils/comboStockHelper';
 
 function getContrastColor(hexColor: string): string {
   if (!hexColor) return '#ffffff';
@@ -195,6 +196,7 @@ export function CartPage() {
     const problems: typeof outOfStockItems = [];
 
     try {
+      const reservedStocks = await getComboReservedStocks();
       for (const item of items) {
         let availableStock = 9999;
         let controlStock = true;
@@ -256,12 +258,17 @@ export function CartPage() {
               const vSnap = await getDoc(vRef);
               if (vSnap.exists()) {
                 const vData = vSnap.data();
-                availableStock = Number(vData.stock) || 0;
+                const realStock = Number(vData.stock) || 0;
+                const key = `${item.productId}_${item.variantId}`;
+                const reservedQty = reservedStocks.variants[key] || 0;
+                availableStock = Math.max(0, realStock - reservedQty);
               } else {
                 availableStock = 0;
               }
             } else {
-              availableStock = Number(pData.stock) || 0;
+              const realStock = Number(pData.stock) || 0;
+              const reservedQty = reservedStocks.products[item.productId] || 0;
+              availableStock = Math.max(0, realStock - reservedQty);
             }
           } else {
             availableStock = 0;

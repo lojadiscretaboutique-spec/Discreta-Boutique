@@ -17,6 +17,7 @@ import { visualHomeService, VisualHomeSettings } from '../../services/visualHome
 import { cacheService } from '../../services/cacheService';
 import { Combo } from '../../services/comboService';
 import { useTheme } from '../../contexts/ThemeContext';
+import { getComboReservedStocks, adjustProductsWithReservations } from '../../utils/comboStockHelper';
 
 function hexToRgb(hexColor: string) {
   let hex = hexColor.replace('#', '');
@@ -280,12 +281,14 @@ export function CatalogPage() {
         }
 
         if (prods.length === 0) {
-          const [pSnap, cSnap] = await Promise.all([
+          const [pSnap, cSnap, reservedStocks] = await Promise.all([
             getDocs(query(collection(db, 'products'), where('active', '==', true))),
-            getDocs(query(collection(db, 'combos'), where('active', '==', true), where('showInCatalog', '==', true)))
+            getDocs(query(collection(db, 'combos'), where('active', '==', true), where('showInCatalog', '==', true))),
+            getComboReservedStocks()
           ]);
 
-          const regularProds = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+          const rawRegularProds = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+          const regularProds = adjustProductsWithReservations(rawRegularProds, reservedStocks);
           const combosAsProducts = cSnap.docs.map(d => {
             const combo = d.data() as Combo;
             return {

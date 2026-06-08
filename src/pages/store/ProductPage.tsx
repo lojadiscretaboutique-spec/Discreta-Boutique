@@ -11,6 +11,7 @@ import { motion } from 'motion/react';
 import { usePromotion } from '../../contexts/PromotionContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAutoTextColor } from '../../utils/themeUtils';
+import { getComboReservedStocks, adjustProductAndVariantsWithReservations } from '../../utils/comboStockHelper';
 
 // Contrast color calculation helper
 function getContrastColor(hexColor: string): string {
@@ -147,12 +148,22 @@ export function ProductPage() {
           if (!(productData as any).isCombo) {
             productService.trackInteraction(productData.id!, 'view', searchId);
             
-            const vSnap = await getDocs(query(collection(db, `products/${productData.id}/variants`)));
-            const vData = vSnap.docs.map(d => ({id: d.id, ...d.data()})) as ProductVariant[];
-            setVariants(vData);
-            if (vData.length > 0) {
-              const firstInStock = vData.find(v => v.stock > 0);
-              setSelectedVariant(firstInStock || vData[0]);
+            const [vSnap, reservedStocks] = await Promise.all([
+              getDocs(query(collection(db, `products/${productData.id}/variants`))),
+              getComboReservedStocks()
+            ]);
+            const rawVData = vSnap.docs.map(d => ({id: d.id, ...d.data()})) as ProductVariant[];
+            const { product: adjustedProduct, variants: adjustedVariants } = adjustProductAndVariantsWithReservations(
+              productData,
+              rawVData,
+              reservedStocks
+            );
+            
+            productData = adjustedProduct;
+            setVariants(adjustedVariants);
+            if (adjustedVariants.length > 0) {
+              const firstInStock = adjustedVariants.find(v => v.stock > 0);
+              setSelectedVariant(firstInStock || adjustedVariants[0]);
             }
           } else {
             // It's a combo, no variants
