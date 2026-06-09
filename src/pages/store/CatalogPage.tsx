@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useEffect, useState, useRef, useMemo } from 'react';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
@@ -282,7 +282,8 @@ export function CatalogPage() {
 
         if (prods.length === 0) {
           const [pSnap, cSnap, reservedStocks] = await Promise.all([
-            getDocs(query(collection(db, 'products'), where('active', '==', true))),
+            getDocs(query(collection(db, 'products'), where('active', '==', true), limit(300))),
+            // TODO: Paginate combos too if they become massive
             getDocs(query(collection(db, 'combos'), where('active', '==', true), where('showInCatalog', '==', true))),
             getComboReservedStocks()
           ]);
@@ -460,7 +461,7 @@ export function CatalogPage() {
     rankSpecialSections();
   }, [selectedSection, filtered]); 
 
-  useEffect(() => {
+  const filteredProducts = useMemo(() => {
     const getAllChildCategoryIds = (catId: string): string[] => {
       const children = categories.filter(c => c.parentId === catId);
       let ids = [catId];
@@ -477,7 +478,6 @@ export function CatalogPage() {
     };
 
     let result = [...products];
-    const startTime = Date.now();
 
     // 1. Filtro de Seção (Home Context)
     if (selectedSection) {
@@ -682,7 +682,7 @@ export function CatalogPage() {
       }
     }
 
-    // 2. Filtro de Coleção (Atributo manual)
+    // 2. Filtro de Coleção
     if (selectedCollection) {
       const col = selectedCollection.toLowerCase();
       result = result.filter(p => 
@@ -691,7 +691,7 @@ export function CatalogPage() {
       );
     }
 
-    // 3. Filtro de Subcategoria (Texto ou Atributo)
+    // 3. Filtro de Subcategoria
     if (selectedSubcat) {
       const sub = selectedSubcat.toLowerCase();
       result = result.filter(p => 
@@ -700,50 +700,38 @@ export function CatalogPage() {
       );
     }
 
-    // 4. Filtro de Categoria (Hierárquico)
+    // 4. Filtro de Categoria
     if (selectedCat !== 'all') {
       const allCategoryIds = getAllChildCategoryIds(selectedCat);
       result = result.filter(p => p.categoryId && allCategoryIds.includes(p.categoryId));
-      console.log(`[FILTER][CATEGORY] Found ${result.length} products for cat ${selectedCat}`);
     }
 
-    // 5. Filtro de Busca (Profissional Local / Híbrido IA OpenAI)
+    // 5. Filtro de Busca
     if (search.trim()) {
-      // Filtrar primeiro apenas o conjunto de itens que têm correspondência textual direta exata (idêntico ao admin/produtos)
       const exactMatched = result.filter(p => hasDirectTextMatch(p, search, categories));
-
       if (aiSuggestion || queryEmbedding) {
-        // Busca Semântica OpenAI Inteligente Híbrida (filtra e ordena por relevância, categorias, sinônimos, descrições e vetores marcas)
         result = getRankingHybrid(exactMatched, aiSuggestion, queryEmbedding || undefined);
-        console.log(`[CATALOG][SEMANTIC_OPENAI_SEARCH] Ranked ${result.length} matches with semantic vectors, AI synonyms, categories, description, and OpenAI AI learnings`);
       } else {
-        // Fallback para o Ranking Profissional Local enquanto a IA carrega ou se houver erro
         result = getRankingProfissional(exactMatched, search, categories);
-        console.log(`[CATALOG][PROFESSIONAL_SEARCH] Found ${result.length} matches for "${search}"`);
       }
     }
 
-    // 6. Inteligência IA & Ordenação por Notas quando nenhum filtro está ativo
+    // 6. Inteligência IA
     const hasAnyFilter = !!selectedSection || !!selectedCollection || !!selectedSubcat || selectedCat !== 'all' || !!search.trim();
     if (!hasAnyFilter) {
-      // Filtrar produtos que tenham aprendizado/pontuação da IA (score > 0)
       const aiProducts = result.filter(p => (p.score || 0) > 0);
-      
-      // Se houver produtos com pontuação, mantemos somente eles; senão, preservamos todos para não esvaziar o catálogo
-      if (aiProducts.length > 0) {
-        result = aiProducts;
-      }
-      
-      // Ordena pelas notas (scores) aplicadas pela IA a cada produto
+      if (aiProducts.length > 0) result = aiProducts;
       result = [...result].sort((a, b) => (b.score || 0) - (a.score || 0));
-      console.log(`[CATALOG][AI_LEARNING] Catalog organized by AI filters and learning grades. Total: ${result.length}`);
     }
 
-    console.log(`[CATALOG][FILTER_COMPLETE] ${result.length} results | Time: ${Date.now() - startTime}ms`);
-
-    setFiltered(result);
-    setCurrentPage(1);
+    return result;
   }, [search, selectedCat, selectedSection, selectedSubcat, selectedCollection, products, categories, fullHomeStructure, aiSuggestion, queryEmbedding]);
+
+  useEffect(() => {
+    setFiltered(filteredProducts);
+    setCurrentPage(1);
+  }, [filteredProducts]);
+
 
   const getContextTitle = () => {
     if (search) return `Resultados para "${search}"`;

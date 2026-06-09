@@ -7,7 +7,7 @@ import firebaseRulesPlugin from '@firebase/eslint-plugin-security-rules';
 
 export default [
   {
-    ignores: ['dist', '.next']
+    ignores: ['dist', '.next', 'firestore.rules', 'storage.rules']
   },
   {
     files: ['**/*.{ts,tsx}'],

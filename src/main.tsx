@@ -5,6 +5,22 @@ import { FeedbackProvider } from './contexts/FeedbackContext';
 import './index.css';
 import App from './App.tsx';
 
+// Unregister active production service workers in development mode to prevent dev asset interception
+if (import.meta.env.DEV) {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) {
+        registration.unregister().then((success) => {
+          if (success) {
+            console.log('[Discreta Dev] Active service worker unregistered in development mode.');
+            window.location.reload();
+          }
+        });
+      }
+    });
+  }
+}
+
 // -------------------------------------------------------------------------
 // RECURSO DE AUTOPURGA E BYPASS DE CACHE CASO O BUNDLE NO SERVIDOR TENHA MUDADO
 // -------------------------------------------------------------------------
