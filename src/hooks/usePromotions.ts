@@ -1,16 +1,21 @@
 import { useState, useEffect } from 'react';
 import { promotionService, Promotion } from '../services/promotionService';
 import { visualHomeService } from '../services/visualHomeService';
+import { categoryService, Category } from '../services/categoryService';
+import { isProductInCategory } from '../utils/categoryUtils';
+import { Product } from '../services/productService';
 
 export function usePromotions() {
   const [activePromotions, setActivePromotions] = useState<Promotion[]>([]);
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [limitedPromoPrices, setLimitedPromoPrices] = useState<Record<string, number>>({});
 
   useEffect(() => {
     async function loadPromotions() {
       try {
-        const all = await promotionService.getAll();
+        const [all, cats] = await Promise.all([promotionService.getAll(), categoryService.listCategories()]);
+        setAllCategories(cats);
         const now = new Date();
         now.setHours(0, 0, 0, 0);
 
@@ -85,7 +90,7 @@ export function usePromotions() {
     loadPromotions();
   }, []);
 
-  const calculateProductPrice = (product: { id: string; categoryId: string; price: number; promoPrice?: number }) => {
+  const calculateProductPrice = (product: { id: string; categoryId: string; categoryIds?: string[], price: number; promoPrice?: number }) => {
     const tablePrice = product.price;
 
     // Check if there is an active custom limited promo price for this product ID
@@ -106,7 +111,7 @@ export function usePromotions() {
       // Check scope
       let inScope = false;
       if (promo.scope === 'all') inScope = true;
-      if (promo.scope === 'categories' && promo.targetIds?.includes(product.categoryId)) inScope = true;
+      if (promo.scope === 'categories' && promo.targetIds?.some(catId => isProductInCategory(product as any, catId, allCategories))) inScope = true;
       if (promo.scope === 'products' && promo.targetIds?.includes(product.id)) inScope = true;
 
       if (!inScope) continue;

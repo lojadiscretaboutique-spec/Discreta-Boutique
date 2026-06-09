@@ -7,6 +7,8 @@ import {
   writeBatch, 
   updateDoc,
   deleteDoc,
+  query,
+  where,
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -157,12 +159,13 @@ export const visualHomeService = {
 
     await this.seedIfNeeded();
 
-    const [settingsSnap, layoutsSnap, schedulesSnap, customSnap, orderSnap] = await Promise.all([
+    const [settingsSnap, layoutsSnap, schedulesSnap, customSnap, orderSnap, catSnap] = await Promise.all([
       getDocs(collection(db, 'home_section_settings')),
       getDocs(collection(db, 'home_section_layouts')),
       getDocs(collection(db, 'home_section_schedules')),
       getDocs(collection(db, 'home_custom_sections')),
-      getDoc(doc(db, 'home_section_order', 'main'))
+      getDoc(doc(db, 'home_section_order', 'main')),
+      getDocs(query(collection(db, 'categories'), where('showInHome', '==', true)))
     ]);
 
     const settingsMap: Record<string, VisualHomeSettings> = {};
@@ -181,12 +184,49 @@ export const visualHomeService = {
     });
 
     const customSections = customSnap.docs.map(d => ({ id: d.id, ...d.data() } as CustomSection));
+    
+    // Add featured categories as synthetic sections
+    catSnap.docs.forEach(d => {
+      const cat = d.data();
+      const catId = `cat_featured_${d.id}`;
+      if (!settingsMap[catId]) {
+        settingsMap[catId] = {
+          id: catId,
+          title: cat.name,
+          subtitle: '',
+          emoji: '✨',
+          alignment: 'left',
+          active: true,
+          source: 'featured_category',
+          sourceDetails: [d.id],
+          orderByField: 'manual',
+          buttonText: 'Ver Tudo',
+          buttonUrl: `/catalogo?categoria=${cat.slug || d.id}`,
+          showButton: true,
+          themeColor: '#ef4444',
+          themeBg: '#050505'
+        };
+        layoutsMap[catId] = {
+          id: catId,
+          orientation: 'horizontal',
+          colsDesktop: 4,
+          limit: 12,
+          style: 'standard',
+          mobileOrientation: 'horizontal',
+          mobileCols: 2
+        };
+        schedulesMap[catId] = {
+          id: catId,
+          hasSchedule: false
+        };
+      }
+    });
 
     const orderData = orderSnap.data();
     let order: string[] = orderData?.order || [];
 
-    // Make sure all standard and custom sections are present in order
-    const allKnownIds = [...STANDARD_SECTION_IDS, ...customSections.map(c => c.id)];
+    // Make sure all standard, custom sections and featured categories are present in order
+    const allKnownIds = [...STANDARD_SECTION_IDS, ...customSections.map(c => c.id), ...catSnap.docs.map(d => `cat_featured_${d.id}`)];
     
     // Add missing IDs to the bottom of the list
     allKnownIds.forEach(id => {

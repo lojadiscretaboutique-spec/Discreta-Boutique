@@ -17,6 +17,7 @@ import { LazyLoad } from '../../components/ui/LazyLoad';
 import { visualHomeService } from '../../services/visualHomeService';
 import { cacheService } from '../../services/cacheService';
 import { optimizeImageUrl } from '../../components/ui/ResponsiveImage';
+import { isProductInCategory } from '../../utils/categoryUtils';
 
 interface Banner {
   id: string;
@@ -86,9 +87,11 @@ function SafeOptimizedImage({
   );
 }
 
+
+
 export function HomePage() {
-  const [banners, setBanners] = useState<Banner[]>([]);
   const [offerBanners, setOfferBanners] = useState<OfferBanner[]>([]);
+  const [banners, setBanners] = useState<Banner[]>([]);
   const [sections, setSections] = useState<{
     lancamentos: Product[],
     destaques: Product[],
@@ -98,10 +101,8 @@ export function HomePage() {
     ofertas: Product[]
   }>({ lancamentos: [], destaques: [], maisVendidos: [], emAlta: [], recomendados: [], ofertas: [] });
   const [categories, setCategories] = useState<Category[]>([]);
-  const [featuredCategorySections, setFeaturedCategorySections] = useState<{ category: Category; products: Product[] }[]>([]);
   const [currentBanner, setCurrentBanner] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [aiFrase, setAiFrase] = useState("");
   const setHomeReady = useUIStore(s => s.setHomeReady);
 
   const [visibleProducts, setVisibleProducts] = useState<Product[]>([]);
@@ -160,7 +161,6 @@ export function HomePage() {
         setVisibleProducts(cachedDeferred.visibleProducts || []);
         setSections(cachedDeferred.sections || {});
         setCategories(cachedDeferred.categories || []);
-        setFeaturedCategorySections(cachedDeferred.featuredCategorySections || []);
         setVisualStructure(cachedDeferred.visualStructure || null);
         setHomeReady(true);
         setLoading(false);
@@ -201,7 +201,6 @@ export function HomePage() {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           curadoria = docSnap.data();
-          if (curadoria.fraseImpacto) setAiFrase(curadoria.fraseImpacto);
         }
       } catch (e) {
         console.warn('IA Home Curatory fails:', e);
@@ -380,59 +379,11 @@ export function HomePage() {
       const processedSections = { lancamentos, destaques, maisVendidos, emAlta, recomendados, ofertas };
       setSections(processedSections);
 
-      // Create featuredCategorySections
-      const isProductInCategory = (product: Product, categoryId: string, listCats: Category[]): boolean => {
-        if (product.categoryId === categoryId) return true;
-        if (product.categoryIds && Array.isArray(product.categoryIds) && product.categoryIds.includes(categoryId)) {
-          return true;
-        }
-        
-        const checkParent = (catId: string | null | undefined): boolean => {
-          if (!catId) return false;
-          if (catId === categoryId) return true;
-          const cat = listCats.find(c => c.id === catId);
-          if (!cat) return false;
-          if (cat.parentId === categoryId) return true;
-          return checkParent(cat.parentId);
-        };
-
-        if (checkParent(product.categoryId)) return true;
-        if (product.categoryIds && Array.isArray(product.categoryIds)) {
-          if (product.categoryIds.some(cid => checkParent(cid))) return true;
-        }
-
-        return false;
-      };
-
-      const categoriesWithHomeSec = allCats
-        .filter(c => c.showInHome === true)
-        .sort((a, b) => {
-          const scoreB = b.accessCount || 0;
-          const scoreA = a.accessCount || 0;
-          if (scoreB !== scoreA) return scoreB - scoreA;
-          if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
-          return a.name.localeCompare(b.name);
-        });
-
-      const featuredSecs = categoriesWithHomeSec.map(cat => {
-        const productsOfThisCat = actualVisibleProducts
-          .filter(p => isProductInCategory(p, cat.id, allCats))
-          .sort((a, b) => getHomeScore(b) - getHomeScore(a));
-        return {
-          category: cat,
-          products: productsOfThisCat
-        };
-      }).filter(sec => sec.products.length > 0);
-
-      setFeaturedCategorySections(featuredSecs);
-
       // Cache all processed homepage components in MEMORY_CACHE
       cacheService.set('home_deferred_data', {
-        aiFrase: curadoria?.fraseImpacto || "",
         visibleProducts: actualVisibleProducts,
         sections: processedSections,
         categories: sortedCategoriesWithImages,
-        featuredCategorySections: featuredSecs,
         visualStructure: visualData
       });
 
@@ -509,6 +460,14 @@ export function HomePage() {
           result = settings.sourceDetails
             .map((prodId: string) => visibleProducts.find(p => p.id === prodId))
             .filter((p: any) => !!p) as Product[];
+        } else {
+          result = [];
+        }
+        break;
+      case 'featured_category':
+        if (settings.sourceDetails && settings.sourceDetails.length > 0) {
+          const catId = settings.sourceDetails[0];
+          result = visibleProducts.filter(p => isProductInCategory(p, catId, categories));
         } else {
           result = [];
         }
@@ -750,15 +709,6 @@ export function HomePage() {
         ) : (
           <>
             {/* Dynamic Featured Category Sections at the very top (first session on the Home Page below daily offer banners) */}
-            {featuredCategorySections.map(sec => (
-              <ProductCarousel 
-                key={sec.category.id}
-                title={sec.category.name} 
-                products={sec.products} 
-                link={`/catalogo?categoria=${sec.category.slug || sec.category.id}`} 
-              />
-            ))}
-
             {visualStructure && visualStructure.order && visualStructure.order.length > 0 ? (
               visualStructure.order.map((sectionId: string) => {
                 const sectionSettings = visualStructure.settings[sectionId];
