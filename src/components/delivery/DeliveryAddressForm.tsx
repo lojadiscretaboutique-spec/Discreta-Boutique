@@ -27,16 +27,16 @@ export function DeliveryAddressForm({
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="sm:col-span-3">
           <label className="block text-[10px] font-black mb-1 px-1 uppercase tracking-widest" style={{ color: subTextCardColor }}>
-            Rua / Avenida *
+            Rua / Avenida (Bloqueado por GPS) *
           </label>
           <input 
             type="text" 
+            readOnly 
             required 
             value={address.rua} 
-            onChange={e => onChange({ rua: e.target.value })} 
-            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all" 
+            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all opacity-60 cursor-not-allowed select-none" 
             style={{ backgroundColor: bgHex, color: bgText, borderColor: borderHex }}
-            placeholder="Nome da rua" 
+            placeholder="Nome da rua pelo GPS" 
           />
         </div>
         <div>
@@ -59,16 +59,16 @@ export function DeliveryAddressForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-[10px] font-black mb-1 px-1 uppercase tracking-widest text-slate-400" style={{ color: subTextCardColor }}>
-            Bairro *
+            Bairro (Bloqueado por GPS) *
           </label>
           <input 
             type="text" 
+            readOnly 
             required 
             value={address.bairro} 
-            onChange={e => onChange({ bairro: e.target.value })} 
-            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all" 
+            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all opacity-60 cursor-not-allowed select-none" 
             style={{ backgroundColor: bgHex, color: bgText, borderColor: borderHex }}
-            placeholder="Seu bairro" 
+            placeholder="Seu bairro pelo GPS" 
           />
         </div>
         <div>

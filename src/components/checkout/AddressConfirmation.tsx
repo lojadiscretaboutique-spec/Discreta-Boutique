@@ -83,6 +83,25 @@ export default function AddressConfirmation({
 
   const [loadingGeocode, setLoadingGeocode] = useState(false);
   const [geocodeFailed, setGeocodeFailed] = useState(false);
+  const [refreshingGps, setRefreshingGps] = useState(false);
+
+  const refreshGPS = () => {
+    if (!navigator.geolocation) return;
+    setRefreshingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setRefreshingGps(false);
+        userDraggedPinRef.current = true;
+        setLat(position.coords.latitude);
+        setLng(position.coords.longitude);
+      },
+      (err) => {
+        setRefreshingGps(false);
+        console.error("GPS refresh failed:", err);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
 
   // States to control beautiful custom modal dialog for missing fields (especially Ponto de Referência)
   const [showMissingFieldsDialog, setShowMissingFieldsDialog] = useState(false);
@@ -423,9 +442,25 @@ export default function AddressConfirmation({
           
           {/* MAP COLUMN */}
           <div className="w-full md:w-1/2 flex flex-col space-y-4">
-            <h4 className="text-sm font-black uppercase tracking-[3px] flex items-center gap-2" style={{ color: cardText }}>
-              <MapPin size={16} style={{ color: accentColor }} /> Confirmar localização no mapa
-            </h4>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <h4 className="text-sm font-black uppercase tracking-[3px] flex items-center gap-2" style={{ color: cardText }}>
+                <MapPin size={16} style={{ color: accentColor }} /> Confirmar localização no mapa
+              </h4>
+              <button 
+                type="button"
+                onClick={refreshGPS}
+                disabled={refreshingGps}
+                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl border hover:bg-white/5 active:scale-95 transition-all flex items-center gap-1.5"
+                style={{ color: accentColor, borderColor: `${accentColor}30` }}
+              >
+                {refreshingGps ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Navigation size={12} className="rotate-45" />
+                )}
+                {refreshingGps ? 'Buscando GPS...' : 'Atualizar GPS'}
+              </button>
+            </div>
             
             <div className="relative h-[300px] sm:h-[350px] overflow-hidden z-20 -mx-6 sm:-mx-8 md:mx-0 rounded-none md:rounded-2xl border-y md:border-x">
               <Suspense 

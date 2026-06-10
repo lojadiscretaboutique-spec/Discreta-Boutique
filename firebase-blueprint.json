@@ -697,6 +697,26 @@ export default {
     "home_section_order": {
       schema: { type: "object" },
       description: "Order mapping of homepage sections"
+    },
+    "delivery_drivers": {
+      schema: { type: "object" },
+      description: "Registered delivery drivers on the platform"
+    },
+    "delivery_locations": {
+      schema: { type: "object" },
+      description: "Real-time live location points of specific driver and order"
+    },
+    "delivery_tracking": {
+      schema: { type: "object" },
+      description: "Historic tracking trail points of ongoing deliveries"
+    },
+    "delivery_payments": {
+      schema: { type: "object" },
+      description: "Payment collections and change metadata for finalized orders"
+    },
+    "delivery_proofs": {
+      schema: { type: "object" },
+      description: "Signatures and delivery capture files of orders"
     }
   }
 }

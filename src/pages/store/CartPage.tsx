@@ -1781,6 +1781,15 @@ export function CartPage() {
                     <button
                       onClick={() => {
                         setReceiveMethod('entrega');
+                        setGpsCoords(null);
+                        setLatitude(null);
+                        setLongitude(null);
+                        setAccuracy(null);
+                        setRua('');
+                        setAreaName('');
+                        setCep('');
+                        setCityName('');
+                        setStateName('');
                         setCheckoutStep('ENDERECO');
                       }}
                       className="group relative flex flex-col items-center justify-center p-8 sm:p-10 border-2 rounded-[2rem] transition-all duration-500 hover:opacity-90"

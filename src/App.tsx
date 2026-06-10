@@ -23,6 +23,10 @@ const LGPDPage = lazy(() => import('./pages/store/LGPDPage'));
 const AffiliateLandingPage = lazy(() => import('./modules/afiliados/pages/AffiliateLandingPage').then(m => ({ default: m.AffiliateLandingPage })));
 const AdminAffiliates = lazy(() => import('./modules/afiliados/pages/AdminAffiliates').then(m => ({ default: m.AdminAffiliates })));
 
+// Motoboy Pages
+const MotoboyLogin = lazy(() => import('./pages/motoboy/MotoboyLogin').then(m => ({ default: m.MotoboyLogin })));
+const MotoboyDashboard = lazy(() => import('./pages/motoboy/MotoboyDashboard').then(m => ({ default: m.MotoboyDashboard })));
+
 // Admin Pages
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin').then(m => ({ default: m.AdminLogin })));
 const AdminOrders = lazy(() => import('./pages/admin/AdminOrders').then(m => ({ default: m.AdminOrders })));
@@ -122,8 +126,22 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
+    // Dynamic Manifest switching for Motoboy vs Default Store
+    const link: HTMLLinkElement | null = document.querySelector('link[rel="manifest"]');
+    if (link) {
+      if (location.pathname.startsWith('/motoboy')) {
+        link.href = '/motoboy-manifest.json';
+        document.title = 'Discreta Entregas';
+      } else {
+        link.href = '/manifest.json';
+        document.title = 'Discreta Boutique | Sensualidade e Elegância';
+      }
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
     // Only track storefront visitors (exclude analytics inside admin panel)
-    if (location.pathname.startsWith('/admin')) return;
+    if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/motoboy')) return;
 
     const timer = setTimeout(() => {
       const pageTitle = document.title || 'Discreta Boutique';
@@ -207,6 +225,10 @@ function AppContent() {
             <Route path="config/theme-manager" element={<AdminThemeManager />} />
             <Route path="config/typography" element={<AdminTypography />} />
           </Route>
+
+          {/* Motoboy Routes */}
+          <Route path="/motoboy/login" element={<MotoboyLogin />} />
+          <Route path="/motoboy" element={<MotoboyDashboard />} />
         </Routes>
       </Suspense>
     </>

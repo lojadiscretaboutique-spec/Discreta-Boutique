@@ -141,6 +141,14 @@ export function AdminLayout() {
         return;
       }
 
+      // Role Restriction: If only 'motoboy' role, redirect out of admin
+      const roles = (userData as any)?.roles || ((userData as any)?.role ? [(userData as any)?.role] : []);
+      const isOnlyMotoboy = roles.length === 1 && (roles.includes('ROLE_MOTOBOY') || roles.includes('motoboy'));                
+      if (isOnlyMotoboy) {
+          navigate('/motoboy');
+          return;
+      }
+
       const currentPath = location.pathname;
       
       const matchedItem = menu.find(item => {

@@ -61,20 +61,20 @@ export default function DeliveryAddressForm({
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="sm:col-span-3">
           <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
-            Rua / Avenida *
+            Rua / Avenida (Bloqueado por GPS) *
           </label>
           <input 
             type="text" 
+            readOnly
             required 
             value={address.rua} 
-            onChange={e => onChange({ rua: e.target.value })} 
-            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all" 
+            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all opacity-60 cursor-not-allowed select-none" 
             style={{ 
               backgroundColor: bgHex, 
               color: bgText, 
               borderColor: borderHex,
             }}
-            placeholder="Nome da rua" 
+            placeholder="Nome da rua pelo GPS" 
           />
         </div>
         <div>
@@ -101,20 +101,20 @@ export default function DeliveryAddressForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
-            Bairro *
+            Bairro (Bloqueado por GPS) *
           </label>
           <input 
             type="text" 
+            readOnly
             required 
             value={address.bairro} 
-            onChange={e => onChange({ bairro: e.target.value })} 
-            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all" 
+            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all opacity-60 cursor-not-allowed select-none" 
             style={{ 
               backgroundColor: bgHex, 
               color: bgText, 
               borderColor: borderHex,
             }}
-            placeholder="Seu bairro" 
+            placeholder="Seu bairro pelo GPS" 
           />
         </div>
         <div>
@@ -158,15 +158,13 @@ export default function DeliveryAddressForm({
         </div>
         <div>
           <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
-            CEP {isCepEditable ? '*' : '(Bloqueado)'}
+            CEP (Bloqueado)
           </label>
           <input 
             type="text" 
-            readOnly={!isCepEditable}
-            required={isCepEditable} 
+            readOnly
             value={address.cep} 
-            onChange={e => onChange({ cep: e.target.value })} 
-            className={`w-full rounded-xl px-4 py-3 text-sm border focus:ring-1 transition-all font-mono font-bold text-center ${!isCepEditable ? 'opacity-50 cursor-not-allowed select-none' : ''}`} 
+            className="w-full rounded-xl px-4 py-3 text-sm border focus:ring-1 transition-all font-mono font-bold text-center opacity-60 cursor-not-allowed select-none" 
             style={{ 
               backgroundColor: bgHex, 
               color: bgText, 
