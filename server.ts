@@ -92,6 +92,28 @@ async function startServer() {
     }
   });
 
+  // Google Geocoding API Proxy
+  app.post("/api/geocode", async (req, res) => {
+    try {
+      const { lat, lng, address } = req.body;
+      const apiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "Google Maps API Key not configured" });
+      }
+
+      const url = lat && lng 
+        ? `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}&language=pt-BR`
+        : `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}&language=pt-BR`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error("Geocoding API Error:", error);
+      res.status(500).json({ error: "Failed to fetch geocoding data" });
+    }
+  });
+
   // Retry endpoint for BotConversa webhook
   app.post("/api/botconversa/retry", async (req, res) => {
     try {

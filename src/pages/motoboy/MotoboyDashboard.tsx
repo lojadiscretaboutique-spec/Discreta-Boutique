@@ -20,6 +20,7 @@ import { useAuthStore } from '../../store/authStore';
 import { handleFirestoreError, OperationType } from '../../utils/firestoreError';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { useSettings } from '../../contexts/SettingsContext';
+import { pdvFinancialService } from '../../services/pdvFinancialService';
 import { 
   LogOut, 
   MapPin, 
@@ -105,76 +106,56 @@ export function MotoboyDashboard() {
   // Finalize Delivery modal/popup
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
   const [receiverName, setReceiverName] = useState('');
-  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'money' | 'pix' | 'debit' | 'credit'>('pix');
+  const [payments, setPayments] = useState<{method: 'money' | 'pix' | 'debit' | 'credit', amount: number}[]>([]);
+  const [currentPaymentMethod, setCurrentPaymentMethod] = useState<'money' | 'pix' | 'debit' | 'credit'>('pix');
+  const [currentPaymentAmount, setCurrentPaymentAmount] = useState<number>(0);
   
+  // Pre-fill payments from activeOrder
+  useEffect(() => {
+    if (showFinalizeModal && activeOrder?.payments) {
+      setPayments(activeOrder.payments);
+    } else if (!showFinalizeModal) {
+      setPayments([]);
+    }
+  }, [showFinalizeModal, activeOrder]);
+
   // Payment specifics
   const [changeFor, setChangeFor] = useState<number | undefined>(undefined);
   const [pixConfirmed, setPixConfirmed] = useState<boolean>(false);
   const [cardBrand, setCardBrand] = useState('Visa');
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-
   // 1. Verify Authentication & Role
   useEffect(() => {
-    onAuthStateChangedListener();
-  }, []);
+    if (authChecking && !user) return; // Wait until auth state is known
+    
+    // Check if user is motoboy
+    const roleStr = (userData as any)?.role || '';
+    const rolesArr = (userData as any)?.roles || [];
+    const isMotoboy = rolesArr.includes('ROLE_MOTOBOY') || rolesArr.includes('motoboy') || roleStr === 'ROLE_MOTOBOY' || roleStr === 'motoboy' || rolesArr.includes('admin') || roleStr === 'admin';
 
-  const onAuthStateChangedListener = () => {
-    const unsub = auth.onAuthStateChanged(async (currentUser) => {
-      if (!currentUser) {
-        navigate('/motoboy/login');
-        return;
+    if (!user || (!isMotoboy || (userData as any)?.status !== 'ativo')) {
+      auth.signOut();
+      navigate('/motoboy/login');
+      return;
+    }
+    
+    // Initialize driver status only once
+    const dDocRef = doc(db, 'delivery_drivers', user.uid);
+    getDoc(dDocRef).then(dDoc => {
+      if (dDoc.exists()) {
+        setDriverStatus(dDoc.data().status === 'active' ? 'active' : 'inactive');
+      } else {
+        setDoc(dDocRef, {
+          id: user.uid,
+          name: (userData as any)?.name || 'Entregador',
+          phone: (userData as any)?.phone || '',
+          status: 'active',
+          updatedAt: serverTimestamp()
+        }).then(() => setDriverStatus('active'));
       }
-      
-      try {
-        const uDocRef = doc(db, 'users', currentUser.uid);
-        const uDoc = await getDoc(uDocRef);
-        if (!uDoc.exists()) {
-          auth.signOut();
-          navigate('/motoboy/login');
-          return;
-        }
-
-        const uData = uDoc.data();
-        const roleStr = uData.role || '';
-        const rolesArr = uData.roles || [];
-        const isMotoboy = rolesArr.includes('ROLE_MOTOBOY') || rolesArr.includes('motoboy') || roleStr === 'ROLE_MOTOBOY' || roleStr === 'motoboy' || rolesArr.includes('admin') || roleStr === 'admin';
-
-        if (!isMotoboy || uData.status !== 'ativo') {
-          auth.signOut();
-          navigate('/motoboy/login');
-          return;
-        }
-
-        // Initialize driver status
-        const dDocRef = doc(db, 'delivery_drivers', currentUser.uid);
-        const dDoc = await getDoc(dDocRef);
-        if (dDoc.exists()) {
-          setDriverStatus(dDoc.data().status === 'active' ? 'active' : 'inactive');
-        } else {
-          // Auto register driver
-          await setDoc(dDocRef, {
-            id: currentUser.uid,
-            name: uData.name || 'Entregador',
-            phone: uData.phone || '',
-            status: 'active',
-            updatedAt: serverTimestamp()
-          });
-          setDriverStatus('active');
-        }
-
-        setAuthChecking(false);
-      } catch (err) {
-        console.error("Auth verification error:", err);
-        auth.signOut();
-        navigate('/motoboy/login');
-      }
+      setAuthChecking(false);
     });
-
-    return () => unsub();
-  };
+  }, [user, userData, authChecking]);
 
   // 2. Fetch/Stream Orders
   useEffect(() => {
@@ -187,8 +168,9 @@ export function MotoboyDashboard() {
     const unsub = onSnapshot(qO, (snapshot) => {
       const allOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       
-      // Separate/filter orders
-      setOrders(allOrders);
+      // Filter out completed deliveries
+      const filteredOrders = allOrders.filter(o => o.status !== 'ENTREGUE');
+      setOrders(filteredOrders);
 
       // Find any order currently out for delivery assigned to "me"
       const active = allOrders.find(o => o.status === 'SAIU PARA ENTREGA' && o.driverId === user.uid);
@@ -288,6 +270,11 @@ export function MotoboyDashboard() {
               updatedAt: serverTimestamp()
             });
 
+            await updateDoc(doc(db, 'orders', activeOrder.id), {
+              latMotoBoy: lat,
+              lngMotoBoy: lng
+            });
+
             // Log entry into history `delivery_tracking`
             await addDoc(collection(db, 'delivery_tracking'), {
               orderId: activeOrder.id,
@@ -382,14 +369,16 @@ export function MotoboyDashboard() {
     }
 
     // Connect them with a routing polyline
+    const storeLat = -3.7319; // TODO: Fetch from settings
+    const storeLng = -38.5267;
     if (routingLineRef.current) {
       routingLineRef.current.setLatLngs([
-        [driverGPS.lat, driverGPS.lng],
+        [storeLat, storeLng],
         [customerLat, customerLng]
       ]);
     } else {
       routingLineRef.current = L.polyline([
-        [driverGPS.lat, driverGPS.lng],
+        [storeLat, storeLng],
         [customerLat, customerLng]
       ], { color: '#E11D48', weight: 4, dashArray: '5, 8' }).addTo(map);
     }
@@ -418,62 +407,6 @@ export function MotoboyDashboard() {
     window.open(`https://waze.com/ul?ll=${customerLat},${customerLng}&navigate=yes`, '_blank');
   };
 
-  // 7. Signature Canvas sketches
-  const startDrawingFn = (e: any) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.lineWidth = 3.5;
-    ctx.beginPath();
-    
-    const rect = canvas.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    
-    ctx.moveTo(clientX - rect.left, clientY - rect.top);
-    setIsDrawing(true);
-  };
-
-  const drawFn = (e: any) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    
-    ctx.lineTo(clientX - rect.left, clientY - rect.top);
-    ctx.stroke();
-  };
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  };
-
-  const stopDrawingFn = () => {
-    setIsDrawing(false);
-  };
-
-  // Photo capturing simulation via mobile camera upload
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoBase64(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   // 8. Submit order completion
   const handleFinalizeDeliverySubmit = async () => {
@@ -482,37 +415,27 @@ export function MotoboyDashboard() {
       toast("Por favor, preencha o Nome de Quem Recebeu.", "warning");
       return;
     }
+    
+    // Payment Verification
+    const totalPayments = payments.reduce((acc, p) => acc + p.amount, 0);
+    const orderTotal = activeOrder.total || 0;
+    if (totalPayments < orderTotal) {
+      toast(`O valor recebido (R$ ${totalPayments.toFixed(2)}) é menor que o total do pedido (R$ ${orderTotal.toFixed(2)}).`, "warning");
+      return;
+    }
 
     try {
-      const canvas = canvasRef.current;
-      const signatureDataUrl = canvas ? canvas.toDataURL() : null;
-
-      // 1. Save payment details
-      await setDoc(doc(db, 'delivery_payments', activeOrder.id), {
+      // 2. Automate Financials & Stock (PDV-like)
+      await pdvFinancialService.finalizeSaleFinancials({
         orderId: activeOrder.id,
-        driverId: user.uid,
-        method: paymentMethod,
-        amount: activeOrder.total,
-        details: {
-          changeFor: paymentMethod === 'money' ? changeFor || null : null,
-          pixConfirmed: paymentMethod === 'pix' ? pixConfirmed : null,
-          cardBrand: paymentMethod === 'credit' || paymentMethod === 'debit' ? cardBrand : null
-        },
-        createdAt: serverTimestamp()
-      });
-
-      // 2. Save delivery proofs
-      await setDoc(doc(db, 'delivery_proofs', activeOrder.id), {
-        orderId: activeOrder.id,
-        driverId: user.uid,
-        signature: signatureDataUrl,
-        photo: photoBase64,
-        receiverName: receiverName,
-        gps: {
-          latitude: driverGPS?.lat || activeOrder.latitude || 0,
-          longitude: driverGPS?.lng || activeOrder.longitude || 0
-        },
-        createdAt: serverTimestamp()
+        orderRefTag: activeOrder.id.slice(-6).toUpperCase(),
+        customerName: activeOrder.customerName,
+        totalVenda: orderTotal,
+        totalRecebido: totalPayments,
+        paymentMethod: payments.map(p => p.method).join(','),
+        payments: payments,
+        userId: user.uid,
+        sessionId: 'motoboy-' + new Date().toISOString().split('T')[0]
       });
 
       // 3. Update order document status in system
@@ -530,16 +453,16 @@ export function MotoboyDashboard() {
       // Clean modals
       setShowFinalizeModal(false);
       setReceiverName('');
-      setPhotoBase64(null);
-      setPixConfirmed(false);
-      setChangeFor(undefined);
+      setPayments([]);
       
-      toast("Sensacional! Entrega finalizada e arquivada com sucesso.", "success");
+      toast("Sensacional! Entrega finalizada, financeiro e estoque atualizados com sucesso.", "success");
       setActiveTab('concluidas');
     } catch (finalizeErr) {
+      console.error(finalizeErr);
       toast("Inconveniente ao salvar encerramento", "error");
     }
   };
+
 
   const handleLogout = async () => {
     const ok = await confirm({
@@ -556,19 +479,28 @@ export function MotoboyDashboard() {
 
   // Grouped lists for tabs
   const availableDeliveries = orders.filter(o => {
-    const isDelivery = o.receiveMethod === 'entrega' || !o.receiveMethod;
+    const isDelivery = o.receiveMethod === 'entrega' || !o.receiveMethod || o.receiveMethod === "PEDIDO PARA ENTREGA (DELIVERY)";
     const unclaimed = o.status === 'NOVO' || o.status === 'AGUARDANDO RETIRADA' || o.status === 'PAGO' || o.status === 'PREPARACAO';
     return isDelivery && unclaimed && !o.driverId;
   });
 
-  const myActiveDeliveries = orders.filter(o => o.driverId === user?.uid && o.status === 'SAIU PARA ENTREGA');
+  const myActiveDeliveries = orders.filter(o => o.driverId === user?.uid && o.status !== 'ENTREGUE');
   const myCompletedDeliveries = orders.filter(o => o.driverId === user?.uid && o.status === 'ENTREGUE');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (authChecking && !user) {
+        navigate('/motoboy/login');
+      }
+    }, 10000); // 10s timeout
+    return () => clearTimeout(timer);
+  }, [authChecking, user, navigate]);
 
   if (authChecking) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white font-bold gap-3">
         <Loader2 className="animate-spin text-red-500 w-8 h-8" />
-        <span className="text-xs uppercase tracking-[0.2em] text-zinc-500">Autenticando Conexão...</span>
+        <span className="text-xs uppercase tracking-[0.2em] text-zinc-500">Autenticando Conexão... (Se demorar, verifique sua conexão)</span>
       </div>
     );
   }
@@ -699,7 +631,7 @@ export function MotoboyDashboard() {
               {driverGPS && (
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-900">
                   <div className="bg-black/50 p-3 rounded-2xl border border-zinc-900">
-                    <span className="text-[10px] font-black text-zinc-500 uppercase block">Distância Direta</span>
+                    <span className="text-[10px] font-black text-zinc-500 uppercase block">Distância do Percurso</span>
                     <span className="text-base font-black text-white">
                       {calcDistance(
                         driverGPS.lat, 
@@ -1000,8 +932,22 @@ export function MotoboyDashboard() {
             </div>
 
             {/* Form Fields */}
-            <div className="space-y-5">
+            <div className="space-y-4">
               
+              {/* Delivery Stats in Finalize Modal */}
+              <div className="flex justify-between items-center bg-zinc-900 border border-zinc-800 p-4 rounded-xl">
+                <div>
+                  <span className="text-[10px] text-zinc-500 font-bold block uppercase">Total a Cobrar</span>
+                  <span className="text-xl font-black text-white">R$ {(activeOrder.total || 0).toFixed(2).replace('.', ',')}</span>
+                </div>
+                {activeOrder.paymentMethod && (
+                   <div className="text-right">
+                    <span className="text-[10px] text-zinc-500 font-bold block uppercase">Forma Pagamento</span>
+                    <span className="text-xs font-black text-red-500 uppercase">{activeOrder.paymentMethod}</span>
+                   </div>
+                )}
+              </div>
+
               {/* Receiver's Name input */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">Nome de Quem Recebeu *</label>
@@ -1011,164 +957,69 @@ export function MotoboyDashboard() {
                   value={receiverName}
                   onChange={e => setReceiverName(e.target.value)}
                   placeholder="Ex: O próprio cliente, Porteiro, Vizinho"
-                  className="w-full h-12 bg-zinc-900 border-zinc-800 text-sm font-semibold rounded-xl px-4 text-white focus:border-red-500 placeholder:text-zinc-700"
+                  className="w-full h-12 bg-zinc-950 border-zinc-800 text-sm font-semibold rounded-xl px-4 text-white focus:border-red-500 placeholder:text-zinc-700"
                 />
               </div>
 
-              {/* HTML5 drawing signature canvas */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">Assinatura Digital * (Desenhar na Tela)</label>
-                  <button 
-                    type="button"
-                    onClick={clearCanvas}
-                    className="text-[10px] font-black text-red-500 uppercase tracking-widest flex items-center gap-1 cursor-pointer"
-                  >
-                    <Trash2 size={10} /> Limpar
-                  </button>
-                </div>
-                
-                <div className="border border-zinc-800 bg-zinc-950 rounded-2xl overflow-hidden relative" style={{ height: '140px' }}>
-                  <canvas 
-                    ref={canvasRef}
-                    width={380}
-                    height={140}
-                    onTouchStart={startDrawingFn}
-                    onTouchMove={drawFn}
-                    onTouchEnd={stopDrawingFn}
-                    onMouseDown={startDrawingFn}
-                    onMouseMove={drawFn}
-                    onMouseUp={stopDrawingFn}
-                    onMouseLeave={stopDrawingFn}
-                    className="w-full h-full cursor-crosshair"
-                  />
-                  <div className="absolute bottom-2.5 right-3 text-[9px] font-bold text-zinc-600 bg-black/65 px-2.5 py-1 rounded-full pointer-events-none uppercase tracking-widest flex items-center gap-1">
-                    <PenTool size={9} /> Toque e desenhe
-                  </div>
-                </div>
-              </div>
-
-              {/* Photo attachment from camera */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">Foto da Entrega (Opcional)</label>
-                <div className="flex items-center gap-3">
-                  <label className="flex-1 h-12 bg-zinc-900 hover:bg-zinc-850 rounded-xl border border-zinc-850 flex items-center justify-center gap-2 text-xs font-bold text-zinc-400 cursor-pointer transition-all">
-                    <Camera size={14} className="text-red-500" />
-                    <span>{photoBase64 ? 'Substituir Foto' : 'Tirar Foto'}</span>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      capture="environment" 
-                      onChange={handlePhotoUpload}
-                      className="hidden" 
-                    />
-                  </label>
-
-                  {photoBase64 && (
-                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-zinc-800 grow-0 shrink-0">
-                      <img src={photoBase64} alt="Comprovante" className="w-full h-full object-cover" />
-                    </div>
-                  )}
-                </div>
-              </div>
-
               {/* Delivery Payment details selectors */}
-              <div className="space-y-2 border-t border-zinc-900 pt-4.5">
-                <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">Método de Pagamento Recebido</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {(['money', 'pix', 'debit', 'credit'] as const).map(method => (
-                    <button 
-                      key={method}
-                      type="button"
-                      onClick={() => setPaymentMethod(method)}
-                      className={`h-11 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center cursor-pointer transition-all border ${
-                        paymentMethod === method 
-                          ? 'bg-red-650 text-white border-red-550 shadow-md' 
-                          : 'bg-zinc-900 text-zinc-500 border-zinc-850 hover:text-white'
-                      }`}
-                    >
-                      {method === 'money' && 'Dinheiro'}
-                      {method === 'pix' && 'PIX'}
-                      {method === 'debit' && 'Débito'}
-                      {method === 'credit' && 'Crédito'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Sub Forms - Money (Troco) */}
-                {paymentMethod === 'money' && (
-                  <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-900 space-y-2.5 mt-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-500 font-bold uppercase">Total do Pedido:</span>
-                      <span className="font-mono font-black text-white">R$ {(activeOrder.total || 0).toFixed(2).replace('.', ',')}</span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pago com quanto? (Troco para quanto?)</label>
-                      <input 
-                        type="number"
-                        value={changeFor || ''}
-                        onChange={e => setChangeFor(e.target.value ? Number(e.target.value) : undefined)}
-                        placeholder="Ex: 50 ou 100"
-                        className="w-full h-10 bg-zinc-950 border-zinc-850 rounded-xl px-3 text-xs text-white"
-                      />
-                    </div>
-
-                    {changeFor && changeFor > activeOrder.total && (
-                      <div className="flex justify-between items-center text-xs text-green-400 bg-green-950/20 p-2 rounded-lg border border-green-950">
-                        <span className="font-bold uppercase">Troco a Devolver:</span>
-                        <span className="font-mono font-black">R$ {(changeFor - activeOrder.total).toFixed(2).replace('.', ',')}</span>
+              <div className="space-y-3 border-t border-zinc-900 pt-3">
+                <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">Registrar Pagamentos Recebidos</label>
+                
+                {/* List of registered payments */}
+                {payments.length > 0 && (
+                  <div className="space-y-2">
+                    {payments.map((p, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-xs bg-zinc-900 p-2 rounded-lg border border-zinc-800">
+                        <span className="font-bold uppercase text-zinc-300">
+                          {p.method === 'money' ? 'Dinheiro' : p.method === 'pix' ? 'PIX' : p.method === 'debit' ? 'Débito' : 'Crédito'}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-black text-white">R$ {p.amount.toFixed(2).replace('.', ',')}</span>
+                          <button onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))} className="text-red-500"><Trash2 size={12} /></button>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Sub Forms - PIX verification */}
-                {paymentMethod === 'pix' && (
-                  <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-900 space-y-3 mt-2">
-                    <p className="text-[10px] text-zinc-500 leading-relaxed font-bold uppercase">
-                      Solicite ao cliente o comprovante do PIX correspondente ao valor de <span className="font-mono text-white font-black">R$ {(activeOrder.total || 0).toFixed(2).replace('.', ',')}</span>.
-                    </p>
-                    
-                    <button 
-                      type="button"
-                      onClick={() => setPixConfirmed(!pixConfirmed)}
-                      className={`w-full h-11 rounded-lg text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer transition-all border ${
-                        pixConfirmed 
-                          ? 'bg-green-600 text-white border-green-550' 
-                          : 'bg-zinc-900 text-zinc-500 border-zinc-850 hover:text-white'
-                      }`}
-                    >
-                      {pixConfirmed ? '✓ COMPROVANTE PIX VERIFICADO' : 'CONFIRMAR PIX COM CLIENTE'}
-                    </button>
-                    {!pixConfirmed && (
-                      <span className="text-[9px] text-zinc-650 font-black block text-center uppercase tracking-widest">* Marcar como verificado para consolidar</span>
-                    )}
-                  </div>
-                )}
-
-                {/* Sub Forms - Cards brands selection */}
-                {(paymentMethod === 'credit' || paymentMethod === 'debit') && (
-                  <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-900 space-y-2 mt-2">
-                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">Bandeira da Maquininha Utilizada</label>
-                    <div className="grid grid-cols-4 gap-2">
-                      {['Visa', 'Mastercard', 'Elo', 'Hipercard'].map(brand => (
-                        <button 
-                          key={brand}
-                          type="button"
-                          onClick={() => setCardBrand(brand)}
-                          className={`h-9 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center justify-center cursor-pointer transition-all border ${
-                            cardBrand === brand 
-                              ? 'bg-zinc-100 text-black border-white' 
-                              : 'bg-zinc-950 text-zinc-500 border-zinc-900'
-                          }`}
-                        >
-                          {brand}
-                        </button>
-                      ))}
+                    ))}
+                    <div className="flex justify-between items-center font-black pt-2 border-t border-zinc-800 text-sm">
+                      <span>Total Recebido:</span>
+                      <span className={payments.reduce((acc, p) => acc + p.amount, 0) >= (activeOrder.total || 0) ? "text-green-500" : "text-red-500"}>
+                        R$ {payments.reduce((acc, p) => acc + p.amount, 0).toFixed(2).replace('.', ',')}
+                      </span>
                     </div>
                   </div>
                 )}
+
+                {/* Add new payment */}
+                <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="number"
+                      value={currentPaymentAmount || ''}
+                      onChange={e => setCurrentPaymentAmount(Number(e.target.value))}
+                      placeholder="Valor"
+                      className="h-11 bg-zinc-900 border-zinc-800 rounded-lg px-3 text-xs text-white"
+                    />
+                    <select 
+                      value={currentPaymentMethod}
+                      onChange={e => setCurrentPaymentMethod(e.target.value as any)}
+                      className="h-11 bg-zinc-900 border-zinc-800 rounded-lg px-3 text-xs text-white uppercase font-bold"
+                    >
+                      <option value="money">Dinheiro</option>
+                      <option value="pix">PIX</option>
+                      <option value="debit">Débito</option>
+                      <option value="credit">Crédito</option>
+                    </select>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    if (currentPaymentAmount > 0) {
+                      setPayments([...payments, { method: currentPaymentMethod, amount: currentPaymentAmount }]);
+                      setCurrentPaymentAmount(0);
+                    }
+                  }}
+                  className="w-full h-11 bg-zinc-800 hover:bg-zinc-700 text-white font-black rounded-lg text-xs uppercase tracking-widest border border-zinc-700"
+                >
+                  Adicionar Pagamento
+                </button>
 
               </div>
 

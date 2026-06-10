@@ -27,6 +27,7 @@
     "browser-image-compression": "^2.0.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "dexie": "^4.4.3",
     "esbuild": "^0.28.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.4.1",

@@ -18,6 +18,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import LocationPicker from '../../components/checkout/LocationPicker';
 import AddressConfirmation from '../../components/checkout/AddressConfirmation';
+import { parseGoogleSearch } from '../../utils/googleMapsUtils';
 
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -642,11 +643,15 @@ export function CartPage() {
            setGpsCoords({ lat: cachedLat, lng: cachedLng, accuracy: cachedAcc });
          } else if (currentCustomer.enderecoObj.rua && currentCustomer.enderecoObj.bairro) {
            const addressQuery = `${currentCustomer.enderecoObj.rua}, ${currentCustomer.enderecoObj.numero}, ${currentCustomer.enderecoObj.bairro}, ${currentCustomer.enderecoObj.cidade}, ${currentCustomer.enderecoObj.estado}, Brasil`;
-           fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addressQuery)}`)
+           fetch('/api/geocode', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ address: addressQuery })
+           })
              .then(res => res.json())
              .then(data => {
-               if (data && data.length > 0) {
-                 const best = data[0];
+               const best = parseGoogleSearch(data);
+               if (best) {
                  const latVal = parseFloat(best.lat);
                  const lngVal = parseFloat(best.lon);
                  setLatitude(latVal);
@@ -931,11 +936,15 @@ export function CartPage() {
                  setGpsCoords({ lat: cachedLat, lng: cachedLng, accuracy: cachedAcc });
               } else if (addr.rua && addr.bairro) {
                  const addressQuery = `${addr.rua}, ${addr.numero}, ${addr.bairro}, ${addr.cidade}, ${addr.estado}, Brasil`;
-                 fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addressQuery)}`)
+                 fetch('/api/geocode', {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json' },
+                   body: JSON.stringify({ address: addressQuery })
+                 })
                    .then(res => res.json())
                    .then(data => {
-                     if (data && data.length > 0) {
-                       const best = data[0];
+                     const best = parseGoogleSearch(data);
+                     if (best) {
                        const latVal = parseFloat(best.lat);
                        const lngVal = parseFloat(best.lon);
                        setLatitude(latVal);

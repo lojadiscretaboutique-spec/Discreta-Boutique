@@ -6,6 +6,7 @@ import DeliveryAddressFormLegacy, { AddressDetails } from './DeliveryAddressForm
 import { DeliveryAddressForm as DeliveryAddressFormNew } from '../delivery/DeliveryAddressForm';
 import { DeliveryCalculator, calculateShippingFee } from '../delivery/DeliveryCalculator';
 import { deliveryRouteService, getHaversineDistance } from '../../utils/deliveryRouteService';
+import { parseGoogleGeocode } from '../../utils/googleMapsUtils';
 
 // Lazy load map components for maximum rendering speed and lazy overhead reductions
 const LegacyDeliveryMap = lazy(() => import('./DeliveryMap'));
@@ -178,16 +179,37 @@ export default function AddressConfirmation({
       setLoadingGeocode(true);
       setGeocodeFailed(false);
       try {
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${debouncedCoords.lat}&lon=${debouncedCoords.lng}&addressdetails=1`
-        );
-        if (!response.ok) throw new Error('Geocodificação reversa falhou');
-        const data = await response.json();
+        // Replace Nominatim with Google Geocoding Proxy
+        const cacheKey = `geo_${debouncedCoords.lat.toFixed(4)}_${debouncedCoords.lng.toFixed(4)}`;
+        const cached = localStorage.getItem(cacheKey);
+        let data;
+
+        if (cached) {
+          data = JSON.parse(cached);
+        } else {
+          const response = await fetch('/api/geocode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: debouncedCoords.lat, lng: debouncedCoords.lng })
+          });
+          if (!response.ok) throw new Error('Geocodificação reversa falhou');
+          data = await response.json();
+          if (data.status === 'OK') {
+            localStorage.setItem(cacheKey, JSON.stringify(data));
+          }
+        }
+        
+        // Map Google result to the structure expected by the following logic
+        const addrGoogle = parseGoogleGeocode(data);
+        const dataForParsing = addrGoogle ? { address: addrGoogle } : null;
+        
+        if (!dataForParsing) throw new Error('Geocodificação: sem resultados');
+        const dataToUse = dataForParsing;
         
         if (!active) return;
 
-        if (data && data.address) {
-          const addr = data.address;
+        if (dataToUse && dataToUse.address) {
+          const addr = dataToUse.address;
           const resolvedRua = addr.road || addr.street || addr.pedestrian || addr.avenue || '';
           const resolvedNumero = addr.house_number || '';
           const resolvedCidade = addr.city || addr.town || addr.municipality || addr.village || '';
