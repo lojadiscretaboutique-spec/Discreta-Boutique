@@ -51,7 +51,39 @@ export const settingsService = {
 
   async getOperatingHours(): Promise<OperatingHoursSettings> {
     const d = await getDoc(doc(db, 'settings', OPERATING_HOURS_DOC_ID));
-    if (d.exists()) return d.data() as OperatingHoursSettings;
+    if (d.exists()) {
+      const data = d.data() as OperatingHoursSettings;
+      
+      // Self-healing: auto-correct 09:00 to 07:30 Wednesday typo
+      let needsFix = false;
+      const updatedWeekly = data.weekly.map(dayConfig => {
+        if (dayConfig.day === 'quarta') {
+          const updatedSlots = dayConfig.slots.map(slot => {
+            if (slot.from === '09:00' && slot.to === '07:30') {
+              needsFix = true;
+              return { ...slot, to: '17:30' };
+            }
+            return slot;
+          });
+          return { ...dayConfig, slots: updatedSlots };
+        }
+        return dayConfig;
+      });
+
+      if (needsFix) {
+        const repaired = { ...data, weekly: updatedWeekly };
+        try {
+          // Attempt to save corrected hours back to Firestore (works if admin is logged in)
+          await setDoc(doc(db, 'settings', OPERATING_HOURS_DOC_ID), repaired);
+          console.log('[Self-Healing] Wednesday operating hours corrected in Firestore!');
+        } catch (e) {
+          console.warn('[Self-Healing] In-memory operating hours corrected, but could not persist to Firestore:', e);
+        }
+        return repaired;
+      }
+
+      return data;
+    }
     
     // Default config
     const days = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];

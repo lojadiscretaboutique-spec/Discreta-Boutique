@@ -134,6 +134,22 @@ export default {
         socialMedia: { type: "string" }
       }
     },
+    DeliverySettings: {
+      title: "Delivery Settings",
+      description: "iFood stylized delivery and real routing params",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        storeLatitude: { type: "number" },
+        storeLongitude: { type: "number" },
+        fixedFee: { type: "number" },
+        pricePerKm: { type: "number" },
+        minimumDeliveryFee: { type: "number" },
+        maxRadiusKm: { type: "number" },
+        freeShippingAbove: { type: "number" },
+        freeShippingRadiusKm: { type: "number" }
+      }
+    },
     PaymentSettings: {
       title: "Payment Settings",
       description: "Configuration of accepted payment methods",
@@ -577,6 +593,10 @@ export default {
     "settings": {
       schema: { $ref: "#/entities/StoreSettings" },
       description: "Global store settings"
+    },
+    "deliverySettings": {
+      schema: { $ref: "#/entities/DeliverySettings" },
+      description: "iFood stylized physical routing settings"
     },
     "themes": {
       schema: { $ref: "#/entities/ThemeConfig" },

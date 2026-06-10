@@ -154,6 +154,13 @@ service cloud.firestore {
       allow create: if can('settings', 'criar');
     }
 
+    match /deliverySettings/{doc} {
+      allow read: if true;
+      allow update: if can('settings', 'editar');
+      allow create: if can('settings', 'criar');
+      allow delete: if can('settings', 'excluir');
+    }
+
     match /themes/{doc} {
       allow read: if true;
       allow create: if can('settings', 'criar');
