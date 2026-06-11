@@ -188,6 +188,53 @@ export function CartPage() {
     return filtered;
   }, [dbAreas, dbStates, stateName, cityName]);
   
+  // Load persisted address on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('discreta_last_address');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        if (data.gpsCoords) setGpsCoords(data.gpsCoords);
+        if (data.latitude) setLatitude(data.latitude);
+        if (data.longitude) setLongitude(data.longitude);
+        if (data.accuracy) setAccuracy(data.accuracy);
+        if (data.rua) setRua(data.rua);
+        if (data.numero) setNumero(data.numero);
+        if (data.areaName) setAreaName(data.areaName);
+        if (data.cep) setCep(data.cep);
+        if (data.cityName) setCityName(data.cityName);
+        if (data.stateName) setStateName(data.stateName);
+        if (data.referencia) setReferencia(data.referencia);
+        if (data.complemento) setComplemento(data.complemento);
+        if (data.pais) setPais(data.pais);
+      } catch (e) {
+        console.warn("Failed to load saved address", e);
+      }
+    }
+  }, []);
+
+  // Save address when changed
+  useEffect(() => {
+    if (latitude && longitude) {
+      const addressToSave = {
+        gpsCoords,
+        latitude,
+        longitude,
+        accuracy,
+        rua,
+        numero,
+        areaName,
+        cep,
+        cityName,
+        stateName,
+        referencia,
+        complemento,
+        pais
+      };
+      localStorage.setItem('discreta_last_address', JSON.stringify(addressToSave));
+    }
+  }, [latitude, longitude, rua, numero, areaName, cep, cityName, stateName, referencia, complemento, pais, gpsCoords, accuracy]);
+
   const [aiSuggestions, setAiSuggestions] = useState<{ motivo: string, produtos: any[] } | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 

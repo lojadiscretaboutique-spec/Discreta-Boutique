@@ -61,20 +61,20 @@ export default function DeliveryAddressForm({
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="sm:col-span-3">
           <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
-            Rua / Avenida (Bloqueado por GPS) *
+            Rua / Avenida *
           </label>
           <input 
             type="text" 
-            readOnly
             required 
             value={address.rua} 
-            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all opacity-60 cursor-not-allowed select-none" 
+            onChange={e => onChange({ rua: e.target.value })} 
+            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all" 
             style={{ 
               backgroundColor: bgHex, 
               color: bgText, 
               borderColor: borderHex,
             }}
-            placeholder="Nome da rua pelo GPS" 
+            placeholder="Nome da rua" 
           />
         </div>
         <div>
@@ -101,20 +101,20 @@ export default function DeliveryAddressForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
-            Bairro (Bloqueado por GPS) *
+            Bairro *
           </label>
           <input 
             type="text" 
-            readOnly
             required 
             value={address.bairro} 
-            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all opacity-60 cursor-not-allowed select-none" 
+            onChange={e => onChange({ bairro: e.target.value })} 
+            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all" 
             style={{ 
               backgroundColor: bgHex, 
               color: bgText, 
               borderColor: borderHex,
             }}
-            placeholder="Seu bairro pelo GPS" 
+            placeholder="Seu bairro" 
           />
         </div>
         <div>
@@ -136,7 +136,7 @@ export default function DeliveryAddressForm({
         </div>
       </div>
 
-      {/* PONTO DE REFERENCIA & CEP (ONLY CEP EDITABLE IF BLOCKED IS FALSE DEFINED BY CHECKS) */}
+      {/* PONTO DE REFERENCIA & CEP */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="sm:col-span-2">
           <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
@@ -158,13 +158,13 @@ export default function DeliveryAddressForm({
         </div>
         <div>
           <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
-            CEP (Bloqueado)
+            CEP
           </label>
           <input 
             type="text" 
-            readOnly
             value={address.cep} 
-            className="w-full rounded-xl px-4 py-3 text-sm border focus:ring-1 transition-all font-mono font-bold text-center opacity-60 cursor-not-allowed select-none" 
+            onChange={e => onChange({ cep: e.target.value })} 
+            className="w-full rounded-xl px-4 py-3 text-sm border focus:ring-1 transition-all font-mono font-bold text-center" 
             style={{ 
               backgroundColor: bgHex, 
               color: bgText, 
@@ -175,40 +175,46 @@ export default function DeliveryAddressForm({
         </div>
       </div>
 
-      {/* READONLY BLOCKED FIELDS (GEOGRAPHICAL METADATA) */}
+      {/* EDITABLE FIELDS (GEOGRAPHICAL METADATA) */}
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-[9px] font-black mb-1.5 uppercase tracking-widest" style={{ color: subTextCardColor }}>
-            Cidade (GPS)
+            Cidade
           </label>
-          <div 
-            className="w-full rounded-xl px-4 py-3 text-sm border font-semibold select-none opacity-50 cursor-not-allowed text-ellipsis overflow-hidden whitespace-nowrap"
+          <input 
+            type="text"
+            value={address.cidade}
+            onChange={e => onChange({ cidade: e.target.value })}
+            className="w-full rounded-xl px-4 py-3 text-sm border font-semibold select-all"
             style={{ backgroundColor: bgHex, color: bgText, borderColor: borderHex }}
-          >
-            {address.cidade || '---'}
-          </div>
+            placeholder="Cidade"
+          />
         </div>
         <div>
           <label className="block text-[9px] font-black mb-1.5 uppercase tracking-widest" style={{ color: subTextCardColor }}>
-            Estado (GPS)
+            Estado
           </label>
-          <div 
-            className="w-full rounded-xl px-4 py-3 text-sm border font-bold text-center select-none opacity-50 cursor-not-allowed"
+          <input 
+            type="text"
+            value={address.estado}
+            onChange={e => onChange({ estado: e.target.value })}
+            className="w-full rounded-xl px-4 py-3 text-sm border font-bold text-center select-all"
             style={{ backgroundColor: bgHex, color: bgText, borderColor: borderHex }}
-          >
-            {address.estado || '---'}
-          </div>
+            placeholder="UF"
+          />
         </div>
         <div>
           <label className="block text-[9px] font-black mb-1.5 uppercase tracking-widest" style={{ color: subTextCardColor }}>
-            País (GPS)
+            País
           </label>
-          <div 
-            className="w-full rounded-xl px-4 py-3 text-sm border font-semibold text-center select-none opacity-50 cursor-not-allowed"
+          <input 
+            type="text"
+            value={address.pais}
+            onChange={e => onChange({ pais: e.target.value })}
+            className="w-full rounded-xl px-4 py-3 text-sm border font-semibold text-center select-all"
             style={{ backgroundColor: bgHex, color: bgText, borderColor: borderHex }}
-          >
-            {address.pais || '---'}
-          </div>
+            placeholder="País"
+          />
         </div>
       </div>
     </div>

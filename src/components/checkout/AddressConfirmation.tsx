@@ -207,14 +207,19 @@ export default function AddressConfirmation({
       setLoadingGeocode(true);
       setGeocodeFailed(false);
       try {
-        // Replace Nominatim with Google Geocoding Proxy
-        const cacheKey = `geo_${debouncedCoords.lat.toFixed(4)}_${debouncedCoords.lng.toFixed(4)}`;
+        const cacheKey = `geo_v2_${debouncedCoords.lat.toFixed(5)}_${debouncedCoords.lng.toFixed(5)}`;
         const cached = localStorage.getItem(cacheKey);
         let data;
 
         if (cached) {
-          data = JSON.parse(cached);
-        } else {
+          try {
+            data = JSON.parse(cached);
+          } catch (e) {
+            localStorage.removeItem(cacheKey);
+          }
+        }
+
+        if (!data) {
           const response = await fetch('/api/geocode', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -227,101 +232,46 @@ export default function AddressConfirmation({
           }
         }
         
-        // Map Google result to the structure expected by the following logic
-        const addrGoogle = parseGoogleGeocode(data);
-        const dataForParsing = addrGoogle ? { address: addrGoogle } : null;
-        
-        if (!dataForParsing) throw new Error('Geocodificação: sem resultados');
-        const dataToUse = dataForParsing;
-        
         if (!active) return;
 
-        if (dataToUse && dataToUse.address) {
-          const addr = dataToUse.address;
-          const resolvedRua = addr.road || addr.street || addr.pedestrian || addr.avenue || '';
-          const resolvedNumero = addr.house_number || '';
-          const resolvedCidade = addr.city || addr.town || addr.municipality || addr.village || '';
-          const resolvedEstadoName = addr.state || '';
-          
-          let resolvedEstado = resolvedEstadoName;
-          const matchingStateInDb = dbStates.find(
-            s => normalizeStr(s.nome) === normalizeStr(resolvedEstadoName) || 
-                 normalizeStr(s.sigla) === normalizeStr(resolvedEstadoName)
-          );
-          if (matchingStateInDb) {
-            resolvedEstado = matchingStateInDb.sigla;
-          }
-
-          // Smart Bairro (Neighborhood) Match against store database active delivery areas
-          // Filter delivery areas by city and state to reduce search space to local candidates
-          const cityAreas = dbAreas.filter(a => 
-            normalizeStr(a.cityName) === normalizeStr(resolvedCidade) &&
-            (normalizeStr(a.stateName) === normalizeStr(resolvedEstado) || 
-             normalizeStr(a.stateName) === normalizeStr(resolvedEstadoName))
-          );
-
-          // Nominatim hierarchy of borough/neighborhood candidates
-          const neighborhoodCandidates = [
-            addr.neighbourhood,
-            addr.suburb,
-            addr.quarter,
-            addr.city_district,
-            addr.village,
-            addr.hamlet
-          ].filter(Boolean) as string[];
-
-          let matchedBairroFromDb = '';
-          
-          // 1. First Pass: Attempt an exact normalized match
-          for (const candItem of neighborhoodCandidates) {
-            const normCand = normalizeStr(candItem);
-            const foundArea = cityAreas.find(a => normalizeStr(a.bairro) === normCand);
-            if (foundArea) {
-              matchedBairroFromDb = foundArea.bairro;
-              break;
-            }
-          }
-
-          // 2. Second Pass: If still unmatched, try a partial substring / normalized match (must be dynamic and intelligent)
-          if (!matchedBairroFromDb) {
-            for (const candItem of neighborhoodCandidates) {
-              const normCand = normalizeStr(candItem);
-              const foundArea = cityAreas.find(a => {
-                const normDbBairro = normalizeStr(a.bairro);
-                return normDbBairro.includes(normCand) || normCand.includes(normDbBairro);
-              });
-              if (foundArea) {
-                matchedBairroFromDb = foundArea.bairro;
-                break;
-              }
-            }
-          }
-
-          // Fallback to the first available candidate if database doesn't have the match or if it's outside active zones
-          const resolvedBairro = matchedBairroFromDb || addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || addr.village || '';
-
-          const rawCep = addr.postcode || '';
-          const resolvedCep = rawCep.replace(/\D/g, '').length === 8 
-            ? rawCep.replace(/(\d{5})(\d{3})/, '$1-$2') 
-            : rawCep;
-
-          setAddressDetails((prev) => ({
-            ...prev,
-            latitude: debouncedCoords.lat,
-            longitude: debouncedCoords.lng,
-            accuracy,
-            rua: resolvedRua || prev.rua,
-            numero: resolvedNumero || prev.numero,
-            bairro: resolvedBairro || prev.bairro,
-            cidade: resolvedCidade || prev.cidade,
-            estado: resolvedEstado || prev.estado,
-            cep: resolvedCep || prev.cep,
-            pais: addr.country || 'Brasil',
-          }));
-          userDraggedPinRef.current = false;
-        } else {
-          setGeocodeFailed(true);
+        const addrGoogle = parseGoogleGeocode(data);
+        if (!addrGoogle) throw new Error('Geocodificação: sem resultados');
+        
+        const addr = addrGoogle;
+        const resolvedRua = addr.road || '';
+        const resolvedNumero = addr.house_number || '';
+        const resolvedCidade = addr.city || '';
+        const resolvedEstadoName = addr.state || '';
+        
+        let resolvedEstado = resolvedEstadoName;
+        const matchingStateInDb = dbStates.find(
+          s => normalizeStr(s.nome) === normalizeStr(resolvedEstadoName) || 
+               normalizeStr(s.sigla) === normalizeStr(resolvedEstadoName)
+        );
+        if (matchingStateInDb) {
+          resolvedEstado = matchingStateInDb.sigla;
         }
+
+        const resolvedBairro = addr.suburb || '';
+        const rawCep = addr.postcode || '';
+        const resolvedCep = rawCep.replace(/\D/g, '').length === 8 
+          ? rawCep.replace(/(\d{5})(\d{3})/, '$1-$2') 
+          : rawCep;
+
+        setAddressDetails((prev) => ({
+          ...prev,
+          latitude: debouncedCoords.lat,
+          longitude: debouncedCoords.lng,
+          accuracy,
+          rua: resolvedRua || prev.rua,
+          numero: resolvedNumero || prev.numero,
+          bairro: resolvedBairro || prev.bairro,
+          cidade: resolvedCidade || prev.cidade,
+          estado: resolvedEstado || prev.estado,
+          cep: resolvedCep || prev.cep,
+          pais: addr.country || prev.pais || 'Brasil',
+        }));
+        userDraggedPinRef.current = false;
       } catch (err) {
         console.error('Error reverse geocoding:', err);
         if (active) {

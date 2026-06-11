@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { GeocodingService } from './src/server/services/geocodingService.js';
 import aiRoutes from './src/server/routes/aiRoutes.js';
 import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
@@ -92,22 +93,38 @@ async function startServer() {
     }
   });
 
-  // Google Geocoding API Proxy
+  // Robust Geocoding API with Fallbacks (Nominatim, Photon)
   app.post("/api/geocode", async (req, res) => {
     try {
-      const { lat, lng, address } = req.body;
-      const apiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ error: "Google Maps API Key not configured" });
+      const { lat, lng } = req.body;
+      if (!lat || !lng) {
+        return res.status(400).json({ error: "Latitude and Longitude are required" });
       }
 
-      const url = lat && lng 
-        ? `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}&language=pt-BR`
-        : `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}&language=pt-BR`;
+      const result = await GeocodingService.reverseGeocode(Number(lat), Number(lng));
+      
+      if (!result) {
+        return res.status(404).json({ error: "Could not resolve address even with fallbacks" });
+      }
 
-      const response = await fetch(url);
-      const data = await response.json();
-      res.json(data);
+      res.json({
+        status: 'OK',
+        results: [
+          {
+            formatted_address: result.display_name,
+            provider: result.provider,
+            address_components: [
+              { long_name: result.road, types: ['route'] },
+              { long_name: result.house_number, types: ['street_number'] },
+              { long_name: result.suburb, types: ['sublocality', 'neighborhood'] },
+              { long_name: result.city, types: ['administrative_area_level_2'] },
+              { long_name: result.state, types: ['administrative_area_level_1'] },
+              { long_name: result.postcode, types: ['postal_code'] },
+              { long_name: result.country, types: ['country'] },
+            ]
+          }
+        ]
+      });
     } catch (error) {
       console.error("Geocoding API Error:", error);
       res.status(500).json({ error: "Failed to fetch geocoding data" });
