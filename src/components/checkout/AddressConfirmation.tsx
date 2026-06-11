@@ -61,6 +61,14 @@ export default function AddressConfirmation({
   const [lng, setLng] = useState(initialCoords.lng);
   const [accuracy] = useState(initialCoords.accuracy);
 
+  // Store the real GPS coordinate separately to validate pin dragging distance
+  const [realGpsCoords, setRealGpsCoords] = useState<{ lat: number, lng: number } | null>(() => {
+    if (initialCoords.lat !== 0 && initialCoords.lng !== 0) {
+      return { lat: initialCoords.lat, lng: initialCoords.lng };
+    }
+    return null;
+  });
+
   // Debounce coordinates
   const [debouncedCoords, setDebouncedCoords] = useState({ lat: initialCoords.lat, lng: initialCoords.lng });
 
@@ -95,6 +103,7 @@ export default function AddressConfirmation({
         userDraggedPinRef.current = true;
         setLat(position.coords.latitude);
         setLng(position.coords.longitude);
+        setRealGpsCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
       },
       (err) => {
         setRefreshingGps(false);
@@ -108,14 +117,33 @@ export default function AddressConfirmation({
   const [showMissingFieldsDialog, setShowMissingFieldsDialog] = useState(false);
   const [missingFields, setMissingFields] = useState<string[]>([]);
 
-  // Center/sync map of customer if login/lookup provides a new initial position
+  // Sync center/sync map of customer if login/lookup provides a new initial position
   useEffect(() => {
     if (initialCoords.lat !== 0 && initialCoords.lng !== 0) {
       setLat(initialCoords.lat);
       setLng(initialCoords.lng);
       setDebouncedCoords({ lat: initialCoords.lat, lng: initialCoords.lng });
+      setRealGpsCoords({ lat: initialCoords.lat, lng: initialCoords.lng });
     }
   }, [initialCoords.lat, initialCoords.lng]);
+
+  // Mandatory Validation: If the user moves the pin too far from their actual GPS location, reset it automatically.
+  // This prevents fraud or "remote ordering" to bypass delivery zone restrictions or fees based on incorrect location.
+  useEffect(() => {
+    if (!realGpsCoords) return;
+
+    // We use a threshold of 1.5km as "too far"
+    const distance = getHaversineDistance(lat, lng, realGpsCoords.lat, realGpsCoords.lng);
+    const MAX_ALLOWED_DISTANCE_DEVIATION = 1.5; // km
+
+    if (distance > MAX_ALLOWED_DISTANCE_DEVIATION && userDraggedPinRef.current) {
+        // Reset pin to actual GPS position
+        setLat(realGpsCoords.lat);
+        setLng(realGpsCoords.lng);
+        userDraggedPinRef.current = false;
+        // Optionally alert the user (or silently correct if they are just exploring but "lost" the pin)
+    }
+  }, [lat, lng, realGpsCoords]);
 
   const lastParentStateRef = useRef<any>(null);
   const userDraggedPinRef = useRef<boolean>(false);
@@ -470,17 +498,18 @@ export default function AddressConfirmation({
               </h4>
               <button 
                 type="button"
+                id="my-location-btn"
                 onClick={refreshGPS}
                 disabled={refreshingGps}
-                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl border hover:bg-white/5 active:scale-95 transition-all flex items-center gap-1.5"
-                style={{ color: accentColor, borderColor: `${accentColor}30` }}
+                className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl border hover:bg-white/5 active:scale-95 transition-all flex items-center gap-2"
+                style={{ backgroundColor: `${accentColor}10`, color: accentColor, borderColor: `${accentColor}40` }}
               >
                 {refreshingGps ? (
                   <Loader2 size={12} className="animate-spin" />
                 ) : (
                   <Navigation size={12} className="rotate-45" />
                 )}
-                {refreshingGps ? 'Buscando GPS...' : 'Atualizar GPS'}
+                {refreshingGps ? 'Buscando GPS...' : 'Minha Localização'}
               </button>
             </div>
             

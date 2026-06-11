@@ -47,6 +47,7 @@ import {
 import { Button } from '../../components/ui/button';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { parseGoogleGeocode } from '../../utils/googleMapsUtils';
 
 // Fix default Leaflet icon assets
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -95,13 +96,6 @@ export function MotoboyDashboard() {
 
   // Layout tabs
   const [activeTab, setActiveTab] = useState<'disponiveis' | 'minhas' | 'concluidas'>('disponiveis');
-
-  // Leaflet map refs
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const driverMarkerRef = useRef<L.Marker | null>(null);
-  const customerMarkerRef = useRef<L.Marker | null>(null);
-  const routingLineRef = useRef<L.Polyline | null>(null);
 
   // Finalize Delivery modal/popup
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
@@ -307,90 +301,43 @@ export function MotoboyDashboard() {
     };
   }, [activeOrder, user]);
 
-  // 6. Embedded leaflet map rendering inside dashboard
+  // 6. Embedded leaflet map rendering inside dashboard (Removed)
+  
+  // Auto-fill address components
   useEffect(() => {
-    if (!activeOrder || !driverGPS || !mapContainerRef.current) {
-      // Destroy map of closed routing
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-      return;
+    if (!activeOrder) return;
+
+    // If address info is missing, try to fetch it
+    const lat = activeOrder.addressCoords?.lat || activeOrder.latitude;
+    const lng = activeOrder.addressCoords?.lng || activeOrder.longitude;
+    
+    // Only attempt fetch if key info is missing
+    if (!activeOrder.customerAddress || !activeOrder.customerCity) {
+        if (lat && lng) {
+            fetch("/api/geocode", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ lat, lng }),
+            })
+            .then(res => res.json())
+            .then(data => {
+                const parsed = parseGoogleGeocode(data);
+                if (parsed) {
+                    console.log("Parsed address:", parsed);
+                    
+                    updateDoc(doc(db, 'orders', activeOrder.id), {
+                        customerAddress: parsed.road,
+                        customerBairro: parsed.suburb,
+                        customerCity: parsed.city,
+                        customerCep: parsed.postcode,
+                        customerState: parsed.state
+                    });
+                }
+            })
+            .catch(err => console.error("Geocoding fetch error:", err));
+        }
     }
-
-    // Geocode customer lat/lng or default to store coordinates
-    const customerLat = activeOrder.addressCoords?.lat || activeOrder.latitude || -3.7319;
-    const customerLng = activeOrder.addressCoords?.lng || activeOrder.longitude || -38.5267;
-
-    if (!mapRef.current) {
-      const map = L.map(mapContainerRef.current, {
-        center: [driverGPS.lat, driverGPS.lng],
-        zoom: 14,
-        zoomControl: false,
-        attributionControl: false
-      });
-
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
-        maxZoom: 19
-      }).addTo(map);
-
-      mapRef.current = map;
-    }
-
-    const map = mapRef.current;
-
-    // Update markers
-    if (driverMarkerRef.current) {
-      driverMarkerRef.current.setLatLng([driverGPS.lat, driverGPS.lng]);
-    } else {
-      const driverIcon = L.divIcon({
-        html: `<div class="w-8 h-8 rounded-full bg-red-600 border-2 border-white flex items-center justify-center shadow-lg animate-pulse">
-          <svg viewBox="0 0 24 24" class="w-4 h-4 text-white fill-none stroke-current" stroke-width="3"><circle cx="12" cy="12" r="10"/></svg>
-        </div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
-      });
-
-      driverMarkerRef.current = L.marker([driverGPS.lat, driverGPS.lng], { icon: driverIcon }).addTo(map);
-    }
-
-    if (customerMarkerRef.current) {
-      customerMarkerRef.current.setLatLng([customerLat, customerLng]);
-    } else {
-      const customerIcon = L.divIcon({
-        html: `<div class="w-8 h-8 rounded-full bg-black border-2 border-red-500 flex items-center justify-center shadow-lg">
-          <svg viewBox="0 0 24 24" class="w-4 h-4 text-red-500 fill-none stroke-current" stroke-width="3"><path d="M12 21s-8-4.5-8-11.5A8 8 0 0120 9.5c0 7-8 11.5-8 11.5z"/></svg>
-        </div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
-      });
-
-      customerMarkerRef.current = L.marker([customerLat, customerLng], { icon: customerIcon }).addTo(map);
-    }
-
-    // Connect them with a routing polyline
-    const storeLat = -3.7319; // TODO: Fetch from settings
-    const storeLng = -38.5267;
-    if (routingLineRef.current) {
-      routingLineRef.current.setLatLngs([
-        [storeLat, storeLng],
-        [customerLat, customerLng]
-      ]);
-    } else {
-      routingLineRef.current = L.polyline([
-        [storeLat, storeLng],
-        [customerLat, customerLng]
-      ], { color: '#E11D48', weight: 4, dashArray: '5, 8' }).addTo(map);
-    }
-
-    // Fit map bounds
-    const bounds = L.latLngBounds([
-      [driverGPS.lat, driverGPS.lng],
-      [customerLat, customerLng]
-    ]);
-    map.fitBounds(bounds, { padding: [40, 40] });
-
-  }, [activeOrder, driverGPS]);
+  }, [activeOrder]);
 
   // Google Maps / Waze External link launch helpers
   const handleOpenGoogleMaps = () => {
@@ -594,23 +541,6 @@ export function MotoboyDashboard() {
               </span>
             </div>
 
-            {/* Embedded maps routing */}
-            <div className="h-64 bg-zinc-900 relative">
-              {driverGPS ? (
-                <div ref={mapContainerRef} className="w-full h-full z-10" />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 gap-2.5 px-4 text-center">
-                  <Loader2 className="animate-spin text-red-500 w-6 h-6" />
-                  <span className="text-xs uppercase font-bold tracking-wider">Aguardando sinal GPS mais preciso...</span>
-                  {gpsPermissionState === 'denied' && (
-                    <span className="text-[10px] text-red-400 bg-red-950/30 px-3 py-1.5 rounded-lg border border-red-900">
-                      Por favor, ative a permissão de localização do celular.
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
             {/* Address cards metadata */}
             <div className="p-6 space-y-4">
               <div>
@@ -619,6 +549,9 @@ export function MotoboyDashboard() {
                 <p className="text-xs text-zinc-400 mt-1 font-semibold leading-relaxed">
                   {activeOrder.customerAddress}
                   {activeOrder.customerBairro ? ` - ${activeOrder.customerBairro}` : ''}
+                  {activeOrder.customerCity ? ` - ${activeOrder.customerCity}` : ''}
+                  {activeOrder.customerState ? `/${activeOrder.customerState}` : ''}
+                  {activeOrder.customerCep ? ` - CEP: ${activeOrder.customerCep}` : ''}
                 </p>
                 {activeOrder.customerReference && (
                   <p className="text-[11px] font-bold text-red-400 mt-1.5 bg-red-950/20 px-3 py-1.5 rounded-xl inline-block border border-red-950">
@@ -661,7 +594,12 @@ export function MotoboyDashboard() {
                 <div className="grid grid-cols-2 gap-2.5">
                   <button 
                     type="button"
-                    onClick={handleOpenGoogleMaps}
+                    onClick={() => {
+                        if (!activeOrder) return;
+                        const lat = activeOrder.addressCoords?.lat || activeOrder.latitude;
+                        const lng = activeOrder.addressCoords?.lng || activeOrder.longitude;
+                        window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`, '_blank');
+                    }}
                     className="h-12 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 border border-zinc-800 cursor-pointer"
                   >
                     <MapIcon size={14} className="text-red-500" /> Google Maps
@@ -669,7 +607,12 @@ export function MotoboyDashboard() {
 
                   <button 
                     type="button"
-                    onClick={handleOpenWaze}
+                    onClick={() => {
+                        if (!activeOrder) return;
+                        const lat = activeOrder.addressCoords?.lat || activeOrder.latitude;
+                        const lng = activeOrder.addressCoords?.lng || activeOrder.longitude;
+                        window.open(`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`, '_blank');
+                    }}
                     className="h-12 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 border border-zinc-800 cursor-pointer"
                   >
                     <Navigation size={14} className="text-blue-400" /> Waze GPS

@@ -3,7 +3,7 @@ import { MapPin, Navigation, AlertCircle, RefreshCw, Compass, ShieldCheck } from
 import { Button } from '../ui/button';
 
 interface LocationPickerProps {
-  onLocationSelected: (coords: { lat: number; lng: number; accuracy: number }) => void;
+  onLocationSelected: (coords: { lat: number; lng: number; accuracy: number }, isBypassed?: boolean) => void;
   accentColor?: string;
   cardBg?: string;
   cardText?: string;
@@ -27,7 +27,7 @@ export default function LocationPicker({
 
     if (!navigator.geolocation) {
       setStatus('error');
-      setErrorMessage('Seu navegador não oferece suporte para geolocalização.');
+      setErrorMessage('Seu navegador não oferece suporte para geolocalização. O GPS é obrigatório para finalizar o pedido.');
       return;
     }
 
@@ -38,7 +38,7 @@ export default function LocationPicker({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
           accuracy: position.coords.accuracy,
-        });
+        }, false);
       },
       (error) => {
         setStatus('error');
@@ -143,15 +143,6 @@ export default function LocationPicker({
               >
                 <RefreshCw size={14} /> Tentar Novamente
               </Button>
-              
-              <button
-                id="bypass-gps-btn"
-                type="button"
-                onClick={() => onLocationSelected({ lat: -23.55052, lng: -46.633308, accuracy: 150 })}
-                className="font-black text-[10px] uppercase tracking-wider py-2 text-zinc-400 hover:text-white transition-all underline"
-              >
-                Inserir Localização no Mapa Manualmente
-              </button>
             </div>
           </div>
         )}

@@ -1052,6 +1052,12 @@ export function CartPage() {
     // Se for retirada, não valida endereço
     if (receiveMethod === 'retirada') return true;
 
+    // GPS OBLIGATORY VALIDATION
+    if (!gpsCoords || !latitude || !longitude) {
+      toast("O uso do GPS é obrigatório para garantir a precisão da entrega. Por favor, ative e capture sua localização.", 'error');
+      return false;
+    }
+
     // Check for empty mandatory address fields (e.g. rua, numero, areaName/bairro, and crucial referencia)
     const missing: string[] = [];
     if (!rua?.trim()) missing.push('Rua / Logradouro');
