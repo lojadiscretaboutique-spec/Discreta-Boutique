@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense, useMemo } from 'react';
-import { MapPin, Navigation, ShoppingBag, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { MapPin, Navigation, ShoppingBag, CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { State, City, DeliveryArea } from '../../services/deliveryAreaService';
 import DeliveryAddressFormLegacy, { AddressDetails } from './DeliveryAddressForm';
@@ -7,6 +7,7 @@ import { DeliveryAddressForm as DeliveryAddressFormNew } from '../delivery/Deliv
 import { DeliveryCalculator, calculateShippingFee } from '../delivery/DeliveryCalculator';
 import { deliveryRouteService, getHaversineDistance } from '../../utils/deliveryRouteService';
 import { parseGoogleGeocode } from '../../utils/googleMapsUtils';
+import { useFeedback } from '../../contexts/FeedbackContext';
 
 // Lazy load map components for maximum rendering speed and lazy overhead reductions
 const LegacyDeliveryMap = lazy(() => import('./DeliveryMap'));
@@ -56,6 +57,10 @@ export default function AddressConfirmation({
   routeGeometry = null,
   onRouteCalculated,
 }: AddressConfirmationProps) {
+  const { toast } = useFeedback();
+
+  const [isGpsOff, setIsGpsOff] = useState(false);
+
   // Main geographic coordinates
   const [lat, setLat] = useState(initialCoords.lat);
   const [lng, setLng] = useState(initialCoords.lng);
@@ -94,20 +99,56 @@ export default function AddressConfirmation({
   const [geocodeFailed, setGeocodeFailed] = useState(false);
   const [refreshingGps, setRefreshingGps] = useState(false);
 
+  // Always query real-time precision GPS immediately when entering/mounting
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setIsGpsOff(true);
+      return;
+    }
+    setLoadingGeocode(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setIsGpsOff(false);
+        const freshLat = position.coords.latitude;
+        const freshLng = position.coords.longitude;
+        userDraggedPinRef.current = true;
+        setLat(freshLat);
+        setLng(freshLng);
+        setRealGpsCoords({ lat: freshLat, lng: freshLng });
+        setDebouncedCoords({ lat: freshLat, lng: freshLng });
+        console.log("[GPS Priority] Mount lock successful:", freshLat, freshLng);
+      },
+      (err) => {
+        setIsGpsOff(true);
+        setLoadingGeocode(false);
+        console.error("[GPS Priority] Mount auto-acquire failed:", err);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }, []);
+
   const refreshGPS = () => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      setIsGpsOff(true);
+      toast("Seu dispositivo ou navegador não oferece suporte para geolocalização.", "error");
+      return;
+    }
     setRefreshingGps(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setRefreshingGps(false);
+        setIsGpsOff(false);
         userDraggedPinRef.current = true;
         setLat(position.coords.latitude);
         setLng(position.coords.longitude);
         setRealGpsCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
+        toast("Localização de GPS atualizada com sucesso de forma exata!", "success");
       },
       (err) => {
         setRefreshingGps(false);
+        setIsGpsOff(true);
         console.error("GPS refresh failed:", err);
+        toast("Falha ao capturar localização via GPS. Verifique se o GPS está ativado e as permissões de acesso foram concedidas.", "error");
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
@@ -141,9 +182,9 @@ export default function AddressConfirmation({
         setLat(realGpsCoords.lat);
         setLng(realGpsCoords.lng);
         userDraggedPinRef.current = false;
-        // Optionally alert the user (or silently correct if they are just exploring but "lost" the pin)
+        toast("Ajuste automático: Para garantir a taxa de entrega real e evitar falhas, o marcador do mapa foi mantido próximo à sua localização física de GPS.", "warning");
     }
-  }, [lat, lng, realGpsCoords]);
+  }, [lat, lng, realGpsCoords, toast]);
 
   const lastParentStateRef = useRef<any>(null);
   const userDraggedPinRef = useRef<boolean>(false);
@@ -597,16 +638,33 @@ export default function AddressConfirmation({
               </div>
             )}
 
+            {isGpsOff && (
+              <div className="flex gap-3 p-4 rounded-xl border bg-red-500/15 border-red-500/30 text-red-200 animate-fade-in my-2">
+                <AlertCircle className="shrink-0 mt-0.5 text-red-400 animate-pulse" size={18} />
+                <div>
+                  <h5 className="text-xs font-black uppercase tracking-wider mb-0.5">GPS Desativado ou Sem Sinal</h5>
+                  <p className="text-xs opacity-95 leading-relaxed">O sinal de GPS exato em tempo real do seu celular é obrigatório para entrega. Ative o GPS do seu aparelho e autorize a localização no navegador para prosseguir!</p>
+                  <button
+                    type="button"
+                    onClick={refreshGPS}
+                    className="mt-2 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 active:scale-95 transition-all text-red-200 border border-red-500/30 cursor-pointer"
+                  >
+                    Ativar e Atualizar GPS
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Confirm button */}
             <Button
               id="confirm-gps-address-btn"
               onClick={handleConfirm}
-              disabled={!validationResult.isValid || loadingGeocode}
+              disabled={!validationResult.isValid || loadingGeocode || isGpsOff}
               className="py-6 text-base font-black italic uppercase tracking-widest rounded-2xl w-full flex items-center justify-center gap-1.5 active:scale-95 transition-all text-white shadow-xl"
               style={{
-                backgroundColor: validationResult.isValid && !loadingGeocode ? accentColor : 'rgba(255,255,255,0.05)',
-                color: validationResult.isValid && !loadingGeocode ? '#ffffff' : 'rgba(255,255,255,0.3)',
-                cursor: validationResult.isValid && !loadingGeocode ? 'pointer' : 'not-allowed',
+                backgroundColor: (validationResult.isValid && !loadingGeocode && !isGpsOff) ? accentColor : 'rgba(255,255,255,0.05)',
+                color: (validationResult.isValid && !loadingGeocode && !isGpsOff) ? '#ffffff' : 'rgba(255,255,255,0.3)',
+                cursor: (validationResult.isValid && !loadingGeocode && !isGpsOff) ? 'pointer' : 'not-allowed',
               }}
             >
               Confirmar Endereço <CheckCircle size={18} />

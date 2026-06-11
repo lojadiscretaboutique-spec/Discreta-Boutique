@@ -137,6 +137,7 @@ export function CartPage() {
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [isAddressConfirmedInSession, setIsAddressConfirmedInSession] = useState(false);
   const [cep, setCep] = useState<string>('');
   const [pais, setPais] = useState<string>('Brasil');
 
@@ -1105,6 +1106,11 @@ export function CartPage() {
       return false;
     }
 
+    if (!isAddressConfirmedInSession) {
+      toast("Por favor, confirme sua localização exata no mapa utilizando o botão 'Confirmar Endereço'.", 'warning');
+      return false;
+    }
+
     // Check for empty mandatory address fields (e.g. rua, numero, areaName/bairro, and crucial referencia)
     const missing: string[] = [];
     if (!rua?.trim()) missing.push('Rua / Logradouro');
@@ -1852,6 +1858,7 @@ export function CartPage() {
                         setCep('');
                         setCityName('');
                         setStateName('');
+                        setIsAddressConfirmedInSession(false);
                         setCheckoutStep('ENDERECO');
                       }}
                       className="group relative flex flex-col items-center justify-center p-8 sm:p-10 border-2 rounded-[2rem] transition-all duration-500 hover:opacity-90"
@@ -1959,6 +1966,7 @@ export function CartPage() {
                         setAccuracy(confirmedAddress.accuracy);
                         setPais(confirmedAddress.pais);
                         setSelectedAreaId(matchedArea.id);
+                        setIsAddressConfirmedInSession(true);
                         
                         // Advance to next Checkout session
                         setCheckoutStep('AGENDAMENTO');
