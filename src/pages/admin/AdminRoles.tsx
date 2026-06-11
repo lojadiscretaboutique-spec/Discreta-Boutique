@@ -19,6 +19,8 @@ export function AdminRoles() {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [active, setActive] = useState(true);
+    const [profileType, setProfileType] = useState<'default' | 'motoboy'>('default');
+    const [customId, setCustomId] = useState('');
     const [permissions, setPermissions] = useState<Record<string, Record<string, boolean>>>({});
     const [submitting, setSubmitting] = useState(false);
 
@@ -41,6 +43,8 @@ export function AdminRoles() {
         setName('');
         setDescription('');
         setActive(true);
+        setProfileType('default');
+        setCustomId('');
         
         const initialPerms: any = {};
         MODULES.forEach(m => {
@@ -60,6 +64,10 @@ export function AdminRoles() {
         setName(role.name);
         setDescription(role.description || '');
         setActive(role.active !== false);
+        
+        const isMotoboyRole = role.id === 'ROLE_MOTOBOY' || role.id === 'motoboy';
+        setProfileType(isMotoboyRole ? 'motoboy' : 'default');
+        setCustomId(role.id!);
         
         // Merge permissions
         const mergedPerms: any = {};
@@ -102,13 +110,16 @@ export function AdminRoles() {
 
         setSubmitting(true);
         try {
+            const finalId = formId || (customId.trim() ? customId.trim() : undefined);
+            const isForceNew = !formId && !!finalId;
+
             await roleService.saveRole({
-                id: formId || undefined,
+                id: finalId,
                 name,
                 description,
                 active,
                 permissions
-            });
+            }, isForceNew);
             toast("Perfil salvo com sucesso!", "success");
             setView('list');
             loadData();
@@ -158,6 +169,42 @@ export function AdminRoles() {
 
             <div className="bg-slate-900 rounded-xl shadow-sm border p-6 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-bold mb-1">Tipo de Perfil</label>
+                        <select 
+                            value={profileType} 
+                            onChange={e => {
+                                const val = e.target.value as 'default' | 'motoboy';
+                                setProfileType(val);
+                                if (val === 'motoboy') {
+                                    setName('Motoboy (Entregador)');
+                                    setCustomId('ROLE_MOTOBOY');
+                                    setDescription('Acesso exclusivo ao aplicativo do entregador (/motoboy/login). Impede acesso administrativo.');
+                                } else {
+                                    if (name === 'Motoboy (Entregador)') setName('');
+                                    if (customId === 'ROLE_MOTOBOY') setCustomId('');
+                                    if (description.includes('Acesso exclusivo')) setDescription('');
+                                }
+                            }}
+                            className="w-full border border-slate-700 bg-slate-800 text-white rounded-md p-2 text-sm outline-none font-semibold focus:ring-2 focus:ring-slate-900"
+                            disabled={!!formId}
+                        >
+                            <option value="default">Administrativo Padrão</option>
+                            <option value="motoboy">Motoboy / Entregador (Acesso restrito ao Painel de Entrega)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-bold mb-1">Identificador exclusivo do Perfil (ID)</label>
+                        <Input 
+                            value={customId} 
+                            onChange={e => setCustomId(e.target.value)} 
+                            disabled={!!formId || profileType === 'motoboy'} 
+                            placeholder="Ex: ROLE_MOTOBOY, vendedor, supervisor..." 
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">Este identificador será usado pelas regras do sistema. Não pode ser alterado após salvar.</p>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-bold mb-1">Nome do Perfil <span className="text-red-500">*</span></label>
                         <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Vendedor, Gerente..." />

@@ -53,6 +53,16 @@ export function AdminLogin() {
           setError('Acesso negado. Sua conta não está ativa ou não possui privilégios.');
           checkAuth();
         } else {
+          // Check if user is only a Motoboy
+          const roles = userData.roles || (userData.role ? [userData.role] : []);
+          const isOnlyMotoboy = roles.length === 1 && (roles.includes('ROLE_MOTOBOY') || roles.includes('motoboy'));
+          if (isOnlyMotoboy) {
+            await auth.signOut();
+            setError('Acesso negado. Entregadores / Motoboys devem fazer login exclusivamente no aplicativo de entregas (/motoboy/login).');
+            checkAuth();
+            return;
+          }
+
           const perms = userData.computedPermissions || {};
           const hasAnyPerm = Object.values(perms).some((mod: any) => 
             Object.values(mod).some(val => val === true)

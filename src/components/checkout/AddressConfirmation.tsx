@@ -483,31 +483,14 @@ export default function AddressConfirmation({
           
           {/* MAP COLUMN */}
           <div className="w-full md:w-1/2 flex flex-col space-y-4">
-            <div className="flex justify-between items-center flex-wrap gap-2">
-              <h4 className="text-sm font-black uppercase tracking-[3px] flex items-center gap-2" style={{ color: cardText }}>
-                <MapPin size={16} style={{ color: accentColor }} /> Confirmar localização no mapa
-              </h4>
-              <button 
-                type="button"
-                id="my-location-btn"
-                onClick={refreshGPS}
-                disabled={refreshingGps}
-                className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl border hover:bg-white/5 active:scale-95 transition-all flex items-center gap-2"
-                style={{ backgroundColor: `${accentColor}10`, color: accentColor, borderColor: `${accentColor}40` }}
-              >
-                {refreshingGps ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Navigation size={12} className="rotate-45" />
-                )}
-                {refreshingGps ? 'Buscando GPS...' : 'Minha Localização'}
-              </button>
-            </div>
+            <h4 className="text-sm font-black uppercase tracking-[3px] flex items-center gap-2" style={{ color: cardText }}>
+              <MapPin size={16} style={{ color: accentColor }} /> Localização
+            </h4>
             
-            <div className="relative h-[300px] sm:h-[350px] overflow-hidden z-20 -mx-6 sm:-mx-8 md:mx-0 rounded-none md:rounded-2xl border-y md:border-x">
+            <div className="relative h-[300px] sm:h-[350px] overflow-hidden z-20 rounded-2xl border">
               <Suspense 
                 fallback={
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 border rounded-2xl animate-pulse text-xs gap-3">
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 border animate-pulse text-xs gap-3">
                     <Loader2 size={24} className="animate-spin text-zinc-500" />
                     <span className="font-mono text-[10px] uppercase text-zinc-400">Carregando Mapa...</span>
                   </div>
@@ -546,42 +529,46 @@ export default function AddressConfirmation({
                 )}
               </Suspense>
             </div>
+
+            <button 
+              type="button"
+              id="my-location-btn"
+              onClick={refreshGPS}
+              disabled={refreshingGps}
+              className="text-[10px] font-black uppercase tracking-widest px-4 py-3 rounded-xl border hover:bg-white/5 active:scale-95 transition-all flex items-center justify-center gap-2 w-full"
+              style={{ backgroundColor: `${accentColor}10`, color: accentColor, borderColor: `${accentColor}40` }}
+            >
+              {refreshingGps ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Navigation size={12} className="rotate-45" />
+              )}
+              {refreshingGps ? 'Buscando GPS...' : 'ATUALIZAR MINHA LOCALIZAÇÃO'}
+            </button>
             
-            {/* Live Distance Info / Delivery Calculator */}
-            {deliverySettings ? (
-              <DeliveryCalculator
-                distanceKm={calculatedDistance || 0}
-                durationMinutes={calculatedDuration || 0}
-                cartSubtotal={cartSubtotal}
-                config={deliverySettings}
-                accentColor={accentColor}
-                cardBg={cardBg}
-                cardText={cardText}
-                borderHex={borderHex}
-              />
-            ) : (
-              <div 
-                className="px-4 py-3 rounded-xl border text-xs flex justify-between items-center transition-all animate-fade-in"
-                style={{ borderColor: borderHex, backgroundColor: 'rgba(0,0,0,0.2)' }}
-               >
-                <span className="font-semibold text-zinc-400">Distância estimada por rota</span>
-                <span className="font-mono font-bold" style={{ color: accentColor }}>
-                  {(getHaversineDistance(lat, lng, deliverySettings?.storeLatitude || -23.55052, deliverySettings?.storeLongitude || -46.633308) * 1.35).toFixed(2)} km
-                </span>
+            {/* Informative Address Summary */}
+            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl border" style={{ borderColor: borderHex, backgroundColor: 'rgba(0,0,0,0.2)' }}>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Rua</p>
+                <p className="text-xs font-semibold truncate" style={{ color: bgText }}>{addressDetails.rua || 'Localização detectada'}</p>
               </div>
-            )}
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Cidade</p>
+                <p className="text-xs font-semibold truncate" style={{ color: bgText }}>{addressDetails.cidade || 'GPS Ativo'}</p>
+              </div>
+            </div>
           </div>
 
           {/* FIELDS AND VALIDATIONS COLUMN */}
           <div className="w-full md:w-1/2 flex flex-col space-y-6">
             <h4 className="text-sm font-black uppercase tracking-[3px] flex items-center gap-2" style={{ color: cardText }}>
-              <ShoppingBag size={16} style={{ color: accentColor }} /> Complete seu endereço
+              <ShoppingBag size={16} style={{ color: accentColor }} /> Informações de Entrega
             </h4>
 
             {loadingGeocode ? (
               <div className="h-[220px] flex flex-col items-center justify-center gap-3 border rounded-2xl animate-pulse" style={{ borderColor: borderHex }}>
                 <Loader2 size={32} className="animate-spin" style={{ color: accentColor }} />
-                <span className="text-xs uppercase tracking-widest font-black text-slate-400">Buscando endereço via GPS...</span>
+                <span className="text-xs uppercase tracking-widest font-black text-slate-400">Processando GPS...</span>
               </div>
             ) : deliverySettings ? (
               <DeliveryAddressFormNew
@@ -604,12 +591,22 @@ export default function AddressConfirmation({
                 borderHex={borderHex}
                 bgHex="rgba(0,0,0,0.15)"
                 bgText={bgText}
-                isGeocodeFailed={geocodeFailed}
               />
             )}
 
-            {/* Alert banners if not georouting (which renders inside DeliveryCalculator) */}
-            {!deliverySettings && (
+            {/* Delivery Calculator moved here */}
+            {deliverySettings ? (
+              <DeliveryCalculator
+                distanceKm={calculatedDistance || 0}
+                durationMinutes={calculatedDuration || 0}
+                cartSubtotal={cartSubtotal}
+                config={deliverySettings}
+                accentColor={accentColor}
+                cardBg={cardBg}
+                cardText={cardText}
+                borderHex={borderHex}
+              />
+            ) : (
               <div className="space-y-4">
                 {validationResult.isValid ? (
                   <div className="flex gap-3 p-4 rounded-xl border bg-emerald-500/10 border-emerald-500/25 text-emerald-300 animate-fade-in">
@@ -637,34 +634,17 @@ export default function AddressConfirmation({
                 )}
               </div>
             )}
-
-            {isGpsOff && (
-              <div className="flex gap-3 p-4 rounded-xl border bg-red-500/15 border-red-500/30 text-red-200 animate-fade-in my-2">
-                <AlertCircle className="shrink-0 mt-0.5 text-red-400 animate-pulse" size={18} />
-                <div>
-                  <h5 className="text-xs font-black uppercase tracking-wider mb-0.5">GPS Desativado ou Sem Sinal</h5>
-                  <p className="text-xs opacity-95 leading-relaxed">O sinal de GPS exato em tempo real do seu celular é obrigatório para entrega. Ative o GPS do seu aparelho e autorize a localização no navegador para prosseguir!</p>
-                  <button
-                    type="button"
-                    onClick={refreshGPS}
-                    className="mt-2 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 active:scale-95 transition-all text-red-200 border border-red-500/30 cursor-pointer"
-                  >
-                    Ativar e Atualizar GPS
-                  </button>
-                </div>
-              </div>
-            )}
-
+            
             {/* Confirm button */}
             <Button
               id="confirm-gps-address-btn"
               onClick={handleConfirm}
-              disabled={!validationResult.isValid || loadingGeocode || isGpsOff}
+              disabled={loadingGeocode || isGpsOff}
               className="py-6 text-base font-black italic uppercase tracking-widest rounded-2xl w-full flex items-center justify-center gap-1.5 active:scale-95 transition-all text-white shadow-xl"
               style={{
-                backgroundColor: (validationResult.isValid && !loadingGeocode && !isGpsOff) ? accentColor : 'rgba(255,255,255,0.05)',
-                color: (validationResult.isValid && !loadingGeocode && !isGpsOff) ? '#ffffff' : 'rgba(255,255,255,0.3)',
-                cursor: (validationResult.isValid && !loadingGeocode && !isGpsOff) ? 'pointer' : 'not-allowed',
+                backgroundColor: ( !loadingGeocode && !isGpsOff) ? accentColor : 'rgba(255,255,255,0.05)',
+                color: ( !loadingGeocode && !isGpsOff) ? '#ffffff' : 'rgba(255,255,255,0.3)',
+                cursor: ( !loadingGeocode && !isGpsOff) ? 'pointer' : 'not-allowed',
               }}
             >
               Confirmar Endereço <CheckCircle size={18} />

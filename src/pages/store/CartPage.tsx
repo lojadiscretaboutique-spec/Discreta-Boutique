@@ -154,7 +154,7 @@ export function CartPage() {
   const [complemento, setComplemento] = useState('');
   const [referencia, setReferencia] = useState('');
 
-  const [notes, setNotes] = useState('');
+  const [observacoes, setObservacoes] = useState('');
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [hasLookedUp, setHasLookedUp] = useState(false);
@@ -1014,7 +1014,7 @@ export function CartPage() {
                    });
               }
             }
-            if (cust.notes) setNotes(cust.notes);
+            if (cust.notes) setObservacoes(cust.notes);
           } else {
             setIsNewCustomer(true);
             toast('Ainda não temos seu cadastro. Informe seu nome para continuar!', 'info');
@@ -1270,7 +1270,7 @@ export function CartPage() {
       const selectedMethodConfig = paymentSettings?.methods.find(m => m.id === paymentMethod);
       const isCash = selectedMethodConfig?.label.toLowerCase().includes('dinheiro') || selectedMethodConfig?.id === 'cash';
 
-      let finalNotes = notes;
+      let finalNotes = observacoes;
       if (isCash && trocoPara) {
           finalNotes = `Precisa de troco para: R$ ${trocoPara}. ` + finalNotes;
       }
@@ -1941,30 +1941,22 @@ export function CartPage() {
                         latitude: latitude || gpsCoords.lat,
                         longitude: longitude || gpsCoords.lng,
                         accuracy: accuracy || gpsCoords.accuracy,
-                        cep: cep,
+                        pontoReferencia: referencia,
+                        observacoes: observacoes,
                         rua: rua,
-                        numero: numero,
-                        bairro: areaName,
-                        complemento: complemento,
-                        referencia: referencia,
                         cidade: cityName,
-                        estado: stateName,
-                        pais: pais,
                       }}
                       onAddressConfirmed={(confirmedAddress, matchedArea, calculatedFee) => {
                         // Set standard checkout fields based on confirmed GPS attributes
-                        setStateName(confirmedAddress.estado);
-                        setCityName(confirmedAddress.cidade);
-                        setAreaName(confirmedAddress.bairro);
-                        setRua(confirmedAddress.rua);
-                        setNumero(confirmedAddress.numero);
-                        setComplemento(confirmedAddress.complemento || '');
-                        setReferencia(confirmedAddress.referencia);
                         setLatitude(confirmedAddress.latitude);
                         setLongitude(confirmedAddress.longitude);
-                        setCep(confirmedAddress.cep);
                         setAccuracy(confirmedAddress.accuracy);
-                        setPais(confirmedAddress.pais);
+                        setReferencia(confirmedAddress.pontoReferencia);
+                        setObservacoes(confirmedAddress.observacoes || '');
+                        
+                        if (confirmedAddress.rua) setRua(confirmedAddress.rua);
+                        if (confirmedAddress.cidade) setCityName(confirmedAddress.cidade);
+                        
                         setSelectedAreaId(matchedArea.id);
                         setIsAddressConfirmedInSession(true);
                         
@@ -2113,8 +2105,8 @@ export function CartPage() {
                       <textarea 
                         className="w-full rounded-2xl px-5 py-5 font-bold min-h-[80px] text-sm border storefront-check-field"
                         style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
-                        value={notes} 
-                        onChange={e => setNotes(e.target.value)} 
+                        value={observacoes} 
+                        onChange={e => setObservacoes(e.target.value)} 
                         placeholder="Algo que devemos saber?"
                       />
                     </div>
