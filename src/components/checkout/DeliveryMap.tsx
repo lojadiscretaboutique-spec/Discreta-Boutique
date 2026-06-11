@@ -33,6 +33,7 @@ export default function DeliveryMap({
   const mapRef = useRef<L.Map | null>(null);
   const circleRef = useRef<L.Circle | null>(null);
   const isInternalMoveRef = useRef<boolean>(false);
+  const posRef = useRef({ lat: latitude, lng: longitude });
   const [isDragging, setIsDragging] = useState(false);
   const onPositionChangeRef = useRef(onPositionChange);
 
@@ -51,6 +52,12 @@ export default function DeliveryMap({
       zoom: 16,
       zoomControl: false, // Hide default controls for a clean app look
       attributionControl: false, // Cleaner UI
+      dragging: false,
+      touchZoom: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      boxZoom: false,
+      keyboard: false,
     });
 
     // High visibility CartoDB Voyager Light tiles for premium light mode
@@ -59,27 +66,13 @@ export default function DeliveryMap({
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
     }).addTo(map);
 
+
     // Zoom buttons in a nicer position
     L.control.zoom({
       position: 'bottomright',
     }).addTo(map);
 
     mapRef.current = map;
-
-    // Track dragging/moving states to animate the central pointer
-    map.on('movestart', () => {
-      setIsDragging(true);
-    });
-
-    map.on('moveend', () => {
-      setIsDragging(false);
-      if (isInternalMoveRef.current) {
-        isInternalMoveRef.current = false;
-        return;
-      }
-      const center = map.getCenter();
-      onPositionChangeRef.current(center.lat, center.lng);
-    });
 
     return () => {
       if (mapRef.current) {
@@ -91,6 +84,7 @@ export default function DeliveryMap({
 
   // Sync outside coordinate changes to map view
   useEffect(() => {
+    posRef.current = { lat: latitude, lng: longitude };
     if (mapRef.current) {
       const currentCenter = mapRef.current.getCenter();
       const distance = currentCenter.distanceTo(L.latLng(latitude, longitude));
@@ -175,34 +169,18 @@ export default function DeliveryMap({
         id="recenter-gps-btn"
         type="button"
         onClick={handleCenterToGPS}
-        className="absolute bottom-4 left-4 z-20 p-2.5 rounded-xl bg-zinc-950 shadow-md border hover:bg-zinc-900 active:scale-95 transition-all flex items-center justify-center text-red-500"
-        style={{ borderColor: 'rgba(239, 68, 68, 0.25)' }}
-        title="Centralizar na minha localização"
+        className="absolute bottom-6 left-6 z-20 p-4 rounded-2xl bg-white shadow-2xl border-4 border-red-500 hover:bg-zinc-50 active:scale-95 transition-all flex items-center justify-center text-red-600 animate-bounce-short"
+        title="Atualizar para minha localização"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10" />
-          <circle cx="12" cy="12" r="3" fill="#ef4444" />
+          <circle cx="12" cy="12" r="3" fill="currentColor" />
           <line x1="12" y1="1" x2="12" y2="3" />
           <line x1="12" y1="21" x2="12" y2="23" />
           <line x1="1" y1="12" x2="3" y2="12" />
           <line x1="21" y1="12" x2="23" y2="12" />
         </svg>
       </button>
-
-      {/* Tip Banner */}
-      <div 
-        id="delivery-map-tip"
-        className="absolute top-4 left-4 right-4 z-20 px-4 py-2 rounded-xl text-center shadow-md border backdrop-blur-md flex items-center justify-center gap-1.5 pointer-events-none animate-fade-in"
-        style={{
-          backgroundColor,
-          borderColor,
-        }}
-      >
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-        <p className="text-[11px] font-bold tracking-wide uppercase text-zinc-100">
-          Arrastar o mapa ajusta o endereço
-        </p>
-      </div>
 
       {/* High contrast style overrides for map controls and markers */}
       <style>{`

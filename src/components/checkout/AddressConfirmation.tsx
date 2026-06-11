@@ -389,55 +389,12 @@ export default function AddressConfirmation({
       };
     }
 
-    // 2. Traditional Area Legacy Calculations
-    const normState = normalizeStr(addressDetails.estado);
-    const normCity = normalizeStr(addressDetails.cidade);
-    const normBairro = normalizeStr(addressDetails.bairro);
-
-    const matchedState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
-    const matchedCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
-    
-    if (!matchedState || !matchedCity) {
-      return {
-        isValid: false,
-        message: 'Cidade ou Estado de entrega não cadastrados nas áreas atendidas.',
-        area: null,
-        fee: 0,
-      };
-    }
-
-    const matchedArea = dbAreas.find(a => 
-      (normalizeStr(a.stateName) === normalizeStr(matchedState.sigla) || normalizeStr(a.stateName) === normalizeStr(matchedState.nome)) &&
-      normalizeStr(a.cityName) === normalizeStr(matchedCity.nome) &&
-      normalizeStr(a.bairro) === normBairro
-    );
-
-    if (!matchedArea) {
-      return {
-        isValid: false,
-        message: `Infelizmente, ainda não atendemos o bairro "${addressDetails.bairro || 'não identificado'}" em ${addressDetails.cidade}.`,
-        area: null,
-        fee: 0,
-      };
-    }
-
-    if (matchedArea.pedidoMinimo && cartSubtotal < matchedArea.pedidoMinimo) {
-      return {
-        isValid: false,
-        message: `Pedido Mínimo não atingido! O mínimo para esta região é R$ ${matchedArea.pedidoMinimo.toFixed(2)}.`,
-        area: matchedArea,
-        fee: 0,
-      };
-    }
-
-    const freeShipping = matchedArea.freteGratisAcima && cartSubtotal >= matchedArea.freteGratisAcima;
-    const fee = freeShipping ? 0 : matchedArea.taxaEntrega;
-
+    // 2. Traditional Area Legacy Calculations (Disabled per user request)
     return {
       isValid: true,
-      message: freeShipping ? 'Entrega disponível com FRETE GRÁTIS!' : 'Área de entrega atendida com sucesso!',
-      fee,
-      area: matchedArea,
+      message: 'Localização confirmada.',
+      area: { id: 'manual', name: 'Manual', tempoEntrega: '30', pedidoMinimo: 0 } as any,
+      fee: 0,
     };
   }, [addressDetails, dbStates, dbCities, dbAreas, cartSubtotal, deliverySettings, calculatedDistance, calculatedDuration]);
 
@@ -448,9 +405,9 @@ export default function AddressConfirmation({
   const handleConfirm = () => {
     if (!validationResult.isValid || !validationResult.area) return;
     
-    // Check for empty mandatory address fields (crucial referencia)
+    // Check for empty mandatory address fields (crucial pontoReferencia)
     const missing: string[] = [];
-    if (!addressDetails.referencia?.trim()) missing.push('Ponto de Referência');
+    if (!addressDetails.pontoReferencia?.trim()) missing.push('Ponto de Referência');
 
     if (missing.length > 0) {
       setMissingFields(missing);
