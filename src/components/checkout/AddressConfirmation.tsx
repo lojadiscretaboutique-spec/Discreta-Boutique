@@ -448,10 +448,8 @@ export default function AddressConfirmation({
   const handleConfirm = () => {
     if (!validationResult.isValid || !validationResult.area) return;
     
+    // Check for empty mandatory address fields (crucial referencia)
     const missing: string[] = [];
-    if (!addressDetails.rua?.trim()) missing.push('Rua / Logradouro');
-    if (!addressDetails.numero?.trim()) missing.push('Número');
-    if (!addressDetails.bairro?.trim()) missing.push('Bairro');
     if (!addressDetails.referencia?.trim()) missing.push('Ponto de Referência');
 
     if (missing.length > 0) {
