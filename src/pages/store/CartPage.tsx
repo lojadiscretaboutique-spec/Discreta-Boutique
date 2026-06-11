@@ -1113,9 +1113,6 @@ export function CartPage() {
 
     // Check for empty mandatory address fields (e.g. rua, numero, areaName/bairro, and crucial referencia)
     const missing: string[] = [];
-    if (!rua?.trim()) missing.push('Rua / Logradouro');
-    if (!numero?.trim()) missing.push('Número');
-    if (!areaName?.trim()) missing.push('Bairro');
     if (!referencia?.trim()) missing.push('Ponto de Referência');
 
     if (missing.length > 0) {
@@ -1137,32 +1134,27 @@ export function CartPage() {
       return true;
     }
 
-    const normState = normalizeStr(stateName);
-    const normCity = normalizeStr(cityName);
-    const normArea = normalizeStr(areaName);
+    // Apenas validar área se foram preenchidas
+    if (stateName || cityName || areaName) {
+      const normState = normalizeStr(stateName);
+      const normCity = normalizeStr(cityName);
+      const normArea = normalizeStr(areaName);
 
-    const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
-    const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
+      const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
+      const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
 
-    if (!validState || !validCity) {
-      toast("Por favor, selecione Estado e Cidade das sugestões.", 'warning');
-      return false;
-    }
-
-    const validArea = dbAreas.find(a => 
-      (normalizeStr(a.stateName) === normalizeStr(validState.sigla) || normalizeStr(a.stateName) === normalizeStr(validState.nome)) &&
-      normalizeStr(a.cityName) === normalizeStr(validCity.nome) &&
-      normalizeStr(a.bairro) === normArea
-    );
-
-    if (!validArea) {
-      toast("Bairro não encontrado na cidade/estado informados.", 'warning');
-      return false;
-    }
-
-    if (validArea.pedidoMinimo && subTotal < validArea.pedidoMinimo) {
-      toast(`O pedido mínimo para sua região é de ${formatCurrency(validArea.pedidoMinimo)}`, 'error');
-      return false;
+      if (validState && validCity) {
+        const validArea = dbAreas.find(a => 
+          (normalizeStr(a.stateName) === normalizeStr(validState.sigla) || normalizeStr(a.stateName) === normalizeStr(validState.nome)) &&
+          normalizeStr(a.cityName) === normalizeStr(validCity.nome) &&
+          normalizeStr(a.bairro) === normArea
+        );
+        
+        if (validArea && validArea.pedidoMinimo && subTotal < validArea.pedidoMinimo) {
+          toast(`O pedido mínimo para sua região é de ${formatCurrency(validArea.pedidoMinimo)}`, 'error');
+          return false;
+        }
+      }
     }
 
     return true;

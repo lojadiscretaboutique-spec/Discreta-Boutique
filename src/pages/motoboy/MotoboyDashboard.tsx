@@ -1,3 +1,4 @@
+import { deliveryTrackingService } from "../../services/deliveryTrackingService";
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../../lib/firebase';
@@ -231,7 +232,8 @@ export function MotoboyDashboard() {
     }
   };
 
-  // 5. GPS Realtime tracking cycle
+
+// 5. GPS Realtime tracking cycle
   useEffect(() => {
     if (!activeOrder || !user) {
       // Clear tracking watch if active delivery ceases
@@ -252,34 +254,12 @@ export function MotoboyDashboard() {
           setDriverGPS({ lat, lng });
           setGpsPermissionState('granted');
 
-          // Write current location to `delivery_locations/{orderId}`
+          // Log location using service
           try {
-            await setDoc(doc(db, 'delivery_locations', activeOrder.id), {
-              orderId: activeOrder.id,
-              driverId: user.uid,
-              driverName: userData?.name || 'Entregador',
-              latitude: lat,
-              longitude: lng,
-              speed: speed,
-              updatedAt: serverTimestamp()
-            });
-
-            await updateDoc(doc(db, 'orders', activeOrder.id), {
-              latMotoBoy: lat,
-              lngMotoBoy: lng
-            });
-
-            // Log entry into history `delivery_tracking`
-            await addDoc(collection(db, 'delivery_tracking'), {
-              orderId: activeOrder.id,
-              driverId: user.uid,
-              latitude: lat,
-              longitude: lng,
-              speed: speed,
-              timestamp: serverTimestamp()
-            });
+            await deliveryTrackingService.updateDriverLocation(activeOrder.id, user.uid, userData?.name || 'Entregador', lat, lng, speed);
+            await deliveryTrackingService.logTrackingPoint(activeOrder.id, user.uid, lat, lng, speed);
           } catch (trackerErr) {
-            console.error("Tracking write error:", trackerErr);
+            console.error("Tracking error:", trackerErr);
           }
         },
         (error) => {
@@ -299,7 +279,7 @@ export function MotoboyDashboard() {
         navigator.geolocation.clearWatch(gpsWatcherId);
       }
     };
-  }, [activeOrder, user]);
+  }, [activeOrder, user, userData]);
 
   // 6. Embedded leaflet map rendering inside dashboard (Removed)
   

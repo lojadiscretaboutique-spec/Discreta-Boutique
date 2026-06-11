@@ -64,9 +64,40 @@ export default {
           }
         },
         createdAt: { type: "string", format: "date-time" },
-        updatedAt: { type: "string", format: "date-time" }
+        updatedAt: { type: "string", format: "date-time" },
+        entregadorId: { type: "string" },
+        aceitoEm: { type: "string", format: "date-time" },
+        historicoStatus: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              status: { type: "string" },
+              data: { type: "string", format: "date-time" },
+              motivo: { type: "string" }
+            }
+          }
+        }
       },
       required: ["customerName", "customerAddress", "customerWhatsapp", "status", "total"]
+    },
+    DeliveryDriver: {
+      title: "Delivery Driver",
+      description: "Information about the delivery driver",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        userId: { type: "string" },
+        onlineStatus: { type: "boolean" },
+        ultimaLatitude: { type: "number" },
+        ultimaLongitude: { type: "number" },
+        ultimaPrecisao: { type: "number" },
+        ultimaAtualizacao: { type: "string", format: "date-time" },
+        ultimaSincronizacao: { type: "string", format: "date-time" },
+        batteryLevel: { type: "number" },
+        batteryCharging: { type: "boolean" }
+      },
+      required: ["userId", "onlineStatus"]
     },
     Category: {
       type: "object",
