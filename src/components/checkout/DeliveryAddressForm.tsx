@@ -6,8 +6,14 @@ export interface AddressDetails {
   pontoReferencia: string;
   observacoes: string;
   accuracy: number;
-  rua?: string; // Optional metadata only
-  cidade?: string; // Optional metadata only
+  rua: string;
+  numero: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  cep: string;
+  complemento: string;
+  pais: string;
 }
 
 interface DeliveryAddressFormProps {
@@ -48,6 +54,64 @@ export default function DeliveryAddressForm({
       </div>
 
       <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-4">
+            <div className="col-span-2">
+              <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
+                Rua/Logradouro *
+              </label>
+              <input 
+                type="text" 
+                required 
+                value={address.rua} 
+                onChange={e => onChange({ rua: e.target.value })} 
+                className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all" 
+                style={{ 
+                  backgroundColor: bgHex, 
+                  color: bgText, 
+                  borderColor: borderHex,
+                }}
+                placeholder="Ex: Rua das Flores" 
+              />
+            </div>
+            <div className="col-span-1">
+              <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
+                Número *
+              </label>
+              <input 
+                type="text" 
+                required 
+                value={address.numero} 
+                onChange={e => onChange({ numero: e.target.value })} 
+                className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all" 
+                style={{ 
+                  backgroundColor: bgHex, 
+                  color: bgText, 
+                  borderColor: borderHex,
+                }}
+                placeholder="Ex: 123" 
+              />
+            </div>
+        </div>
+
+        <div>
+          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
+            Bairro *
+          </label>
+          <input 
+            type="text" 
+            required 
+            value={address.bairro} 
+            onChange={e => onChange({ bairro: e.target.value })} 
+            className="w-full rounded-xl px-4 py-3 font-semibold text-sm border focus:ring-1 transition-all" 
+            style={{ 
+              backgroundColor: bgHex, 
+              color: bgText, 
+              borderColor: borderHex,
+            }}
+            placeholder="Ex: Centro" 
+          />
+        </div>
+
         <div>
           <label className="block text-[9px] font-black mb-2 uppercase tracking-widest" style={{ color: subTextCardColor }}>
             Ponto de Referência *

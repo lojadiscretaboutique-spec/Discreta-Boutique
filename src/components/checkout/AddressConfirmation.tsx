@@ -436,84 +436,6 @@ export default function AddressConfirmation({
       >
         <div className="flex flex-col md:flex-row gap-8">
           
-          {/* MAP COLUMN */}
-          <div className="w-full md:w-1/2 flex flex-col space-y-4">
-            <h4 className="text-sm font-black uppercase tracking-[3px] flex items-center gap-2" style={{ color: cardText }}>
-              <MapPin size={16} style={{ color: accentColor }} /> Localização
-            </h4>
-            
-            <div className="relative h-[300px] sm:h-[350px] overflow-hidden z-20 rounded-2xl border">
-              <Suspense 
-                fallback={
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 border animate-pulse text-xs gap-3">
-                    <Loader2 size={24} className="animate-spin text-zinc-500" />
-                    <span className="font-mono text-[10px] uppercase text-zinc-400">Carregando Mapa...</span>
-                  </div>
-                }
-              >
-                {deliverySettings ? (
-                  <NewDeliveryMap
-                    storeLat={deliverySettings.storeLatitude}
-                    storeLng={deliverySettings.storeLongitude}
-                    customerLat={lat}
-                    customerLng={lng}
-                    routeGeometry={routeGeometry}
-                    onCustomerPositionChange={(newLat, newLng) => {
-                      userDraggedPinRef.current = true;
-                      setLat(newLat);
-                      setLng(newLng);
-                    }}
-                    accentColor={accentColor}
-                    borderColor={borderHex}
-                    backgroundColor={cardBg}
-                  />
-                ) : (
-                  <LegacyDeliveryMap
-                    latitude={lat}
-                    longitude={lng}
-                    accuracy={accuracy}
-                    onPositionChange={(newLat, newLng) => {
-                      userDraggedPinRef.current = true;
-                      setLat(newLat);
-                      setLng(newLng);
-                    }}
-                    accentColor={accentColor}
-                    backgroundColor={cardBg}
-                    borderColor={borderHex}
-                  />
-                )}
-              </Suspense>
-            </div>
-
-            <button 
-              type="button"
-              id="my-location-btn"
-              onClick={refreshGPS}
-              disabled={refreshingGps}
-              className="text-[10px] font-black uppercase tracking-widest px-4 py-3 rounded-xl border hover:bg-white/5 active:scale-95 transition-all flex items-center justify-center gap-2 w-full"
-              style={{ backgroundColor: `${accentColor}10`, color: accentColor, borderColor: `${accentColor}40` }}
-            >
-              {refreshingGps ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Navigation size={12} className="rotate-45" />
-              )}
-              {refreshingGps ? 'Buscando GPS...' : 'ATUALIZAR MINHA LOCALIZAÇÃO'}
-            </button>
-            
-            {/* Informative Address Summary */}
-            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl border" style={{ borderColor: borderHex, backgroundColor: 'rgba(0,0,0,0.2)' }}>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Rua</p>
-                <p className="text-xs font-semibold truncate" style={{ color: bgText }}>{addressDetails.rua || 'Localização detectada'}</p>
-              </div>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Cidade</p>
-                <p className="text-xs font-semibold truncate" style={{ color: bgText }}>{addressDetails.cidade || 'GPS Ativo'}</p>
-              </div>
-            </div>
-          </div>
-
           {/* FIELDS AND VALIDATIONS COLUMN */}
           <div className="w-full md:w-1/2 flex flex-col space-y-6">
             <h4 className="text-sm font-black uppercase tracking-[3px] flex items-center gap-2" style={{ color: cardText }}>
@@ -605,6 +527,85 @@ export default function AddressConfirmation({
               Confirmar Endereço <CheckCircle size={18} />
             </Button>
           </div>
+
+          {/* MAP COLUMN */}
+          <div className="w-full md:w-1/2 flex flex-col space-y-4">
+            <h4 className="text-sm font-black uppercase tracking-[3px] flex items-center gap-2" style={{ color: cardText }}>
+              <MapPin size={16} style={{ color: accentColor }} /> Localização
+            </h4>
+            
+            <div className="relative h-[300px] sm:h-[350px] overflow-hidden z-20 rounded-2xl border">
+              <Suspense 
+                fallback={
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 border animate-pulse text-xs gap-3">
+                    <Loader2 size={24} className="animate-spin text-zinc-500" />
+                    <span className="font-mono text-[10px] uppercase text-zinc-400">Carregando Mapa...</span>
+                  </div>
+                }
+              >
+                {deliverySettings ? (
+                  <NewDeliveryMap
+                    storeLat={deliverySettings.storeLatitude}
+                    storeLng={deliverySettings.storeLongitude}
+                    customerLat={lat}
+                    customerLng={lng}
+                    routeGeometry={routeGeometry}
+                    onCustomerPositionChange={(newLat, newLng) => {
+                      userDraggedPinRef.current = true;
+                      setLat(newLat);
+                      setLng(newLng);
+                    }}
+                    accentColor={accentColor}
+                    borderColor={borderHex}
+                    backgroundColor={cardBg}
+                  />
+                ) : (
+                  <LegacyDeliveryMap
+                    latitude={lat}
+                    longitude={lng}
+                    accuracy={accuracy}
+                    onPositionChange={(newLat, newLng) => {
+                      userDraggedPinRef.current = true;
+                      setLat(newLat);
+                      setLng(newLng);
+                    }}
+                    accentColor={accentColor}
+                    backgroundColor={cardBg}
+                    borderColor={borderHex}
+                  />
+                )}
+              </Suspense>
+            </div>
+
+            <button 
+              type="button"
+              id="my-location-btn"
+              onClick={refreshGPS}
+              disabled={refreshingGps}
+              className="text-[10px] font-black uppercase tracking-widest px-4 py-3 rounded-xl border hover:bg-white/5 active:scale-95 transition-all flex items-center justify-center gap-2 w-full"
+              style={{ backgroundColor: `${accentColor}10`, color: accentColor, borderColor: `${accentColor}40` }}
+            >
+              {refreshingGps ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Navigation size={12} className="rotate-45" />
+              )}
+              {refreshingGps ? 'Buscando GPS...' : 'ATUALIZAR MINHA LOCALIZAÇÃO'}
+            </button>
+            
+            {/* Informative Address Summary */}
+            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl border" style={{ borderColor: borderHex, backgroundColor: 'rgba(0,0,0,0.2)' }}>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Rua</p>
+                <p className="text-xs font-semibold truncate" style={{ color: bgText }}>{addressDetails.rua || 'Localização detectada'}</p>
+              </div>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Cidade</p>
+                <p className="text-xs font-semibold truncate" style={{ color: bgText }}>{addressDetails.cidade || 'GPS Ativo'}</p>
+              </div>
+            </div>
+          </div>
+
 
         </div>
       </div>
