@@ -167,25 +167,10 @@ export function WifiHotspotPage() {
           </p>
         </div>
 
-        {/* Fallback Banner for Missing MikroTik Parameters (Requirement 7) */}
-        {(!mac && !ip) && (
-          <div className="mb-6 -mt-2 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-center">
-            <p className="text-[11px] font-semibold text-amber-400 flex items-center justify-center gap-1.5">
-              <span>⚡ Modo de Visualização Ativo</span>
-            </p>
-            <p className="text-[10px] text-zinc-400 mt-1 leading-relaxed">
-              Você acessou o portal fora do Wi-Fi físico. O formulário abaixo está disponível para teste e simulação de lead.
-            </p>
-            <div className="mt-2 text-center">
-              <a 
-                href="https://www.discretaboutique.com.br" 
-                className="inline-block text-[10px] font-bold text-amber-500 hover:text-amber-400 transition-colors uppercase tracking-wider"
-              >
-                Acessar Site da Loja →
-              </a>
-            </div>
-          </div>
-        )}
+        {/* Premium welcome subtitle/notice */}
+        <p className="text-zinc-500 text-xs text-center -mt-4 mb-6 leading-relaxed max-w-xs mx-auto">
+          Preencha o cadastro abaixo para liberar as boas-vindas do sinal Wi-Fi de alta velocidade e acompanhar as novidades exclusivas da nossa boutique.
+        </p>
 
         <AnimatePresence mode="wait">
           {!success ? (
