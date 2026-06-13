@@ -13,7 +13,10 @@ export function WifiHotspotPage() {
   // Hotspot query parameters
   const mac = searchParams.get('mac') || '';
   const ip = searchParams.get('ip') || '';
-  const linkLogin = searchParams.get('link-login') || searchParams.get('link-login-only') || '';
+  const linkLoginOnly = searchParams.get('link-login-only') || '';
+  const linkOrig = searchParams.get('link-orig') || '';
+  const urlUsername = searchParams.get('username') || '';
+  const urlPassword = searchParams.get('password') || '';
 
   // Form states
   const [name, setName] = useState('');
@@ -93,35 +96,35 @@ export function WifiHotspotPage() {
 
       // Wait 1.5 seconds for visual transition feedback, then perform MikroTik release redirect
       setTimeout(() => {
-        if (linkLogin) {
+        if (linkLoginOnly) {
           // Programmatic release of hotspot via Hidden Form Submit (POST)
           const form = document.createElement('form');
           form.method = 'POST';
-          form.action = linkLogin;
+          form.action = linkLoginOnly;
 
           const usernameInput = document.createElement('input');
           usernameInput.type = 'hidden';
           usernameInput.name = 'username';
-          usernameInput.value = digitsOnly;
+          usernameInput.value = 'visitante';
           form.appendChild(usernameInput);
 
           const passwordInput = document.createElement('input');
           passwordInput.type = 'hidden';
           passwordInput.name = 'password';
-          passwordInput.value = '';
+          passwordInput.value = 'discreta2026';
           form.appendChild(passwordInput);
 
           const dstInput = document.createElement('input');
           dstInput.type = 'hidden';
           dstInput.name = 'dst';
-          dstInput.value = 'https://www.discretaboutique.com.br';
+          dstInput.value = 'https://discretaboutique.com.br';
           form.appendChild(dstInput);
 
           document.body.appendChild(form);
           form.submit();
         } else {
-          // Standard/Local sandbox simulation and direct redirect
-          window.location.href = 'https://www.discretaboutique.com.br';
+          // Standard/Local sandbox simulation and direct redirect (Demonstration mode)
+          window.location.href = 'https://discretaboutique.com.br';
         }
       }, 1500);
 
@@ -294,9 +297,17 @@ export function WifiHotspotPage() {
         </AnimatePresence>
 
         {/* Footer info/metadata */}
-        <div className="flex justify-between items-center text-[10px] text-zinc-600 font-mono mt-8 border-t border-zinc-800/40 pt-4 px-1">
-          <span>IP: {ip || 'Detectando'}</span>
-          <span>MAC: {mac || 'Detectando'}</span>
+        <div className="flex flex-col gap-1.5 text-[10px] text-zinc-600 font-mono mt-8 border-t border-zinc-800/40 pt-4 px-1">
+          <div className="flex justify-between items-center">
+            <span>IP: {ip || 'Detectando'}</span>
+            <span>MAC: {mac || 'Detectando'}</span>
+          </div>
+          {(linkOrig || urlUsername || urlPassword) && (
+            <div className="flex justify-between items-center text-[8px] text-zinc-700">
+              <span className="truncate max-w-[150px]">Origem: {linkOrig || 'Indefinida'}</span>
+              <span>ID: {urlUsername || 'Visitante'}</span>
+            </div>
+          )}
         </div>
       </motion.div>
     </div>
