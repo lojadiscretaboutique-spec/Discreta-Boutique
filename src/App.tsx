@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { StoreLayout } from './layouts/StoreLayout';
 import { AdminLayout } from './layouts/AdminLayout';
+import { WifiHotspotPage } from './pages/store/WifiHotspotPage';
 import { motion } from 'motion/react';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { PromotionProvider } from './contexts/PromotionContext';
@@ -16,7 +17,6 @@ const ProductPage = lazy(() => import('./pages/store/ProductPage').then(m => ({ 
 const CartPage = lazy(() => import('./pages/store/CartPage').then(m => ({ default: m.CartPage })));
 const SuccessPage = lazy(() => import('./pages/store/SuccessPage').then(m => ({ default: m.SuccessPage })));
 const CustomerAreaPage = lazy(() => import('./pages/store/CustomerAreaPage').then(m => ({ default: m.CustomerAreaPage })));
-const WifiHotspotPage = lazy(() => import('./pages/store/WifiHotspotPage').then(m => ({ default: m.WifiHotspotPage })));
 const PrivacyPolicyPage = lazy(() => import('./pages/store/PrivacyPolicyPage'));
 const AboutUsPage = lazy(() => import('./pages/store/AboutUsPage'));
 const ExchangePolicyPage = lazy(() => import('./pages/store/ExchangePolicyPage'));
