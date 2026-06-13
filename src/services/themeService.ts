@@ -4,7 +4,6 @@ import { ThemeConfig } from '../types/theme';
 import { cacheService } from './cacheService';
 import { auditLogService, AuditLog } from './auditLogService';
 import { getAutoTextColor } from '../utils/themeUtils';
-import { getDateFromTimestamp } from '../lib/utils';
 
 const THEME_ACTIVE_DOC_ID = 'theme_active';
 
@@ -150,8 +149,8 @@ export const themeService = {
       // Look for a scheduled theme that falls inside active range
       const activeScheduled = allThemes.find(theme => {
         if (!theme.scheduled || !theme.startDate || !theme.endDate) return false;
-        const start = getDateFromTimestamp(theme.startDate);
-        const end = getDateFromTimestamp(theme.endDate);
+        const start = new Date(theme.startDate);
+        const end = new Date(theme.endDate);
         return now >= start && now <= end;
       });
 

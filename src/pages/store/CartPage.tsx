@@ -3,7 +3,7 @@ import { useCartStore } from '../../store/cartStore';
 import { useCustomerAuthStore } from '../../store/customerAuthStore';
 import { formatCurrency, cn, roundTo2, formatVariantName } from '../../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
-import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles, Search, MapPin } from 'lucide-react';
+import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles, Search } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -16,9 +16,6 @@ import { deliveryAreaService, State, City, DeliveryArea } from '../../services/d
 import { settingsService, PaymentSettings, MercadoPagoSettings, OperatingHoursSettings } from '../../services/settingsService';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import LocationPicker from '../../components/checkout/LocationPicker';
-import AddressConfirmation from '../../components/checkout/AddressConfirmation';
-import { parseGoogleSearch } from '../../utils/googleMapsUtils';
 
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -132,18 +129,6 @@ export function CartPage() {
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedSlot, setSelectedSlot] = useState<string>('');
   
-  // GPS/Geocoding structured states
-  const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
-  const [accuracy, setAccuracy] = useState<number | null>(null);
-  const [isAddressConfirmedInSession, setIsAddressConfirmedInSession] = useState(false);
-  const [cep, setCep] = useState<string>('');
-  const [pais, setPais] = useState<string>('Brasil');
-
-  const [showMissingFieldsDialog, setShowMissingFieldsDialog] = useState(false);
-  const [missingFields, setMissingFields] = useState<string[]>([]);
-  
   const [selectedAreaId, setSelectedAreaId] = useState('');
   const [stateName, setStateName] = useState('');
   const [cityName, setCityName] = useState('');
@@ -154,7 +139,7 @@ export function CartPage() {
   const [complemento, setComplemento] = useState('');
   const [referencia, setReferencia] = useState('');
 
-  const [observacoes, setObservacoes] = useState('');
+  const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [hasLookedUp, setHasLookedUp] = useState(false);
@@ -189,64 +174,11 @@ export function CartPage() {
     return filtered;
   }, [dbAreas, dbStates, stateName, cityName]);
   
-  // Load persisted address on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('discreta_last_address');
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        if (data.gpsCoords) setGpsCoords(data.gpsCoords);
-        if (data.latitude) setLatitude(data.latitude);
-        if (data.longitude) setLongitude(data.longitude);
-        if (data.accuracy) setAccuracy(data.accuracy);
-        if (data.rua) setRua(data.rua);
-        if (data.numero) setNumero(data.numero);
-        if (data.areaName) setAreaName(data.areaName);
-        if (data.cep) setCep(data.cep);
-        if (data.cityName) setCityName(data.cityName);
-        if (data.stateName) setStateName(data.stateName);
-        if (data.referencia) setReferencia(data.referencia);
-        if (data.complemento) setComplemento(data.complemento);
-        if (data.pais) setPais(data.pais);
-      } catch (e) {
-        console.warn("Failed to load saved address", e);
-      }
-    }
-  }, []);
-
-  // Save address when changed
-  useEffect(() => {
-    if (latitude && longitude) {
-      const addressToSave = {
-        gpsCoords,
-        latitude,
-        longitude,
-        accuracy,
-        rua,
-        numero,
-        areaName,
-        cep,
-        cityName,
-        stateName,
-        referencia,
-        complemento,
-        pais
-      };
-      localStorage.setItem('discreta_last_address', JSON.stringify(addressToSave));
-    }
-  }, [latitude, longitude, rua, numero, areaName, cep, cityName, stateName, referencia, complemento, pais, gpsCoords, accuracy]);
-
   const [aiSuggestions, setAiSuggestions] = useState<{ motivo: string, produtos: any[] } | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   const [showMpBrick, setShowMpBrick] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
-
-  // New Georeferencing State variables (iFood-Style)
-  const [deliverySettings, setDeliverySettings] = useState<any>(null);
-  const [calculatedDistance, setCalculatedDistance] = useState<number | null>(null);
-  const [calculatedDuration, setCalculatedDuration] = useState<number | null>(null);
-  const [routeGeometry, setRouteGeometry] = useState<any>(null);
 
   // Out of stock validation states
   const [outOfStockItems, setOutOfStockItems] = useState<{
@@ -412,44 +344,31 @@ export function CartPage() {
 
     const slots: string[] = [];
     dayConfig.slots.forEach(slot => {
-      const [fromH, fromM] = slot.from.split(':').map(Number);
-      const [toH, toM] = slot.to.split(':').map(Number);
+      let current = parseInt(slot.from.split(':')[0]);
+      const end = parseInt(slot.to.split(':')[0]);
       
-      let currentMinutes = fromH * 60 + fromM;
-      const endMinutes = toH * 60 + toM;
-      
-      while (currentMinutes <= endMinutes) {
-        const h = Math.floor(currentMinutes / 60);
-        const m = currentMinutes % 60;
-        const time = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      while(current <= end) {
+        const time = `${current.toString().padStart(2, '0')}:00`;
         
         // If date is today, only show future slots
         const now = new Date();
         const isToday = date.toDateString() === now.toDateString();
         if (isToday) {
            const slotTime = new Date(date);
-           slotTime.setHours(h, m, 0, 0);
-           
-           if (receiveMethod === 'retirada') {
-              // For store pickup, allow scheduling any slot that is in the future
-              if (slotTime.getTime() >= now.getTime()) {
-                  slots.push(time);
-              }
-           } else {
-              // For delivery, keep the original 1 hour gap
-              if (slotTime.getTime() >= now.getTime() + 3600000) {
-                  slots.push(time);
-              }
+           slotTime.setHours(current, 0, 0, 0);
+           // Ensure at least 1 hour gap
+           if (slotTime.getTime() >= now.getTime() + 3600000) {
+               slots.push(time);
            }
         } else {
           slots.push(time);
         }
-        currentMinutes += 30; // 30-minute intervals
+        current++;
       }
     });
 
     return [...new Set(slots)].sort(); // Ensure unique and sorted
-  }, [operatingHours, receiveMethod]);
+  }, [operatingHours]);
 
   const getAvailableDays = useCallback(() => {
     if (!operatingHours) return [];
@@ -543,38 +462,10 @@ export function CartPage() {
   
   const hasFreeShippingPromo = items.some(i => i.isFreeShipping);
   
-  const deliveryFee = useMemo(() => {
-    if (receiveMethod !== 'entrega') return 0;
-    if (hasFreeShippingPromo) return 0;
-
-    // 1. Georeferenced iFood System (if deliverySettings is active)
-    if (deliverySettings) {
-      if (calculatedDistance === null) return 0;
-
-      // Distance blockage checks
-      if (calculatedDistance > deliverySettings.maxRadiusKm) return 0;
-
-      // Free shipping eligibility
-      const isValFree = deliverySettings.freeShippingAbove > 0 && subTotal >= deliverySettings.freeShippingAbove;
-      const isDistFree = deliverySettings.freeShippingRadiusKm > 0 && calculatedDistance <= deliverySettings.freeShippingRadiusKm;
-      if (isValFree || isDistFree) {
-        return 0;
-      }
-
-      // Base formula: fixedFee + distanceKm * pricePerKm, subjected to minimumDeliveryFee
-      const baseCost = deliverySettings.fixedFee + (calculatedDistance * deliverySettings.pricePerKm);
-      return roundTo2(Math.max(baseCost, deliverySettings.minimumDeliveryFee));
-    }
-
-    // 2. Traditional Area System (Legacy Fallback)
-    if (currentArea) {
-      const isFree = currentArea.freteGratisAcima && subTotal >= currentArea.freteGratisAcima;
-      return isFree ? 0 : currentArea.taxaEntrega;
-    }
-
-    return 0;
-  }, [receiveMethod, hasFreeShippingPromo, deliverySettings, calculatedDistance, subTotal, currentArea]);
-
+  const deliveryFee = roundTo2(receiveMethod === 'entrega' && currentArea ? (
+    hasFreeShippingPromo ? 0 :
+    (currentArea.freteGratisAcima && subTotal >= currentArea.freteGratisAcima ? 0 : currentArea.taxaEntrega)
+  ) : 0);
   const orderTotal = roundTo2(subTotal - couponDiscount + deliveryFee);
 
   useEffect(() => {
@@ -611,17 +502,6 @@ export function CartPage() {
         setPaymentSettings(pSettings);
         setMpSettings(mpData);
         setOperatingHours(opHours);
-
-        // Fetch deliverySettings georeferencing configurations
-        try {
-          const dRef = doc(db, 'deliverySettings', 'config');
-          const dSnap = await getDoc(dRef);
-          if (dSnap.exists()) {
-            setDeliverySettings(dSnap.data());
-          }
-        } catch (err) {
-          console.warn("Could not load deliverySettings, fallback active:", err);
-        }
       } catch (error) {
         console.error("Error loading cart data:", error);
       }
@@ -676,51 +556,6 @@ export function CartPage() {
          setNumero(currentCustomer.enderecoObj.numero || '');
          setComplemento(currentCustomer.enderecoObj.complemento || '');
          setReferencia(currentCustomer.enderecoObj.referencia || '');
-         
-         const cachedCep = currentCustomer.enderecoObj.cep || '';
-         const cachedLat = currentCustomer.enderecoObj.latitude;
-         const cachedLng = currentCustomer.enderecoObj.longitude;
-         const cachedAcc = currentCustomer.enderecoObj.accuracy || 50;
-
-         if (cachedCep) setCep(cachedCep);
-
-         if (typeof cachedLat === 'number' && typeof cachedLng === 'number' && cachedLat !== 0) {
-           setLatitude(cachedLat);
-           setLongitude(cachedLng);
-           setAccuracy(cachedAcc);
-           setGpsCoords({ lat: cachedLat, lng: cachedLng, accuracy: cachedAcc });
-         } else if (currentCustomer.enderecoObj.rua && currentCustomer.enderecoObj.bairro) {
-           const addressQuery = `${currentCustomer.enderecoObj.rua}, ${currentCustomer.enderecoObj.numero}, ${currentCustomer.enderecoObj.bairro}, ${currentCustomer.enderecoObj.cidade}, ${currentCustomer.enderecoObj.estado}, Brasil`;
-           fetch('/api/geocode', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ address: addressQuery })
-           })
-             .then(res => res.json())
-             .then(data => {
-               const best = parseGoogleSearch(data);
-               if (best) {
-                 const latVal = parseFloat(best.lat);
-                 const lngVal = parseFloat(best.lon);
-                 setLatitude(latVal);
-                 setLongitude(lngVal);
-                 setAccuracy(100);
-                 setGpsCoords({ lat: latVal, lng: lngVal, accuracy: 100 });
-               } else if (deliverySettings) {
-                 setLatitude(deliverySettings.storeLatitude);
-                 setLongitude(deliverySettings.storeLongitude);
-                 setGpsCoords({ lat: deliverySettings.storeLatitude, lng: deliverySettings.storeLongitude, accuracy: 200 });
-               }
-             })
-             .catch(err => {
-               console.warn("Auto-geocoding of saved text address failed:", err);
-               if (deliverySettings) {
-                 setLatitude(deliverySettings.storeLatitude);
-                 setLongitude(deliverySettings.storeLongitude);
-                 setGpsCoords({ lat: deliverySettings.storeLatitude, lng: deliverySettings.storeLongitude, accuracy: 200 });
-               }
-             });
-         }
       }
       lastSearchedPhone.current = currentCustomer.whatsapp.replace(/\D/g, '');
       
@@ -729,7 +564,7 @@ export function CartPage() {
         setCheckoutStep('RESUMO');
       }
     }
-  }, [currentCustomer, deliverySettings]);
+  }, [currentCustomer]);
 
   // Handle auto-login/identification logic
   const handleApplyCoupon = async () => {
@@ -842,10 +677,6 @@ export function CartPage() {
             estado: existing.endereco.estado,
             complemento: existing.endereco.complemento || '',
             referencia: existing.endereco.referencia,
-            cep: (existing.endereco as any).cep || '',
-            latitude: (existing.endereco as any).latitude || 0,
-            longitude: (existing.endereco as any).longitude || 0,
-            accuracy: (existing.endereco as any).accuracy || 0,
           } : undefined
         });
         toast(`Bem-vindo(a) de volta, ${existing.nome.split(' ')[0]}!`, "success");
@@ -969,52 +800,8 @@ export function CartPage() {
               setNumero(addr.numero || '');
               setReferencia(addr.referencia || '');
               if (addr.complemento) setComplemento(addr.complemento);
-
-              const cachedCep = (addr as any).cep || '';
-              const cachedLat = (addr as any).latitude;
-              const cachedLng = (addr as any).longitude;
-              const cachedAcc = (addr as any).accuracy || 50;
-
-              if (cachedCep) setCep(cachedCep);
-
-              if (typeof cachedLat === 'number' && typeof cachedLng === 'number' && cachedLat !== 0) {
-                 setLatitude(cachedLat);
-                 setLongitude(cachedLng);
-                 setAccuracy(cachedAcc);
-                 setGpsCoords({ lat: cachedLat, lng: cachedLng, accuracy: cachedAcc });
-              } else if (addr.rua && addr.bairro) {
-                 const addressQuery = `${addr.rua}, ${addr.numero}, ${addr.bairro}, ${addr.cidade}, ${addr.estado}, Brasil`;
-                 fetch('/api/geocode', {
-                   method: 'POST',
-                   headers: { 'Content-Type': 'application/json' },
-                   body: JSON.stringify({ address: addressQuery })
-                 })
-                   .then(res => res.json())
-                   .then(data => {
-                     const best = parseGoogleSearch(data);
-                     if (best) {
-                       const latVal = parseFloat(best.lat);
-                       const lngVal = parseFloat(best.lon);
-                       setLatitude(latVal);
-                       setLongitude(lngVal);
-                       setAccuracy(100);
-                       setGpsCoords({ lat: latVal, lng: lngVal, accuracy: 100 });
-                     } else if (deliverySettings) {
-                       setLatitude(deliverySettings.storeLatitude);
-                       setLongitude(deliverySettings.storeLongitude);
-                       setGpsCoords({ lat: deliverySettings.storeLatitude, lng: deliverySettings.storeLongitude, accuracy: 200 });
-                     }
-                   })
-                   .catch(() => {
-                     if (deliverySettings) {
-                       setLatitude(deliverySettings.storeLatitude);
-                       setLongitude(deliverySettings.storeLongitude);
-                       setGpsCoords({ lat: deliverySettings.storeLatitude, lng: deliverySettings.storeLongitude, accuracy: 200 });
-                     }
-                   });
-              }
             }
-            if (cust.notes) setObservacoes(cust.notes);
+            if (cust.notes) setNotes(cust.notes);
           } else {
             setIsNewCustomer(true);
             toast('Ainda não temos seu cadastro. Informe seu nome para continuar!', 'info');
@@ -1100,61 +887,37 @@ export function CartPage() {
     // Se for retirada, não valida endereço
     if (receiveMethod === 'retirada') return true;
 
-    // GPS OBLIGATORY VALIDATION
-    if (!gpsCoords || !latitude || !longitude) {
-      toast("O uso do GPS é obrigatório para garantir a precisão da entrega. Por favor, ative e capture sua localização.", 'error');
+    const normState = normalizeStr(stateName);
+    const normCity = normalizeStr(cityName);
+    const normArea = normalizeStr(areaName);
+
+    const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
+    const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
+
+    if (!validState || !validCity) {
+      toast("Por favor, selecione Estado e Cidade das sugestões.", 'warning');
       return false;
     }
 
-    if (!isAddressConfirmedInSession) {
-      toast("Por favor, confirme sua localização exata no mapa utilizando o botão 'Confirmar Endereço'.", 'warning');
+    const validArea = dbAreas.find(a => 
+      (normalizeStr(a.stateName) === normalizeStr(validState.sigla) || normalizeStr(a.stateName) === normalizeStr(validState.nome)) &&
+      normalizeStr(a.cityName) === normalizeStr(validCity.nome) &&
+      normalizeStr(a.bairro) === normArea
+    );
+
+    if (!validArea) {
+      toast("Bairro não encontrado na cidade/estado informados.", 'warning');
       return false;
     }
 
-    // Check for empty mandatory address fields (e.g. rua, numero, areaName/bairro, and crucial referencia)
-    const missing: string[] = [];
-    if (!referencia?.trim()) missing.push('Ponto de Referência');
-
-    if (missing.length > 0) {
-      setMissingFields(missing);
-      setShowMissingFieldsDialog(true);
+    if (!rua || !numero || !referencia) {
+      toast("Preencha o endereço completo.", 'warning');
       return false;
     }
 
-    // Se estiver usando o modelo de georreferenciamento (estilo iFood)
-    if (deliverySettings) {
-      if (calculatedDistance === null) {
-        toast("Calcule o traçado de rota primeiro.", 'warning');
-        return false;
-      }
-      if (calculatedDistance > deliverySettings.maxRadiusKm) {
-        toast(`Desculpe, ainda não entregamos nessa região. A distância máxima permitida é de ${deliverySettings.maxRadiusKm} km (Sua distância: ${calculatedDistance.toFixed(2)} km).`, 'error');
-        return false;
-      }
-      return true;
-    }
-
-    // Apenas validar área se foram preenchidas
-    if (stateName || cityName || areaName) {
-      const normState = normalizeStr(stateName);
-      const normCity = normalizeStr(cityName);
-      const normArea = normalizeStr(areaName);
-
-      const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
-      const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
-
-      if (validState && validCity) {
-        const validArea = dbAreas.find(a => 
-          (normalizeStr(a.stateName) === normalizeStr(validState.sigla) || normalizeStr(a.stateName) === normalizeStr(validState.nome)) &&
-          normalizeStr(a.cityName) === normalizeStr(validCity.nome) &&
-          normalizeStr(a.bairro) === normArea
-        );
-        
-        if (validArea && validArea.pedidoMinimo && subTotal < validArea.pedidoMinimo) {
-          toast(`O pedido mínimo para sua região é de ${formatCurrency(validArea.pedidoMinimo)}`, 'error');
-          return false;
-        }
-      }
+    if (validArea.pedidoMinimo && subTotal < validArea.pedidoMinimo) {
+      toast(`O pedido mínimo para sua região é de ${formatCurrency(validArea.pedidoMinimo)}`, 'error');
+      return false;
     }
 
     return true;
@@ -1185,60 +948,33 @@ export function CartPage() {
     let fullAddressString = "Retirada na Loja";
 
     if (receiveMethod === 'entrega') {
-      if (deliverySettings) {
-        addressObj = { 
-          estado: stateName, 
-          cidade: cityName, 
-          bairro: areaName, 
-          rua, 
-          numero, 
-          complemento, 
-          referencia,
-          latitude: latitude || 0,
-          longitude: longitude || 0,
-          cep: cep || '',
-          pais: pais || 'Brasil',
-          accuracy: accuracy || 0,
-          distanciaKm: calculatedDistance || 0,
-          duracaoMinutos: calculatedDuration || 0,
-          atualizadoEm: new Date().toISOString()
-        };
-        fullAddressString = `${rua}, ${numero} - ${areaName}, ${cityName}/${stateName}. CEP: ${cep || 'n/a'}. Ref: ${referencia}`;
-      } else {
-        const normState = normalizeStr(stateName);
-        const normCity = normalizeStr(cityName);
-        const normArea = normalizeStr(areaName);
+      const normState = normalizeStr(stateName);
+      const normCity = normalizeStr(cityName);
+      const normArea = normalizeStr(areaName);
 
-        const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
-        const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
-        validArea = dbAreas.find(a => 
-          (normalizeStr(a.stateName) === normalizeStr(validState?.sigla || '') || normalizeStr(a.stateName) === normalizeStr(validState?.nome || '')) &&
-          normalizeStr(a.cityName) === normalizeStr(validCity?.nome || '') &&
-          normalizeStr(a.bairro) === normArea
-        );
+      const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
+      const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
+      validArea = dbAreas.find(a => 
+        (normalizeStr(a.stateName) === normalizeStr(validState?.sigla || '') || normalizeStr(a.stateName) === normalizeStr(validState?.nome || '')) &&
+        normalizeStr(a.cityName) === normalizeStr(validCity?.nome || '') &&
+        normalizeStr(a.bairro) === normArea
+      );
 
-        if (!validState || !validCity || !validArea) {
-          toast("Erro ao validar endereço.", "error");
-          return;
-        }
-
-        addressObj = { 
-          estado: validState.sigla, 
-          cidade: validCity.nome, 
-          bairro: validArea.bairro, 
-          rua, 
-          numero, 
-          complemento, 
-          referencia,
-          latitude: latitude || 0,
-          longitude: longitude || 0,
-          cep: cep || '',
-          pais: pais || 'Brasil',
-          accuracy: accuracy || 0,
-          atualizadoEm: new Date().toISOString()
-        };
-        fullAddressString = `${rua}, ${numero} - ${validArea.bairro}, ${validCity.nome}/${validState.sigla}. CEP: ${cep || 'n/a'}. Ref: ${referencia}`;
+      if (!validState || !validCity || !validArea) {
+        toast("Erro ao validar endereço.", "error");
+        return;
       }
+
+      addressObj = { 
+        estado: validState.sigla, 
+        cidade: validCity.nome, 
+        bairro: validArea.bairro, 
+        rua, 
+        numero, 
+        complemento, 
+        referencia 
+      };
+      fullAddressString = `${rua}, ${numero} - ${validArea.bairro}, ${validCity.nome}/${validState.sigla}. Ref: ${referencia}`;
     }
     
     setLoading(true);
@@ -1251,18 +987,10 @@ export function CartPage() {
           status: 'ativo'
       });
 
-      setCustomer({
-          id: customerId,
-          nome: name,
-          whatsapp: whatsapp,
-          email: email,
-          enderecoObj: addressObj
-      });
-
       const selectedMethodConfig = paymentSettings?.methods.find(m => m.id === paymentMethod);
       const isCash = selectedMethodConfig?.label.toLowerCase().includes('dinheiro') || selectedMethodConfig?.id === 'cash';
 
-      let finalNotes = observacoes;
+      let finalNotes = notes;
       if (isCash && trocoPara) {
           finalNotes = `Precisa de troco para: R$ ${trocoPara}. ` + finalNotes;
       }
@@ -1841,16 +1569,6 @@ export function CartPage() {
                     <button
                       onClick={() => {
                         setReceiveMethod('entrega');
-                        setGpsCoords(null);
-                        setLatitude(null);
-                        setLongitude(null);
-                        setAccuracy(null);
-                        setRua('');
-                        setAreaName('');
-                        setCep('');
-                        setCityName('');
-                        setStateName('');
-                        setIsAddressConfirmedInSession(false);
                         setCheckoutStep('ENDERECO');
                       }}
                       className="group relative flex flex-col items-center justify-center p-8 sm:p-10 border-2 rounded-[2rem] transition-all duration-500 hover:opacity-90"
@@ -1889,80 +1607,101 @@ export function CartPage() {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
-                  className="space-y-6"
+                  className="space-y-12"
                 >
-                  <div className="flex flex-col gap-4">
-                    <h3 className="text-xl sm:text-2xl font-black uppercase italic tracking-tighter flex items-center gap-2 storefront-check-title" style={{ color: cardText }}>
-                      <MapPin size={24} style={{ color: currentTheme.primaryColor }} /> Endereço de Entrega
+                  <div className="rounded-[2rem] border p-6 sm:p-10 shadow-2xl relative overflow-hidden transition-all duration-300" style={{ backgroundColor: cardBg, borderColor: borderCardHex }}>
+                    <h3 className="text-lg font-black uppercase tracking-[3px] mb-6 flex items-center gap-2 storefront-check-title" style={{ color: cardText }}>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: currentTheme.primaryColor }}></div>
+                      Endereço de Entrega
                     </h3>
-                    <p className="text-xs uppercase tracking-widest font-bold" style={{ color: subTextCardColor }}>
-                      Priorizamos a precisão do GPS do seu dispositivo para evitar falhas de entrega.
-                    </p>
-                  </div>
+                    
+                    <div className="space-y-4 sm:space-y-6">
+                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Estado *</label>
+                          <input 
+                            required 
+                            list="estados-sugestoes" 
+                            value={stateName} 
+                            className="w-full rounded-xl px-4 py-3 uppercase font-bold text-sm border storefront-check-field" 
+                            style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
+                            onChange={e => setStateName(e.target.value.toUpperCase())} 
+                            onBlur={handleStateBlur}
+                            placeholder="UF" 
+                          />
+                        </div>
+                        <div className="col-span-1 sm:col-span-2">
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Cidade *</label>
+                          <input 
+                            required 
+                            list="cidades-sugestoes" 
+                            value={cityName} 
+                            className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
+                            onChange={e => setCityName(e.target.value)} 
+                            onBlur={handleCityBlur}
+                            placeholder="Sua cidade" 
+                          />
+                        </div>
+                      </div>
 
-                  {!gpsCoords ? (
-                    <LocationPicker
-                      onLocationSelected={(coords) => {
-                        setGpsCoords(coords);
-                        setLatitude(coords.lat);
-                        setLongitude(coords.lng);
-                        setAccuracy(coords.accuracy);
-                      }}
-                      accentColor={currentTheme.primaryColor}
-                      cardBg={cardBg}
-                      cardText={cardText}
-                      subTextColor={subTextCardColor}
-                    />
-                  ) : (
-                    <AddressConfirmation
-                      initialCoords={gpsCoords}
-                      dbStates={dbStates}
-                      dbCities={dbCities}
-                      dbAreas={dbAreas}
-                      cartSubtotal={subTotal}
-                      deliverySettings={deliverySettings}
-                      calculatedDistance={calculatedDistance}
-                      calculatedDuration={calculatedDuration}
-                      routeGeometry={routeGeometry}
-                      onRouteCalculated={(dist, dur, geom) => {
-                        setCalculatedDistance(dist);
-                        setCalculatedDuration(dur);
-                        setRouteGeometry(geom);
-                      }}
-                      initialAddressState={{
-                        latitude: latitude || gpsCoords.lat,
-                        longitude: longitude || gpsCoords.lng,
-                        accuracy: accuracy || gpsCoords.accuracy,
-                        pontoReferencia: referencia,
-                        observacoes: observacoes,
-                        rua: rua,
-                        cidade: cityName,
-                      }}
-                      onAddressConfirmed={(confirmedAddress, matchedArea, calculatedFee) => {
-                        // Set standard checkout fields based on confirmed GPS attributes
-                        setLatitude(confirmedAddress.latitude);
-                        setLongitude(confirmedAddress.longitude);
-                        setAccuracy(confirmedAddress.accuracy);
-                        setReferencia(confirmedAddress.pontoReferencia);
-                        setObservacoes(confirmedAddress.observacoes || '');
-                        
-                        if (confirmedAddress.rua) setRua(confirmedAddress.rua);
-                        if (confirmedAddress.cidade) setCityName(confirmedAddress.cidade);
-                        
-                        setSelectedAreaId(matchedArea.id);
-                        setIsAddressConfirmedInSession(true);
-                        
-                        // Advance to next Checkout session
-                        setCheckoutStep('AGENDAMENTO');
-                      }}
-                      accentColor={currentTheme.primaryColor}
-                      cardBg={cardBg}
-                      cardText={cardText}
-                      subTextColor={subTextCardColor}
-                      borderHex={borderCardHex}
-                      bgText={bgText}
-                    />
-                  )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Bairro *</label>
+                          <input 
+                            required 
+                            list="bairros-sugestoes" 
+                            value={areaName} 
+                            className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
+                            onChange={e => setAreaName(e.target.value)} 
+                            onBlur={handleAreaBlur}
+                            placeholder="Seu bairro" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Rua / Avenida *</label>
+                          <input required value={rua} onChange={e => setRua(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Nome da rua" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Número *</label>
+                          <input required value={numero} onChange={e => setNumero(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Nº" />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Ponto de Referência *</label>
+                          <input required value={referencia} onChange={e => setReferencia(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Ex: Próximo à padaria..." />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Complemento (Opcional)</label>
+                        <input value={complemento} onChange={e => setComplemento(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Apto, Bloco, etc" />
+                      </div>
+
+                      <Button 
+                        onClick={() => {
+                          if (validateIdentification()) {
+                            setCheckoutStep('AGENDAMENTO');
+                          }
+                        }}
+                        size="lg" 
+                        className="w-full py-6 text-base font-black italic uppercase tracking-widest rounded-2xl"
+                      >
+                        Agendar Entrega <Calendar size={18} className="ml-2" />
+                      </Button>
+                    </div>
+
+                    <datalist id="estados-sugestoes">
+                      {dbStates.map(state => <option key={state.id} value={state.sigla}>{state.nome}</option>)}
+                    </datalist>
+                    <datalist id="cidades-sugestoes">
+                      {availableCities.map(city => <option key={city.id} value={city.nome} />)}
+                    </datalist>
+                    <datalist id="bairros-sugestoes">
+                      {availableBairros.map(bairro => <option key={bairro.id} value={bairro.bairro} />)}
+                    </datalist>
+                  </div>
                 </motion.div>
               )}
 
@@ -2097,8 +1836,8 @@ export function CartPage() {
                       <textarea 
                         className="w-full rounded-2xl px-5 py-5 font-bold min-h-[80px] text-sm border storefront-check-field"
                         style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
-                        value={observacoes} 
-                        onChange={e => setObservacoes(e.target.value)} 
+                        value={notes} 
+                        onChange={e => setNotes(e.target.value)} 
                         placeholder="Algo que devemos saber?"
                       />
                     </div>
@@ -2342,60 +2081,6 @@ export function CartPage() {
                   Ajustar Carrinho Automaticamente
                 </button>
               </div>
-            </motion.div>
-          </div>
-        )}
-
-        {showMissingFieldsDialog && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/95 backdrop-blur-md"
-              onClick={() => setShowMissingFieldsDialog(false)} 
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-md rounded-[2rem] p-6 sm:p-8 shadow-[0_0_50px_rgba(239,68,68,0.25)] border transition-all duration-300 text-left"
-              style={{ backgroundColor: '#09090b', borderColor: 'rgba(239, 68, 68, 0.4)', color: '#ffffff' }}
-            >
-              <div className="flex items-center gap-3 mb-6 border-b border-red-500/10 pb-4">
-                <div className="p-3 bg-red-500/10 rounded-2xl text-red-500">
-                  <MapPin size={28} className="animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black uppercase tracking-wider text-red-500 leading-none">Endereço Incompleto</h3>
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500">Atenção aos detalhes do envio</span>
-                </div>
-              </div>
-
-              <p className="text-zinc-300 text-sm mb-6 leading-relaxed">
-                Para realizarmos sua entrega com o **sigilo, rapidez e discrição** que você merece, identificamos que as seguintes informações importantes ainda não foram preenchidas no seu endereço:
-              </p>
-
-              <ul className="space-y-3 mb-8 bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800 animate-fade-in">
-                {missingFields.map((field) => (
-                  <li key={field} className="flex items-center gap-2.5 text-sm text-zinc-100 font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-                    <span>{field}</span>
-                    {field === 'Ponto de Referência' && (
-                      <span className="text-[9px] font-mono uppercase px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded-full text-red-400 font-bold ml-auto shrink-0">
-                        Crucial / Obrigatório
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-
-              <button 
-                onClick={() => setShowMissingFieldsDialog(false)}
-                className="w-full py-4 text-xs font-black uppercase tracking-[2px] rounded-full shadow-lg transition-all active:scale-[0.98] bg-red-600 text-white hover:bg-red-700 cursor-pointer"
-              >
-                Completar meu Endereço
-              </button>
             </motion.div>
           </div>
         )}

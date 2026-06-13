@@ -45,20 +45,6 @@ export function AdminOperatingHours() {
   }, []);
 
   const handleSave = async () => {
-    // Validate slots
-    for (const dayConfig of settings.weekly) {
-      if (dayConfig.isOpen) {
-        for (const slot of dayConfig.slots) {
-          const fromMinutes = parseInt(slot.from.split(':')[0]) * 60 + parseInt(slot.from.split(':')[1] || '0');
-          const toMinutes = parseInt(slot.to.split(':')[0]) * 60 + parseInt(slot.to.split(':')[1] || '0');
-          if (fromMinutes >= toMinutes) {
-            toast(`Erro no dia ${(DAYS_NAMES as any)[dayConfig.day]}: o horário de início (${slot.from}) deve ser menor que o horário de término (${slot.to}).`, "error");
-            return;
-          }
-        }
-      }
-    }
-
     setSaving(true);
     try {
       await settingsService.saveOperatingHours(settings);

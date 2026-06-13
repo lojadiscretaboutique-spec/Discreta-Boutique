@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
 export default defineConfig({
@@ -35,9 +35,9 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Discreta Motoboy',
+        name: 'Discreta',
         short_name: 'Discreta',
-        description: 'Aplicativo de Entregas da Discreta',
+        description: 'Loja virtual exclusiva e rápida da Discreta',
         theme_color: '#000000',
         background_color: '#ffffff',
         display: 'standalone',

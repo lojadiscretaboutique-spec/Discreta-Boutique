@@ -16,16 +16,13 @@ const ProductPage = lazy(() => import('./pages/store/ProductPage').then(m => ({ 
 const CartPage = lazy(() => import('./pages/store/CartPage').then(m => ({ default: m.CartPage })));
 const SuccessPage = lazy(() => import('./pages/store/SuccessPage').then(m => ({ default: m.SuccessPage })));
 const CustomerAreaPage = lazy(() => import('./pages/store/CustomerAreaPage').then(m => ({ default: m.CustomerAreaPage })));
+const WifiHotspotPage = lazy(() => import('./pages/store/WifiHotspotPage').then(m => ({ default: m.WifiHotspotPage })));
 const PrivacyPolicyPage = lazy(() => import('./pages/store/PrivacyPolicyPage'));
 const AboutUsPage = lazy(() => import('./pages/store/AboutUsPage'));
 const ExchangePolicyPage = lazy(() => import('./pages/store/ExchangePolicyPage'));
 const LGPDPage = lazy(() => import('./pages/store/LGPDPage'));
 const AffiliateLandingPage = lazy(() => import('./modules/afiliados/pages/AffiliateLandingPage').then(m => ({ default: m.AffiliateLandingPage })));
 const AdminAffiliates = lazy(() => import('./modules/afiliados/pages/AdminAffiliates').then(m => ({ default: m.AdminAffiliates })));
-
-// Motoboy Pages
-const MotoboyLogin = lazy(() => import('./pages/motoboy/MotoboyLogin').then(m => ({ default: m.MotoboyLogin })));
-const MotoboyDashboard = lazy(() => import('./pages/motoboy/MotoboyDashboard').then(m => ({ default: m.MotoboyDashboard })));
 
 // Admin Pages
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin').then(m => ({ default: m.AdminLogin })));
@@ -126,22 +123,8 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    // Dynamic Manifest switching for Motoboy vs Default Store
-    const link: HTMLLinkElement | null = document.querySelector('link[rel="manifest"]');
-    if (link) {
-      if (location.pathname.startsWith('/motoboy')) {
-        link.href = '/motoboy-manifest.json';
-        document.title = 'Discreta Entregas';
-      } else {
-        link.href = '/manifest.json';
-        document.title = 'Discreta Boutique | Sensualidade e Elegância';
-      }
-    }
-  }, [location.pathname]);
-
-  useEffect(() => {
     // Only track storefront visitors (exclude analytics inside admin panel)
-    if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/motoboy')) return;
+    if (location.pathname.startsWith('/admin')) return;
 
     const timer = setTimeout(() => {
       const pageTitle = document.title || 'Discreta Boutique';
@@ -174,6 +157,9 @@ function AppContent() {
             <Route path="/afiliados" element={<AffiliateLandingPage />} />
             <Route path="/live" element={<LiveShopPage />} />
           </Route>
+
+          {/* Standalone public Wi-Fi Hotspot portal page */}
+          <Route path="/wifi" element={<WifiHotspotPage />} />
 
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLogin />} />
@@ -225,10 +211,6 @@ function AppContent() {
             <Route path="config/theme-manager" element={<AdminThemeManager />} />
             <Route path="config/typography" element={<AdminTypography />} />
           </Route>
-
-          {/* Motoboy Routes */}
-          <Route path="/motoboy/login" element={<MotoboyLogin />} />
-          <Route path="/motoboy" element={<MotoboyDashboard />} />
         </Routes>
       </Suspense>
     </>

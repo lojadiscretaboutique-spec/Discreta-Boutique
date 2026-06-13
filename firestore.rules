@@ -154,13 +154,6 @@ service cloud.firestore {
       allow create: if can('settings', 'criar');
     }
 
-    match /deliverySettings/{doc} {
-      allow read: if true;
-      allow update: if can('settings', 'editar');
-      allow create: if can('settings', 'criar');
-      allow delete: if can('settings', 'excluir');
-    }
-
     match /themes/{doc} {
       allow read: if true;
       allow create: if can('settings', 'criar');
@@ -409,31 +402,8 @@ service cloud.firestore {
       allow delete: if can('banners', 'excluir') || isMasterAdmin();
     }
 
-    match /delivery_drivers/{uid} {
-      allow read: if signedIn();
-      allow write: if signedIn() && (uid == request.auth.uid || can('users', 'editar'));
-    }
-
-    match /delivery_locations/{orderId} {
-      allow read: if true;
-      allow write: if signedIn();
-    }
-
-    match /delivery_tracking/{doc} {
-      allow read: if true;
-      allow create: if signedIn();
-      allow update, delete: if signedIn() && can('orders', 'editar');
-    }
-
-    match /delivery_payments/{orderId} {
-      allow read: if signedIn();
-      allow write: if signedIn();
-    }
-
-    match /delivery_proofs/{orderId} {
-      allow read: if signedIn();
-      allow create, update: if signedIn();
-      allow delete: if signedIn() && can('orders', 'excluir');
+    match /wifiLeads/{doc} {
+      allow read, write: if true;
     }
 
     match /{document=**} {

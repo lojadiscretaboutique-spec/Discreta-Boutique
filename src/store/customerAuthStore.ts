@@ -15,10 +15,6 @@ export interface SavedCustomer {
     estado: string;
     complemento: string;
     referencia: string;
-    cep?: string;
-    latitude?: number;
-    longitude?: number;
-    accuracy?: number;
   };
 }
 

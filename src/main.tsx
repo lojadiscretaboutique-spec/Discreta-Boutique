@@ -19,17 +19,6 @@ if (import.meta.env.DEV) {
       }
     });
   }
-} else {
-  // Production Service Worker Registration
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').then(registration => {
-        console.log('[Discreta PWA] SW registered:', registration);
-      }).catch(error => {
-        console.log('[Discreta PWA] SW registration failed:', error);
-      });
-    });
-  }
 }
 
 // -------------------------------------------------------------------------

@@ -6,11 +6,10 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Moon, Sun, LayoutDashboard, Check, Upload, Image as ImageIcon, Trash2, Settings, RefreshCcw, Truck } from 'lucide-react';
+import { Moon, Sun, LayoutDashboard, Check, Upload, Image as ImageIcon, Trash2, Settings, RefreshCcw } from 'lucide-react';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { cn } from '../../lib/utils';
 import { cacheService } from '../../services/cacheService';
-import { DeliveryConfigPanel } from '../../components/delivery/DeliveryConfigPanel';
 
 interface StoreConfig {
   storeName: string;
@@ -27,7 +26,6 @@ export function AdminConfig() {
   const { hasPermission } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savingDelivery, setSavingDelivery] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saved, setSaved] = useState(false);
   const { toast } = useFeedback();
@@ -35,7 +33,6 @@ export function AdminConfig() {
 
   const [systemVersion, setSystemVersion] = useState('1.1.0');
   const [updatingVersion, setUpdatingVersion] = useState(false);
-  const [activeTab, setActiveTab ] = useState<'geral' | 'entrega'>('geral');
 
   const canEdit = hasPermission('settings', 'editar');
   
@@ -46,6 +43,10 @@ export function AdminConfig() {
   const handleThemeChange = (newTheme: 'dark' | 'light') => {
     setTheme(newTheme);
     localStorage.setItem('admin-theme', newTheme);
+    // document.documentElement class is updated by AdminLayout via localStorage/state sync or a custom event
+    // To ensure AdminLayout (which handles the global class) updates immediately, 
+    // we use a custom event or rely on the fact that they share common logic if relocated.
+    // However, the cleanest way is to dispatch a storage event for cross-component sync
     window.dispatchEvent(new Event('admin-theme-changed'));
   };
   
@@ -60,17 +61,6 @@ export function AdminConfig() {
     orderMessageTemplate: '',
   });
 
-  const [deliveryConfig, setDeliveryConfig] = useState({
-    storeLatitude: -23.55052,
-    storeLongitude: -46.633308,
-    fixedFee: 3.00,
-    pricePerKm: 1.50,
-    minimumDeliveryFee: 5.00,
-    maxRadiusKm: 8.0,
-    freeShippingAbove: 150.00,
-    freeShippingRadiusKm: 3.0
-  });
-
   useEffect(() => {
     async function loadConfig() {
       try {
@@ -78,13 +68,6 @@ export function AdminConfig() {
         const snap = await getDoc(docRef);
         if (snap.exists()) {
           setConfig(prev => ({ ...prev, ...snap.data() }));
-        }
-
-        // Pull deliverySettings from Firestore
-        const deliveryRef = doc(db, 'deliverySettings', 'config');
-        const deliverySnap = await getDoc(deliveryRef);
-        if (deliverySnap.exists()) {
-          setDeliveryConfig(deliverySnap.data() as any);
         }
 
         // Pull current app code version from Firestore
@@ -139,20 +122,6 @@ export function AdminConfig() {
     }
   };
 
-  const handleSaveDeliveryConfig = async (updatedConfig: typeof deliveryConfig) => {
-    setSavingDelivery(true);
-    try {
-      await setDoc(doc(db, 'deliverySettings', 'config'), updatedConfig);
-      setDeliveryConfig(updatedConfig);
-      toast("Configurações de Entrega salvas com sucesso no Firestore!");
-    } catch (e) {
-      console.error(e);
-      toast("Erro ao salvar configurações de entrega", "error");
-    } finally {
-      setSavingDelivery(false);
-    }
-  };
-
   if (loading) return <div>Carregando...</div>;
 
   return (
@@ -161,44 +130,8 @@ export function AdminConfig() {
         <h1 className="text-2xl font-bold tracking-tight">Configurações do Sistema</h1>
         <p className="text-sm text-slate-500">Gerencie a identidade e o comportamento do seu painel administrativo.</p>
       </div>
-
-      {/* Tabs navigation */}
-      <div className="flex border-b border-slate-200 dark:border-slate-800 gap-4 mb-2">
-        <button
-          onClick={() => setActiveTab('geral')}
-          className={cn(
-            "pb-3 text-sm font-bold border-b-2 transition-all px-1 cursor-pointer",
-            activeTab === 'geral'
-              ? "border-red-600 text-slate-800 dark:text-slate-100"
-              : "border-transparent text-slate-400 hover:text-slate-600"
-          )}
-        >
-          Geral do Sistema
-        </button>
-        <button
-          onClick={() => setActiveTab('entrega')}
-          className={cn(
-            "pb-3 text-sm font-bold border-b-2 transition-all px-1 flex items-center gap-2 cursor-pointer",
-            activeTab === 'entrega'
-              ? "border-red-600 text-slate-800 dark:text-slate-100"
-              : "border-transparent text-slate-400 hover:text-slate-600"
-          )}
-        >
-          <Truck className="w-4 h-4" />
-          Configurações de Entrega
-        </button>
-      </div>
-
-      {activeTab === 'entrega' ? (
-        <DeliveryConfigPanel
-          initialConfig={deliveryConfig}
-          onSaveConfig={handleSaveDeliveryConfig}
-          saving={savingDelivery}
-          canEdit={canEdit}
-          accentColor="#DC2626"
-        />
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 transition-colors">
             <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
@@ -473,7 +406,6 @@ export function AdminConfig() {
           </div>
         </div>
       </div>
-      )}
     </div>
   );
 }

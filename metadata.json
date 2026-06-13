@@ -1,6 +1,6 @@
 {
   "name": "Discreta Boutique",
   "description": "App oficial da Discreta Boutique - Moda íntima, sexshop e acessórios.",
-  "requestFramePermissions": ["geolocation"],
+  "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

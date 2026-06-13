@@ -57,9 +57,9 @@ export const roleService = {
     return { id: snap.id, ...snap.data() } as AppRole;
   },
 
-  async saveRole(roleData: AppRole, isForceNew?: boolean): Promise<string> {
-    const isNew = !roleData.id || isForceNew;
-    const ref = isNew ? (roleData.id ? doc(db, 'roles', roleData.id) : doc(collection(db, 'roles'))) : doc(db, 'roles', roleData.id!);
+  async saveRole(roleData: AppRole): Promise<string> {
+    const isNew = !roleData.id;
+    const ref = isNew ? doc(collection(db, 'roles')) : doc(db, 'roles', roleData.id!);
     
     // Auto populate missing modules
     const cleanPerms: Record<string, Record<string, boolean>> = {};

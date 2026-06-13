@@ -3,12 +3,11 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
-import { GeocodingService } from './src/server/services/geocodingService.js';
 import aiRoutes from './src/server/routes/aiRoutes.js';
 import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
 import { db } from './src/lib/firebase';
-import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit } from 'firebase/firestore';
+import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit, setDoc, updateDoc } from 'firebase/firestore';
 
 // Verify connection
 (async () => {
@@ -38,6 +37,84 @@ async function startServer() {
 
   // AI Routes
   app.use('/api/ia', aiRoutes);
+
+  // WiFi/Hotspot Lead Capture Route
+  app.options('/api/wifi-leads', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.sendStatus(204);
+  });
+
+  app.post("/api/wifi-leads", async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
+
+    try {
+      const { name, whatsapp, mac, ip, userAgent, source } = req.body;
+
+      if (!name || !whatsapp) {
+        return res.status(400).json({ success: false, error: "Nome e WhatsApp são obrigatórios." });
+      }
+
+      // Format & Normalize WhatsApp (keep only digits)
+      const normalizedWhatsapp = whatsapp.replace(/\D/g, "");
+
+      if (normalizedWhatsapp.length < 8) {
+        return res.status(400).json({ success: false, error: "O número de WhatsApp informado é inválido." });
+      }
+
+      console.log(`⏳ [Wi-Fi Leads] Checking for existing lead: ${normalizedWhatsapp}`);
+      const docRef = doc(db, 'wifiLeads', normalizedWhatsapp);
+      
+      let docSnap;
+      try {
+        docSnap = await getDoc(docRef);
+        console.log(`⭐ [Wi-Fi Leads] getDoc success. Exist? ${docSnap.exists()}`);
+      } catch (getErr: any) {
+        console.error(`❌ [Wi-Fi Leads] getDoc failed:`, getErr);
+        throw getErr;
+      }
+
+      const payload: any = {
+        name,
+        whatsapp: normalizedWhatsapp,
+        mac: mac || "",
+        ip: ip || "",
+        userAgent: userAgent || "",
+        source: source || "wifi_loja",
+        updatedAt: serverTimestamp(),
+        acceptedMarketing: true,
+        origin: "hotspot_discreta"
+      };
+
+      if (docSnap.exists()) {
+        try {
+          await updateDoc(docRef, payload);
+          console.log(`⭐ [Wi-Fi Leads] updateDoc success: ${normalizedWhatsapp}`);
+        } catch (updateErr: any) {
+          console.error(`❌ [Wi-Fi Leads] updateDoc failed:`, updateErr);
+          throw updateErr;
+        }
+      } else {
+        payload.createdAt = serverTimestamp();
+        try {
+          await setDoc(docRef, payload);
+          console.log(`⭐ [Wi-Fi Leads] setDoc success: ${normalizedWhatsapp}`);
+        } catch (setErr: any) {
+          console.error(`❌ [Wi-Fi Leads] setDoc failed:`, setErr);
+          throw setErr;
+        }
+      }
+
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      console.error("Erro ao salvar lead de Wi-Fi:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
 
   // Endpoint to create order and trigger webhook
   app.post("/api/pedidos", async (req, res) => {
@@ -90,44 +167,6 @@ async function startServer() {
     } catch (error) {
       console.error("Erro ao categorizar:", error);
       res.status(500).json({ error: "Erro na categorização" });
-    }
-  });
-
-  // Robust Geocoding API with Fallbacks (Nominatim, Photon)
-  app.post("/api/geocode", async (req, res) => {
-    try {
-      const { lat, lng } = req.body;
-      if (!lat || !lng) {
-        return res.status(400).json({ error: "Latitude and Longitude are required" });
-      }
-
-      const result = await GeocodingService.reverseGeocode(Number(lat), Number(lng));
-      
-      if (!result) {
-        return res.status(404).json({ error: "Could not resolve address even with fallbacks" });
-      }
-
-      res.json({
-        status: 'OK',
-        results: [
-          {
-            formatted_address: result.display_name,
-            provider: result.provider,
-            address_components: [
-              { long_name: result.road, types: ['route'] },
-              { long_name: result.house_number, types: ['street_number'] },
-              { long_name: result.suburb, types: ['sublocality', 'neighborhood'] },
-              { long_name: result.city, types: ['administrative_area_level_2'] },
-              { long_name: result.state, types: ['administrative_area_level_1'] },
-              { long_name: result.postcode, types: ['postal_code'] },
-              { long_name: result.country, types: ['country'] },
-            ]
-          }
-        ]
-      });
-    } catch (error) {
-      console.error("Geocoding API Error:", error);
-      res.status(500).json({ error: "Failed to fetch geocoding data" });
     }
   });
 
