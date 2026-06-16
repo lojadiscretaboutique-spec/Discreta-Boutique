@@ -299,7 +299,7 @@ export function AdminCaixa() {
     const doc = iframe.contentWindow?.document || iframe.contentDocument;
     if (!doc) return;
 
-    const formattedDate = format(new Date(), "dd/MM/yyyy HH:mm");
+    const formattedDate = format(new Date(), "dd/MM/yyyy HH:mm:ss");
     const openedDateStr = session.openedAt 
       ? format(session.openedAt.toDate ? session.openedAt.toDate() : new Date(session.openedAt as unknown as string), "dd/MM/yyyy HH:mm") 
       : '';
@@ -315,24 +315,23 @@ export function AdminCaixa() {
     const printExpected = roundTo2((session.initialBalance || 0) + printInputs - printOutputs);
 
     let itemsHtml = '';
-    // Transactions are printed in the exact order received, corresponding to the visible sequence
-    transactionsToPrint.forEach(t => {
-      const desc = t.description || t.category || 'Venda';
+    transactionsToPrint.forEach((t) => {
+      const desc = (t.description || t.category || 'Venda Caixa').toUpperCase();
       const time = t.createdAt 
         ? format(t.createdAt.toDate ? t.createdAt.toDate() : new Date(t.createdAt as unknown as string), "HH:mm") 
         : '--:--';
-      const method = t.paymentMethod || 'Dinheiro';
+      const method = (t.paymentMethod || 'Outros').toUpperCase();
       const sign = t.type === 'entrada' ? '+' : '-';
       const valStr = formatCurrency(t.amount);
       
       itemsHtml += `
         <div style="margin-bottom: 5px; page-break-inside: avoid;">
-          <div style="font-weight: bold; font-size: 11px; word-break: break-all;">${desc}</div>
-          <div style="font-size: 11px; color: #000; margin-top: 1px;">
+          <div style="font-weight: bold; font-size: 10px; text-transform: uppercase; word-break: break-all;">${desc}</div>
+          <div style="font-size: 10px; margin-top: 1px; color: #000; letter-spacing: -0.2px;">
             ${time} - ${method} - ${sign} ${valStr}
           </div>
         </div>
-        <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
+        <div class="dashed-line"></div>
       `;
     });
 
@@ -341,93 +340,162 @@ export function AdminCaixa() {
       <html>
       <head>
         <meta charset="utf-8">
-        <title>Conferência de Caixa</title>
+        <title>Simples Conferência de Caixa</title>
         <style>
           @page {
             margin: 0;
           }
+          * {
+            box-sizing: border-box;
+          }
           body {
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 11px;
-            line-height: 1.3;
+            font-family: 'Courier New', Courier, monospace, 'Lucida Console', Monaco;
+            font-size: 10px;
+            line-height: 1.25;
             color: #000;
             background: #fff;
             margin: 0;
-            padding: 3mm;
-            width: 74mm; /* safe print margin for 80mm roll */
-            box-sizing: border-box;
+            padding: 2mm 3mm;
+            width: 70mm; /* strictly optimized for 75mm & 80mm thermal paper to avoid cutting text */
+          }
+          @media print {
+            body {
+              width: 70mm;
+            }
           }
           .text-center { text-align: center; }
           .text-right { text-align: right; }
           .font-bold { font-weight: bold; }
-          .header { margin-bottom: 8px; }
-          .brand { font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 2px; }
-          .title { font-size: 11px; font-weight: bold; text-align: center; margin-bottom: 6px; }
-          .info-row { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px; }
-          .divider { border-top: 1px dashed #000; margin: 5px 0; }
-          .thick-divider { border-top: 2px solid #000; margin: 6px 0; }
-          .totals { font-size: 11px; margin-top: 6px; }
-          .footer { margin-top: 10px; font-size: 9px; text-align: center; }
+          .brand { 
+            font-size: 13px; 
+            font-weight: bold; 
+            text-align: center; 
+            margin-bottom: 2px;
+            letter-spacing: 0.5px;
+          }
+          .title { 
+            font-size: 10px; 
+            font-weight: bold; 
+            text-align: center; 
+            margin-bottom: 4px;
+            letter-spacing: 0.2px;
+          }
+          .sefaz-warning {
+            font-size: 8px;
+            font-weight: bold;
+            text-align: center;
+            border: 1px solid #000;
+            padding: 3px;
+            margin: 5px 0;
+            text-transform: uppercase;
+            line-height: 1.1;
+          }
+          .info-row { 
+            display: flex; 
+            justify-content: space-between; 
+            font-size: 9.5px; 
+            margin-bottom: 2px; 
+          }
+          .double-line { 
+            border-top: 2px double #000; 
+            margin: 5px 0; 
+          }
+          .dashed-line { 
+            border-top: 1px dashed #000; 
+            margin: 4px 0; 
+          }
+          .solid-line {
+            border-top: 1.5px solid #000;
+            margin: 5px 0;
+          }
+          .totals-section {
+            font-size: 10px;
+          }
+          .totals-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+          }
+          .footer { 
+            margin-top: 12px; 
+            font-size: 8px; 
+            text-align: center; 
+            line-height: 1.2;
+          }
         </style>
       </head>
       <body>
-        <div class="header">
-          <div class="brand">DISCRETA BOUTIQUE</div>
-          <div class="title">SIMPLES CONFERÊNCIA DE CAIXA</div>
-          <div class="divider"></div>
-          <div class="info-row">
-            <span>Turno ID:</span>
-            <span>${session.id?.slice(0, 8).toUpperCase() || 'N/A'}</span>
-          </div>
-          <div class="info-row">
-            <span>Operador:</span>
-            <span>${session.openedByName || 'Vendedor'}</span>
-          </div>
-          <div class="info-row">
-            <span>Abertura:</span>
-            <span>${openedDateStr}</span>
-          </div>
-          ${closedDateStr ? `
-          <div class="info-row">
-            <span>Fechamento:</span>
-            <span>${closedDateStr}</span>
-          </div>` : ''}
-          <div class="divider"></div>
-          <div class="info-row">
-            <span>Saldo Inicial:</span>
+        <div class="brand">DISCRETA BOUTIQUE</div>
+        <div class="title">DOCUMENTO AUXILIAR DE CONTROLE DE CAIXA</div>
+        
+        <div class="sefaz-warning">
+          NÃO VALE COMO DOCUMENTO FISCAL<br>
+          SIMPLES CONFERÊNCIA DE FLUXO DE CAIXA
+        </div>
+
+        <div class="info-row">
+          <span>TURNO ID:</span>
+          <span>${session.id?.slice(0, 10).toUpperCase() || 'N/A'}</span>
+        </div>
+        <div class="info-row">
+          <span>OPERADOR:</span>
+          <span>${(session.openedByName || 'VENDEDOR').toUpperCase()}</span>
+        </div>
+        <div class="info-row">
+          <span>ABERTURA:</span>
+          <span>${openedDateStr}</span>
+        </div>
+        ${closedDateStr ? `
+        <div class="info-row">
+          <span>FECHAMENTO:</span>
+          <span>${closedDateStr}</span>
+        </div>` : `
+        <div class="info-row">
+          <span>STATUS:</span>
+          <span class="font-bold">CAIXA ABERTO</span>
+        </div>`}
+
+        <div class="double-line"></div>
+        <div class="totals-section">
+          <div class="totals-row">
+            <span>SALDO AB. :</span>
             <span>${initialBalanceFormatted}</span>
           </div>
-          <div class="info-row">
-            <span>(+) Entradas:</span>
+          <div class="totals-row">
+            <span>(+) ENTRADAS:</span>
             <span>${formatCurrency(printInputs)}</span>
           </div>
-          <div class="info-row">
-            <span>(-) Saídas:</span>
+          <div class="totals-row">
+            <span>(-) SAÍDAS:</span>
             <span>${formatCurrency(printOutputs)}</span>
           </div>
-          <div class="info-row font-bold">
-            <span>Saldo Esperado:</span>
+          <div class="solid-line"></div>
+          <div class="totals-row font-bold">
+            <span>SALDO ATUAL:</span>
             <span>${formatCurrency(printExpected)}</span>
           </div>
           ${session.status === 'fechado' ? `
-          <div class="info-row font-bold">
-            <span>Saldo Final:</span>
+          <div class="totals-row font-bold">
+            <span>SALDO DECL.:</span>
             <span>${finalBalanceFormatted}</span>
           </div>` : ''}
         </div>
 
-        <div class="thick-divider"></div>
-        <div style="font-weight: bold; font-size: 11px; margin-bottom: 5px; text-align: center; letter-spacing: 1px;">LANÇAMENTOS</div>
-        <div class="thick-divider"></div>
-
-        ${itemsHtml || '<div class="text-center" style="font-style: italic; padding: 10px 0;">Nenhum lançamento registrado</div>'}
-
-        <div class="divider"></div>
-        <div class="footer">
-          <div>Impresso em: ${formattedDate}</div>
-          <div style="margin-top: 2px;">Simples Conferência de Caixa</div>
-          <div style="font-weight: bold; margin-top: 4px; font-size: 10px;">PRODUTOS E ENTRADAS CONFERIDOS</div>
+        <div class="double-line"></div>
+        <div style="font-weight: bold; font-size: 10px; text-align: center; letter-spacing: 1px; margin-bottom: 3px;">
+          RELAÇÃO DE LANÇAMENTOS
         </div>
+        <div class="solid-line"></div>
+
+        ${itemsHtml || '<div class="text-center" style="font-style: italic; padding: 10px 0; font-size: 9px;">NENHUM LANÇAMENTO REGISTRADO</div>'}
+
+        <div class="double-line"></div>
+        <div class="footer">
+          <div>DATA DE IMPRESSÃO: ${formattedDate}</div>
+          <div style="margin-top: 3px; font-weight: bold;">SISTEMA DE GESTÃO - DISCRETA BOUTIQUE</div>
+          <div style="font-size: 7.5px; opacity: 0.8; margin-top: 2px;">CONFIRA TODOS OS COMPROVANTES JUNTO COM O CAIXA</div>
+        </div>
+
         <script>
           window.onload = function() {
             window.focus();
