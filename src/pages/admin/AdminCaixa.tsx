@@ -18,7 +18,8 @@ import {
   AlertCircle,
   FileText,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Printer
 } from 'lucide-react';
 import { formatCurrency, roundTo2 } from '../../lib/utils';
 
@@ -285,6 +286,166 @@ export function AdminCaixa() {
     }
   };
 
+  const handlePrintSummary = (transactionsToPrint: CashTransaction[], session: CashSession) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) return;
+
+    const formattedDate = format(new Date(), "dd/MM/yyyy HH:mm");
+    const openedDateStr = session.openedAt 
+      ? format(session.openedAt.toDate ? session.openedAt.toDate() : new Date(session.openedAt as unknown as string), "dd/MM/yyyy HH:mm") 
+      : '';
+    const closedDateStr = session.closedAt 
+      ? format(session.closedAt.toDate ? session.closedAt.toDate() : new Date(session.closedAt as unknown as string), "dd/MM/yyyy HH:mm") 
+      : '';
+
+    const initialBalanceFormatted = formatCurrency(session.initialBalance || 0);
+    const finalBalanceFormatted = session.finalBalance ? formatCurrency(session.finalBalance) : 'N/A';
+
+    const printInputs = roundTo2(transactionsToPrint.filter(t => t.type === 'entrada').reduce((sum, t) => sum + t.amount, 0));
+    const printOutputs = roundTo2(transactionsToPrint.filter(t => t.type === 'saida').reduce((sum, t) => sum + t.amount, 0));
+    const printExpected = roundTo2((session.initialBalance || 0) + printInputs - printOutputs);
+
+    let itemsHtml = '';
+    // Transactions are printed in the exact order received, corresponding to the visible sequence
+    transactionsToPrint.forEach(t => {
+      const desc = t.description || t.category || 'Venda';
+      const time = t.createdAt 
+        ? format(t.createdAt.toDate ? t.createdAt.toDate() : new Date(t.createdAt as unknown as string), "HH:mm") 
+        : '--:--';
+      const method = t.paymentMethod || 'Dinheiro';
+      const sign = t.type === 'entrada' ? '+' : '-';
+      const valStr = formatCurrency(t.amount);
+      
+      itemsHtml += `
+        <div style="margin-bottom: 5px; page-break-inside: avoid;">
+          <div style="font-weight: bold; font-size: 11px; word-break: break-all;">${desc}</div>
+          <div style="font-size: 11px; color: #000; margin-top: 1px;">
+            ${time} - ${method} - ${sign} ${valStr}
+          </div>
+        </div>
+        <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
+      `;
+    });
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Conferência de Caixa</title>
+        <style>
+          @page {
+            margin: 0;
+          }
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            line-height: 1.3;
+            color: #000;
+            background: #fff;
+            margin: 0;
+            padding: 3mm;
+            width: 74mm; /* safe print margin for 80mm roll */
+            box-sizing: border-box;
+          }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .font-bold { font-weight: bold; }
+          .header { margin-bottom: 8px; }
+          .brand { font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 2px; }
+          .title { font-size: 11px; font-weight: bold; text-align: center; margin-bottom: 6px; }
+          .info-row { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px; }
+          .divider { border-top: 1px dashed #000; margin: 5px 0; }
+          .thick-divider { border-top: 2px solid #000; margin: 6px 0; }
+          .totals { font-size: 11px; margin-top: 6px; }
+          .footer { margin-top: 10px; font-size: 9px; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="brand">DISCRETA BOUTIQUE</div>
+          <div class="title">SIMPLES CONFERÊNCIA DE CAIXA</div>
+          <div class="divider"></div>
+          <div class="info-row">
+            <span>Turno ID:</span>
+            <span>${session.id?.slice(0, 8).toUpperCase() || 'N/A'}</span>
+          </div>
+          <div class="info-row">
+            <span>Operador:</span>
+            <span>${session.openedByName || 'Vendedor'}</span>
+          </div>
+          <div class="info-row">
+            <span>Abertura:</span>
+            <span>${openedDateStr}</span>
+          </div>
+          ${closedDateStr ? `
+          <div class="info-row">
+            <span>Fechamento:</span>
+            <span>${closedDateStr}</span>
+          </div>` : ''}
+          <div class="divider"></div>
+          <div class="info-row">
+            <span>Saldo Inicial:</span>
+            <span>${initialBalanceFormatted}</span>
+          </div>
+          <div class="info-row">
+            <span>(+) Entradas:</span>
+            <span>${formatCurrency(printInputs)}</span>
+          </div>
+          <div class="info-row">
+            <span>(-) Saídas:</span>
+            <span>${formatCurrency(printOutputs)}</span>
+          </div>
+          <div class="info-row font-bold">
+            <span>Saldo Esperado:</span>
+            <span>${formatCurrency(printExpected)}</span>
+          </div>
+          ${session.status === 'fechado' ? `
+          <div class="info-row font-bold">
+            <span>Saldo Final:</span>
+            <span>${finalBalanceFormatted}</span>
+          </div>` : ''}
+        </div>
+
+        <div class="thick-divider"></div>
+        <div style="font-weight: bold; font-size: 11px; margin-bottom: 5px; text-align: center; letter-spacing: 1px;">LANÇAMENTOS</div>
+        <div class="thick-divider"></div>
+
+        ${itemsHtml || '<div class="text-center" style="font-style: italic; padding: 10px 0;">Nenhum lançamento registrado</div>'}
+
+        <div class="divider"></div>
+        <div class="footer">
+          <div>Impresso em: ${formattedDate}</div>
+          <div style="margin-top: 2px;">Simples Conferência de Caixa</div>
+          <div style="font-weight: bold; margin-top: 4px; font-size: 10px;">PRODUTOS E ENTRADAS CONFERIDOS</div>
+        </div>
+        <script>
+          window.onload = function() {
+            window.focus();
+            window.print();
+            setTimeout(function() {
+              window.parent.document.body.removeChild(window.frameElement);
+            }, 1000);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+  };
+
   if (loading) return <div className="p-8 text-center text-slate-400">Carregando módulo de caixa...</div>;
 
   return (
@@ -381,6 +542,14 @@ export function AdminCaixa() {
                     <h3 className="font-bold text-slate-200 flex items-center gap-2">
                        <History size={16} /> Lancamentos Recentes
                     </h3>
+                    {currentSession && transactions.length > 0 && (
+                      <Button 
+                        onClick={() => handlePrintSummary(transactions, currentSession)} 
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 px-3 py-1.5 h-8 text-xs font-bold transition-all shadow-sm rounded-lg"
+                      >
+                        <Printer size={13} /> Imprimir Simples Conferência
+                      </Button>
+                    )}
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm min-w-[500px]">
@@ -711,9 +880,19 @@ export function AdminCaixa() {
                     </h3>
                     <p className="text-[10px] text-slate-400 opacity-70">Turno de {selectedSession.openedByName}</p>
                   </div>
-                  <button onClick={() => setSelectedSession(null)} className="text-slate-400 hover:text-white">
-                    <History size={20} className="rotate-45" />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {sessionTransactions.length > 0 && (
+                      <Button 
+                        onClick={() => handlePrintSummary(sessionTransactions, selectedSession)} 
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 px-2.5 py-1 h-7 text-[11px] font-bold transition-all shadow-sm rounded-lg"
+                      >
+                        <Printer size={12} /> Imprimir Relatório Turno
+                      </Button>
+                    )}
+                    <button onClick={() => setSelectedSession(null)} className="text-slate-400 hover:text-white">
+                      <History size={20} className="rotate-45" />
+                    </button>
+                  </div>
               </div>
               <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
                  <div className="p-4 rounded-xl bg-slate-800 border">
