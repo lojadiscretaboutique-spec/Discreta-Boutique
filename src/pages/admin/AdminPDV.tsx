@@ -123,7 +123,7 @@ const formatOrderDate = (date: any) => {
   }
 };
 
-const CACHE_KEY = "DISCRETA_PDV_INDEX_CACHE_V2";
+const CACHE_KEY = "DISCRETA_PDV_INDEX_CACHE_V3";
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 function normalizeString(str: string): string {
@@ -184,8 +184,8 @@ export function AdminPDV() {
       if (p.variants && Array.isArray(p.variants)) {
         p.variants.forEach((v) => {
           variationsCount++;
-          const keySku = v.variantSku?.toLowerCase();
-          const keyBarcode = v.variantBarcode?.toLowerCase();
+          const keySku = (v.sku || v.variantSku || "")?.trim().toLowerCase();
+          const keyBarcode = (v.barcode || v.variantBarcode || "")?.trim().toLowerCase();
           if (keySku) {
             productsByVariantSku.current.set(keySku, { product: p, variant: v });
           }
@@ -197,7 +197,7 @@ export function AdminPDV() {
     });
 
     if (import.meta.env.DEV) {
-      console.log(`[PDV Index] Mapas recriados com sucesso.`);
+      console.log(`[PDV Index] Mapas recriados com sucesso. Variações indexadas: ${variationsCount}`);
     }
   };
 
@@ -228,15 +228,22 @@ export function AdminPDV() {
           }
           const vData = vDoc.data();
           variantsByProductId[parentId].push({
+            id: vDoc.id,
             variantId: vDoc.id,
+            name: vData.name || "",
             variantName: vData.name || "",
+            sku: vData.sku || "",
             variantSku: vData.sku || "",
+            barcode: vData.barcode || vData.gtin || "",
             variantBarcode: vData.barcode || vData.gtin || "",
+            stock: Number(vData.stock) ?? 0,
             variantStock: Number(vData.stock) ?? 0,
+            price: Number(vData.price) || 0,
             variantPrice: Number(vData.price) || 0,
             costPrice: Number(vData.costPrice) || 0,
             active: vData.active !== false,
             attributes: vData.attributes || {},
+            imageUrl: vData.imageUrl || vData.images?.[0]?.url || "",
           });
         }
       });
@@ -249,15 +256,22 @@ export function AdminPDV() {
         const subcollectionVars = variantsByProductId[pId] || [];
         const inlineVars = Array.isArray(pData.variants)
           ? pData.variants.map((v: any, index: number) => ({
+              id: v.id || v.variantId || `inline-${index}`,
               variantId: v.id || v.variantId || `inline-${index}`,
+              name: v.name || v.variantName || "",
               variantName: v.name || v.variantName || "",
+              sku: v.sku || v.variantSku || "",
               variantSku: v.sku || v.variantSku || "",
+              barcode: v.barcode || v.variantBarcode || v.gtin || "",
               variantBarcode: v.barcode || v.variantBarcode || v.gtin || "",
+              stock: Number(v.stock || v.variantStock) ?? 0,
               variantStock: Number(v.stock || v.variantStock) ?? 0,
+              price: Number(v.price || v.variantPrice) || Number(pData.promoPrice || pData.price) || 0,
               variantPrice: Number(v.price || v.variantPrice) || Number(pData.promoPrice || pData.price) || 0,
               costPrice: Number(v.costPrice || pData.costPrice) || 0,
               active: v.active !== false,
               attributes: v.attributes || {},
+              imageUrl: v.imageUrl || v.images?.[0]?.url || "",
             }))
           : [];
 
@@ -368,30 +382,30 @@ export function AdminPDV() {
   };
 
   const findExactProductOrVariant = (term: string) => {
-    const lowerTerm = term.toLowerCase();
+    const lowerTerm = term.trim().toLowerCase();
 
-    // 1. Barcode exato do produto pai
-    if (productsByBarcode.current.has(lowerTerm)) {
-      const prod = productsByBarcode.current.get(lowerTerm);
-      return { product: prod, variant: undefined };
-    }
-
-    // 2. SKU exato do produto pai
-    if (productsBySku.current.has(lowerTerm)) {
-      const prod = productsBySku.current.get(lowerTerm);
-      return { product: prod, variant: undefined };
-    }
-
-    // 3. Barcode exato de variação
+    // 1. Barcode exato de variação (Prioridade máxima para evitar confusão de variantes)
     if (productsByVariantBarcode.current.has(lowerTerm)) {
       const match = productsByVariantBarcode.current.get(lowerTerm);
-      return { product: match.product, variant: match.variant };
+      return { product: match.product, variant: match.variant, matchType: 'variantBarcode' as const };
     }
 
-    // 4. SKU exato de variação
+    // 2. SKU exato de variação
     if (productsByVariantSku.current.has(lowerTerm)) {
       const match = productsByVariantSku.current.get(lowerTerm);
-      return { product: match.product, variant: match.variant };
+      return { product: match.product, variant: match.variant, matchType: 'variantSku' as const };
+    }
+
+    // 3. Barcode exato do produto pai
+    if (productsByBarcode.current.has(lowerTerm)) {
+      const prod = productsByBarcode.current.get(lowerTerm);
+      return { product: prod, variant: undefined, matchType: 'barcode' as const };
+    }
+
+    // 4. SKU exato do produto pai
+    if (productsBySku.current.has(lowerTerm)) {
+      const prod = productsBySku.current.get(lowerTerm);
+      return { product: prod, variant: undefined, matchType: 'sku' as const };
     }
 
     return null;
@@ -738,15 +752,15 @@ export function AdminPDV() {
       // 1. Busca rápida O(1) por mapas locais (Barcode e SKU de Produto/Variação)
       const match = findExactProductOrVariant(term);
       if (match) {
-        const { product, variant } = match;
+        const { product, variant, matchType } = match;
         playBeep();
         
         if (import.meta.env.DEV) {
           const duration = performance.now() - lookupStartTime;
-          console.log(`[PDV Lookup] Busca por código exato concluída em ${duration.toFixed(2)}ms.`);
+          console.log(`[PDV Lookup] Busca por código exato concluída em ${duration.toFixed(2)}ms. Tipo de match: ${matchType}`);
         }
         
-        addToCart(product, variant);
+        addToCart(product, variant, term);
         setSearchTerm("");
         setSearchResults([]);
         clearTimeout(searchTimeout);
@@ -774,7 +788,7 @@ export function AdminPDV() {
 
       if (matchedLocalList.length === 1) {
         playBeep();
-        addToCart(matchedLocalList[0]);
+        addToCart(matchedLocalList[0], undefined, term);
         setSearchTerm("");
         setSearchResults([]);
         return;
@@ -973,12 +987,19 @@ export function AdminPDV() {
       const fetchedVariants = (product as any).variants || [];
       // Translate local structures if needed (such as variantId/variantName back to id/name)
       const formattedVariants = fetchedVariants.map((v: any) => ({
-        id: v.variantId || v.id,
-        name: v.variantName || v.name,
-        sku: v.variantSku || v.sku,
-        barcode: v.variantBarcode || v.barcode,
-        stock: v.variantStock ?? v.stock ?? 0,
-        price: v.variantPrice ?? v.price ?? 0,
+        id: v.id || v.variantId,
+        variantId: v.id || v.variantId,
+        name: v.name || v.variantName,
+        variantName: v.name || v.variantName,
+        sku: v.sku || v.variantSku,
+        variantSku: v.sku || v.variantSku,
+        barcode: v.barcode || v.variantBarcode,
+        variantBarcode: v.barcode || v.variantBarcode,
+        stock: v.stock ?? v.variantStock ?? 0,
+        variantStock: v.stock ?? v.variantStock ?? 0,
+        price: v.price ?? v.variantPrice ?? 0,
+        variantPrice: v.price ?? v.variantPrice ?? 0,
+        imageUrl: v.imageUrl || "",
         costPrice: v.costPrice ?? 0,
         active: v.active !== false,
         attributes: v.attributes || {},
@@ -997,10 +1018,13 @@ export function AdminPDV() {
     }
   };
 
-  const addToCart = (product: Product, variant?: ProductVariant) => {
+  const addToCart = (product: Product, variant?: ProductVariant, scannedCode?: string) => {
     const insertStartTime = performance.now();
     
     if (product.hasVariants && !variant) {
+      if (import.meta.env.DEV) {
+        console.log(`[PDV] Produto com variantes encontrado, mas variação específica não foi fornecida. Abrindo modal de seleção...`);
+      }
       openVariantModal(product);
       return;
     }
@@ -1008,7 +1032,17 @@ export function AdminPDV() {
     const currentStock = variant ? variant.stock ?? 0 : product.stock ?? 0;
     const allowBackorder = product.allowBackorder;
 
+    if (import.meta.env.DEV) {
+      console.log(`[PDV DevLog] Código bipado: "${scannedCode || ''}"`);
+      console.log(`[PDV DevLog] Tipo de correspondência: ${variant ? 'Variação/Componente' : 'Produto Pai'}`);
+      console.log(`[PDV DevLog] ID da Variação: ${variant?.id || 'Nenhuma'}`);
+      console.log(`[PDV DevLog] Estoque usado na validação: ${currentStock} (allowBackorder: ${allowBackorder})`);
+    }
+
     if (currentStock <= 0 && !allowBackorder) {
+      if (import.meta.env.DEV) {
+        console.log(`[PDV DevLog] Bloqueado por falta de estoque. Motivo: Estoque (${currentStock}) <= 0 e venda sem estoque não permitida.`);
+      }
       setStockWarningModal({
         productName: variant
           ? `${product.name} - ${variant.name}`
