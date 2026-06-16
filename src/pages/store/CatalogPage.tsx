@@ -15,6 +15,7 @@ import { catalogSectionsService, SECTION_METADATA, CatalogSection } from '../../
 import { usePromotion } from '../../contexts/PromotionContext';
 import { visualHomeService, VisualHomeSettings } from '../../services/visualHomeService';
 import { cacheService } from '../../services/cacheService';
+import { catalogCacheService } from '../../services/catalogCacheService';
 import { Combo } from '../../services/comboService';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getComboReservedStocks, adjustProductsWithReservations } from '../../utils/comboStockHelper';
@@ -225,125 +226,152 @@ export function CatalogPage() {
         const now = Date.now();
         const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 
-        let catsData: Category[] = cacheService.get('catalog_categories') || [];
-        const cachedCats = sessionStorage.getItem(`catalog_cats_${CACHE_VERSION}`);
-        const catTime = sessionStorage.getItem(`catalog_cats_time_${CACHE_VERSION}`);
-        
-        if (catsData.length === 0) {
-          if (cachedCats && catTime && now - parseInt(catTime) < CACHE_TTL) {
-            catsData = JSON.parse(cachedCats);
-            cacheService.set('catalog_categories', catsData);
-          } else {
-            const cSnap = await getDocs(query(collection(db, 'categories')));
-            catsData = cSnap.docs.map(d => ({id: d.id, ...d.data()} as Category));
-            try {
-              // Save minimized version to avoid quota issues
-              const minimizedCats = catsData.map(c => ({
-                id: c.id,
-                name: c.name,
-                slug: c.slug,
-                parentId: c.parentId,
-                level: c.level,
-                accessCount: c.accessCount || 0,
-                sortOrder: c.sortOrder || 0
-              }));
-              cacheService.set('catalog_categories', catsData);
-              sessionStorage.setItem(`catalog_cats_${CACHE_VERSION}`, JSON.stringify(minimizedCats));
-              sessionStorage.setItem(`catalog_cats_time_${CACHE_VERSION}`, now.toString());
-            } catch (e) {
-              // Silently fail if quota exceeded
-            }
-          }
-        }
-        
-        const initialSortedCats = [...catsData].sort((a, b) => {
-          const scoreB = b.accessCount || 0;
-          const scoreA = a.accessCount || 0;
-          if (scoreB !== scoreA) return scoreB - scoreA;
-          if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
-          return a.name.localeCompare(b.name);
-        });
-        setCategories(initialSortedCats);
-        
-        let prods: Product[] = cacheService.get('catalog_products') || [];
-        const cachedProducts = sessionStorage.getItem(`catalog_products_${CACHE_VERSION}`);
-        const prodTime = sessionStorage.getItem(`catalog_products_time_${CACHE_VERSION}`);
+        let catsData: Category[] = [];
+        let prods: Product[] = [];
+        let usedCache = false;
 
-        if (prods.length === 0) {
-          if (cachedProducts && prodTime && now - parseInt(prodTime) < CACHE_TTL) {
-            try {
-              prods = JSON.parse(cachedProducts);
-              cacheService.set('catalog_products', prods);
-            } catch (e) {
-              console.warn('Failed to parse cached products', e);
-            }
+        try {
+          const cachedData = await catalogCacheService.getCachedCatalog();
+          if (cachedData && cachedData.products.length > 0) {
+            prods = cachedData.products as Product[];
+            catsData = cachedData.categories as Category[];
+            usedCache = true;
+          }
+        } catch (cacheErr) {
+          if (import.meta.env.DEV) {
+            console.warn('%c[CATALOG_FALLBACK_USED] Failed to load catalog cache. Using Firestore queries as fallback.', 'color: #EF4444; font-weight: bold;', cacheErr);
           }
         }
 
-        if (prods.length === 0) {
-          const [pSnap, cSnap, reservedStocks] = await Promise.all([
-            getDocs(query(collection(db, 'products'), where('active', '==', true), limit(300))),
-            // TODO: Paginate combos too if they become massive
-            getDocs(query(collection(db, 'combos'), where('active', '==', true), where('showInCatalog', '==', true))),
-            getComboReservedStocks()
-          ]);
+        if (!usedCache) {
+          if (import.meta.env.DEV) {
+            console.log('%c[CATALOG_FALLBACK_USED] Cache missing or invalid. Triggering Firestore queries fallback...', 'color: #F59E0B; font-weight: bold;');
+          }
 
-          const rawRegularProds = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-          const regularProds = adjustProductsWithReservations(rawRegularProds, reservedStocks);
-          const combosAsProducts = cSnap.docs.map(d => {
-            const combo = d.data() as Combo;
-            return {
-              id: d.id,
-              name: combo.name,
-              description: combo.description,
-              price: combo.price,
-              images: combo.images || (combo.imageUrl ? [{ url: combo.imageUrl, isMain: true }] : []),
-              categoryId: 'combos', // Treat as a special category or use the first one from combo.categories
-              active: combo.active,
-              isCombo: true,
-              showInCatalog: combo.showInCatalog,
-              featured: combo.isFeatured,
-              seo: {
-                title: combo.seoTitle,
-                description: combo.seoDescription
-              }
-            } as any;
-          });
+          const CACHE_VERSION = 'v3'; // To force clear old incorrect stock sums and ensure SEO data
+          const now = Date.now();
+          const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 
-          prods = [...regularProds, ...combosAsProducts];
-          cacheService.set('catalog_products', prods);
+          catsData = cacheService.get('catalog_categories') || [];
+          const cachedCats = sessionStorage.getItem(`catalog_cats_${CACHE_VERSION}`);
+          const catTime = sessionStorage.getItem(`catalog_cats_time_${CACHE_VERSION}`);
           
-          try {
-            // Minimize product data for session storage more aggressively
-            const minimizedProds = prods.map(p => ({
-              id: p.id,
-              name: p.name,
-              price: p.price,
-              promoPrice: p.promoPrice,
-              images: p.images?.slice(0, 1), // Only first image for cache
-              categoryId: p.categoryId,
-              stock: p.stock,
-              controlStock: p.controlStock,
-              allowBackorder: p.allowBackorder,
-              extras: p.extras,
-              seo: { keywords: p.seo?.keywords, slug: p.seo?.slug },
-              ai_keywords: p.ai_keywords,
-              ai_synonyms: p.ai_synonyms,
-              searchTerms: p.searchTerms,
-              newRelease: p.newRelease,
-              hasVariants: p.hasVariants,
-              sku: p.sku,
-              isCombo: (p as any).isCombo
-            }));
-            
-            const serialized = JSON.stringify(minimizedProds);
-            // Only save if under a reasonable limit for sessionStorage (usually 5MB total, but let's be safe per item)
-            if (serialized.length < 4 * 1024 * 1024) { 
-               sessionStorage.setItem(`catalog_products_${CACHE_VERSION}`, serialized);
-               sessionStorage.setItem(`catalog_products_time_${CACHE_VERSION}`, now.toString());
+          if (catsData.length === 0) {
+            if (cachedCats && catTime && now - parseInt(catTime) < CACHE_TTL) {
+              catsData = JSON.parse(cachedCats);
+              cacheService.set('catalog_categories', catsData);
+            } else {
+              const cSnap = await getDocs(query(collection(db, 'categories')));
+              catsData = cSnap.docs.map(d => ({id: d.id, ...d.data()} as Category));
+              try {
+                // Save minimized version to avoid quota issues
+                const minimizedCats = catsData.map(c => ({
+                  id: c.id,
+                  name: c.name,
+                  slug: c.slug,
+                  parentId: c.parentId,
+                  level: c.level,
+                  accessCount: c.accessCount || 0,
+                  sortOrder: c.sortOrder || 0
+                }));
+                cacheService.set('catalog_categories', catsData);
+                sessionStorage.setItem(`catalog_cats_${CACHE_VERSION}`, JSON.stringify(minimizedCats));
+                sessionStorage.setItem(`catalog_cats_time_${CACHE_VERSION}`, now.toString());
+              } catch (e) {
+                // Silently fail if quota exceeded
+              }
             }
-          } catch (e) {
-            console.warn('[CATALOG][CACHE] Quota exceeded or failure. Reverting to memory-only for this session.');
+          }
+          
+          const initialSortedCats = [...catsData].sort((a, b) => {
+            const scoreB = b.accessCount || 0;
+            const scoreA = a.accessCount || 0;
+            if (scoreB !== scoreA) return scoreB - scoreA;
+            if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
+            return a.name.localeCompare(b.name);
+          });
+          setCategories(initialSortedCats);
+          
+          prods = cacheService.get('catalog_products') || [];
+          const cachedProducts = sessionStorage.getItem(`catalog_products_${CACHE_VERSION}`);
+          const prodTime = sessionStorage.getItem(`catalog_products_time_${CACHE_VERSION}`);
+
+          if (prods.length === 0) {
+            if (cachedProducts && prodTime && now - parseInt(prodTime) < CACHE_TTL) {
+              try {
+                prods = JSON.parse(cachedProducts);
+                cacheService.set('catalog_products', prods);
+              } catch (e) {
+                console.warn('Failed to parse cached products', e);
+              }
+            }
+          }
+
+          if (prods.length === 0) {
+            const [pSnap, cSnap, reservedStocks] = await Promise.all([
+              getDocs(query(collection(db, 'products'), where('active', '==', true), limit(300))),
+              // TODO: Paginate combos too if they become massive
+              getDocs(query(collection(db, 'combos'), where('active', '==', true), where('showInCatalog', '==', true))),
+              getComboReservedStocks()
+            ]);
+
+            const rawRegularProds = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+            const regularProds = adjustProductsWithReservations(rawRegularProds, reservedStocks);
+            const combosAsProducts = cSnap.docs.map(d => {
+              const combo = d.data() as Combo;
+              return {
+                id: d.id,
+                name: combo.name,
+                description: combo.description,
+                price: combo.price,
+                images: combo.images || (combo.imageUrl ? [{ url: combo.imageUrl, isMain: true }] : []),
+                categoryId: 'combos', // Treat as a special category or use the first one from combo.categories
+                active: combo.active,
+                isCombo: true,
+                showInCatalog: combo.showInCatalog,
+                featured: combo.isFeatured,
+                seo: {
+                  title: combo.seoTitle,
+                  description: combo.seoDescription
+                }
+              } as any;
+            });
+
+            prods = [...regularProds, ...combosAsProducts];
+            cacheService.set('catalog_products', prods);
+            
+            try {
+              // Minimize product data for session storage more aggressively
+              const minimizedProds = prods.map(p => ({
+                id: p.id,
+                name: p.name,
+                price: p.price,
+                promoPrice: p.promoPrice,
+                images: p.images?.slice(0, 1), // Only first image for cache
+                categoryId: p.categoryId,
+                stock: p.stock,
+                controlStock: p.controlStock,
+                allowBackorder: p.allowBackorder,
+                extras: p.extras,
+                seo: { keywords: p.seo?.keywords, slug: p.seo?.slug },
+                ai_keywords: p.ai_keywords,
+                ai_synonyms: p.ai_synonyms,
+                searchTerms: p.searchTerms,
+                newRelease: p.newRelease,
+                hasVariants: p.hasVariants,
+                sku: p.sku,
+                isCombo: (p as any).isCombo
+              }));
+              
+              const serialized = JSON.stringify(minimizedProds);
+              // Only save if under a reasonable limit for sessionStorage (usually 5MB total, but let's be safe per item)
+              if (serialized.length < 4 * 1024 * 1024) { 
+                 sessionStorage.setItem(`catalog_products_${CACHE_VERSION}`, serialized);
+                 sessionStorage.setItem(`catalog_products_time_${CACHE_VERSION}`, now.toString());
+              }
+            } catch (e) {
+              console.warn('[CATALOG][CACHE] Quota exceeded or failure. Reverting to memory-only for this session.');
+            }
           }
         }
 

@@ -568,6 +568,34 @@ export default {
         updatedAt: { type: "string", format: "date-time" }
       },
       required: ["title", "status", "streamingUrl"]
+    },
+    PublicCatalogProductsDoc: {
+      title: "Public Catalog Products Document",
+      description: "Compiled lightweight public catalog products list document",
+      type: "object",
+      properties: {
+        products: { type: "array" },
+        updatedAt: { type: "string" }
+      }
+    },
+    PublicCatalogCategoriesDoc: {
+      title: "Public Catalog Categories Document",
+      description: "Compiled lightweight public catalog categories list document",
+      type: "object",
+      properties: {
+        categories: { type: "array" },
+        updatedAt: { type: "string" }
+      }
+    },
+    PublicCatalogMetadataDoc: {
+      title: "Public Catalog Metadata Document",
+      description: "Compiled lightweight public catalog metadata",
+      type: "object",
+      properties: {
+        updatedAt: { type: "string" },
+        totalProducts: { type: "number" },
+        totalCategories: { type: "number" }
+      }
     }
   },
   firestore: {
@@ -718,6 +746,10 @@ export default {
     "public_home_cache": {
       schema: { $ref: "#/entities/PublicHomeCache" },
       description: "Compiled cache of home page data"
+    },
+    "public_catalog_cache": {
+      schema: { type: "object" },
+      description: "Compiled public catalog cache of products, categories and metadata"
     }
   }
 }

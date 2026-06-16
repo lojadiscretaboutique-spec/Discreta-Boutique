@@ -48,6 +48,10 @@ export const stockSyncService = {
         updatedAt: serverTimestamp()
       });
 
+      import('./catalogCacheService').then(({ catalogCacheService }) => {
+        catalogCacheService.scheduleCatalogCacheRegeneration('stock_sync').catch(err => console.error("Error scheduling cache regeneration:", err));
+      });
+
       console.log(`[StockSync] Product ${productId} synced. Total stock: ${calculatedStock}`);
       return true;
     } catch (error) {
@@ -76,6 +80,12 @@ export const stockSyncService = {
         if (success) synced++;
         else errors++;
       }
+    }
+    
+    if (synced > 0) {
+      import('./catalogCacheService').then(({ catalogCacheService }) => {
+        catalogCacheService.scheduleCatalogCacheRegeneration('mass_stock_sync').catch(err => console.error("Error scheduling cache regeneration:", err));
+      });
     }
 
     return { total, synced, errors };

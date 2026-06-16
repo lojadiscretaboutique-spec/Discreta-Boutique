@@ -342,6 +342,9 @@ export const productService = {
       }
 
       await cacheService.notifyChange();
+      import('./catalogCacheService').then(({ catalogCacheService }) => {
+        catalogCacheService.scheduleCatalogCacheRegeneration('product_created_or_edited').catch(err => console.error("Error scheduling cache regeneration:", err));
+      });
       return productRef.id;
     } catch (error) {
       console.error("Error creating product:", error);
@@ -415,6 +418,9 @@ export const productService = {
       }
 
       await cacheService.notifyChange();
+      import('./catalogCacheService').then(({ catalogCacheService }) => {
+        catalogCacheService.scheduleCatalogCacheRegeneration('product_updated').catch(err => console.error("Error scheduling cache regeneration:", err));
+      });
       return id;
     } catch (error: any) {
       console.error("Error updating product:", error);
@@ -461,6 +467,9 @@ export const productService = {
         await batch.commit();
         console.log(`[Diagnostic] Step 4 Success: Batch committed.`);
         await cacheService.notifyChange();
+        import('./catalogCacheService').then(({ catalogCacheService }) => {
+          catalogCacheService.scheduleCatalogCacheRegeneration('product_deleted').catch(err => console.error("Error scheduling cache regeneration:", err));
+        });
       } catch (e: any) {
         console.error(`[Diagnostic] Step 4 FAILED (Batch Commit): ${e.message}`, e);
         throw e;

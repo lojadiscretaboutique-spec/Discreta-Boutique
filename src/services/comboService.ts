@@ -117,6 +117,10 @@ export const comboService = {
     }
     
     await cacheService.notifyChange();
+    import('./catalogCacheService').then(({ catalogCacheService }) => {
+      catalogCacheService.scheduleCatalogCacheRegeneration(isUpdate ? 'combo_updated' : 'combo_created').catch(err => console.error(err));
+    });
+
     return ref.id;
   },
 
@@ -138,6 +142,9 @@ export const comboService = {
     }
     await deleteDoc(doc(db, 'combos', id));
     await cacheService.notifyChange();
+    import('./catalogCacheService').then(({ catalogCacheService }) => {
+      catalogCacheService.scheduleCatalogCacheRegeneration('combo_deleted').catch(err => console.error(err));
+    });
   },
 
   /**

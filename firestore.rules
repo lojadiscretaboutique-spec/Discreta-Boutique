@@ -411,6 +411,11 @@ service cloud.firestore {
       allow write: if isMasterAdmin() || can('banners', 'editar') || can('banners', 'criar');
     }
 
+    match /public_catalog_cache/{doc} {
+      allow read: if true;
+      allow write: if isMasterAdmin() || can('banners', 'editar') || can('banners', 'criar');
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

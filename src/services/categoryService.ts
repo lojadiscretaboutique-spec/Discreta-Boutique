@@ -161,6 +161,9 @@ export const categoryService = {
 
       const docRef = await addDoc(collection(db, 'categories'), data);
       await cacheService.notifyChange();
+      import('./catalogCacheService').then(({ catalogCacheService }) => {
+        catalogCacheService.scheduleCatalogCacheRegeneration('category_created').catch(err => console.error("Error scheduling cache regeneration:", err));
+      });
       return docRef.id;
     } catch (error) {
       console.error("Error creating category:", error);
@@ -193,6 +196,9 @@ export const categoryService = {
 
       await updateDoc(docRef, updateData);
       await cacheService.notifyChange();
+      import('./catalogCacheService').then(({ catalogCacheService }) => {
+        catalogCacheService.scheduleCatalogCacheRegeneration('category_updated').catch(err => console.error("Error scheduling cache regeneration:", err));
+      });
       return id;
     } catch (error: any) {
       console.error("Error updating category:", error);
@@ -218,6 +224,9 @@ export const categoryService = {
 
       await deleteDoc(doc(db, 'categories', id));
       await cacheService.notifyChange();
+      import('./catalogCacheService').then(({ catalogCacheService }) => {
+        catalogCacheService.scheduleCatalogCacheRegeneration('category_deleted').catch(err => console.error("Error scheduling cache regeneration:", err));
+      });
     } catch (error) {
       console.error("Error deleting category:", error);
       throw error;
@@ -255,6 +264,9 @@ export const categoryService = {
 
       const docRef = await addDoc(collection(db, 'categories'), data);
       await cacheService.notifyChange();
+      import('./catalogCacheService').then(({ catalogCacheService }) => {
+        catalogCacheService.scheduleCatalogCacheRegeneration('category_duplicated').catch(err => console.error("Error scheduling cache regeneration:", err));
+      });
       return docRef.id;
     } catch (error) {
       console.error("Error duplicating category:", error);

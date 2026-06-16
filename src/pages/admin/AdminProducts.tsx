@@ -68,6 +68,16 @@ export function AdminProducts() {
   const [aiLoading, setAiLoading] = useState(false);
   const [suggestedMultiplier, setSuggestedMultiplier] = useState(2.5);
   const [forceRegen, setForceRegen] = useState(false);
+  const [cacheMeta, setCacheMeta] = useState<any>(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'public_catalog_cache', 'metadata'), (docSnap) => {
+      if (docSnap.exists()) {
+        setCacheMeta(docSnap.data());
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Categorization effect
   useEffect(() => {
@@ -1756,17 +1766,59 @@ export function AdminProducts() {
           <h1 className="text-2xl font-bold text-white tracking-tight">Catálogo de Produtos</h1>
           <p className="text-slate-400">Gerencie seu inventário, variações e mídia em um só lugar.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            onClick={handleBulkSEO}
-            className="bg-red-600 hover:bg-red-700 shadow-xl shadow-red-950/20"
-          >
-            <Sparkles size={18} className="mr-2" /> SEO em Massa
-          </Button>
-          {canCreate && (
-            <Button onClick={handleNew} className="bg-slate-950 hover:bg-slate-800 shadow-xl shadow-slate-200">
-               <Plus size={18} className="mr-2" /> Novo Produto
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className={cn("text-xs border-slate-700 hover:bg-slate-800", cacheMeta?.status === 'regenerating' && "animate-pulse border-amber-500/50 text-amber-500")}
+              onClick={async () => {
+                const ok = await confirm({
+                  title: 'Atenção',
+                  message: 'Deseja forçar a reconstrução manual do cache público do catálogo agora? Note que o cache é atualizado automaticamente na maioria das operações.',
+                  confirmText: 'Regenerar Manualmente',
+                  variant: 'info'
+                });
+                if (!ok) return;
+                try {
+                  const m = await import('../../services/catalogCacheService');
+                  await m.catalogCacheService.scheduleCatalogCacheRegeneration('manual_trigger');
+                  toast("Reconstrução de cache agendada com sucesso!", 'success');
+                } catch (e: any) {
+                  console.error(e);
+                  toast("Erro ao agendar cache.", 'error');
+                }
+              }}
+              disabled={cacheMeta?.status === 'regenerating'}
+            >
+              {cacheMeta?.status === 'regenerating' ? (
+                <><Loader2 size={14} className="mr-2 animate-spin"/> Atualizando Catálogo...</>
+              ) : (
+                <><Check size={14} className="mr-2 text-emerald-500"/> Forçar Regeneração Cache</>
+              )}
             </Button>
+            <Button 
+              onClick={handleBulkSEO}
+              className="bg-red-600 hover:bg-red-700 shadow-xl shadow-red-950/20"
+            >
+              <Sparkles size={18} className="mr-2" /> SEO em Massa
+            </Button>
+            {canCreate && (
+              <Button onClick={handleNew} className="bg-slate-950 hover:bg-slate-800 shadow-xl shadow-slate-200">
+                 <Plus size={18} className="mr-2" /> Novo Produto
+              </Button>
+            )}
+          </div>
+          {cacheMeta && (
+            <div className="text-[10px] text-slate-500 flex items-center gap-2">
+              <span>Cache Stats:</span>
+              <span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded">{cacheMeta.totalProducts} produtos</span>
+              <span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded">{cacheMeta.totalCategories} categorias</span>
+              {cacheMeta.status === 'updated' && cacheMeta.lastRegenAt && (
+                <span title={`Motivo: ${cacheMeta.lastReason}`}>
+                  Atualizado às {new Date(cacheMeta.lastRegenAt.seconds * 1000).toLocaleTimeString()} ({cacheMeta.lastRegenDurationMs?.toFixed(0)}ms)
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>

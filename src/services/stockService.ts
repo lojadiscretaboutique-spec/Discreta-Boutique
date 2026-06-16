@@ -82,6 +82,11 @@ export const stockService = {
         });
       });
       await auditLogService.logAction('Registrar', 'stock', data.productId, { qty: data.quantity, type: data.type });
+      
+      import('./catalogCacheService').then(({ catalogCacheService }) => {
+        catalogCacheService.scheduleCatalogCacheRegeneration('stock_movement').catch(err => console.error("Error scheduling cache regeneration:", err));
+      });
+
       console.log('Movimentação registrada com sucesso');
     } catch (error) {
       console.error("Erro ao registrar movimentação:", error);
