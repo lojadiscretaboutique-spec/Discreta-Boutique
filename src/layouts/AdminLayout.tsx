@@ -40,7 +40,7 @@ export function AdminLayout() {
         { name: 'Relatórios', path: '/admin/financeiro/relatorios', permission: 'financeiro' },
         { name: 'Comissões', path: '/admin/financeiro/comissoes', permission: 'financeiro' },
         { name: 'Integração', path: '/admin/financeiro/integracao', permission: 'financeiro' },
-        { name: 'Formas de Pagamento', path: '/admin/financeiro/formas-pagamento', permission: 'financeiro' }
+        { name: 'Meios de Pagamento', path: '/admin/financeiro/formas-pagamento', permission: 'financeiro' }
     ]},
     { name: 'Marketing', path: '/admin/marketing', icon: Megaphone, permission: 'banners', submenu: [
         { name: 'Hub Estratégico Pro ⭐️', path: '/admin/marketing', permission: 'banners' },

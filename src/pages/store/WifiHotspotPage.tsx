@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSettings } from '../../contexts/SettingsContext';
 import { Button } from '../../components/ui/button';
@@ -10,23 +10,94 @@ export function WifiHotspotPage() {
   const settings = useSettings();
   const [searchParams] = useSearchParams();
 
-  // Hotspot query parameters
-  const mac = searchParams.get('mac') || '';
-  const ip = searchParams.get('ip') || '';
-  const linkLoginOnly = searchParams.get('link-login-only') || '';
-  const linkOrig = searchParams.get('link-orig') || '';
-  const urlUsername = searchParams.get('username') || '';
-  const urlPassword = searchParams.get('password') || '';
+  // Helper to read parameters robustly from the URL, search structure or hashes
+  const getParam = (key: string): string => {
+    // 1. Try React Router useSearchParams
+    const fromRouter = searchParams.get(key);
+    if (fromRouter) return fromRouter;
 
-  // Form states
-  const [name, setName] = useState('');
-  const [phoneInput, setPhoneInput] = useState('');
+    // 2. Try window.location.search
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromSearch = urlParams.get(key);
+    if (fromSearch) return fromSearch;
+
+    // 3. Try window.location.hash
+    const hash = window.location.hash;
+    if (hash) {
+      const cleanHash = hash.replace(/^[#?]+/, '');
+      const hashParams = new URLSearchParams(cleanHash);
+      const fromHash = hashParams.get(key);
+      if (fromHash) return fromHash;
+    }
+
+    return '';
+  };
+
+  // Hotspot mandatory URL parameters
+  const mac = getParam('mac');
+  const ip = getParam('ip');
+  const linkLoginOnly = getParam('link-login-only');
+  const linkOrig = getParam('link-orig');
+  const urlUsername = getParam('username');
+  const urlPassword = getParam('password');
+
+  // Form states (Predefined with localStorage values if previously submitted)
+  const [name, setName] = useState(() => localStorage.getItem('wifi_lead_name') || '');
+  const [phoneInput, setPhoneInput] = useState(() => localStorage.getItem('wifi_lead_phone') || '');
   const [acceptedMarketing, setAcceptedMarketing] = useState(true);
   
-  // Feedback states
+  // Feedback and flow control states
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [autoAuthenticating, setAutoAuthenticating] = useState(false);
+
+  // -------------------------------------------------------------------------
+  // AUTO-AUTHENTICATION BYPASS (Login once pattern)
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const isSubmitted = localStorage.getItem('wifi_lead_submitted') === 'true';
+    if (isSubmitted) {
+      setAutoAuthenticating(true);
+      setSuccess(true);
+
+      const timer = setTimeout(() => {
+        if (linkLoginOnly) {
+          // Programmatic release of hotspot via Hidden Form Submit (POST)
+          const form = document.createElement('form');
+          form.setAttribute('method', 'post');
+          form.setAttribute('action', linkLoginOnly);
+          form.style.display = 'none';
+
+          const usernameInput = document.createElement('input');
+          usernameInput.type = 'hidden';
+          usernameInput.name = 'username';
+          usernameInput.value = 'visitante';
+          form.appendChild(usernameInput);
+
+          const passwordInput = document.createElement('input');
+          passwordInput.type = 'hidden';
+          passwordInput.name = 'password';
+          passwordInput.value = 'discreta2026';
+          form.appendChild(passwordInput);
+
+          const dstInput = document.createElement('input');
+          dstInput.type = 'hidden';
+          dstInput.name = 'dst';
+          dstInput.value = 'https://discretaboutique.com.br';
+          form.appendChild(dstInput);
+
+          document.body.appendChild(form);
+          form.submit();
+        } else {
+          // Demonstration mode outside Mikrotik - instant redirect
+          window.location.href = 'https://discretaboutique.com.br';
+        }
+      }, 1200);
+
+      return () => clearTimeout(timer);
+    }
+  }, [linkLoginOnly]);
 
   // Auto-format Brazilian phone numbers: (XX) XXXXX-XXXX
   const formatPhoneNumber = (val: string) => {
@@ -40,7 +111,6 @@ export function WifiHotspotPage() {
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPhoneNumber(e.target.value);
-    // Limit to maximum length of formatted (15 chars)
     if (formatted.length <= 15) {
       setPhoneInput(formatted);
     }
@@ -92,15 +162,21 @@ export function WifiHotspotPage() {
         throw new Error(data.error || 'Ocorreu um erro ao salvar seus dados.');
       }
 
+      // Persist the submission flags locally to remember the client and adhere to 'login once' requirement
+      localStorage.setItem('wifi_lead_submitted', 'true');
+      localStorage.setItem('wifi_lead_name', name.trim());
+      localStorage.setItem('wifi_lead_phone', phoneInput);
+
       setSuccess(true);
 
-      // Wait 1.5 seconds for visual transition feedback, then perform MikroTik release redirect
+      // Wait 1.5 seconds for visual transition feedback, then perform programmatic Mikrotik release
       setTimeout(() => {
         if (linkLoginOnly) {
           // Programmatic release of hotspot via Hidden Form Submit (POST)
           const form = document.createElement('form');
-          form.method = 'POST';
-          form.action = linkLoginOnly;
+          form.setAttribute('method', 'post');
+          form.setAttribute('action', linkLoginOnly);
+          form.style.display = 'none';
 
           const usernameInput = document.createElement('input');
           usernameInput.type = 'hidden';
@@ -163,7 +239,7 @@ export function WifiHotspotPage() {
             </div>
           )}
           <h1 className="text-2xl font-semibold tracking-wide uppercase text-white font-sans">
-            {settings.storeName}
+            {settings.storeName || 'Discreta Boutique'}
           </h1>
           <p className="text-zinc-400 text-xs mt-1.5 tracking-wider font-mono">
             Portal Wi-Fi de Boas-Vindas
@@ -283,10 +359,13 @@ export function WifiHotspotPage() {
                 <Check className="w-8 h-8 stroke-[2.5]" />
               </div>
               <h2 className="text-xl font-bold text-white tracking-wide">
-                Acesso Autorizado!
+                {autoAuthenticating ? 'Liberando Wi-Fi...' : 'Acesso Autorizado!'}
               </h2>
               <p className="text-zinc-400 text-xs max-w-xs leading-relaxed">
-                Dados validados com sucesso. Estamos liberando seu sinal e te direcionando para a nossa boutique em instantes...
+                {autoAuthenticating 
+                  ? `Olá ${name}! Identificamos seu cadastro anterior da boutique. Liberando sua internet automaticamente, aguarde...`
+                  : 'Dados validados com sucesso. Estamos liberando seu sinal e te direcionando para a nossa boutique em instantes...'
+                }
               </p>
               <div className="flex items-center gap-1.5 text-red-500 mt-2">
                 <Heart className="w-4 h-4 fill-current animate-pulse" />
@@ -303,8 +382,8 @@ export function WifiHotspotPage() {
             <span>MAC: {mac || 'Detectando'}</span>
           </div>
           {(linkOrig || urlUsername || urlPassword) && (
-            <div className="flex justify-between items-center text-[8px] text-zinc-700">
-              <span className="truncate max-w-[150px]">Origem: {linkOrig || 'Indefinida'}</span>
+            <div className="flex justify-between items-center text-[8px] text-zinc-700 font-sans">
+              <span className="truncate max-w-[150px]" title={linkOrig}>Dest: {linkOrig || 'Indefinida'}</span>
               <span>ID: {urlUsername || 'Visitante'}</span>
             </div>
           )}

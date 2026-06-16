@@ -8,6 +8,7 @@ export interface MethodConfig {
   enabledDelivery: boolean;
   enabledPickup: boolean;
   useIntegration: boolean;
+  icon?: string;
 }
 
 export interface PaymentSettings {
