@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 interface StoreSettings {
@@ -27,29 +27,53 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const docRef = doc(db, 'settings', 'store');
-    
-    // Use onSnapshot for real-time updates when admin changes settings
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setSettings({
-          storeName: data.storeName || 'Discreta Boutique',
-          whatsapp: data.whatsapp || '5511999999999',
-          deliveryFee: Number(data.deliveryFee || 15),
-          address: data.address || '',
-          instagram: data.instagram || '',
-          logoUrl: data.logoUrl || undefined,
-          loading: false
-        });
-      } else {
-        setSettings(prev => ({ ...prev, loading: false }));
-      }
-    }, (error) => {
-      console.error("Error fetching settings:", error);
-      setSettings(prev => ({ ...prev, loading: false }));
-    });
+    const isAdmin = window.location.pathname.includes('/admin');
 
-    return () => unsubscribe();
+    if (isAdmin) {
+      // Use onSnapshot for real-time updates when admin changes settings
+      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setSettings({
+            storeName: data.storeName || 'Discreta Boutique',
+            whatsapp: data.whatsapp || '5511999999999',
+            deliveryFee: Number(data.deliveryFee || 15),
+            address: data.address || '',
+            instagram: data.instagram || '',
+            logoUrl: data.logoUrl || undefined,
+            loading: false
+          });
+        } else {
+          setSettings(prev => ({ ...prev, loading: false }));
+        }
+      }, (error) => {
+        console.error("Error listening to settings:", error);
+        setSettings(prev => ({ ...prev, loading: false }));
+      });
+
+      return () => unsubscribe();
+    } else {
+      // Use getDoc for visitors to reduce concurrent Firestore connections and reads
+      getDoc(docRef).then((docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setSettings({
+            storeName: data.storeName || 'Discreta Boutique',
+            whatsapp: data.whatsapp || '5511999999999',
+            deliveryFee: Number(data.deliveryFee || 15),
+            address: data.address || '',
+            instagram: data.instagram || '',
+            logoUrl: data.logoUrl || undefined,
+            loading: false
+          });
+        } else {
+          setSettings(prev => ({ ...prev, loading: false }));
+        }
+      }).catch((error) => {
+        console.error("Error fetching settings with getDoc:", error);
+        setSettings(prev => ({ ...prev, loading: false }));
+      });
+    }
   }, []);
 
   return (

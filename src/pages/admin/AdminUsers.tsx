@@ -9,7 +9,7 @@ import { ptBR } from 'date-fns/locale';
 import { Plus, Edit2, Trash2, X, Shield, Save, ArrowLeft, User as UserIcon, Mail } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '../../lib/firebase';
+import { auth } from '../../lib/auth';
 
 export function AdminUsers() {
   const [users, setUsers] = useState<User[]>([]);

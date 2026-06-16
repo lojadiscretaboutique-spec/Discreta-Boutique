@@ -1,5 +1,6 @@
 import { collection, doc, serverTimestamp, getDocs, getDoc, updateDoc, query, orderBy, limit, addDoc, where, deleteDoc } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db } from '../lib/firebase';
+import { auth } from '../lib/auth';
 import { auditLogService } from './auditLogService';
 import { stockSyncService } from './stockSyncService';
 import { smartStockService } from './smartStockService';

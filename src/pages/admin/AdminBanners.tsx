@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { collection, query, getDocs, doc, deleteDoc, addDoc, serverTimestamp, updateDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../lib/firebase';
+import { db } from '../../lib/firebase';
+import { storage } from '../../lib/storage';
 import { Plus, Trash2, X, Upload, Calendar, Image as ImageIcon } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -9,6 +10,7 @@ import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
 import { cn } from '../../lib/utils';
 import { motion } from 'motion/react';
+import { cacheService } from '../../services/cacheService';
 
 interface Banner {
   id: string;
@@ -94,22 +96,24 @@ export function AdminBanners() {
     });
 
     if (ok) {
-      try {
-        const collectionName = activeTab === 'main' ? 'banners' : 'offer_banners';
-        await deleteDoc(doc(db, collectionName, id));
-        loadData();
-        toast("Banner removido com sucesso!");
-      } catch {
-        toast("Erro ao excluir banner.", 'error');
-      }
-    }
-  };
-
-  const toggleStatus = async (id: string, currentStatus: boolean) => {
-    const collectionName = activeTab === 'main' ? 'banners' : 'offer_banners';
-    await updateDoc(doc(db, collectionName, id), { active: !currentStatus });
-    loadData();
-  };
+       try {
+         const collectionName = activeTab === 'main' ? 'banners' : 'offer_banners';
+         await deleteDoc(doc(db, collectionName, id));
+         await cacheService.notifyChange();
+         loadData();
+         toast("Banner removido com sucesso!");
+       } catch {
+         toast("Erro ao excluir banner.", 'error');
+       }
+     }
+   };
+ 
+   const toggleStatus = async (id: string, currentStatus: boolean) => {
+     const collectionName = activeTab === 'main' ? 'banners' : 'offer_banners';
+     await updateDoc(doc(db, collectionName, id), { active: !currentStatus });
+     await cacheService.notifyChange();
+     loadData();
+   };
 
   const startEdit = (banner: Banner | OfferBanner) => {
     setBannerToEdit(banner);
@@ -197,9 +201,11 @@ export function AdminBanners() {
 
       if (bannerToEdit) {
         await updateDoc(doc(db, collectionName, bannerToEdit.id), { ...data, updatedAt: serverTimestamp() });
+        await cacheService.notifyChange();
         toast("Banner atualizado com sucesso!");
       } else {
         await addDoc(collection(db, collectionName), { ...data, createdAt: serverTimestamp() });
+        await cacheService.notifyChange();
         toast("Banner salvo com sucesso!");
       }
       

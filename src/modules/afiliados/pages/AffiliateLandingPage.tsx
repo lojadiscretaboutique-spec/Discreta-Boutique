@@ -22,7 +22,8 @@ import {
   Compass
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { auth, db } from '../../../lib/firebase';
+import { db } from '../../../lib/firebase';
+import { auth } from '../../../lib/auth';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 

@@ -12,13 +12,13 @@ export default defineConfig({
       registerType: 'autoUpdate',
       filename: 'sw.js',
       includeAssets: [
-        'logo.png'
+        'logo.webp'
       ],
       workbox: {
         cleanupOutdatedCaches: true,
         // Optimization: Don't cache admin pages by default if they are large
         // and only cache critical assets to keep precache size small
-        globPatterns: ['**/*.{js,css,html,webp,webmanifest}'],
+        globPatterns: ['index.html', 'manifest.webmanifest', 'assets/*.css', 'assets/vendor*.js'],
         navigateFallbackDenylist: [/^\/admin/, /^\/api/], // Don't try to handle admin/api routes as SPA for offline
         runtimeCaching: [
           {
@@ -44,15 +44,15 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/logo.png',
+            src: '/logo.webp',
             sizes: '192x192',
-            type: 'image/png',
+            type: 'image/webp',
             purpose: 'any maskable'
           },
           {
-            src: '/logo.png',
+            src: '/logo.webp',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/webp',
             purpose: 'any maskable'
           }
         ]
@@ -77,7 +77,8 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom', 'zustand'],
-          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+          'firebase-core': ['firebase/app', 'firebase/firestore'],
+          'firebase-auth-storage': ['firebase/auth', 'firebase/storage'],
           ui: ['lucide-react', 'motion'],
         },
       },

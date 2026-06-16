@@ -1,5 +1,6 @@
 import { collection, addDoc, serverTimestamp, query, orderBy, limit, getDocs } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db } from '../lib/firebase';
+import { auth } from '../lib/auth';
 
 export interface AuditLog {
   id?: string;

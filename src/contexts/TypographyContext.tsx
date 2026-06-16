@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 export interface GlobalTypography {
@@ -455,8 +455,9 @@ export function TypographyProvider({ children }: { children: ReactNode }) {
   // Load configuration from Firestore and set up real-time listener
   useEffect(() => {
     const docRef = doc(db, 'settings', 'typography');
-    
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+    const isAdmin = window.location.pathname.includes('/admin');
+
+    const handleDoc = (docSnap: any) => {
       if (docSnap.exists()) {
         const rawData = docSnap.data();
         
@@ -483,12 +484,24 @@ export function TypographyProvider({ children }: { children: ReactNode }) {
         setConfig(INITIAL_DEFAULT_TYPOGRAPHY);
       }
       setLoading(false);
-    }, (error) => {
-      console.error('Error listening to typography updates:', error);
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    if (isAdmin) {
+      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+        handleDoc(docSnap);
+      }, (error) => {
+        console.error('Error listening to typography updates:', error);
+        setLoading(false);
+      });
+      return () => unsubscribe();
+    } else {
+      getDoc(docRef).then((docSnap) => {
+        handleDoc(docSnap);
+      }).catch((error) => {
+        console.error('Error loading typography via getDoc:', error);
+        setLoading(false);
+      });
+    }
   }, []);
 
   // Update dynamic font loads and root CSS variables whenever configuration changes

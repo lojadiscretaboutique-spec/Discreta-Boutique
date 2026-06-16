@@ -7,7 +7,8 @@ import {
   updateDoc, 
   Timestamp 
 } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db } from '../lib/firebase';
+import { auth } from '../lib/auth';
 
 export interface VisitorSession {
   id: string;

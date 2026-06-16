@@ -146,6 +146,16 @@ export const cacheService = {
       await setDoc(doc(db, 'settings', 'system_status'), {
         lastUpdate: serverTimestamp()
       }, { merge: true });
+
+      // Auto-regenerate lightweight public home cache in the background
+      try {
+        const { homeCacheService } = await import('./homeCacheService');
+        homeCacheService.regenerateHomeCache().catch(err => {
+          console.error("⚠️ Background Home Cache regeneration failed:", err);
+        });
+      } catch (cacheErr) {
+        console.error("⚠️ Failed to import homeCacheService in notifyChange:", cacheErr);
+      }
     } catch (e) {
       console.error("[Cache] Failed to notify change", e);
     }

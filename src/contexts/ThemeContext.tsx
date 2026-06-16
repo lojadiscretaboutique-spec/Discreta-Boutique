@@ -95,24 +95,29 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     init();
 
-    // 15-second loop to check if a scheduled theme interval starts or ends
-    const interval = setInterval(async () => {
-      try {
-        const activeTheme = await themeService.getActiveTheme();
-        if (JSON.stringify(activeTheme) !== JSON.stringify(storedThemeRef.current)) {
-          storedThemeRef.current = activeTheme;
-          setCurrentTheme(activeTheme);
-          // If not in preview mode, apply version directly
-          if (!previewTheme) {
-            applyVariables(activeTheme);
+    // 15-second loop to check if a scheduled theme interval starts or ends (Only for admin panel)
+    let interval: any = null;
+    if (window.location.pathname.includes('/admin')) {
+      interval = setInterval(async () => {
+        try {
+          const activeTheme = await themeService.getActiveTheme();
+          if (JSON.stringify(activeTheme) !== JSON.stringify(storedThemeRef.current)) {
+            storedThemeRef.current = activeTheme;
+            setCurrentTheme(activeTheme);
+            // If not in preview mode, apply version directly
+            if (!previewTheme) {
+              applyVariables(activeTheme);
+            }
           }
+        } catch (e) {
+          console.warn("Silent scheduling theme refresh check failed:", e);
         }
-      } catch (e) {
-        console.warn("Silent scheduling theme refresh check failed:", e);
-      }
-    }, 15000);
+      }, 15000);
+    }
 
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [applyVariables, previewTheme]);
 
   // Handle preview themes applied in real time 

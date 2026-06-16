@@ -14,7 +14,8 @@ import {
   increment
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
+import { storage } from '../lib/storage';
 import { cacheService } from './cacheService';
 
 export interface Category {
@@ -56,9 +57,37 @@ export const categoryService = {
       const q = query(collection(db, 'categories'), orderBy('sortOrder', 'asc'));
       const catSnap = await getDocs(q);
       const categories = catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
+
+      const categoriesWithCount = categories.map(cat => ({
+        ...cat,
+        productCount: cat.productCount || 0
+      }));
+
+      // 4. Return sorted: accessCount descending, custom sortOrder, then name localeCompare
+      const result = categoriesWithCount.sort((a, b) => {
+        const scoreB = b.accessCount || 0;
+        const scoreA = a.accessCount || 0;
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+        return a.name.localeCompare(b.name);
+      });
+
+      cacheService.set('categories_with_count', result);
+      return result;
+    } catch (error: unknown) {
+      console.error("Error listing categories:", error);
+      return [];
+    }
+  },
+
+  async listCategoriesWithCountForAdmin() {
+    try {
+      // 1. Fetch categories
+      const q = query(collection(db, 'categories'), orderBy('sortOrder', 'asc'));
+      const catSnap = await getDocs(q);
+      const categories = catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
       
       // 2. Fetch all products to count them (efficient for small/medium databases)
-      // This avoids N queries for N categories
       const prodSnap = await getDocs(collection(db, 'products'));
       const products = prodSnap.docs.map(doc => doc.data());
       
@@ -75,19 +104,15 @@ export const categoryService = {
         productCount: counts[cat.id] || 0
       }));
 
-      // 4. Return sorted: accessCount descending, custom sortOrder, then name localeCompare
-      const result = categoriesWithCount.sort((a, b) => {
+      return categoriesWithCount.sort((a, b) => {
         const scoreB = b.accessCount || 0;
         const scoreA = a.accessCount || 0;
         if (scoreB !== scoreA) return scoreB - scoreA;
         if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
         return a.name.localeCompare(b.name);
       });
-
-      cacheService.set('categories_with_count', result);
-      return result;
     } catch (error: unknown) {
-      console.error("Error listing categories:", error);
+      console.error("Error listing categories with count for admin:", error);
       return [];
     }
   },

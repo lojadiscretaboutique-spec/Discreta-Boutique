@@ -3,7 +3,7 @@ import { Package, ShoppingCart, Users, Settings, LogOut, LayoutDashboard, Image 
 import { useAuthStore } from '../store/authStore';
 import { useSettings } from '../contexts/SettingsContext';
 import { useFeedback } from '../contexts/FeedbackContext';
-import { auth } from '../lib/firebase';
+import { auth } from '../lib/auth';
 import { signOut } from 'firebase/auth';
 import { cn } from '../lib/utils';
 import { useEffect, useState } from 'react';

@@ -17,7 +17,7 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
     promoPrice: product.promoPrice
   });
 
-  const mainImage = product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
+  const mainImage = (product as any).imageThumb || product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
   
   // Use calculated promotion if available

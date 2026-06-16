@@ -1,5 +1,6 @@
 import { doc, getDoc, getDocs, setDoc, deleteDoc, collection, query, orderBy, limit, where } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db } from '../lib/firebase';
+import { auth } from '../lib/auth';
 import { ThemeConfig } from '../types/theme';
 import { cacheService } from './cacheService';
 import { auditLogService, AuditLog } from './auditLogService';

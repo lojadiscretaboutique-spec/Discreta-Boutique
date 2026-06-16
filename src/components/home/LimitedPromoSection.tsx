@@ -118,7 +118,7 @@ export function LimitedPromoSection({
     promoPrice: singleProduct.promoPrice
   }) : null;
 
-  const mainImageSingle = singleProduct ? (singleProduct.images?.find(i => i.isMain)?.url || singleProduct.images?.[0]?.url) : undefined;
+  const mainImageSingle = singleProduct ? ((singleProduct as any).imageThumb || singleProduct.images?.find(i => i.isMain)?.url || singleProduct.images?.[0]?.url) : undefined;
   const originalPriceSingle = pricingSingle?.originalPrice || 0;
   const finalPriceSingle = pricingSingle?.price || 0;
   const hasPromoSingle = singleProduct && ((!!singleProduct.promoPrice && singleProduct.promoPrice < singleProduct.price) || !!pricingSingle?.promotion);

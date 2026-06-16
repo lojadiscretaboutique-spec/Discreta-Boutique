@@ -18,7 +18,8 @@ import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage, db } from '../../lib/firebase';
+import { db } from '../../lib/firebase';
+import { storage } from '../../lib/storage';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, Timestamp, orderBy, collectionGroup, onSnapshot } from 'firebase/firestore';
 

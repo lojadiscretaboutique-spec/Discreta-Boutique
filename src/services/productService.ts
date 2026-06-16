@@ -1,6 +1,7 @@
 import { serverTimestamp, collection, doc, updateDoc, getDoc, getDocs, query, orderBy, writeBatch, where, increment, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
+import { storage } from '../lib/storage';
 import { stockSyncService } from './stockSyncService';
 import { cacheService } from './cacheService';
 

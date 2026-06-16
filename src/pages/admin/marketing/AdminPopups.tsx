@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { collection, query, getDocs, doc, deleteDoc, addDoc, serverTimestamp, updateDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../../lib/firebase';
+import { db } from '../../../lib/firebase';
+import { storage } from '../../../lib/storage';
 import { Plus, Trash2, X, Upload, Calendar, Link as LinkIcon, Eye, MousePointer, Tag } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';

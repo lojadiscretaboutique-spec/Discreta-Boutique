@@ -406,6 +406,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /public_home_cache/{doc} {
+      allow read: if true;
+      allow write: if isMasterAdmin() || can('banners', 'editar') || can('banners', 'criar');
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

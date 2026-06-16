@@ -1,5 +1,6 @@
 import { collection, doc, serverTimestamp, runTransaction, getDocs, query, orderBy, limit, getDoc } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db } from '../lib/firebase';
+import { auth } from '../lib/auth';
 import { Product } from './productService';
 import { auditLogService } from './auditLogService';
 

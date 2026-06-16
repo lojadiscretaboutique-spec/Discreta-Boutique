@@ -3,8 +3,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cn, formatCurrency } from '../../lib/utils';
 import { useTheme } from '../../contexts/ThemeContext';
-import { productService, Product } from '../../services/productService';
+import { Product } from '../../services/productService';
 import { categoryService } from '../../services/categoryService';
+import { collection, query, where, limit, getDocs } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SearchBarProps {
@@ -19,7 +21,6 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
   const [loading, setLoading] = useState(false);
   
   // Dynamic autocomplete states
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [categoriesMap, setCategoriesMap] = useState<Record<string, string>>({});
   const [suggestions, setSuggestions] = useState<Product[]>([]);
 
@@ -27,19 +28,11 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load backend indexing data once on mount
+  // Load categories mapping dictionary once on mount
   useEffect(() => {
-    async function loadSearchIndex() {
+    async function loadCategoriesMap() {
       try {
-        const [prods, cats] = await Promise.all([
-          productService.listProducts(),
-          categoryService.listCategories()
-        ]);
-        
-        // Filter down to active products
-        const activeProds = prods.filter(p => p.active !== false);
-        setAllProducts(activeProds);
-        
+        const cats = await categoryService.listCategories();
         // Translate categories to lightweight mapping dictionary
         const catMap: Record<string, string> = {};
         cats.forEach(c => {
@@ -47,11 +40,45 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
         });
         setCategoriesMap(catMap);
       } catch (e) {
-        console.warn("Failed caching local search index inside SearchBar:", e);
+        console.warn("Failed loading categories mapping inside SearchBar:", e);
       }
     }
-    loadSearchIndex();
+    loadCategoriesMap();
   }, []);
+
+  // Debounced effect to query Firestore for autocomplete suggestions
+  useEffect(() => {
+    const term = search.trim().toLowerCase();
+    if (term.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        // Query active products from Firestore limited to 8 items using searchTerms array
+        const q = query(
+          collection(db, 'products'),
+          where('searchTerms', 'array-contains', term),
+          limit(8)
+        );
+        const snap = await getDocs(q);
+        const activeProds = snap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Product))
+          .filter(p => p.active !== false);
+
+        setSuggestions(activeProds.slice(0, 5));
+      } catch (e) {
+        console.warn("Firestore search suggestions index warning or missing index, falling back to simple redirection:", e);
+        setSuggestions([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Handle outside layout clicks to blur/close autocomplete dropdown
   useEffect(() => {
@@ -77,45 +104,9 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
     };
   }, []);
 
-  // Soft fuzzy instant search matching for autocomplete feedback
+  // Input change only triggers state updates
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSearch(value);
-
-    if (value.trim().length <= 1) {
-      setSuggestions([]);
-      return;
-    }
-
-    const term = value.toLowerCase().trim();
-    
-    // Fuzzy search matching rule: SKU match, Name match or category match
-    const matches = allProducts.filter(p => {
-      const matchName = p.name?.toLowerCase().includes(term);
-      const matchSku = p.sku?.toLowerCase().includes(term);
-      const matchDesc = p.shortDescription?.toLowerCase().includes(term);
-      
-      const categoryName = categoriesMap[p.categoryId]?.toLowerCase();
-      const matchCat = categoryName ? categoryName.includes(term) : false;
-      
-      return matchName || matchSku || matchDesc || matchCat;
-    });
-
-    // Stagger rankings so exact beginning matches rise to top
-    const sorted = matches.sort((a, b) => {
-      const aLower = a.name.toLowerCase();
-      const bLower = b.name.toLowerCase();
-      const aStartsWith = aLower.startsWith(term) ? 1 : 0;
-      const bStartsWith = bLower.startsWith(term) ? 1 : 0;
-      
-      if (aStartsWith !== bStartsWith) {
-        return bStartsWith - aStartsWith;
-      }
-      return (b.featured ? 1 : 0) - (a.featured ? 1 : 0);
-    });
-
-    // Deliver premium UI: restrict dropdown scroll size max load to 5 items
-    setSuggestions(sorted.slice(0, 5));
+    setSearch(e.target.value);
   };
 
   const handleSearch = (term: string) => {

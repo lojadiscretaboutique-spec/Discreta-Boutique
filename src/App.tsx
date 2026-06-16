@@ -1,7 +1,6 @@
 import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { StoreLayout } from './layouts/StoreLayout';
-import { AdminLayout } from './layouts/AdminLayout';
 import { WifiHotspotPage } from './pages/store/WifiHotspotPage';
 import { motion } from 'motion/react';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
@@ -9,6 +8,8 @@ import { PromotionProvider } from './contexts/PromotionContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { TypographyProvider } from './contexts/TypographyContext';
 import { cacheService } from './services/cacheService';
+
+const AdminLayout = lazy(() => import('./layouts/AdminLayout').then(m => ({ default: m.AdminLayout })));
 
 // Store Pages
 const HomePage = lazy(() => import('./pages/store/HomePage').then(m => ({ default: m.HomePage })));

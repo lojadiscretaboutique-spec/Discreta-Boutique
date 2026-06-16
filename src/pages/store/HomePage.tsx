@@ -14,13 +14,12 @@ import { ImperdiveisCarousel } from '../../components/home/ImperdiveisCarousel';
 import { LimitedPromoSection } from '../../components/home/LimitedPromoSection';
 import { BenefitItem } from '../../components/home/BenefitItem';
 import { useUIStore } from '../../store/uiStore';
-import { ProductItemCard, SkeletonCard } from '../../components/ui/ProductItemCard';
 import { LazyLoad } from '../../components/ui/LazyLoad';
 import { visualHomeService } from '../../services/visualHomeService';
 import { cacheService } from '../../services/cacheService';
 import { SafeOptimizedImage } from '../../components/home/SafeOptimizedImage';
-import { optimizeImageUrl } from '../../components/ui/ResponsiveImage';
 import { isProductInCategory } from '../../utils/categoryUtils';
+import { measurePerformance } from '../../utils/performance';
 
 interface Banner {
   id: string;
@@ -41,6 +40,13 @@ interface OfferBanner {
 }
 
 export function HomePage() {
+  const homeStartTime = useRef<number>(performance.now());
+  const hasLoggedStart = useRef(false);
+  if (import.meta.env.DEV && !hasLoggedStart.current) {
+    console.log('[Performance] HOME_START');
+    hasLoggedStart.current = true;
+  }
+
   const [offerBanners, setOfferBanners] = useState<OfferBanner[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [sections, setSections] = useState<{
@@ -103,16 +109,19 @@ export function HomePage() {
     }
   }, []);
 
-  const loadDeferredData = useCallback(async () => {
+  const loadDeferredData = useCallback(async (isFull = false) => {
     try {
       // 1. Check memory cache for already computed home data
-      const cachedDeferred = cacheService.get('home_deferred_data');
+      const cacheKey = isFull ? 'home_deferred_data_full' : 'home_deferred_data_initial';
+      const cachedDeferred = cacheService.get(cacheKey);
       if (cachedDeferred) {
         setVisibleProducts(cachedDeferred.visibleProducts || []);
         setSections(cachedDeferred.sections || {});
         setCategories(cachedDeferred.categories || []);
         setVisualStructure(cachedDeferred.visualStructure || null);
-        setHomeReady(true);
+        if (isFull) {
+          setHomeReady(true);
+        }
         setLoading(false);
         return;
       }
@@ -129,7 +138,7 @@ export function HomePage() {
       // Extract specific custom items mentioned in dynamic home configuration
       let customProductIdsToFetch: string[] = [];
       let categoryIdsToFetch: string[] = [];
-      if (visualData && visualData.settings) {
+      if (isFull && visualData && visualData.settings) {
         Object.values(visualData.settings).forEach((s: any) => {
           if (s.active) {
             if ((s.source === 'custom_products' || s.source === 'limited_promo') && s.sourceDetails && s.sourceDetails.length > 0) {
@@ -146,14 +155,16 @@ export function HomePage() {
 
       // 3. Get Home Curation (AI curation)
       let curadoria: any = null;
-      try {
-        const docRef = doc(db, 'ai_curation', 'home');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          curadoria = docSnap.data();
+      if (isFull) {
+        try {
+          const docRef = doc(db, 'ai_curation', 'home');
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            curadoria = docSnap.data();
+          }
+        } catch (e) {
+          console.warn('IA Home Curatory fails:', e);
         }
-      } catch (e) {
-        console.warn('IA Home Curatory fails:', e);
       }
 
       // 4. Fetch categories first to display category bubbles immediately!
@@ -175,11 +186,12 @@ export function HomePage() {
       }
 
       // 5. Fetch products and combos in background (including explicit custom targets)
+      const limitCount = isFull ? 150 : 40;
       const [pSnap, combosSnap, customProdsDocs, categoryProdsSnaps] = await Promise.all([
         getDocs(query(
           collection(db, 'products'), 
           where('active', '==', true),
-          limit(150)
+          limit(limitCount)
         )),
         getDocs(query(
           collection(db, 'combos'),
@@ -188,12 +200,12 @@ export function HomePage() {
         )),
         // Fetch explicit product IDs
         customProductIdsToFetch.length > 0
-          ? Promise.all(customProductIdsToFetch.slice(0, 50).map(id => getDoc(doc(db, 'products', id))))
+          ? Promise.all(customProductIdsToFetch.slice(0, 15).map(id => getDoc(doc(db, 'products', id))))
           : Promise.resolve([]),
         // Fetch category-specific products (for custom categories source)
         categoryIdsToFetch.length > 0
-          ? Promise.all(categoryIdsToFetch.slice(0, 10).map(catId => 
-              getDocs(query(collection(db, 'products'), where('active', '==', true), where('categoryId', '==', catId), limit(24)))
+          ? Promise.all(categoryIdsToFetch.slice(0, 5).map(catId => 
+              getDocs(query(collection(db, 'products'), where('active', '==', true), where('categoryId', '==', catId), limit(12)))
             ))
           : Promise.resolve([])
       ]);
@@ -330,31 +342,126 @@ export function HomePage() {
       setSections(processedSections);
 
       // Cache all processed homepage components in MEMORY_CACHE
-      cacheService.set('home_deferred_data', {
+      cacheService.set(cacheKey, {
         visibleProducts: actualVisibleProducts,
         sections: processedSections,
         categories: sortedCategoriesWithImages,
         visualStructure: visualData
       });
 
-      setHomeReady(true);
+      if (isFull) {
+        setHomeReady(true);
+      }
     } catch (e) {
       console.error(e);
-      setHomeReady(true);
+      if (isFull) {
+        setHomeReady(true);
+      }
     } finally {
       setLoading(false);
     }
   }, [setHomeReady]);
 
+  const hasLoggedImagesReady = useRef(false);
+  const handleBannerImageLoaded = useCallback(() => {
+    if (!hasLoggedImagesReady.current) {
+      measurePerformance('HOME_IMAGES_READY', homeStartTime.current);
+      hasLoggedImagesReady.current = true;
+    }
+  }, []);
+
+  const loadCacheOrFallback = useCallback(async () => {
+    const cacheLoadStartTime = performance.now();
+    try {
+      setLoading(true);
+      const { homeCacheService } = await import('../../services/homeCacheService');
+      const cachedData = await homeCacheService.getHomeCache();
+
+      if (cachedData) {
+        measurePerformance('HOME_CACHE_LOADED', homeStartTime.current);
+        const cacheFetchDuration = performance.now() - cacheLoadStartTime;
+        
+        const approxSize = (JSON.stringify(cachedData).length / 1024).toFixed(2);
+        if (import.meta.env.DEV) {
+          console.log(`[Performance] Tempo para carregar cache public_home_cache/home: ${cacheFetchDuration.toFixed(2)}ms`);
+          console.log(`[Performance] Tamanho aproximado do payload de cache: ${approxSize} KB`);
+          console.log('[Performance] Carregado por: CACHE');
+        }
+
+        setBanners(cachedData.banners || []);
+        setOfferBanners(cachedData.offerBanners || []);
+        setCategories(cachedData.categories || []);
+        setVisibleProducts(cachedData.visibleProducts || []);
+        setSections(cachedData.sections || {
+          lancamentos: [], destaques: [], maisVendidos: [], emAlta: [], recomendados: [], ofertas: []
+        });
+        setVisualStructure(cachedData.visualStructure || null);
+        setHomeReady(true);
+        setLoading(false);
+        return;
+      }
+    } catch (e) {
+      if (import.meta.env.DEV) {
+        console.warn("⚠️ Failed to resolve public home cache, falling back to original queries...", e);
+      }
+    }
+
+    // Fallback: run the existing queries
+    if (import.meta.env.DEV) {
+      console.log('[Performance] Carregado por: FALLBACK');
+      console.log("⚠️ [Performance] Optimized cache not ready or failed. Triggering fallback queries...");
+    }
+    await loadCriticalData();
+    await loadDeferredData(false);
+    
+    // run the deferred load full after 1s
+    const timer = setTimeout(() => {
+      loadDeferredData(true);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [loadCriticalData, loadDeferredData, setHomeReady]);
+
+  // 1. HOME_FIRST_RENDER when loading is done
+  const hasLoggedFirstRender = useRef(false);
   useEffect(() => {
-    loadCriticalData();
-    loadDeferredData();
+    if (!loading && !hasLoggedFirstRender.current) {
+      measurePerformance('HOME_FIRST_RENDER', homeStartTime.current);
+      hasLoggedFirstRender.current = true;
+    }
+  }, [loading]);
+
+  // 2. Tempo até renderizar primeiro banner
+  const hasLoggedFirstBanner = useRef(false);
+  useEffect(() => {
+    if (banners.length > 0 && !hasLoggedFirstBanner.current) {
+      measurePerformance('Tempo até renderizar primeiro banner', homeStartTime.current);
+      hasLoggedFirstBanner.current = true;
+    }
+  }, [banners]);
+
+  // 3. Tempo até renderizar primeiros produtos
+  const hasLoggedFirstProducts = useRef(false);
+  useEffect(() => {
+    if (visibleProducts.length > 0 && !hasLoggedFirstProducts.current) {
+      measurePerformance('Tempo até renderizar primeiros produtos', homeStartTime.current);
+      hasLoggedFirstProducts.current = true;
+    }
+  }, [visibleProducts]);
+
+  useEffect(() => {
+    let cancelTimer: (() => void) | undefined;
+    loadCacheOrFallback().then((cleanup) => {
+      if (typeof cleanup === 'function') {
+        cancelTimer = cleanup;
+      }
+    });
 
     return () => {
+      if (cancelTimer) cancelTimer();
       // Reset so splash screen reappears when coming back to home
       setHomeReady(false);
     };
-  }, [loadCriticalData, loadDeferredData, setHomeReady]);
+  }, [loadCacheOrFallback, setHomeReady]);
 
   // Auto-play banners
   useEffect(() => {
@@ -514,10 +621,10 @@ export function HomePage() {
               >
                 {banners[currentBanner].linkUrl ? (
                   <Link to={banners[currentBanner].linkUrl} className="block h-full w-full cursor-pointer">
-                    <HeroBanner banner={banners[currentBanner]} isEager={currentBanner === 0} />
+                    <HeroBanner banner={banners[currentBanner]} isEager={currentBanner === 0} onLoad={handleBannerImageLoaded} />
                   </Link>
                 ) : (
-                  <HeroBanner banner={banners[currentBanner]} isEager={currentBanner === 0} />
+                  <HeroBanner banner={banners[currentBanner]} isEager={currentBanner === 0} onLoad={handleBannerImageLoaded} />
                 )}
               </motion.div>
             </AnimatePresence>

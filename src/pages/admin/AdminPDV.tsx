@@ -30,6 +30,7 @@ import {
   doc,
   updateDoc,
   getDoc,
+  collectionGroup,
 } from "firebase/firestore";
 import { serverTimestamp } from "firebase/firestore";
 import { db } from "../../lib/firebase";
@@ -122,6 +123,19 @@ const formatOrderDate = (date: any) => {
   }
 };
 
+const CACHE_KEY = "DISCRETA_PDV_INDEX_CACHE_V2";
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+function normalizeString(str: string): string {
+  if (!str) return "";
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function AdminPDV() {
   const { user, hasPermission } = useAuthStore();
   const { toast } = useFeedback();
@@ -136,6 +150,256 @@ export function AdminPDV() {
   const [comboResults, setComboResults] = useState<Combo[]>([]);
   const [searching, setSearching] = useState(false);
   const [allCombos, setAllCombos] = useState<Combo[]>([]);
+
+  // Local PDV index states
+  const [pdvProducts, setPdvProducts] = useState<any[]>([]);
+  const [loadingIndex, setLoadingIndex] = useState(false);
+
+  // Maps for O(1) searches
+  const productsBySku = useRef<Map<string, any>>(new Map());
+  const productsByBarcode = useRef<Map<string, any>>(new Map());
+  const productsByName = useRef<Map<string, any>>(new Map());
+  const productsByVariantSku = useRef<Map<string, { product: any; variant: any }>>(new Map());
+  const productsByVariantBarcode = useRef<Map<string, { product: any; variant: any }>>(new Map());
+
+  const buildMaps = (products: any[]) => {
+    productsBySku.current.clear();
+    productsByBarcode.current.clear();
+    productsByName.current.clear();
+    productsByVariantSku.current.clear();
+    productsByVariantBarcode.current.clear();
+
+    let variationsCount = 0;
+
+    products.forEach((p) => {
+      if (p.sku) {
+        productsBySku.current.set(p.sku.toLowerCase(), p);
+      }
+      if (p.barcode) {
+        productsByBarcode.current.set(p.barcode.toLowerCase(), p);
+      }
+      if (p.nameNormalized) {
+        productsByName.current.set(p.nameNormalized, p);
+      }
+      if (p.variants && Array.isArray(p.variants)) {
+        p.variants.forEach((v) => {
+          variationsCount++;
+          const keySku = v.variantSku?.toLowerCase();
+          const keyBarcode = v.variantBarcode?.toLowerCase();
+          if (keySku) {
+            productsByVariantSku.current.set(keySku, { product: p, variant: v });
+          }
+          if (keyBarcode) {
+            productsByVariantBarcode.current.set(keyBarcode, { product: p, variant: v });
+          }
+        });
+      }
+    });
+
+    if (import.meta.env.DEV) {
+      console.log(`[PDV Index] Mapas recriados com sucesso.`);
+    }
+  };
+
+  const updatePDVIndexFromFirestore = async (isBackground = false) => {
+    const fetchStartTime = performance.now();
+    if (!isBackground) {
+      setLoadingIndex(true);
+    }
+
+    try {
+      if (import.meta.env.DEV) {
+        console.log("[PDV Index] Atualizando índice do PDV a partir do Firestore...");
+      }
+      const productsRef = collection(db, "products");
+      const activeProductsQuery = query(productsRef, where("active", "==", true));
+
+      const [productsSnap, variantsSnap] = await Promise.all([
+        getDocs(activeProductsQuery),
+        getDocs(query(collectionGroup(db, "variants")))
+      ]);
+
+      const variantsByProductId: Record<string, any[]> = {};
+      variantsSnap.forEach((vDoc) => {
+        const parentId = vDoc.ref.parent.parent?.id;
+        if (parentId) {
+          if (!variantsByProductId[parentId]) {
+            variantsByProductId[parentId] = [];
+          }
+          const vData = vDoc.data();
+          variantsByProductId[parentId].push({
+            variantId: vDoc.id,
+            variantName: vData.name || "",
+            variantSku: vData.sku || "",
+            variantBarcode: vData.barcode || vData.gtin || "",
+            variantStock: Number(vData.stock) ?? 0,
+            variantPrice: Number(vData.price) || 0,
+            costPrice: Number(vData.costPrice) || 0,
+            active: vData.active !== false,
+            attributes: vData.attributes || {},
+          });
+        }
+      });
+
+      const freshProducts: any[] = [];
+      productsSnap.docs.forEach((docSnap) => {
+        const pId = docSnap.id;
+        const pData = docSnap.data();
+
+        const subcollectionVars = variantsByProductId[pId] || [];
+        const inlineVars = Array.isArray(pData.variants)
+          ? pData.variants.map((v: any, index: number) => ({
+              variantId: v.id || v.variantId || `inline-${index}`,
+              variantName: v.name || v.variantName || "",
+              variantSku: v.sku || v.variantSku || "",
+              variantBarcode: v.barcode || v.variantBarcode || v.gtin || "",
+              variantStock: Number(v.stock || v.variantStock) ?? 0,
+              variantPrice: Number(v.price || v.variantPrice) || Number(pData.promoPrice || pData.price) || 0,
+              costPrice: Number(v.costPrice || pData.costPrice) || 0,
+              active: v.active !== false,
+              attributes: v.attributes || {},
+            }))
+          : [];
+
+        const mergedVariants = [...subcollectionVars];
+        inlineVars.forEach((iv) => {
+          if (!mergedVariants.some((mv) => mv.variantId === iv.variantId)) {
+            mergedVariants.push(iv);
+          }
+        });
+
+        freshProducts.push({
+          id: pId,
+          name: pData.name || "",
+          nameNormalized: normalizeString(pData.name || ""),
+          sku: pData.sku || "",
+          barcode: pData.gtin || pData.barcode || "",
+          price: Number(pData.price) || 0,
+          promotionalPrice: Number(pData.promoPrice) || 0,
+          stock: Number(pData.stock) ?? 0,
+          imageThumb: pData.images?.[0]?.url || "",
+          categoryId: pData.categoryId || "",
+          active: pData.active !== false,
+          variants: mergedVariants,
+
+          // Keep full fields to prevent breaking any views:
+          costPrice: Number(pData.costPrice) || 0,
+          allowBackorder: pData.allowBackorder || false,
+          hasVariants: pData.hasVariants || false,
+          images: pData.images || [],
+          variantIdentifiers: pData.variantIdentifiers || [],
+          searchTerms: pData.searchTerms || [],
+          internalCode: pData.internalCode || "",
+        });
+      });
+
+      // Save to State & Maps
+      setPdvProducts(freshProducts);
+      buildMaps(freshProducts);
+
+      // Save to Cache (localStorage)
+      const storePayload = {
+        products: freshProducts,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(CACHE_KEY, JSON.stringify(storePayload));
+
+      if (import.meta.env.DEV) {
+        const duration = performance.now() - fetchStartTime;
+        console.log(`[PDV Index] Tempo para carregar índice: ${duration.toFixed(2)}ms`);
+        console.log(`[PDV Index] Quantidade de produtos indexados: ${freshProducts.length}`);
+        console.log(`[PDV Index] Quantidade de variações indexadas: ${freshProducts.reduce((sum, p) => sum + (p.variants?.length || 0), 0)}`);
+      }
+    } catch (error) {
+      console.error("[PDV Index] Erro ao carregar índice do Firestore. Usando cache se disponível...", error);
+      if (!isBackground) {
+        const lastCached = localStorage.getItem(CACHE_KEY);
+        if (lastCached) {
+          const parsed = JSON.parse(lastCached);
+          setPdvProducts(parsed.products);
+          buildMaps(parsed.products);
+          toast("Carregado a partir do último cache disponível (estamos em modo offline/lento).", "info");
+        } else {
+          toast("Erro crítico ao carregar índice de produtos do PDV.", "error");
+        }
+      }
+    } finally {
+      if (!isBackground) {
+        setLoadingIndex(false);
+      }
+    }
+  };
+
+  const loadPDVIndex = async (forceRefresh = false) => {
+    const startTime = performance.now();
+
+    try {
+      const cachedData = localStorage.getItem(CACHE_KEY);
+      if (cachedData && !forceRefresh) {
+        const parsed = JSON.parse(cachedData);
+        const age = Date.now() - parsed.timestamp;
+
+        if (age < CACHE_TTL) {
+          setPdvProducts(parsed.products);
+          buildMaps(parsed.products);
+
+          if (import.meta.env.DEV) {
+            console.log(`[PDV Index] Tempo para carregar cache do índice local: ${(performance.now() - startTime).toFixed(2)}ms.`);
+            console.log(`[PDV Index] Quantidade de produtos indexados (cache): ${parsed.products.length}`);
+            console.log(`[PDV Index] Quantidade de variações indexadas (cache): ${parsed.products.reduce((sum: number, p: any) => sum + (p.variants?.length || 0), 0)}`);
+          }
+
+          // Update in background
+          setTimeout(() => {
+            updatePDVIndexFromFirestore(true);
+          }, 1000);
+          return;
+        } else {
+          if (import.meta.env.DEV) {
+            console.log(`[PDV Index] Cache expirado (${(age / 1000 / 60).toFixed(1)} min). Carregando novos dados do Firestore...`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[PDV Index] Erro ao ler cache. Carregando dados frescos...", error);
+    }
+
+    await updatePDVIndexFromFirestore(false);
+  };
+
+  const findExactProductOrVariant = (term: string) => {
+    const lowerTerm = term.toLowerCase();
+
+    // 1. Barcode exato do produto pai
+    if (productsByBarcode.current.has(lowerTerm)) {
+      const prod = productsByBarcode.current.get(lowerTerm);
+      return { product: prod, variant: undefined };
+    }
+
+    // 2. SKU exato do produto pai
+    if (productsBySku.current.has(lowerTerm)) {
+      const prod = productsBySku.current.get(lowerTerm);
+      return { product: prod, variant: undefined };
+    }
+
+    // 3. Barcode exato de variação
+    if (productsByVariantBarcode.current.has(lowerTerm)) {
+      const match = productsByVariantBarcode.current.get(lowerTerm);
+      return { product: match.product, variant: match.variant };
+    }
+
+    // 4. SKU exato de variação
+    if (productsByVariantSku.current.has(lowerTerm)) {
+      const match = productsByVariantSku.current.get(lowerTerm);
+      return { product: match.product, variant: match.variant };
+    }
+
+    return null;
+  };
+
+  useEffect(() => {
+    loadPDVIndex();
+  }, []);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const editingOrderId = searchParams.get("orderId");
@@ -442,6 +706,7 @@ export function AdminPDV() {
     if (!term) return;
 
     const lowerTerm = term.toLowerCase();
+    
     // 0. Buscar por Combos (Exato ou SKU gerado)
     const exactCombo = allCombos.find(c => 
       c.name.toLowerCase() === lowerTerm || 
@@ -451,195 +716,78 @@ export function AdminPDV() {
     );
     if (exactCombo) {
       addComboToCart(exactCombo);
+      setSearchTerm("");
+      setSearchResults([]);
       return;
     }
 
     setSearching(true);
+    let cancelSearch = false;
+    const lookupStartTime = performance.now();
+
+    // Safety Timeout in case of unexpected hang
+    const searchTimeout = setTimeout(() => {
+      if (!cancelSearch) {
+        cancelSearch = true;
+        setSearching(false);
+        toast("A busca excedeu o tempo limite de segurança.", "error");
+      }
+    }, 5000);
+
     try {
-      const productsRef = collection(db, "products");
-      let exactMatches: Product[] = [];
-      const upperTerm = term.toUpperCase();
-      const termsToSearch = Array.from(new Set([term, upperTerm]));
-
-      // 1. Check SKU (exact or uppercase) in products
-      let q = query(productsRef, where("sku", "in", termsToSearch), limit(1));
-      let snap = await getDocs(q);
-
-      if (snap.empty) {
-        // 2. Check Barcode / GTIN in products
-        q = query(productsRef, where("gtin", "==", term), limit(1));
-        snap = await getDocs(q);
-      }
-
-      if (!snap.empty) {
-        const product = {
-          id: snap.docs[0].id,
-          ...snap.docs[0].data(),
-        } as Product;
-        exactMatches.push(product);
-      }
-
-      if (exactMatches.length > 0) {
+      // 1. Busca rápida O(1) por mapas locais (Barcode e SKU de Produto/Variação)
+      const match = findExactProductOrVariant(term);
+      if (match) {
+        const { product, variant } = match;
         playBeep();
         
-        // Se o produto encontrado tem variantes, precisamos ver se não existe uma variação com esse SKU também para ser mais preciso de imediato
-        if (exactMatches[0].hasVariants) {
-          const vSnap = await getDocs(
-            collection(db, `products/${exactMatches[0].id}/variants`),
-          );
-          const variantDoc = vSnap.docs.find((d) => {
-            const v = d.data();
-            return (
-              v.barcode === term ||
-              v.sku === term ||
-              termsToSearch.includes(v.sku)
-            );
-          });
-
-          if (variantDoc) {
-            const variant = {
-              id: variantDoc.id,
-              ...variantDoc.data(),
-            } as ProductVariant;
-            addToCart(exactMatches[0], variant);
-            setSearchTerm("");
-            setSearchResults([]);
-            return;
-          }
+        if (import.meta.env.DEV) {
+          const duration = performance.now() - lookupStartTime;
+          console.log(`[PDV Lookup] Busca por código exato concluída em ${duration.toFixed(2)}ms.`);
         }
         
-        addToCart(exactMatches[0]);
+        addToCart(product, variant);
         setSearchTerm("");
         setSearchResults([]);
+        clearTimeout(searchTimeout);
         return;
       }
 
-      // If not found in main products, search in variantIdentifiers
-      const pQ = query(
-        productsRef,
-        where("variantIdentifiers", "array-contains", term),
-        limit(1),
-      );
-      const pSnap = await getDocs(pQ);
-
-      if (!pSnap.empty) {
-        const productDoc = pSnap.docs[0];
-        const product = { id: productDoc.id, ...productDoc.data() } as Product;
-
-        // Load its variants
-        const vSnap = await getDocs(
-          collection(db, `products/${product.id}/variants`),
+      // 2. Fallback: Busca textual ou parcial no índice local
+      const sNormalized = normalizeString(term);
+      const matchedLocalList = pdvProducts.filter((p) => {
+        return (
+          p.nameNormalized?.includes(sNormalized) ||
+          p.sku?.toLowerCase().includes(sNormalized) ||
+          p.barcode?.toLowerCase().includes(sNormalized) ||
+          p.internalCode?.toLowerCase().includes(sNormalized) ||
+          p.variantIdentifiers?.some((vi: string) =>
+            vi.toLowerCase().includes(sNormalized)
+          ) ||
+          p.searchTerms?.some((st: string) =>
+            normalizeString(st).includes(sNormalized)
+          )
         );
-        const variantDoc = vSnap.docs.find((d) => {
-          const v = d.data();
-          return (
-            v.barcode === term ||
-            v.sku === term ||
-            termsToSearch.includes(v.sku)
-          );
-        });
+      });
 
-        if (variantDoc) {
-          const variant = {
-            id: variantDoc.id,
-            ...variantDoc.data(),
-          } as ProductVariant;
-          playBeep();
-          addToCart(product, variant);
-          setSearchTerm("");
-          setSearchResults([]);
-          return;
-        }
-      }
+      clearTimeout(searchTimeout);
 
-      // 4. Se chegou aqui, não achou o EAN/SKU exato. Tentar buscar pelo nome ou pesquisar no termo de busca exato no firebase
-      // Se não houver nada no searchResults (pois o usuário bateu enter antes de 300ms), faz a busca aqui
-      let currentResults = searchResults;
-      if (currentResults.length === 0) {
-        const qAll = query(
-          productsRef,
-          where("active", "==", true),
-          limit(1000),
-        );
-        const snapAll = await getDocs(qAll);
-        const allProds = snapAll.docs.map(
-          (d) => ({ id: d.id, ...d.data() }) as Product,
-        );
-        currentResults = allProds
-          .filter((p) => {
-            return (
-              p.name.toLowerCase().includes(term) ||
-              p.sku?.toLowerCase().includes(term) ||
-              p.gtin?.toLowerCase().includes(term) ||
-              p.internalCode?.toLowerCase().includes(term) ||
-              p.variantIdentifiers?.some((vi) =>
-                vi.toLowerCase().includes(term),
-              ) ||
-              p.searchTerms?.some((st) => st.includes(term))
-            );
-          })
-          .slice(0, 15);
-        // Atualiza a lista na tela para que, se não houver um exact match e sim múltiplos,
-        // o usuário possa clicar na lista.
-        setSearchResults(currentResults);
-      }
-
-      const exactNameMatch = currentResults.find(
-        (p) => p.name.toLowerCase().trim() === term,
-      );
-      if (exactNameMatch) {
+      if (matchedLocalList.length === 1) {
         playBeep();
-        addToCart(exactNameMatch);
+        addToCart(matchedLocalList[0]);
         setSearchTerm("");
         setSearchResults([]);
         return;
-      }
-
-      // Check remaining internal codes if local search was tracking it
-      const localMatch = currentResults.find(
-        (p) =>
-          p.gtin === term ||
-          p.sku === term ||
-          p.sku === upperTerm ||
-          p.internalCode === term ||
-          p.internalCode === upperTerm,
-      );
-
-      if (localMatch) {
-        playBeep();
-        addToCart(localMatch);
-        setSearchTerm("");
-        setSearchResults([]);
-        return;
-      }
-
-      // Checking current results if it's the only one
-      if (currentResults.length === 1) {
-        playBeep();
-        addToCart(currentResults[0]);
-        setSearchTerm("");
-        setSearchResults([]);
-      } else if (currentResults.length > 1) {
-        toast("Múltiplos produtos. Clique em um da lista abaixo.", "warning");
+      } else if (matchedLocalList.length > 1) {
+        setSearchResults(matchedLocalList.slice(0, 20));
+        toast("Múltiplos produtos encontrados. Clique em um da lista abaixo.", "warning");
       } else {
-        toast("EAN/SKU não encontrado no sistema.", "error");
+        toast("EAN/SKU ou produto não encontrado localmente.", "error");
       }
-    } catch (err: unknown) {
-      const error = err as any;
-      if (
-        error?.code === "failed-precondition" ||
-        error?.message?.includes("index")
-      ) {
-        toast(
-          "Índice de busca para variantes não criado no Firebase.",
-          "warning",
-        );
-        console.warn(
-          "Firebase precisa de um index collectionGroup para buscar variantes. Clique no link do console de erro.",
-        );
-      } else {
-        toast("Erro ao buscar produto.", "error");
-      }
+    } catch (err) {
+      clearTimeout(searchTimeout);
+      console.error(err);
+      toast("Erro ao buscar produto no PDV.", "error");
     } finally {
       setSearching(false);
     }
@@ -764,72 +912,85 @@ export function AdminPDV() {
       return;
     }
 
-    const delayDebounceFn = setTimeout(async () => {
+    const sNormalized = normalizeString(searchTerm);
+
+    const delayDebounceFn = setTimeout(() => {
       setSearching(true);
       try {
-        const s = searchTerm.toLowerCase();
+        const searchStartTime = performance.now();
 
-        // Filter combos (already loaded in allCombos)
-        const combos = allCombos.filter(c => 
-          c.name.toLowerCase().includes(s) || 
-          c.description.toLowerCase().includes(s) ||
-          (c.gtin && c.gtin.toLowerCase().includes(s)) ||
-          (c.sku && c.sku.toLowerCase().includes(s))
-        );
+        // Filter combos (local list)
+        const combos = allCombos.filter(c => {
+          const comboNameNormalized = normalizeString(c.name || "");
+          const comboDescNormalized = normalizeString(c.description || "");
+          return comboNameNormalized.includes(sNormalized) ||
+                 comboDescNormalized.includes(sNormalized) ||
+                 (c.gtin && normalizeString(c.gtin).includes(sNormalized)) ||
+                 (c.sku && normalizeString(c.sku).includes(sNormalized));
+        });
         setComboResults(combos);
 
-        const q = query(
-          collection(db, "products"),
-          where("active", "==", true),
-          limit(1000), // Increase limits so standard store sizes are fully searched by client-filter
-        );
-        const snap = await getDocs(q);
-        const products = snap.docs.map(
-          (doc) => ({ id: doc.id, ...doc.data() }) as Product,
-        );
-
-        // Client side filtering for better UX with partial terms
-        const filtered = products
+        // Filter products from local index (pdvProducts)
+        const filtered = pdvProducts
           .filter((p) => {
             return (
-              p.name.toLowerCase().includes(s) ||
-              p.sku?.toLowerCase().includes(s) ||
-              p.gtin?.toLowerCase().includes(s) ||
-              p.internalCode?.toLowerCase().includes(s) ||
-              p.variantIdentifiers?.some((vi) =>
-                vi.toLowerCase().includes(s),
+              p.nameNormalized?.includes(sNormalized) ||
+              p.sku?.toLowerCase().includes(sNormalized) ||
+              p.barcode?.toLowerCase().includes(sNormalized) ||
+              p.internalCode?.toLowerCase().includes(sNormalized) ||
+              p.variantIdentifiers?.some((vi: string) =>
+                vi.toLowerCase().includes(sNormalized)
               ) ||
-              p.searchTerms?.some((st) => st.includes(s))
+              p.searchTerms?.some((st: string) =>
+                normalizeString(st).includes(sNormalized)
+              )
             );
           })
-          .slice(0, 15); // Cap displayed items
+          .slice(0, 20); // Limitar sugestões a 20 resultados
 
         setSearchResults(filtered);
+
+        if (import.meta.env.DEV) {
+          const duration = performance.now() - searchStartTime;
+          console.log(`[PDV Search] Busca por título concluída em ${duration.toFixed(2)}ms. Qtd: ${filtered.length}. Termo: "${searchTerm}"`);
+        }
       } catch (error) {
         console.error("Search error:", error);
       } finally {
         setSearching(false);
       }
-    }, 300);
+    }, 150); // 150ms debounce
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm, allCombos]);
+  }, [searchTerm, pdvProducts, allCombos]);
 
-  const openVariantModal = async (product: Product) => {
+  const openVariantModal = (product: Product) => {
     setSelectedProduct(product);
     setIsVariantModalOpen(true);
     setLoadingVariants(true);
     setModalVariants([]);
     try {
-      const snap = await getDocs(
-        collection(db, `products/${product.id}/variants`),
-      );
-      const fetchedVariants = snap.docs.map(
-        (d) => ({ id: d.id, ...d.data() }) as ProductVariant,
-      );
-      setModalVariants(fetchedVariants);
+      const fetchedVariants = (product as any).variants || [];
+      // Translate local structures if needed (such as variantId/variantName back to id/name)
+      const formattedVariants = fetchedVariants.map((v: any) => ({
+        id: v.variantId || v.id,
+        name: v.variantName || v.name,
+        sku: v.variantSku || v.sku,
+        barcode: v.variantBarcode || v.barcode,
+        stock: v.variantStock ?? v.stock ?? 0,
+        price: v.variantPrice ?? v.price ?? 0,
+        costPrice: v.costPrice ?? 0,
+        active: v.active !== false,
+        attributes: v.attributes || {},
+      })) as ProductVariant[];
+
+      setModalVariants(formattedVariants);
+
+      if (import.meta.env.DEV) {
+        console.log(`[PDV] Carregou ${formattedVariants.length} variantes localmente para exibição.`);
+      }
     } catch (err) {
-      console.error("Erro listando variações:", err);
+      console.error("Erro listando variações localmente:", err);
       toast("Erro ao listar as variações desse produto.", "error");
     } finally {
       setLoadingVariants(false);
@@ -837,12 +998,14 @@ export function AdminPDV() {
   };
 
   const addToCart = (product: Product, variant?: ProductVariant) => {
+    const insertStartTime = performance.now();
+    
     if (product.hasVariants && !variant) {
       openVariantModal(product);
       return;
     }
 
-    const currentStock = variant ? variant.stock || 0 : product.stock || 0;
+    const currentStock = variant ? variant.stock ?? 0 : product.stock ?? 0;
     const allowBackorder = product.allowBackorder;
 
     if (currentStock <= 0 && !allowBackorder) {
@@ -898,6 +1061,11 @@ export function AdminPDV() {
     setIsVariantModalOpen(false);
     setSelectedProduct(null);
     if (searchInputRef.current) searchInputRef.current.focus();
+
+    if (import.meta.env.DEV) {
+      const insertionTime = performance.now() - insertStartTime;
+      console.log(`[PDV Cart] Tempo de inserção no carrinho: ${insertionTime.toFixed(2)}ms`);
+    }
 
     toast(
       `Adicionado: ${name} ${variantName ? `(${variantName})` : ""}`,
@@ -1724,11 +1892,39 @@ export function AdminPDV() {
                 <h3 className="text-[10px] font-black tracking-widest uppercase text-slate-400">
                   Venda Direta
                 </h3>
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-green-500 bg-green-500/10 px-3 py-1.5 rounded-full border border-green-500/20">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                  Leitor de Código de Barras Ativado
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={async () => {
+                      localStorage.removeItem(CACHE_KEY);
+                      await updatePDVIndexFromFirestore(false);
+                      toast("Produtos atualizados com sucesso", "success");
+                    }}
+                    disabled={loadingIndex}
+                    className="h-8 text-[10px] font-black uppercase tracking-widest px-3 bg-red-600/10 border border-red-500/20 text-red-500 hover:bg-red-600 hover:text-white"
+                  >
+                    {loadingIndex ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
+                        Atualizando...
+                      </>
+                    ) : (
+                      "Atualizar produtos"
+                    )}
+                  </Button>
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-green-500 bg-green-500/10 px-3 py-1.5 rounded-full border border-green-500/20">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    Leitor de Código de Barras Ativado
+                  </div>
                 </div>
               </div>
+
+              {loadingIndex && pdvProducts.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-10 px-6 bg-slate-900/5 rounded-2xl border border-white/5 mb-6">
+                  <Loader2 className="w-8 h-8 text-red-600 animate-spin mb-3" />
+                  <p className="text-sm font-bold text-slate-200">Carregando produtos do PDV...</p>
+                  <p className="text-xs text-slate-400 mt-1">Montando índice local de busca rápida (apenas uma vez)</p>
+                </div>
+              )}
 
               <form onSubmit={handleSearchSubmit} className="relative mb-6">
                 <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-400">
