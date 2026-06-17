@@ -437,7 +437,27 @@ export function CatalogPage() {
           if (q !== null) setSearch(q);
 
           if (cat && cat !== 'all') {
-            const found = catsData.find(c => c.id === cat || c.slug === cat);
+            const decodedCat = decodeURIComponent(cat);
+            const found = catsData.find(c => {
+              if (c.id === cat || c.slug === cat) return true;
+              
+              // Fallback normalization match
+              let rawSlug = c.slug || c.name || c.id;
+              if (rawSlug) {
+                let clean = rawSlug.toLowerCase()
+                  .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+                  .replace(/[+&%?\/!,()]/g, "")
+                  .trim()
+                  .replace(/\s+/g, '-')
+                  .replace(/-+/g, '-')
+                  .replace(/^-+|-+$/g, '');
+                
+                if (clean === cat || encodeURIComponent(clean) === cat || clean === decodedCat) {
+                  return true;
+                }
+              }
+              return false;
+            });
             if (found) setSelectedCat(found.id);
             else setSelectedCat('all');
           } else {

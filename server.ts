@@ -7,7 +7,7 @@ import aiRoutes from './src/server/routes/aiRoutes.js';
 import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
 import { db } from './src/lib/firebase';
-import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 
 // Verify connection
 (async () => {
@@ -346,6 +346,50 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
   });
 
   // Sitemap.xml dynamic generation
+  app.get('/api/admin/fix-category-slugs', async (req, res) => {
+    try {
+      const catRef = collection(db, 'categories');
+      const catSnap = await getDocs(catRef);
+
+      const batch = writeBatch(db);
+      let batchCount = 0;
+      let logs: string[] = [];
+
+      catSnap.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        const id = docSnap.id;
+        const rawUrl = data.slug || docSnap.id;
+        let rawSlug = data.slug || data.name || docSnap.id;
+        
+        let cleanSlug = rawSlug.toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+          .replace(/[+&%?\/!,()]/g, "")
+          .trim()
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-+|-+$/g, '');
+
+        if (!cleanSlug) {
+          cleanSlug = id.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        }
+
+        if (cleanSlug && cleanSlug !== data.slug) {
+          batch.update(doc(db, 'categories', id), { slug: cleanSlug });
+          batchCount++;
+          logs.push(`Corrigida (ID: ${id}): '${rawUrl}' -> '${cleanSlug}'`);
+        }
+      });
+
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+
+      res.json({ success: true, updated: batchCount, logs });
+    } catch(e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get('/sitemap.xml', async (req, res) => {
     try {
       res.header('Content-Type', 'application/xml');
@@ -405,13 +449,29 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
 
       try {
         const catSnap = await getDocs(collection(db, 'categories'));
+        const addedCategories = new Set<string>();
+
         catSnap.docs.forEach(docSnap => {
           const category = docSnap.data();
-          const slug = category.slug || docSnap.id;
-          if (slug) {
+          let rawSlug = category.slug || category.name || docSnap.id;
+          
+          let cleanSlug = rawSlug.toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, "") // remove accents
+            .replace(/[+&%?\/!,()]/g, "") // remove symbols
+            .trim()
+            .replace(/\s+/g, '-') // replace spaces with hyphens
+            .replace(/-+/g, '-') // remove duplicate hyphens
+            .replace(/^-+|-+$/g, ''); // start/end hyphens
+
+          if (!cleanSlug) {
+            cleanSlug = docSnap.id.toLowerCase().replace(/[^a-z0-9-]/g, '');
+          }
+          
+          if (!addedCategories.has(cleanSlug)) {
+            addedCategories.add(cleanSlug);
             xml += `
   <url>
-    <loc>${domain}/categoria/${slug}</loc>
+    <loc>${domain}/categoria/${cleanSlug}</loc>
     <lastmod>${lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
@@ -596,7 +656,7 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
     
     const domain = "https://discretaboutique.com.br";
     const cleanPath = req.path.replace(/\/$/, ""); // remove trailing slash for canonical consistency
-    const ogUrl = `${domain}${cleanPath || "/"}`;
+    let ogUrl = `${domain}${cleanPath || "/"}`;
 
     let storeName = "Discreta Boutique";
     let activeThemeBranding: any = null;
@@ -742,46 +802,67 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
       else if (req.path.startsWith('/categoria/')) {
         const categoryMatch = req.path.match(/^\/categoria\/([^/]+)$/);
         if (categoryMatch) {
-          const catSlug = categoryMatch[1];
-          const catApiUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents:runQuery`;
-          const catResponse = await fetch(catApiUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              structuredQuery: {
-                from: [{ collectionId: "categories" }],
-                where: {
-                  fieldFilter: {
-                    field: { fieldPath: "slug" },
-                    op: "EQUAL",
-                    value: { stringValue: catSlug }
-                  }
-                },
-                limit: 1
-              }
-            })
-          });
+          const catSlug = categoryMatch[1]; // The clean slug from URL
+          const catApiUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/categories?pageSize=100`;
+          const catResponse = await Promise.resolve().then(() => fetch(catApiUrl)).catch(() => null);
 
-          if (catResponse.ok) {
+          if (catResponse && catResponse.ok) {
             const catData = await catResponse.json();
-            if (catData && catData[0] && catData[0].document) {
-              const docFields = catData[0].document.fields;
-              const catName = docFields.name?.stringValue || "Categoria";
+            const docs = catData.documents || [];
+            
+            let matchedDocFields = null;
+            let cleanMatchedSlug = null;
+            
+            for (const doc of docs) {
+              const docFields = doc.fields || {};
+              const name = docFields.name?.stringValue || '';
+              const originalSlug = docFields.slug?.stringValue || '';
+              
+              let rawSlug = originalSlug || name;
+              if (rawSlug) {
+                let clean = rawSlug.toLowerCase()
+                  .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+                  .replace(/[+&%?\/!,()]/g, "")
+                  .trim()
+                  .replace(/\s+/g, '-')
+                  .replace(/-+/g, '-')
+                  .replace(/^-+|-+$/g, '');
+                  
+                const decodedCat = decodeURIComponent(catSlug);
+                // Match normalized URL slug with the DB category
+                if (clean === catSlug || encodeURIComponent(clean) === catSlug || originalSlug === catSlug || originalSlug === decodedCat || clean === decodedCat) {
+                  matchedDocFields = docFields;
+                  cleanMatchedSlug = clean;
+                  break;
+                }
+              }
+            }
+            
+            if (matchedDocFields && cleanMatchedSlug) {
+              if (catSlug !== cleanMatchedSlug && decodeURIComponent(catSlug) !== cleanMatchedSlug) {
+                res.redirect(301, `/categoria/${cleanMatchedSlug}`);
+                return;
+              }
+
+              const catName = matchedDocFields.name?.stringValue || "Categoria";
               title = `${catName} | Discreta Boutique | Icó - CE`;
               description = `Compre produtos de ${catName} na Discreta Boutique com toda discrição. Lingeries de luxo, cosméticos sensuais, acessórios e novidades em Icó-CE.`;
+              
+              // Ensure canonical URL is always the cleanest one
+              ogUrl = `${domain}/categoria/${cleanMatchedSlug}`;
               
               jsonLd = {
                 "@context": "https://schema.org",
                 "@type": "CollectionPage",
                 "name": `${catName} - Discreta Boutique`,
-                "url": `${domain}/categoria/${catSlug}`,
+                "url": ogUrl,
                 "description": description,
                 "breadcrumb": {
                   "@type": "BreadcrumbList",
                   "itemListElement": [
                     { "@type": "ListItem", "position": 1, "name": "Início", "item": domain },
                     { "@type": "ListItem", "position": 2, "name": "Catálogo", "item": `${domain}/catalogo` },
-                    { "@type": "ListItem", "position": 3, "name": catName, "item": `${domain}/categoria/${catSlug}` }
+                    { "@type": "ListItem", "position": 3, "name": catName, "item": ogUrl }
                   ]
                 }
               };

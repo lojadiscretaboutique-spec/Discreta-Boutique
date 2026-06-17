@@ -153,7 +153,7 @@ export function StoreLayout() {
         }}
       >
         <FreeShippingBar />
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between relative">
+        <div className="max-w-7xl mx-auto px-4 h-20 md:h-24 flex items-center justify-between relative transition-all duration-300">
           
           <div className="flex items-center">
             {/* Mobile Menu Button */}
@@ -185,7 +185,7 @@ export function StoreLayout() {
           </div>
 
           {/* Logo - Absolute Centered */}
-          <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center p-2 z-10 w-full max-w-[150px] sm:max-w-[200px]">
+          <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center py-1 px-3 z-10 w-full max-w-[210px] sm:max-w-[240px] md:max-w-[290px] select-none transition-all duration-300">
             {(() => {
               const lh = currentTheme.branding?.logoHorizontal;
               const url = typeof lh === 'string' ? lh : lh?.url;
@@ -194,14 +194,14 @@ export function StoreLayout() {
                   <img 
                     src={url} 
                     alt={currentTheme.branding?.appName || "Discreta Boutique"} 
-                    className="w-auto h-auto max-h-[42px] md:max-h-[56px] object-contain drop-shadow-sm transition-opacity hover:opacity-90"
+                    className="w-auto h-auto min-h-[46px] max-h-[56px] md:min-h-[58px] md:max-h-[68px] object-contain drop-shadow-sm transition-all duration-300 hover:opacity-90"
                   />
                 );
               }
               // Fallback to text
               return (
                 <span 
-                  className="brand-logo-text text-2xl font-black tracking-tighter uppercase italic transition-colors duration-500 line-clamp-1"
+                  className="brand-logo-text text-2xl md:text-3xl font-black tracking-tighter uppercase italic transition-colors duration-500 line-clamp-1"
                   style={{ color: currentTheme.primaryColor }}
                 >
                   {currentTheme.branding?.shortName || "DISCRETA"}
@@ -306,8 +306,8 @@ export function StoreLayout() {
       <main className={cn(
         "flex-1 flex flex-col",
         (location.pathname === '/' || location.pathname === '/catalogo') 
-          ? (hasGlobalFreeShipping ? "pt-[190px] sm:pt-[200px] md:pt-[210px]" : "pt-[150px] sm:pt-[160px] md:pt-[170px]") 
-          : "pt-24 md:pt-28"
+          ? (hasGlobalFreeShipping ? "pt-[204px] sm:pt-[214px] md:pt-[236px]" : "pt-[168px] sm:pt-[178px] md:pt-[196px]") 
+          : "pt-28 md:pt-36"
       )}>
         <Outlet />
       </main>
