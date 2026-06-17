@@ -7,7 +7,7 @@ import aiRoutes from './src/server/routes/aiRoutes.js';
 import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
 import { db } from './src/lib/firebase';
-import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit, setDoc, updateDoc, where } from 'firebase/firestore';
 
 // Verify connection
 (async () => {
@@ -328,17 +328,121 @@ async function startServer() {
     }
   });
 
-  let vite: import('vite').ViteDevServer;
-  if (process.env.NODE_ENV !== "production") {
-    vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distPath, { index: false }));
-  }
+  // Robots.txt dynamic serve
+  app.get('/robots.txt', (req, res) => {
+    res.header('Content-Type', 'text/plain');
+    res.send(`User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /login
+Disallow: /carrinho
+Disallow: /checkout
+Disallow: /perfil
+Disallow: /pedidos
+Disallow: /area-cliente
+Disallow: /sucesso
+Disallow: /motoboy
+Sitemap: https://discretaboutique.com.br/sitemap.xml`);
+  });
+
+  // Sitemap.xml dynamic generation
+  app.get('/sitemap.xml', async (req, res) => {
+    try {
+      res.header('Content-Type', 'application/xml');
+      const domain = 'https://discretaboutique.com.br';
+      const lastmod = new Date().toISOString().split('T')[0];
+      
+      let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${domain}/</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${domain}/catalogo</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>${domain}/quem-somos</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>${domain}/politica-de-privacidade</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>${domain}/trocas-e-devolucoes</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>${domain}/entrega-discreta</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>${domain}/contato</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>${domain}/lgpd</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>`;
+
+      try {
+        const catSnap = await getDocs(collection(db, 'categories'));
+        catSnap.docs.forEach(docSnap => {
+          const category = docSnap.data();
+          const slug = category.slug || docSnap.id;
+          if (slug) {
+            xml += `
+  <url>
+    <loc>${domain}/categoria/${slug}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`;
+          }
+        });
+
+        const pSnap = await getDocs(collection(db, 'products'));
+        pSnap.docs.forEach(docSnap => {
+          const p = docSnap.data();
+          if (p.active !== false && p.seo?.slug && (Number(p.stock) || 0) > 0 && p.extras?.showInCatalog !== false) {
+            xml += `
+  <url>
+    <loc>${domain}/produto/${p.seo.slug}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>`;
+          }
+        });
+      } catch (dbErr) {
+        console.error("Error building sitemap.xml dynamic nodes:", dbErr);
+      }
+
+      xml += `\n</urlset>`;
+      res.send(xml);
+    } catch (e) {
+      console.error("Error serving sitemap.xml:", e);
+      res.status(500).send("Error serving sitemap.xml");
+    }
+  });
 
   // Endpoint for favicon to use store logo
   app.get('/favicon.ico', async (req, res) => {
@@ -360,6 +464,119 @@ async function startServer() {
     res.redirect('/logo.png');
   });
 
+  // Dynamic manifest handler
+  app.get(['/manifest.webmanifest', '/manifest.json'], async (req, res) => {
+    try {
+      const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
+      const config = JSON.parse(configRaw);
+      
+      const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store`;
+      const settingsRes = await fetch(settingsUrl);
+      let storeName = "Discreta Boutique";
+      let image = "https://discretaboutique.com.br/logo.png";
+      
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        const sFields = settingsData.fields || {};
+        if (sFields.storeName?.stringValue) storeName = sFields.storeName.stringValue;
+        if (sFields.logoUrl?.stringValue) image = sFields.logoUrl.stringValue;
+      }
+
+      const themeUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/theme_active`;
+      const themeRes = await Promise.resolve().then(() => fetch(themeUrl)).catch(() => null);
+      let activeThemeBranding: any = null;
+      let activeThemeConfig: any = null;
+
+      if (themeRes && themeRes.ok) {
+        const themeData = await themeRes.json();
+        const tFields = themeData.fields || {};
+        
+        activeThemeConfig = {
+          primaryColor: tFields.primaryColor?.stringValue || '#D32F2F',
+          backgroundColor: tFields.backgroundColor?.stringValue || '#0A0A0A'
+        };
+
+        if (tFields.branding && tFields.branding.mapValue && tFields.branding.mapValue.fields) {
+          const bFields = tFields.branding.mapValue.fields;
+
+          const extractImage = (field: any) => {
+            if (!field) return undefined;
+            if (field.stringValue) return field.stringValue; // backward comp
+            if (field.mapValue?.fields?.url?.stringValue) return field.mapValue.fields.url.stringValue;
+            return undefined;
+          };
+
+          activeThemeBranding = {
+            appName: bFields.appName?.stringValue,
+            shortName: bFields.shortName?.stringValue,
+            themeColor: bFields.themeColor?.stringValue,
+            backgroundColor: bFields.backgroundColor?.stringValue,
+            logoHorizontal: extractImage(bFields.logoHorizontal),
+            logoSquare: extractImage(bFields.logoSquare),
+            logo: extractImage(bFields.logo),
+            favicon: extractImage(bFields.favicon),
+            icon192: extractImage(bFields.icon192),
+            icon512: extractImage(bFields.icon512),
+            maskableIcon: extractImage(bFields.maskableIcon),
+            appleTouchIcon: extractImage(bFields.appleTouchIcon),
+            socialPreviewImage: extractImage(bFields.socialPreviewImage),
+            pwaVersion: bFields.pwaVersion?.integerValue || Date.now(),
+          };
+        }
+      }
+
+      let pwaVersionQuery = '';
+      if (activeThemeBranding) {
+        if (activeThemeBranding.pwaVersion) pwaVersionQuery = `?v=${activeThemeBranding.pwaVersion}`;
+        if (activeThemeBranding.socialPreviewImage) image = `${activeThemeBranding.socialPreviewImage}${pwaVersionQuery}`;
+        if (activeThemeBranding.appName) storeName = activeThemeBranding.appName;
+      }
+
+      const manifestAppName = activeThemeBranding?.appName || storeName;
+      const manifestShortName = activeThemeBranding?.shortName || storeName;
+      const manifestThemeColor = activeThemeBranding?.themeColor || activeThemeConfig?.primaryColor || '#000000';
+      const manifestBgColor = activeThemeBranding?.backgroundColor || activeThemeConfig?.backgroundColor || '#ffffff';
+      
+      const manifest = {
+        name: manifestAppName,
+        short_name: manifestShortName,
+        description: "Boutique íntima e sex shop de alta sofisticação em Icó-CE.",
+        theme_color: manifestThemeColor,
+        background_color: manifestBgColor,
+        display: 'standalone',
+        start_url: '/',
+        icons: [
+          { 
+            src: activeThemeBranding?.icon192 ? `${activeThemeBranding.icon192}${pwaVersionQuery}` : (activeThemeBranding?.logo || image), 
+            sizes: '192x192', 
+            purpose: activeThemeBranding?.maskableIcon ? 'any' : 'any maskable',
+            type: 'image/png'
+          },
+          { 
+            src: activeThemeBranding?.icon512 ? `${activeThemeBranding.icon512}${pwaVersionQuery}` : (activeThemeBranding?.logo || image), 
+            sizes: '512x512', 
+            purpose: activeThemeBranding?.maskableIcon ? 'any' : 'any maskable',
+            type: 'image/png'
+          }
+        ]
+      };
+
+      if (activeThemeBranding?.maskableIcon) {
+        manifest.icons.push({
+          src: `${activeThemeBranding.maskableIcon}${pwaVersionQuery}`,
+          sizes: '512x512',
+          purpose: 'maskable',
+          type: 'image/png'
+        });
+      }
+      
+      res.json(manifest);
+    } catch(e) {
+      console.error(e);
+      res.status(500).json({ error: "Err" });
+    }
+  });
+
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
     const isAsset = /\.(js|ts|jsx|tsx|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|txt|map|webp|avif|json)$/.test(req.path);
@@ -368,102 +585,345 @@ async function startServer() {
     }
 
     if (req.path.startsWith('/api/')) return next();
+    if (req.path.startsWith('/@')) return next();
+    if (req.path.includes('/node_modules/')) return next();
 
-    let title = "Discreta Boutique | Sensualidade e Elegância";
-    let description = "Loja virtual exclusiva e rápida da Discreta Boutique";
-    let image = "/logo.png";
-    const ogUrl = `https://discretaboutique.com.br${req.path}`;
+    let title = "Discreta Boutique | Sex Shop e Boutique Íntima em Icó - CE";
+    let description = "Discreta Boutique é uma boutique íntima em Icó-CE com lingeries, cosméticos sensuais, kits românticos e produtos para casais. Compre online com discrição.";
+    let image = "https://discretaboutique.com.br/logo.png";
+    let isRobotsIndex = "index, follow";
+    let jsonLd: any = null;
     
+    const domain = "https://discretaboutique.com.br";
+    const cleanPath = req.path.replace(/\/$/, ""); // remove trailing slash for canonical consistency
+    const ogUrl = `${domain}${cleanPath || "/"}`;
+
+    let storeName = "Discreta Boutique";
+    let activeThemeBranding: any = null;
+
     try {
       const configRaw = await fs.promises.readFile(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
       const config = JSON.parse(configRaw);
       
-      // 1. Fetch store settings for global defaults (Logo and Name)
+      // Fetch store settings for global defaults (Logo and Name)
       const settingsUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/store`;
       const settingsRes = await fetch(settingsUrl);
+      
       if (settingsRes.ok) {
         const settingsData = await settingsRes.json();
         const sFields = settingsData.fields || {};
-        if (sFields.storeName?.stringValue) title = `${sFields.storeName.stringValue} | Sensualidade e Elegância`;
-        if (sFields.logoUrl?.stringValue) image = sFields.logoUrl.stringValue;
-      }
- 
-      // 2. Dynamic manifest handler
-      if (req.path === '/manifest.webmanifest' || req.path === '/manifest.json') {
-        const manifest = {
-          name: title.split('|')[0].trim(),
-          short_name: title.split('|')[0].trim(),
-          description: description,
-          theme_color: '#000000',
-          background_color: '#ffffff',
-          display: 'standalone',
-          start_url: '/',
-          icons: [
-            {
-              src: image,
-              sizes: '192x192',
-              purpose: 'any maskable'
-            },
-            {
-              src: image,
-              sizes: '512x512',
-              purpose: 'any maskable'
-            }
-          ]
-        };
-        return res.json(manifest);
+        if (sFields.storeName?.stringValue) {
+          storeName = sFields.storeName.stringValue;
+        }
+        if (sFields.logoUrl?.stringValue) {
+          image = sFields.logoUrl.stringValue;
+        }
       }
 
-      // 3. Product metadata override
-      const productMatch = req.path.match(/^\/produto\/([^/]+)$/);
-      if (productMatch) {
-        const slug = productMatch[1];
-        const apiUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents:runQuery`;
-        const response = await fetch(apiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            structuredQuery: {
-              from: [{ collectionId: "products" }],
-              where: {
-                fieldFilter: {
-                  field: { fieldPath: "seo.slug" },
-                  op: "EQUAL",
-                  value: { stringValue: slug }
-                }
-              },
-              limit: 1
-            }
-          })
-        });
+      // Fetch active theme for PWA branding overrides
+      const themeUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/settings/theme_active`;
+      const themeRes = await Promise.resolve().then(() => fetch(themeUrl)).catch(() => null);
+      let activeThemeConfig: any = null;
+
+      if (themeRes && themeRes.ok) {
+        const themeData = await themeRes.json();
+        const tFields = themeData.fields || {};
         
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data[0] && data[0].document) {
-             const doc = data[0].document.fields;
-             title = `${doc.name?.stringValue || 'Produto'} | ${title.split('|')[0].trim()}`;
-             description = doc.shortDescription?.stringValue || doc.subtitle?.stringValue || description;
-             const imagesArray = doc.images?.arrayValue?.values;
-             if (imagesArray && imagesArray.length > 0) {
-               const mainImage = imagesArray.find((img: { mapValue?: { fields?: { isMain?: { booleanValue?: boolean } } } }) => 
-                 img.mapValue?.fields?.isMain?.booleanValue === true
-               ) || imagesArray[0];
-               const imgData = mainImage as { mapValue?: { fields?: { url?: { stringValue?: string } } } };
-               if (imgData.mapValue?.fields?.url?.stringValue) {
-                 image = imgData.mapValue.fields.url.stringValue;
-               }
-             }
+        // Extract basic theme colors for fallback
+        activeThemeConfig = {
+          primaryColor: tFields.primaryColor?.stringValue || '#D32F2F',
+          backgroundColor: tFields.backgroundColor?.stringValue || '#0A0A0A'
+        };
+
+        if (tFields.branding && tFields.branding.mapValue && tFields.branding.mapValue.fields) {
+          const bFields = tFields.branding.mapValue.fields;
+
+          const extractImage = (field: any) => {
+            if (!field) return undefined;
+            if (field.stringValue) return field.stringValue; // backward comp
+            if (field.mapValue?.fields?.url?.stringValue) return field.mapValue.fields.url.stringValue;
+            return undefined;
+          };
+
+          activeThemeBranding = {
+            appName: bFields.appName?.stringValue,
+            shortName: bFields.shortName?.stringValue,
+            themeColor: bFields.themeColor?.stringValue,
+            backgroundColor: bFields.backgroundColor?.stringValue,
+            logoHorizontal: extractImage(bFields.logoHorizontal),
+            logoSquare: extractImage(bFields.logoSquare),
+            logo: extractImage(bFields.logo),
+            favicon: extractImage(bFields.favicon),
+            icon192: extractImage(bFields.icon192),
+            icon512: extractImage(bFields.icon512),
+            maskableIcon: extractImage(bFields.maskableIcon),
+            appleTouchIcon: extractImage(bFields.appleTouchIcon),
+            socialPreviewImage: extractImage(bFields.socialPreviewImage),
+            pwaVersion: bFields.pwaVersion?.integerValue || Date.now(),
+          };
+        }
+      }
+
+      // Apply branding overrides to defaults where applicable
+      let pwaVersionQuery = '';
+      if (activeThemeBranding) {
+        if (activeThemeBranding.pwaVersion) pwaVersionQuery = `?v=${activeThemeBranding.pwaVersion}`;
+        if (activeThemeBranding.socialPreviewImage) image = `${activeThemeBranding.socialPreviewImage}${pwaVersionQuery}`;
+        if (activeThemeBranding.appName) storeName = activeThemeBranding.appName;
+      }
+
+      // Check for security-sensitive or personal pages to apply noindex
+      const isPrivatePage = /^\/(admin|login|carrinho|checkout|perfil|pedidos|area-cliente|sucesso|wifi|motoboy)(\/|$)/i.test(req.path);
+      if (isPrivatePage) {
+        isRobotsIndex = "noindex, nofollow";
+      }
+
+      // 1. Home Route Override
+      if (req.path === '/' || req.path === '') {
+        title = "Discreta Boutique | Sex Shop e Boutique Íntima em Icó - CE";
+        description = "Discreta Boutique é uma boutique íntima em Icó-CE com lingeries, cosméticos sensuais, kits românticos e produtos para casais. Compre online com discrição.";
+        
+        jsonLd = [
+          {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": storeName,
+            "url": domain,
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": `${domain}/catalogo?q={search_term_string}`,
+              "query-input": "required name=search_term_string"
+            }
+          },
+          {
+            "@context": "https://schema.org",
+            "@type": "Store",
+            "name": storeName,
+            "url": domain,
+            "logo": image,
+            "image": image,
+            "description": description,
+            "telephone": "+55 88 99234-0317",
+            "address": {
+              "@type": "PostalAddress",
+              "addressLocality": "Icó",
+              "addressRegion": "CE",
+              "addressCountry": "BR"
+            },
+            "sameAs": [
+              "https://instagram.com/discretaico"
+            ]
+          }
+        ];
+      }
+
+      // 2. Catalog Route Override
+      else if (req.path === '/catalogo') {
+        title = "Catálogo Discreta Boutique | Lingerie, Sedução e Sex Shop em Icó - CE";
+        description = "Explore o catálogo completo da Discreta Boutique em Icó, Ceará. Lingeries exclusivas, cosméticos sensuais, estimuladores e novidades com entrega sigilosa.";
+        
+        jsonLd = {
+          "@context": "https://schema.org",
+          "@type": "CollectionPage",
+          "name": "Catálogo de Produtos - Discreta Boutique",
+          "url": `${domain}/catalogo`,
+          "description": description,
+          "breadcrumb": {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Início", "item": domain },
+              { "@type": "ListItem", "position": 2, "name": "Catálogo", "item": `${domain}/catalogo` }
+            ]
+          }
+        };
+      }
+
+      // 3. Category Page Override
+      else if (req.path.startsWith('/categoria/')) {
+        const categoryMatch = req.path.match(/^\/categoria\/([^/]+)$/);
+        if (categoryMatch) {
+          const catSlug = categoryMatch[1];
+          const catApiUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents:runQuery`;
+          const catResponse = await fetch(catApiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              structuredQuery: {
+                from: [{ collectionId: "categories" }],
+                where: {
+                  fieldFilter: {
+                    field: { fieldPath: "slug" },
+                    op: "EQUAL",
+                    value: { stringValue: catSlug }
+                  }
+                },
+                limit: 1
+              }
+            })
+          });
+
+          if (catResponse.ok) {
+            const catData = await catResponse.json();
+            if (catData && catData[0] && catData[0].document) {
+              const docFields = catData[0].document.fields;
+              const catName = docFields.name?.stringValue || "Categoria";
+              title = `${catName} | Discreta Boutique | Icó - CE`;
+              description = `Compre produtos de ${catName} na Discreta Boutique com toda discrição. Lingeries de luxo, cosméticos sensuais, acessórios e novidades em Icó-CE.`;
+              
+              jsonLd = {
+                "@context": "https://schema.org",
+                "@type": "CollectionPage",
+                "name": `${catName} - Discreta Boutique`,
+                "url": `${domain}/categoria/${catSlug}`,
+                "description": description,
+                "breadcrumb": {
+                  "@type": "BreadcrumbList",
+                  "itemListElement": [
+                    { "@type": "ListItem", "position": 1, "name": "Início", "item": domain },
+                    { "@type": "ListItem", "position": 2, "name": "Catálogo", "item": `${domain}/catalogo` },
+                    { "@type": "ListItem", "position": 3, "name": catName, "item": `${domain}/categoria/${catSlug}` }
+                  ]
+                }
+              };
+            }
           }
         }
       }
+
+      // 4. Product Route Override
+      else if (req.path.startsWith('/produto/')) {
+        const productMatch = req.path.match(/^\/produto\/([^/]+)$/);
+        if (productMatch) {
+          const slug = productMatch[1];
+          const apiUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents:runQuery`;
+          const response = await fetch(apiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              structuredQuery: {
+                from: [{ collectionId: "products" }],
+                where: {
+                  fieldFilter: {
+                    field: { fieldPath: "seo.slug" },
+                    op: "EQUAL",
+                    value: { stringValue: slug }
+                  }
+                },
+                limit: 1
+              }
+            })
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data && data[0] && data[0].document) {
+              const doc = data[0].document.fields;
+              
+              const pName = doc.name?.stringValue || 'Produto';
+              title = `${pName} | Discreta Boutique | Icó - CE`;
+              
+              const rawDesc = doc.shortDescription?.stringValue || doc.subtitle?.stringValue || doc.description?.stringValue || "";
+              description = rawDesc ? `${rawDesc.substring(0, 160).trim()}... Compre na Discreta Boutique com sigilo.` : `Compre ${pName} na Discreta Boutique em Icó-CE com total sigilo e privacidade. Lingerie, sex shop, cosméticos e bem estar.`;
+              
+              const imagesArray = doc.images?.arrayValue?.values;
+              if (imagesArray && imagesArray.length > 0) {
+                const mainImage = imagesArray.find((img: { mapValue?: { fields?: { isMain?: { booleanValue?: boolean } } } }) => 
+                  img.mapValue?.fields?.isMain?.booleanValue === true
+                ) || imagesArray[0];
+                const imgData = mainImage as { mapValue?: { fields?: { url?: { stringValue?: string } } } };
+                if (imgData.mapValue?.fields?.url?.stringValue) {
+                  image = imgData.mapValue.fields.url.stringValue;
+                }
+              }
+
+              const priceVal = Number(doc.promoPrice?.doubleValue || doc.promoPrice?.integerValue || doc.price?.doubleValue || doc.price?.integerValue || 0);
+              const stockVal = Number(doc.stock?.integerValue || doc.stock?.doubleValue || 0);
+              const inStock = stockVal > 0;
+
+              jsonLd = {
+                "@context": "https://schema.org",
+                "@type": "Product",
+                "name": pName,
+                "image": image,
+                "description": description,
+                "brand": {
+                  "@type": "Brand",
+                  "name": "Discreta Boutique"
+                },
+                "offers": {
+                  "@type": "Offer",
+                  "url": ogUrl,
+                  "priceCurrency": "BRL",
+                  "price": priceVal || 0.0,
+                  "priceValidUntil": "2027-12-31",
+                  "availability": inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+                  "itemCondition": "https://schema.org/NewCondition"
+                }
+              };
+            }
+          }
+        }
+      }
+
+      // 5. Institutional Pages Overrides
+      else if (req.path === '/quem-somos') {
+        title = "Quem Somos | Discreta Boutique - Moda Íntima e Bem-estar em Icó";
+        description = "Saiba mais sobre a trajetória da Discreta Boutique em Icó-CE, nosso compromisso com a privacidade e nossa curadoria cuidadosa de lingerie e produtos para o prazer.";
+      } else if (req.path === '/politica-de-privacidade') {
+        title = "Política de Privacidade | Discreta Boutique";
+        description = "Confira nossos termos de privacidade e entenda como a Discreta Boutique protege seus dados e garante sua discrição do faturamento à entrega.";
+      } else if (req.path === '/politica-de-troca' || req.path === '/trocas-e-devolucoes') {
+        title = "Política de Trocas e Devoluções | Discreta Boutique";
+        description = "Entenda como funciona nossa política de trocas e devoluções simplificada e discreta, de acordo com o Código de Defesa do Consumidor.";
+      } else if (req.path === '/entrega-discreta') {
+        title = "Entrega Discreta e Sigilosa | Discreta Boutique em Icó - CE";
+        description = "Sua privacidade é prioridade. Conheça nosso padrão de embalagem externa neutra e remetente discreto para envio e entrega segura de lingerie e cosméticos sensuais.";
+      } else if (req.path === '/contato') {
+        title = "Fale Conosco | Discreta Boutique | Atendimento em Icó - CE";
+        description = "Fale com a nossa equipe de atendimento em Icó-CE de forma confidencial e discreta. Tire dúvidas sobre produtos, entregas ou faça seu pedido por WhatsApp.";
+      } else if (req.path === '/lgpd') {
+        title = "Conformidade LGPD | Discreta Boutique";
+        description = "Compromisso da Discreta Boutique com a privacidade e proteção de dados em conformidade com a Lei Geral de Proteção de Dados.";
+      }
+
+      // Generate institutional breadcrumbs if jsonLd was not set yet but we are on standard page
+      if (!jsonLd && !isPrivatePage && req.path !== '/') {
+        const pageCleanName = title.split('|')[0].trim();
+        jsonLd = {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Início", "item": domain },
+            { "@type": "ListItem", "position": 2, "name": pageCleanName, "item": ogUrl }
+          ]
+        };
+      }
+
     } catch (e) {
       console.error("Error fetching metadata:", e);
     }
 
+    let scriptLd = '';
+    if (jsonLd) {
+      scriptLd = `
+      <script type="application/ld+json">
+        ${JSON.stringify(jsonLd)}
+      </script>`;
+    }
+
+    const versionStr = activeThemeBranding?.pwaVersion ? `?v=${activeThemeBranding.pwaVersion}` : '';
+    const faviconUrl = activeThemeBranding?.favicon ? `${activeThemeBranding.favicon}${versionStr}` : image;
+    const appleTouchIconUrl = activeThemeBranding?.appleTouchIcon ? `${activeThemeBranding.appleTouchIcon}${versionStr}` : image;
+    const themeColorMeta = activeThemeBranding?.themeColor ? `<meta name="theme-color" content="${activeThemeBranding.themeColor}" />\n` : '';
+
     const ogTags = `
-      <link rel="icon" href="${image}" />
-      <link rel="shortcut icon" href="${image}" />
-      <link rel="apple-touch-icon" href="${image}" />
+      <link rel="canonical" href="${ogUrl}" />
+      <meta name="robots" content="${isRobotsIndex}" />
+      ${themeColorMeta}
+      <link rel="icon" href="${faviconUrl}" />
+      <link rel="shortcut icon" href="${faviconUrl}" />
+      <link rel="apple-touch-icon" href="${appleTouchIconUrl}" />
+      <meta property="og:site_name" content="${activeThemeBranding?.appName || storeName}" />
       <meta property="og:title" content="${title}" />
       <meta property="og:description" content="${description}" />
       <meta property="og:image" content="${image}" />
@@ -472,27 +932,43 @@ async function startServer() {
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="${title}" />
       <meta name="twitter:description" content="${description}" />
-      <meta name="twitter:image" content="${image}" />
+      <meta name="twitter:image" content="${image}" />${scriptLd}
     `;
 
     try {
       let html = '';
       if (process.env.NODE_ENV !== 'production') {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
-        html = html.replace('</title>', '</title>\n' + ogTags);
         html = await vite.transformIndexHtml(req.url, html);
+        // Replace existing title completely in head AFTER vite transform to prevent overrides
+        html = html.replace(/<title>[^<]+<\/title>/, `<title>${title}</title>`);
+        html = html.replace('</title>', '</title>\n' + ogTags);
       } else {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'dist', 'index.html'), 'utf-8');
+        // Replace existing title completely in head
+        html = html.replace(/<title>[^<]+<\/title>/, `<title>${title}</title>`);
         html = html.replace('</title>', '</title>\n' + ogTags);
       }
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch(e) {
-      if (vite) vite.ssrFixStacktrace(e);
       console.error("Error rendering HTML:", e);
       const errorMessage = e instanceof Error ? e.message : "Erro interno";
       res.status(500).end(errorMessage);
     }
   });
+
+  let vite: import('vite').ViteDevServer;
+  if (process.env.NODE_ENV !== "production") {
+    vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.resolve(process.cwd(), 'dist');
+    app.use(express.static(distPath, { index: false }));
+  }
+
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);

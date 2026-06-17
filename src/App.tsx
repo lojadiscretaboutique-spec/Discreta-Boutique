@@ -22,6 +22,8 @@ const PrivacyPolicyPage = lazy(() => import('./pages/store/PrivacyPolicyPage'));
 const AboutUsPage = lazy(() => import('./pages/store/AboutUsPage'));
 const ExchangePolicyPage = lazy(() => import('./pages/store/ExchangePolicyPage'));
 const LGPDPage = lazy(() => import('./pages/store/LGPDPage'));
+const DiscreetDeliveryPage = lazy(() => import('./pages/store/DiscreetDeliveryPage'));
+const ContactPage = lazy(() => import('./pages/store/ContactPage'));
 const AffiliateLandingPage = lazy(() => import('./modules/afiliados/pages/AffiliateLandingPage').then(m => ({ default: m.AffiliateLandingPage })));
 const AdminAffiliates = lazy(() => import('./modules/afiliados/pages/AdminAffiliates').then(m => ({ default: m.AdminAffiliates })));
 
@@ -147,10 +149,14 @@ function AppContent() {
           <Route element={<StoreLayout />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/catalogo" element={<CatalogPage />} />
+            <Route path="/categoria/:slug" element={<CatalogPage />} />
             <Route path="/area-cliente" element={<CustomerAreaPage />} />
             <Route path="/politica-de-privacidade" element={<PrivacyPolicyPage />} />
             <Route path="/quem-somos" element={<AboutUsPage />} />
             <Route path="/politica-de-troca" element={<ExchangePolicyPage />} />
+            <Route path="/trocas-e-devolucoes" element={<ExchangePolicyPage />} />
+            <Route path="/entrega-discreta" element={<DiscreetDeliveryPage />} />
+            <Route path="/contato" element={<ContactPage />} />
             <Route path="/lgpd" element={<LGPDPage />} />
             <Route path="/carrinho" element={<CartPage />} />
             <Route path="/produto/:slug" element={<ProductPage />} />

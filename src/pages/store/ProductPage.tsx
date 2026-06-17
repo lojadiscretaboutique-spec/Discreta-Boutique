@@ -345,7 +345,7 @@ export function ProductPage() {
                     initial={{ opacity: 0, scale: 1.1 }}
                     animate={{ opacity: 1, scale: 1 }}
                     src={currentImage || undefined} 
-                    alt={product.name} 
+                    alt={`${product.name} | Discreta Boutique`} 
                     className={cn(
                       "absolute inset-0 w-full h-full object-cover transition-all duration-305",
                       isOutOfStock() && "grayscale blur-sm"
@@ -399,6 +399,8 @@ export function ProductPage() {
                     >
                       <img 
                         src={img.url || undefined} 
+                        alt={`${product.name} - Imagem ${idx + 1} | Discreta Boutique`}
+                        loading="lazy"
                         className={cn(
                           "w-full h-full object-cover transition-all",
                           isOutOfStock() && "grayscale blur-[2px]"
@@ -726,7 +728,8 @@ export function ProductPage() {
                     >
                       <img 
                         src={p.imageUrl || undefined} 
-                        alt={p.name} 
+                        alt={`${p.name} | Discreta Boutique`} 
+                        loading="lazy"
                         className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 grayscale-[0.5] group-hover:grayscale-0"
                         referrerPolicy="no-referrer"
                       />

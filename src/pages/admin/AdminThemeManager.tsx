@@ -23,7 +23,10 @@ import {
   ChevronRight, 
   Sliders,
   CheckCircle2,
-  ListFilter
+  ListFilter,
+  UploadCloud,
+  Globe,
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -67,6 +70,45 @@ export function AdminThemeManager() {
   const selectThemeTemplate = (theme: ThemeConfig) => {
     setPreviewTheme(theme);
     setEditingTheme({ ...theme });
+  };
+
+  const handleImageUpload = async (key: keyof NonNullable<ThemeConfig['branding']>, file: File) => {
+    try {
+      setSaving(true);
+      const { optimizeImage, uploadBrandingImage } = await import('../../utils/imageOptimizer');
+      
+      let maxWidth = 1200;
+      let maxHeight = 1200;
+      let forceWebp = true;
+      let quality = 0.85;
+
+      // Rules mapped to keys
+      if (key === 'logoHorizontal') { maxWidth = 1200; maxHeight = 300; forceWebp = true; }
+      else if (key === 'logoSquare') { maxWidth = 1024; maxHeight = 1024; forceWebp = true; }
+      else if (key === 'favicon') { maxWidth = 128; maxHeight = 128; forceWebp = false; } // maintain format for favicons usually
+      else if (key === 'icon192') { maxWidth = 192; maxHeight = 192; forceWebp = false; } // PWA icon needs to be valid png/webp
+      else if (key === 'icon512' || key === 'maskableIcon') { maxWidth = 512; maxHeight = 512; forceWebp = false; }
+      else if (key === 'appleTouchIcon') { maxWidth = 180; maxHeight = 180; forceWebp = false; }
+      else if (key === 'socialPreviewImage') { maxWidth = 1200; maxHeight = 630; forceWebp = true; }
+
+      const optimized = await optimizeImage(file, maxWidth, maxHeight, quality, forceWebp);
+      const uploadedResult = await uploadBrandingImage(optimized);
+      
+      const currentBranding = editingTheme?.branding || {};
+      const newBranding = {
+        ...currentBranding,
+        [key]: uploadedResult,
+        pwaVersion: (currentBranding.pwaVersion || Date.now()) + 1
+      };
+      
+      handleFieldChange('branding', newBranding);
+      toast('Imagem otimizada e salva com sucesso!', 'success');
+    } catch (error) {
+      console.error(error);
+      toast('Erro ao carregar a imagem. Verifique o console.', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleFieldChange = (key: keyof ThemeConfig, value: any) => {
@@ -843,6 +885,165 @@ export function AdminThemeManager() {
                     <div className="flex flex-wrap gap-2 pt-2">
                       <span className="px-2.5 py-1 bg-zinc-900 border text-white font-mono rounded-lg">Fundo Escuro &rarr; Texto Branco</span>
                       <span className="px-2.5 py-1 bg-white border text-black font-auto rounded-lg">Fundo Claro &rarr; Texto Preto</span>
+                    </div>
+                  </div>
+
+                  {/* BRANDING, PWA, AND SOCIAL IDENTITY */}
+                  <div className="col-span-full space-y-4 bg-slate-50/50 dark:bg-slate-950/40 p-5 rounded-[22px] border border-slate-100 dark:border-slate-800/50">
+                    <div className="flex items-center gap-2 text-slate-800 dark:text-white font-bold text-xs uppercase tracking-wide border-b dark:border-slate-800 pb-2.5">
+                      <ImageIcon size={15} className="text-red-650" />
+                      Identidade Visual e Compartilhamento
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                      {/* Name/ShortName for PWA */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-500 mb-1.5 tracking-wider">
+                            Nome do App (PWA)
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full h-11 px-4 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 border text-slate-850 dark:text-white"
+                            placeholder="Ex: Discreta Boutique"
+                            value={editingTheme.branding?.appName || 'Discreta Boutique'}
+                            onChange={e => handleFieldChange('branding', { ...editingTheme.branding, appName: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-500 mb-1.5 tracking-wider">
+                            Nome Curto (PWA)
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full h-11 px-4 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 border text-slate-850 dark:text-white"
+                            placeholder="Ex: Discreta"
+                            value={editingTheme.branding?.shortName || 'Discreta'}
+                            onChange={e => handleFieldChange('branding', { ...editingTheme.branding, shortName: e.target.value })}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Social Preview Image Component */}
+                      <div className="space-y-3 col-span-full xl:col-span-1">
+                        <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                          Imagem de Compartilhamento (Open Graph)
+                        </label>
+                        <p className="text-[10px] text-slate-400">Recomendado: 1200x630 px • Proporção 1.91:1. Usado em WhatsApp, Facebook, Instagram.</p>
+                        <div className="relative group rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-center min-h-[160px]">
+                          {(() => {
+                            let sg = editingTheme.branding?.socialPreviewImage;
+                            let urlSg = typeof sg === 'string' ? sg : sg?.url;
+                            if (urlSg) {
+                              return <img src={urlSg} alt="Social Preview" className="w-full h-full object-cover" />;
+                            }
+                            return (
+                              <div className="text-center p-4">
+                                <Globe className="mx-auto text-slate-300 dark:text-slate-700 mb-2" size={32} />
+                                <p className="text-[10px] font-bold text-slate-400 capitalize">Nenhuma imagem personalizada (usará Padrão)</p>
+                              </div>
+                            );
+                          })()}
+                          <label className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                            <input type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleImageUpload('socialPreviewImage', e.target.files[0]);
+                              }
+                            }} />
+                            <div className="text-white text-[10px] uppercase font-black flex items-center gap-2 bg-red-600 px-4 py-2 rounded-xl">
+                              <UploadCloud size={14} /> Substituir (1200x630)
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Icon Grid */}
+                      <div className="col-span-full grid grid-cols-2 md:grid-cols-4 gap-6 mt-4 border-t dark:border-slate-800 pt-6">
+                        {[
+                          { key: 'logoHorizontal', label: 'Logo Horizontal', help: 'Cabeçalho e Rodapé. Prop. 4:1 (ex: 1200x300)' },
+                          { key: 'logoSquare', label: 'Logo Quadrada', help: 'Splash screen, Fallback. Prop 1:1 (ex: 1024x1024)' },
+                          { key: 'favicon', label: 'Favicon', help: 'Aba do navegador. Prop 1:1 (64x64 ou 128x128)' },
+                          { key: 'icon192', label: 'Ícone PWA 192', help: 'Android PWA. Obrigatório 192x192' },
+                          { key: 'icon512', label: 'Ícone PWA 512', help: 'Android Splash. Obrigatório 512x512' },
+                          { key: 'maskableIcon', label: 'Maskable Icon', help: 'Android adaptável. Centralizado, 512x512' },
+                          { key: 'appleTouchIcon', label: 'Apple Touch', help: 'iPhone/iPad Home. Obrigatório 180x180' }
+                        ].map(item => {
+                          const val = editingTheme.branding?.[item.key as keyof NonNullable<ThemeConfig['branding']>];
+                          const url = typeof val === 'string' ? val : val?.url;
+
+                          return (
+                            <div key={item.key} className="space-y-2 flex flex-col">
+                              <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider text-center">{item.label}</label>
+                              <p className="text-[9px] text-slate-400 text-center flex-grow leading-tight">{item.help}</p>
+                              <div className="relative group aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-center p-2">
+                                {url ? (
+                                  <img src={url} alt={item.label} className="w-full h-full object-contain drop-shadow-sm" />
+                                ) : (
+                                  <ImageIcon className="text-slate-200 dark:text-slate-800" size={32} />
+                                )}
+                                <label className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white">
+                                  <input type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                      handleImageUpload(item.key as keyof NonNullable<ThemeConfig['branding']>, e.target.files[0]);
+                                    }
+                                  }} />
+                                  <UploadCloud size={20} className="mb-1" />
+                                  <span className="text-[9px] font-bold uppercase">Trocar</span>
+                                </label>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Header Previews */}
+                      <div className="col-span-full mt-6 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 space-y-5">
+                        <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-2"><Eye size={14}/> Pré-visualização do Cabeçalho</h4>
+                        <div className="flex flex-col xl:flex-row gap-6">
+                          <div className="flex-1 border bg-white dark:bg-slate-950 rounded-xl overflow-hidden border-slate-200 dark:border-slate-700">
+                             <div className="bg-slate-100 dark:bg-slate-800 text-[9px] font-bold uppercase py-1 text-center text-slate-400 border-b dark:border-slate-700">Desktop</div>
+                             <div className="flex px-6 h-[72px] items-center" style={{ backgroundColor: editingTheme.backgroundColor }}>
+                               {(() => {
+                                  const img = editingTheme.branding?.logoHorizontal;
+                                  const url = typeof img === 'string' ? img : img?.url;
+                                  if (url) return <img src={url} className="h-10 w-auto object-contain" alt="Logo" />;
+                                  return <span className="font-black text-xl text-white">Discreta Boutique</span>;
+                               })()}
+                             </div>
+                          </div>
+                          
+                          <div className="w-[200px] mx-auto border bg-white dark:bg-slate-950 rounded-[28px] overflow-hidden border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
+                             <div className="bg-slate-100 dark:bg-slate-800 text-[9px] font-bold uppercase py-1 text-center text-slate-400 border-b dark:border-slate-700">Mobile</div>
+                             <div className="flex px-4 h-32 items-end pb-4 justify-center" style={{ backgroundColor: editingTheme.backgroundColor }}>
+                               {(() => {
+                                  const img = editingTheme.branding?.logoHorizontal || editingTheme.branding?.logoSquare;
+                                  const url = typeof img === 'string' ? img : img?.url;
+                                  if (url) return <img src={url} className="h-8 w-auto object-contain" alt="Logo" />;
+                                  return <span className="font-black text-sm text-white drop-shadow-md">Discreta</span>;
+                               })()}
+                             </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Live Social Preview Box */}
+                      <div className="col-span-full p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 mt-4">
+                        <h4 className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-wider flex items-center gap-2"><Globe size={14}/> Pré-visualização Open Graph (WhatsApp)</h4>
+                        <div className="max-w-[320px] border border-[#25D366]/20 rounded-xl overflow-hidden bg-[#E1F3DB] dark:bg-[#071E10] shadow-sm">
+                          {(() => {
+                            let sg = editingTheme.branding?.socialPreviewImage;
+                            let urlSg = typeof sg === 'string' ? sg : sg?.url;
+                            return (
+                              <img src={urlSg || 'https://discretaboutique.com.br/default-share-image.jpg'} alt="Preview" className="w-full aspect-[1.91/1] object-cover border-b border-[#25D366]/20" />
+                            );
+                          })()}
+                          <div className="p-3">
+                            <h3 className="text-sm font-bold text-green-950 dark:text-green-100 truncate">{editingTheme.branding?.appName || 'Discreta Boutique'}</h3>
+                            <p className="text-xs text-green-800 dark:text-green-400 mt-1 line-clamp-2">A boutique íntima mais elegante e discreta de Icó-CE. Compre com sigilo absoluto.</p>
+                            <p className="text-[10px] text-green-600 dark:text-green-600 font-medium mt-2 flex items-center gap-1">discretaboutique.com.br</p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 

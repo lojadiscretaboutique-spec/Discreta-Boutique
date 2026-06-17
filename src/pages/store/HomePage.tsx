@@ -864,6 +864,21 @@ export function HomePage() {
         )}
       </div>
 
+      {/* LOCAL SEO BRANDING INTRO */}
+      <section className="bg-black py-16 px-4 border-t border-zinc-900">
+        <div className="max-w-4xl mx-auto text-center space-y-6">
+          <h1 className="text-2xl md:text-4xl font-extrabold uppercase tracking-tight italic text-white leading-tight">
+            Discreta Boutique | <span className="text-red-600">Sex Shop</span> e Boutique Íntima em Icó - CE
+          </h1>
+          <p className="text-zinc-400 text-sm md:text-base leading-relaxed max-w-2xl mx-auto">
+            A <strong className="text-white">Discreta Boutique</strong> é sua boutique íntima de referência em Icó, Ceará. Combinamos elegância e sensualidade em um catálogo exclusivo de lingeries finas, cosméticos sensuais refinados, kits românticos e estimuladores de altíssima qualidade para momentos inesquecíveis.
+          </p>
+          <p className="text-zinc-500 text-xs md:text-sm leading-relaxed max-w-2xl mx-auto">
+            Se você busca o melhor <strong className="text-zinc-400">sex shop em Icó</strong> com entrega ultra discreta e sigilo absoluto, cuidamos de cada detalhe — da embalagem externa neutra e sem logotipos até o faturamento sigiloso em sua fatura. Compre online de forma segura e receba com total privacidade.
+          </p>
+        </div>
+      </section>
+
       {/* BENEFÍCIOS */}
       <section className="bg-zinc-950 border-t border-zinc-800 py-24 px-4 overflow-hidden">
         <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-12 md:gap-8">

@@ -184,6 +184,38 @@ export const themeService = {
     return this.getDefaultTheme();
   },
 
+  async uploadImage(fileOrResult: File | any): Promise<any> {
+    const { storage } = await import('../lib/storage');
+    const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+    
+    // If it's a raw File
+    let file = fileOrResult instanceof File ? fileOrResult : fileOrResult.file;
+    if (!file) throw new Error("Invalid file provided");
+
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `themes/${Date.now()}_${sanitizedName}`;
+    const fileRef = ref(storage, path);
+    
+    await uploadBytes(fileRef, file);
+    const url = await getDownloadURL(fileRef);
+    
+    // If we passed an OptimizedImageResult, return the full branding object
+    if (fileOrResult.width && fileOrResult.format) {
+      return {
+        url,
+        path,
+        width: fileOrResult.width,
+        height: fileOrResult.height,
+        sizeKb: fileOrResult.sizeKb,
+        format: fileOrResult.format,
+        version: Date.now(),
+        uploadDate: new Date().toISOString()
+      };
+    }
+
+    return { url, path };
+  },
+
   /**
    * Activates a theme by saving context inside firestore settings
    */
@@ -216,6 +248,7 @@ export const themeService = {
         scheduled: theme.scheduled,
         startDate: theme.startDate || null,
         endDate: theme.endDate || null,
+        branding: theme.branding || null,
       });
 
       // Track actions in audit log
@@ -267,6 +300,7 @@ export const themeService = {
         startDate: theme.startDate || null,
         endDate: theme.endDate || null,
         isCustom: true,
+        branding: theme.branding || null,
       };
 
       await setDoc(doc(db, 'themes', targetId), themeData);

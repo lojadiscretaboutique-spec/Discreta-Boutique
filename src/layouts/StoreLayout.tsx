@@ -184,14 +184,30 @@ export function StoreLayout() {
             </nav>
           </div>
 
-          {/* Logo Text Only - Absolute Centered */}
-          <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center">
-            <span 
-              className="brand-logo-text text-2xl font-black tracking-tighter uppercase italic transition-colors duration-500"
-              style={{ color: currentTheme.primaryColor }}
-            >
-              DISCRETA
-            </span>
+          {/* Logo - Absolute Centered */}
+          <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center p-2 z-10 w-full max-w-[150px] sm:max-w-[200px]">
+            {(() => {
+              const lh = currentTheme.branding?.logoHorizontal;
+              const url = typeof lh === 'string' ? lh : lh?.url;
+              if (url) {
+                return (
+                  <img 
+                    src={url} 
+                    alt={currentTheme.branding?.appName || "Discreta Boutique"} 
+                    className="w-auto h-auto max-h-[42px] md:max-h-[56px] object-contain drop-shadow-sm transition-opacity hover:opacity-90"
+                  />
+                );
+              }
+              // Fallback to text
+              return (
+                <span 
+                  className="brand-logo-text text-2xl font-black tracking-tighter uppercase italic transition-colors duration-500 line-clamp-1"
+                  style={{ color: currentTheme.primaryColor }}
+                >
+                  {currentTheme.branding?.shortName || "DISCRETA"}
+                </span>
+              );
+            })()}
           </Link>
 
           {/* Actions */}
@@ -322,13 +338,28 @@ export function StoreLayout() {
         >
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12">
             <div className="max-w-md">
-              <div className="flex items-center gap-3 mb-4">
-                 <h2 
-                   className="brand-logo-text text-2xl font-black tracking-tighter italic transition-colors duration-300"
-                   style={{ color: currentTheme.primaryColor }}
-                 >
-                   DISCRETA BOUTIQUE
-                 </h2>
+              <div className="flex items-center gap-3 mb-6">
+                 {(() => {
+                    const lh = currentTheme.branding?.logoHorizontal;
+                    const url = typeof lh === 'string' ? lh : lh?.url;
+                    if (url) {
+                      return (
+                        <img 
+                          src={url} 
+                          alt={currentTheme.branding?.appName || "Discreta Boutique"} 
+                          className="w-auto max-h-[48px] object-contain drop-shadow-sm opacity-90 hover:opacity-100 transition-opacity"
+                        />
+                      );
+                    }
+                    return (
+                      <h2 
+                        className="brand-logo-text text-2xl font-black tracking-tighter italic transition-colors duration-300"
+                        style={{ color: currentTheme.primaryColor }}
+                      >
+                        {currentTheme.branding?.appName || "DISCRETA BOUTIQUE"}
+                      </h2>
+                    );
+                 })()}
               </div>
               <p 
                 className="text-sm leading-relaxed"
@@ -367,7 +398,9 @@ export function StoreLayout() {
                 </h3>
                 <Link to="/quem-somos" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Quem Somos</Link>
                 <Link to="/politica-de-privacidade" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Privacidade</Link>
-                <Link to="/politica-de-troca" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Trocas e Devoluções</Link>
+                <Link to="/trocas-e-devolucoes" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Trocas e Devoluções</Link>
+                <Link to="/entrega-discreta" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Entrega Discreta</Link>
+                <Link to="/contato" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Contato</Link>
                 <Link to="/lgpd" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>LGPD</Link>
                 <Link to="/afiliados" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Afiliados</Link>
                 <h3 

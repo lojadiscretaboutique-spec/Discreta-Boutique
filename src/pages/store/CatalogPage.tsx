@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
 import { Search, X, Minus, Plus, Frown, Loader2, Truck } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -55,8 +55,9 @@ function normalizeSectionId(secId: string): string {
 
 export function CatalogPage() {
   const { currentTheme } = useTheme();
+  const { slug: routeSlug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const qCat = searchParams.get('categoria');
+  const qCat = searchParams.get('categoria') || routeSlug;
   const qSearch = searchParams.get('q');
   const qSection = searchParams.get('secao');
   const qSubcat = searchParams.get('subcategoria');
@@ -425,7 +426,7 @@ export function CatalogPage() {
         // Resolve params from URL
         const resolveParams = () => {
           const s = searchParams.get('secao');
-          const cat = searchParams.get('categoria');
+          const cat = searchParams.get('categoria') || routeSlug;
           const sub = searchParams.get('subcategoria');
           const col = searchParams.get('colecao');
           const q = searchParams.get('q');
@@ -1308,7 +1309,8 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
         {image ? (
           <img 
             src={image || undefined} 
-            alt={product.name} 
+            alt={`${product.name} | Discreta Boutique`} 
+            loading="lazy"
             className={cn(
               "w-full h-full object-cover transition-transform duration-1000 ease-out",
               !isOut && "group-hover:scale-105"

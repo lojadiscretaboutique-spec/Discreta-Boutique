@@ -23,6 +23,35 @@ export interface ThemeConfig {
   scheduled: boolean;
   startDate?: string | null; // ISO Date "yyyy-MM-dd" or "yyyy-MM-ddTHH:mm"
   endDate?: string | null;   // ISO Date "yyyy-MM-dd" or "yyyy-MM-ddTHH:mm"
+  
+  // Branding Identity and PWA
+  branding?: {
+    logoHorizontal?: BrandingImageItem | string;
+    logoSquare?: BrandingImageItem | string;
+    logo?: BrandingImageItem | string; // legacy support
+    favicon?: BrandingImageItem | string;
+    icon192?: BrandingImageItem | string;
+    icon512?: BrandingImageItem | string;
+    maskableIcon?: BrandingImageItem | string;
+    appleTouchIcon?: BrandingImageItem | string;
+    socialPreviewImage?: BrandingImageItem | string;
+    themeColor?: string;
+    backgroundColor?: string;
+    shortName?: string;
+    appName?: string;
+    pwaVersion?: number;
+  };
+}
+
+export interface BrandingImageItem {
+  url: string;
+  path: string;
+  width: number;
+  height: number;
+  sizeKb: number;
+  format: string;
+  version: number;
+  uploadDate?: string;
 }
 
 export interface ThemeLog {
