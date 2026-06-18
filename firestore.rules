@@ -416,6 +416,59 @@ service cloud.firestore {
       allow write: if isMasterAdmin() || can('banners', 'editar') || can('banners', 'criar');
     }
 
+    match /blog_posts/{doc} {
+      allow read: if true;
+      allow create: if isMasterAdmin() || can('marketing', 'criar');
+      allow update: if isMasterAdmin() || can('marketing', 'editar') || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
+      );
+      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+    }
+
+    match /blog_categories/{doc} {
+      allow read: if true;
+      allow create, update: if isMasterAdmin() || can('marketing', 'editar');
+      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+    }
+
+    match /blog_tags/{doc} {
+      allow read: if true;
+      allow create, update: if isMasterAdmin() || can('marketing', 'editar');
+      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+    }
+
+    match /blog_comments/{doc} {
+      allow read: if true;
+      allow create: if true; // Public comments
+      allow update, delete: if isMasterAdmin() || can('marketing', 'editar');
+    }
+
+    match /blog_settings/{doc} {
+      allow read: if true;
+      allow write: if isMasterAdmin() || can('marketing', 'editar');
+    }
+
+    match /blog_authors/{doc} {
+      allow read: if true;
+      allow write: if isMasterAdmin() || can('marketing', 'editar');
+    }
+
+    match /blog_statistics/{doc} {
+      allow read: if isMasterAdmin() || can('marketing', 'visualizar');
+      allow create, update: if true; // Captures clicks and shares anonymously
+      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+    }
+
+    match /blog_clusters/{doc} {
+      allow read, list: if true;
+      allow create, update: if isMasterAdmin() || can('marketing', 'editar');
+      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+    }
+
+    match /blog_ai_generations/{doc} {
+      allow read, write: if isMasterAdmin() || can('marketing', 'editar') || can('marketing', 'visualizar');
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

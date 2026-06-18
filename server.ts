@@ -8,6 +8,7 @@ import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
 import { db } from './src/lib/firebase';
 import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { geminiService } from "./src/server/services/geminiService";
 
 // Verify connection
 (async () => {
@@ -170,6 +171,29 @@ async function startServer() {
     }
   });
 
+  // Gemini AI blog post generator endpoint
+  app.post("/api/blog/generate-ai", async (req, res) => {
+    try {
+      const { tema, objetivo, publico, tomVoz, palavras, categoria, palavrasChave } = req.body;
+      if (!tema || !categoria) {
+        return res.status(400).json({ error: "Tema e Categoria são obrigatórios" });
+      }
+      const result = await geminiService.generateBlogPost({
+        tema,
+        objetivo: objetivo || "Educar e converter em vendas",
+        publico: publico || "Geral",
+        tomVoz: tomVoz || "Empoderado e Sensual",
+        palavras: Number(palavras) || 500,
+        categoria,
+        palavrasChave: Array.isArray(palavrasChave) ? palavrasChave : []
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error("Error generating post content via Gemini:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Retry endpoint for BotConversa webhook
   app.post("/api/botconversa/retry", async (req, res) => {
     try {
@@ -288,6 +312,249 @@ async function startServer() {
     } catch (error: any) {
       console.error("Erro no teste de webhook:", error);
       res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Unique session lock for concurrent request protection per Admin user
+  const activeGenerations = new Set<string>();
+
+  // Secure OpenAI Blog Content Generation Endpoint
+  app.post("/api/admin/blog/generate-ai", async (req, res) => {
+    let uid = "";
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: "Tokens ou autorizações de autenticação ausentes." });
+      }
+      const token = authHeader.split('Bearer ')[1];
+
+      // Lazy load Firebase Admin and getAdminDb to guarantee safety & portability
+      const admin = (await import('firebase-admin')).default;
+      const { getAdminDb } = await import('./src/server/lib/firebaseAdmin.js');
+      const adminDb = getAdminDb();
+      if (!adminDb) {
+        throw new Error("Não foi possível inicializar a conexão com a base administrativa.");
+      }
+
+      // Verify Firebase ID Token
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      uid = decodedToken.uid;
+      const email = decodedToken.email;
+
+      // Check Admin Role
+      let isUserAdmin = email === 'lojadiscretaboutique@gmail.com' || uid === 'VpnA7EDoSoUMF0VGOHyiCjyrOSf2';
+      if (!isUserAdmin) {
+        const uDoc = await adminDb.collection('users').doc(uid).get();
+        if (uDoc.exists && uDoc.data()?.role === 'admin') {
+          isUserAdmin = true;
+        }
+      }
+
+      if (!isUserAdmin) {
+        return res.status(403).json({ error: "Acesso reservado exclusivamente para administradores autenticados." });
+      }
+
+      // Concurrent request check (multi-click protection)
+      if (activeGenerations.has(uid)) {
+        return res.status(429).json({ error: "Uma geração com Inteligência Artificial já está em execução para sua conta. Por favor, aguarde alguns instantes." });
+      }
+      activeGenerations.add(uid);
+
+      try {
+        const {
+          tema,
+          palavraChavePrincipal,
+          palavrasChaveSecundarias,
+          objetivo,
+          publico,
+          tomVoz,
+          palavras,
+          categoria,
+          tags,
+          produtosSelecionados,
+          sugerirProdutos,
+          faqRequested,
+          ctaRequested,
+          seoLocal
+        } = req.body;
+
+        if (!tema || !palavraChavePrincipal || !categoria) {
+          return res.status(400).json({ error: "Os campos Tema, Palavra-chave Principal e Categoria são obrigatórios para a geração." });
+        }
+
+        // Fetch configurable daily generation limit or default to 15
+        let maxDaily = 15;
+        const settingsSnap = await adminDb.collection('settings').doc('blog_ai_settings').get();
+        if (settingsSnap.exists) {
+          const limitVal = settingsSnap.data()?.maxDailyGenerations;
+          if (typeof limitVal === 'number' && limitVal > 0) {
+            maxDaily = limitVal;
+          }
+        }
+
+        // Daily usage limit query (since start of calendar day local time)
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const dailySnap = await adminDb.collection('blog_ai_generations')
+          .where('createdAt', '>=', startOfDay)
+          .get();
+
+        if (dailySnap.size >= maxDaily) {
+          return res.status(429).json({
+            error: `O limite diário de segurança de ${maxDaily} gerações de conteúdo com IA foi atingido hoje para evitar custos excessivos com a API.`
+          });
+        }
+
+        // Retrieve active catalog products in stock to feed into prompt suggestions
+        let catalogProductsList: { id: string; name: string; price: number }[] = [];
+        try {
+          const pSnap = await adminDb.collection('products')
+            .where('active', '==', true)
+            .limit(100)
+            .get();
+
+          pSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            const stock = Number(data.stock || 0);
+            const showInCatalog = data.extras?.showInCatalog !== false;
+            if (stock > 0 && showInCatalog) {
+              catalogProductsList.push({
+                id: docSnap.id,
+                name: data.name || "",
+                price: Number(data.price || 0)
+              });
+            }
+          });
+        } catch (err) {
+          console.warn("[Blog AI Generate] Failed to capture product catalog list:", err);
+        }
+
+        const { blogAiService } = await import('./src/server/services/blogAiService.js');
+        
+        const generatedPayload = await blogAiService.generateBlogPost({
+          tema,
+          palavraChavePrincipal,
+          palavrasChaveSecundarias: palavrasChaveSecundarias || [],
+          objetivo: objetivo || "SEO",
+          publico: publico || "mulheres",
+          tomVoz: tomVoz || "elegante",
+          palavras: Number(palavras) || 900,
+          categoria,
+          tags: tags || [],
+          produtosSelecionados: produtosSelecionados || [],
+          sugerirProdutos: !!sugerirProdutos,
+          faqRequested: faqRequested !== false,
+          ctaRequested: ctaRequested !== false,
+          seoLocal: !!seoLocal,
+          catalogProductsList
+        });
+
+        // Store log in blog_ai_generations collection
+        const logDocRef = await adminDb.collection('blog_ai_generations').add({
+          userId: uid,
+          userEmail: email,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          prompt: { tema, palavraChavePrincipal, palavrasChaveSecundarias, objetivo, publico, tomVoz, palavras, categoria, tags, seoLocal },
+          resultado: generatedPayload,
+          tokensEstimated: generatedPayload.tokensEstimated || 0,
+          articleId: null,
+          status: "pending_review",
+          modelo: process.env.OPENAI_MODEL || "gpt-4o-mini"
+        });
+
+        res.status(200).json({
+          success: true,
+          generationId: logDocRef.id,
+          post: generatedPayload
+        });
+
+      } finally {
+        activeGenerations.delete(uid);
+      }
+    } catch (err: any) {
+      console.error("[Blog AI Generate Endpoint Error]:", err);
+      res.status(500).json({ error: err.message || "Falha ao gerar postagem via OpenAI." });
+    }
+  });
+
+  // Secure OpenAI Blog Cluster AI Planning Endpoint
+  app.post("/api/admin/blog/generate-cluster-ai", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: "Tokens ou autorizações de autenticação ausentes." });
+      }
+      const token = authHeader.split('Bearer ')[1];
+
+      const admin = (await import('firebase-admin')).default;
+      const { getAdminDb } = await import('./src/server/lib/firebaseAdmin.js');
+      const adminDb = getAdminDb();
+      if (!adminDb) {
+        throw new Error("Não foi possível inicializar a conexão com a base administrativa.");
+      }
+
+      // Verify Firebase ID Token
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      const uid = decodedToken.uid;
+      const email = decodedToken.email;
+
+      // Check Admin Role
+      let isUserAdmin = email === 'lojadiscretaboutique@gmail.com' || uid === 'VpnA7EDoSoUMF0VGOHyiCjyrOSf2';
+      if (!isUserAdmin) {
+        const uDoc = await adminDb.collection('users').doc(uid).get();
+        if (uDoc.exists && uDoc.data()?.role === 'admin') {
+          isUserAdmin = true;
+        }
+      }
+
+      if (!isUserAdmin) {
+        return res.status(403).json({ error: "Acesso reservado exclusivamente para administradores autenticados." });
+      }
+
+      const { tema } = req.body;
+      if (!tema) {
+        return res.status(400).json({ error: "O campo tema é obrigatório para propor um Cluster SEO." });
+      }
+
+      // Capture active catalog products
+      let catalogProductsList: { id: string; name: string; price: number }[] = [];
+      try {
+        const pSnap = await adminDb.collection('products')
+          .where('active', '==', true)
+          .limit(100)
+          .get();
+
+        pSnap.forEach(docSnap => {
+          const data = docSnap.data();
+          const stock = Number(data.stock || 0);
+          const showInCatalog = data.extras?.showInCatalog !== false;
+          if (stock > 0 && showInCatalog) {
+            catalogProductsList.push({
+              id: docSnap.id,
+              name: data.name || "",
+              price: Number(data.price || 0)
+            });
+          }
+        });
+      } catch (err) {
+        console.warn("[Blog AI Cluster Generate] Failed to capture product catalog list:", err);
+      }
+
+      const { blogAiService } = await import('./src/server/services/blogAiService.js');
+      const clusterPlans = await blogAiService.generateSEOClusterSuggestions({
+        tema,
+        catalogProductsList
+      });
+
+      res.status(200).json({
+        success: true,
+        cluster: clusterPlans
+      });
+
+    } catch (err: any) {
+      console.error("[Blog AI Generate Cluster Endpoint Error]:", err);
+      res.status(500).json({ error: err.message || "Falha ao propor cluster via OpenAI." });
     }
   });
 
@@ -492,6 +759,33 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
   </url>`;
           }
         });
+
+        // Live blog posts sitemap injection
+        try {
+          xml += `
+  <url>
+    <loc>${domain}/blog</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+          const blogSnap = await getDocs(collection(db, 'blog_posts'));
+          blogSnap.docs.forEach(docSnap => {
+            const bp = docSnap.data();
+            const isVisible = bp.status === 'publicado' || (bp.status === 'agendado' && bp.publishedAt && new Date(bp.publishedAt) <= new Date());
+            if (isVisible && bp.slug) {
+              xml += `
+  <url>
+    <loc>${domain}/blog/${bp.slug}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+            }
+          });
+        } catch (blogErr) {
+          console.error("Error building sitemap.xml blog nodes:", blogErr);
+        }
       } catch (dbErr) {
         console.error("Error building sitemap.xml dynamic nodes:", dbErr);
       }
@@ -501,6 +795,42 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
     } catch (e) {
       console.error("Error serving sitemap.xml:", e);
       res.status(500).send("Error serving sitemap.xml");
+    }
+  });
+
+  app.get('/blog/rss.xml', async (req, res) => {
+    try {
+      res.header('Content-Type', 'application/rss+xml');
+      const domain = 'https://discretaboutique.com.br';
+      let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Blog Discreta Boutique</title>
+    <link>${domain}/blog</link>
+    <description>Artigos sobre lingeries, autoestima e presentes românticos.</description>`;
+
+      const blogSnap = await getDocs(collection(db, 'blog_posts'));
+      blogSnap.docs.forEach(docSnap => {
+        const bp = docSnap.data();
+        const isVisible = bp.status === 'publicado';
+        if (isVisible) {
+          xml += `
+    <item>
+      <title><![CDATA[${bp.title}]]></title>
+      <link>${domain}/blog/${bp.slug}</link>
+      <description><![CDATA[${bp.summary || ''}]]></description>
+      <pubDate>${bp.publishedAt || new Date().toISOString()}</pubDate>
+    </item>`;
+        }
+      });
+
+      xml += `
+  </channel>
+</rss>`;
+      res.send(xml);
+    } catch (e) {
+      console.error("Error serving RSS:", e);
+      res.status(500).send("Error serving RSS");
     }
   });
 
@@ -1204,6 +1534,226 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
                 }
               };
             }
+          }
+        }
+      }
+
+      // Blog Route Override (Listing)
+      else if (req.path === '/blog') {
+        title = "Blog Discreta Boutique | Sexualidade, Lingerie e Bem-Estar em Icó - CE";
+        description = "Aprenda sobre saúde íntima, dicas de sedução, novidades em lingeries, cosméticos sensuais e ideias para casais no blog oficial da Discreta Boutique em Icó, Ceará.";
+        ogUrl = `${domain}/blog`;
+
+        jsonLd = {
+          "@context": "https://schema.org",
+          "@type": "Blog",
+          "name": "Blog Discreta Boutique",
+          "description": description,
+          "url": ogUrl
+        };
+
+        try {
+          const blogApiUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/blog_posts?pageSize=100`;
+          const blogResponse = await Promise.resolve().then(() => fetch(blogApiUrl)).catch(() => null);
+
+          let blogsHtml = "";
+          if (blogResponse && blogResponse.ok) {
+            const blogData = await blogResponse.json();
+            const docs = blogData.documents || [];
+            
+            const publishedPosts = docs.map((d: any) => {
+              const fields = d.fields || {};
+              const id = d.name ? d.name.split('/').pop() : '';
+              return {
+                id,
+                title: fields.title?.stringValue || '',
+                slug: fields.slug?.stringValue || '',
+                subtitle: fields.subtitle?.stringValue || '',
+                summary: fields.summary?.stringValue || '',
+                status: fields.status?.stringValue || '',
+                coverImage: fields.coverImage?.stringValue || '',
+                publishedAt: fields.publishedAt?.stringValue || fields.createdAt?.stringValue || ''
+              };
+            }).filter((p: any) => p.status === 'publicado');
+
+            if (publishedPosts.length > 0) {
+              blogsHtml = publishedPosts.map((p: any) => `
+                <article style="background: #121212; border: 1px solid #222; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; text-align: left;">
+                  ${p.coverImage ? `<img src="${p.coverImage}" alt="${p.title}" style="width: 100%; height: 200px; object-fit: cover;" referrerPolicy="no-referrer" />` : ''}
+                  <div style="padding: 1.5rem;">
+                    <span style="font-size: 0.8rem; color: #dc2626; font-weight: 700; text-transform: uppercase;">Artigo</span>
+                    <h2 style="font-size: 1.3rem; margin: 0.5rem 0; font-weight: 800;">
+                      <a href="/blog/${p.slug}" style="color: #fff; text-decoration: none;">${p.title}</a>
+                    </h2>
+                    <p style="color: #ccc; font-size: 0.95rem; line-height: 1.5; margin-bottom: 1rem;">${p.summary || p.subtitle || ''}</p>
+                    <a href="/blog/${p.slug}" style="color: #dc2626; text-decoration: none; font-weight: 700; font-size: 0.9rem;">Ler Artigo Completo &rarr;</a>
+                  </div>
+                </article>
+              `).join('\n');
+            } else {
+              blogsHtml = `<p style="grid-column: 1/-1; text-align: center; color: #777;">Nenhum artigo publicado no momento. Volte em breve!</p>`;
+            }
+          }
+
+          ssrContent = `
+            <div style="max-width: 1200px; margin: 0 auto; padding: 2rem; color: #fff; font-family: system-ui, -apple-system, sans-serif;">
+              <header style="text-align: center; margin-bottom: 3.5rem;">
+                <h1 style="font-size: 2.8rem; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 0.5rem;">Blog Discreta Boutique</h1>
+                <p style="font-size: 1.25rem; color: #aaa; max-width: 700px; margin: 0 auto; line-height: 1.6;">
+                  Dicas de intimidade, autoestima, sedução e bem-estar para empoderar você e a sua parceria amorosa em Icó-CE.
+                </p>
+              </header>
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2rem;">
+                ${blogsHtml}
+              </div>
+            </div>
+          `;
+        } catch (blogErr) {
+          console.error("Error creating Blog SSR content:", blogErr);
+        }
+      }
+
+      // Blog Article Route Override (Single)
+      else if (req.path.startsWith('/blog/')) {
+        const blogPostMatch = req.path.match(/^\/blog\/([^/]+)$/);
+        if (blogPostMatch) {
+          const blogSlug = blogPostMatch[1];
+          const blogApiUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents:runQuery`;
+          
+          try {
+            const blogResponse = await fetch(blogApiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                structuredQuery: {
+                  from: [{ collectionId: "blog_posts" }],
+                  where: {
+                    fieldFilter: {
+                      field: { fieldPath: "slug" },
+                      op: "EQUAL",
+                      value: { stringValue: blogSlug }
+                    }
+                  },
+                  limit: 1
+                }
+              })
+            });
+
+            if (blogResponse.ok) {
+              const runQueryData = await blogResponse.json();
+              if (runQueryData && runQueryData[0] && runQueryData[0].document) {
+                const docFields = runQueryData[0].document.fields;
+                const postTitle = docFields.title?.stringValue || "Artigo";
+                const postSummary = docFields.summary?.stringValue || docFields.subtitle?.stringValue || "";
+                const postContent = docFields.content?.stringValue || "";
+                const postCover = docFields.coverImage?.stringValue || "";
+                
+                title = `${postTitle} | Blog Discreta Boutique | Icó - CE`;
+                description = postSummary ? `${postSummary.substring(0, 155).trim()}...` : `Leia "${postTitle}" no blog da Discreta Boutique em Icó, com total discrição e sigilo.`;
+                if (postCover) image = postCover;
+                ogUrl = `${domain}/blog/${blogSlug}`;
+
+                // Parse FAQs if present
+                const faqsValues = docFields.seo?.mapValue?.fields?.faq?.arrayValue?.values || [];
+                const faqList = faqsValues.map((fv: any) => {
+                  const itemFields = fv.mapValue?.fields || {};
+                  return {
+                    question: itemFields.question?.stringValue || "",
+                    answer: itemFields.answer?.stringValue || ""
+                  };
+                }).filter((f: any) => f.question && f.answer);
+
+                const faqLd = faqList.length > 0 ? {
+                  "@type": "FAQPage",
+                  "mainEntity": faqList.map((f: any) => ({
+                    "@type": "Question",
+                    "name": f.question,
+                    "acceptedAnswer": {
+                      "@type": "Answer",
+                      "text": f.answer
+                    }
+                  }))
+                } : null;
+
+                jsonLd = {
+                  "@context": "https://schema.org",
+                  "@graph": [
+                    {
+                      "@type": "BlogPosting",
+                      "@id": ogUrl,
+                      "headline": postTitle,
+                      "description": description,
+                      "image": image,
+                      "author": {
+                        "@type": "Organization",
+                        "name": "Discreta Boutique"
+                      },
+                      "publisher": {
+                        "@type": "Organization",
+                        "name": "Discreta Boutique",
+                        "logo": {
+                          "@type": "ImageObject",
+                          "url": image
+                        }
+                      },
+                      "mainEntityOfPage": ogUrl
+                    },
+                    ...(faqLd ? [faqLd] : [])
+                  ]
+                };
+
+                // High performance simplified markdown translator for crawler
+                const formattedHtml = postContent
+                  .split("\n")
+                  .map(line => {
+                    const cleanLine = line.trim();
+                    if (cleanLine.startsWith("### ")) {
+                      return `<h3 style="font-size: 1.4rem; font-weight: 700; margin: 1.5rem 0 0.5rem 0;">${cleanLine.replace("### ", "")}</h3>`;
+                    } else if (cleanLine.startsWith("## ")) {
+                      return `<h2 style="font-size: 1.8rem; font-weight: 800; margin: 2rem 0 0.75rem 0; color: #dc2626; border-bottom: 1px solid #222; padding-bottom: 0.25rem;">${cleanLine.replace("## ", "")}</h2>`;
+                    } else if (cleanLine.startsWith("# ")) {
+                      return `<h1 style="font-size: 2.2rem; font-weight: 900; margin: 2rem 0 1rem 0;">${cleanLine.replace("# ", "")}</h1>`;
+                    } else if (cleanLine.startsWith("- ")) {
+                      return `<li style="margin-left: 1.5rem; margin-bottom: 0.5rem; font-size: 1rem; line-height: 1.6;">${cleanLine.replace("- ", "")}</li>`;
+                    } else if (cleanLine) {
+                      return `<p style="font-size: 1.05rem; line-height: 1.7; color: #e5e5e5; margin-bottom: 1.25rem;">${cleanLine}</p>`;
+                    }
+                    return "";
+                  })
+                  .join("\n");
+
+                const faqSectionHtml = faqList.length > 0 ? `
+                  <section style="margin-top: 4rem; border-top: 2px solid #222; padding-top: 2rem;">
+                    <h2 style="font-size: 1.8rem; font-weight: 800; margin-bottom: 1.5rem; color: #dc2626;">Perguntas Frequentes</h2>
+                    <div>
+                      ${faqList.map((f: any) => `
+                        <div style="margin-bottom: 1.5rem;">
+                          <h3 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem;">${f.question}</h3>
+                          <p style="font-size: 1rem; color: #ccc; line-height: 1.6; margin: 0;">${f.answer}</p>
+                        </div>
+                      `).join("\n")}
+                    </div>
+                  </section>
+                ` : "";
+
+                ssrContent = `
+                  <article style="max-width: 800px; margin: 0 auto; padding: 2rem; color: #fff; font-family: system-ui, -apple-system, sans-serif; text-align: left;">
+                    <header style="margin-bottom: 2.5rem;">
+                      <a href="/blog" style="color: #888; text-decoration: none; font-size: 0.9rem; font-weight: 700; text-transform: uppercase;">&larr; Voltar para o Blog</a>
+                      <h1 style="font-size: 2.8rem; font-weight: 900; letter-spacing: -0.02em; margin: 1rem 0; color: #ffffff; line-height: 1.15;">${postTitle}</h1>
+                      ${postSummary ? `<p style="font-size: 1.25rem; color: #aaa; margin-bottom: 1.5rem; line-height: 1.5; font-style: italic;">${postSummary}</p>` : ""}
+                    </header>
+                    ${postCover ? `<div style="margin-bottom: 2.5rem; text-align: center;"><img src="${postCover}" alt="${postTitle}" style="width: 100%; max-height: 480px; object-fit: cover; border-radius: 8px;" referrerPolicy="no-referrer" /></div>` : ""}
+                    <div style="margin-bottom: 3rem;">
+                      ${formattedHtml}
+                    </div>
+                    ${faqSectionHtml}
+                  </article>
+                `;
+              }
+            }
+          } catch (err) {
+            console.error("Error creating Blog Single SSR content:", err);
           }
         }
       }

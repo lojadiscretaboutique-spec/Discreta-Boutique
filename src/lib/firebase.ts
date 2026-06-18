@@ -1,4 +1,5 @@
 import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import { initializeFirestore, setLogLevel } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -32,6 +33,8 @@ export const db = initializeFirestore(app, {
   databaseId: typedConfig.firestoreDatabaseId || '(default)',
   experimentalForceLongPolling: true,
 });
+
+export const auth = getAuth(app);
 
 console.log("📍 [Firebase Client] App Project ID:", app.options.projectId);
 console.log("📦 [Firestore Client] Initialized Database:", typedConfig.firestoreDatabaseId || '(default)');

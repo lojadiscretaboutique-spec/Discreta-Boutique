@@ -397,6 +397,7 @@ export function StoreLayout() {
                   Institucional
                 </h3>
                 <Link to="/quem-somos" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Quem Somos</Link>
+                <Link to="/blog" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Blog</Link>
                 <Link to="/politica-de-privacidade" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Privacidade</Link>
                 <Link to="/trocas-e-devolucoes" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Trocas e Devoluções</Link>
                 <Link to="/entrega-discreta" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Entrega Discreta</Link>

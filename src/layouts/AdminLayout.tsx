@@ -55,6 +55,7 @@ export function AdminLayout() {
         { name: 'Postagens', path: '/admin/marketing/postagem', permission: 'banners' },
         { name: 'Bot Conversa / Webhooks', path: '/admin/marketing/webhooks', permission: 'logs' },
         { name: 'Programa de Afiliados', path: '/admin/marketing/afiliados', permission: 'banners' },
+        { name: 'Blog SEO ✍️', path: '/admin/blog', permission: 'banners' },
     ]},
     { name: 'Configurações', path: '/admin/config', icon: Settings, permission: 'settings', submenu: [
         { name: 'Dados da Loja', path: '/admin/config', permission: 'settings' },

@@ -67,6 +67,30 @@ const AdminTypography = lazy(() => import('./pages/admin/AdminTypography').then(
 const AdminLiveShop = lazy(() => import('./pages/admin/marketing/AdminLiveShop').then(m => ({ default: m.AdminLiveShop })));
 const LiveShopPage = lazy(() => import('./pages/store/LiveShopPage').then(m => ({ default: m.LiveShopPage })));
 
+// Public Blog Pages
+const BlogPage = lazy(() => import('./pages/store/blog/BlogPage').then(m => ({ default: m.BlogPage })));
+const BlogArticlePage = lazy(() => import('./pages/store/blog/BlogArticlePage').then(m => ({ default: m.BlogArticlePage })));
+const BlogClusterPage = lazy(() => import('./pages/store/blog/BlogClusterPage').then(m => ({ default: m.BlogClusterPage })));
+const WebStoriesCatalog = lazy(() => import('./pages/store/blog/WebStoriesCatalog').then(m => ({ default: m.WebStoriesCatalog })));
+const WebStoryViewer = lazy(() => import('./pages/store/blog/WebStoryViewer').then(m => ({ default: m.WebStoryViewer })));
+const NewsletterPage = lazy(() => import('./pages/store/blog/NewsletterPage').then(m => ({ default: m.NewsletterPage })));
+
+// Admin Blog Pages
+const AdminBlogHub = lazy(() => import('./pages/admin/blog/AdminBlogHub').then(m => ({ default: m.AdminBlogHub })));
+const AdminBlogNewsletter = lazy(() => import('./pages/admin/blog/AdminBlogNewsletter').then(m => ({ default: m.AdminBlogNewsletter })));
+const AdminBlogAuthority = lazy(() => import('./pages/admin/blog/AdminBlogAuthority').then(m => ({ default: m.AdminBlogAuthority })));
+const AdminBlogWebStories = lazy(() => import('./pages/admin/blog/AdminBlogWebStories').then(m => ({ default: m.AdminBlogWebStories })));
+const AdminBlogWebStoriesStats = lazy(() => import('./pages/admin/blog/AdminBlogWebStoriesStats').then(m => ({ default: m.AdminBlogWebStoriesStats })));
+const AdminBlogEditor = lazy(() => import('./pages/admin/blog/AdminBlogEditor').then(m => ({ default: m.AdminBlogEditor })));
+const AdminBlogAI = lazy(() => import('./pages/admin/blog/AdminBlogAI').then(m => ({ default: m.AdminBlogAI })));
+const AdminBlogCategories = lazy(() => import('./pages/admin/blog/AdminBlogCategories').then(m => ({ default: m.AdminBlogCategories })));
+const AdminBlogIntelligence = lazy(() => import('./pages/admin/blog/AdminBlogIntelligence').then(m => ({ default: m.AdminBlogIntelligence })));
+const AdminBlogSettings = lazy(() => import('./pages/admin/blog/AdminBlogSettings').then(m => ({ default: m.AdminBlogSettings })));
+const AdminBlogSEO = lazy(() => import('./pages/admin/blog/AdminBlogSEO').then(m => ({ default: m.AdminBlogSEO })));
+const AdminBlogComments = lazy(() => import('./pages/admin/blog/AdminBlogComments').then(m => ({ default: m.AdminBlogComments })));
+const AdminBlogStats = lazy(() => import('./pages/admin/blog/AdminBlogStats').then(m => ({ default: m.AdminBlogStats })));
+const AdminBlogClusters = lazy(() => import('./pages/admin/blog/AdminBlogClusters').then(m => ({ default: m.AdminBlogClusters })));
+
 // Loading Component (Splash Screen)
 function PageLoader() {
   const settings = useSettings();
@@ -163,6 +187,12 @@ function AppContent() {
             <Route path="/sucesso" element={<SuccessPage />} />
             <Route path="/afiliados" element={<AffiliateLandingPage />} />
             <Route path="/live" element={<LiveShopPage />} />
+            <Route path="/blog" element={<BlogPage />} />
+            <Route path="/blog/:slug" element={<BlogArticlePage />} />
+            <Route path="/blog/guia/:clusterSlug" element={<BlogClusterPage />} />
+            <Route path="/stories" element={<WebStoriesCatalog />} />
+            <Route path="/story/:slug" element={<WebStoryViewer />} />
+            <Route path="/newsletter" element={<NewsletterPage />} />
           </Route>
 
           {/* Standalone public Wi-Fi Hotspot portal page */}
@@ -217,6 +247,27 @@ function AppContent() {
             <Route path="config" element={<AdminConfig />} />
             <Route path="config/theme-manager" element={<AdminThemeManager />} />
             <Route path="config/typography" element={<AdminTypography />} />
+
+            {/* Admin Blog Routes */}
+            <Route path="blog" element={<AdminBlogHub />} />
+            <Route path="blog/autoridade" element={<AdminBlogAuthority />} />
+            <Route path="blog/inteligencia" element={<AdminBlogIntelligence />} />
+            <Route path="blog/novo" element={<AdminBlogEditor />} />
+            <Route path="blog/editar/:id" element={<AdminBlogEditor />} />
+            <Route path="blog/ia" element={<AdminBlogAI />} />
+            <Route path="blog/categorias" element={<AdminBlogCategories />} />
+            <Route path="blog/configuracoes" element={<AdminBlogSettings />} />
+            <Route path="blog/seo" element={<AdminBlogSEO />} />
+            <Route path="blog/comentarios" element={<AdminBlogComments />} />
+            <Route path="blog/estatisticas" element={<AdminBlogStats />} />
+            <Route path="blog/clusters" element={<AdminBlogClusters />} />
+            <Route path="blog/clusters/novo" element={<AdminBlogClusters />} />
+            <Route path="blog/clusters/editar/:id" element={<AdminBlogClusters />} />
+            <Route path="blog/web-stories" element={<AdminBlogWebStories />} />
+            <Route path="blog/web-stories/estatisticas" element={<AdminBlogWebStoriesStats />} />
+            <Route path="blog/newsletter" element={<AdminBlogNewsletter />} />
+            <Route path="blog/rascunhos" element={<AdminBlogHub initialTab="rascunhos" />} />
+            <Route path="blog/lixeira" element={<AdminBlogHub initialTab="lixeira" />} />
           </Route>
         </Routes>
       </Suspense>

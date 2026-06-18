@@ -596,6 +596,127 @@ export default {
         totalProducts: { type: "number" },
         totalCategories: { type: "number" }
       }
+    },
+    BlogPost: {
+      title: "Blog Post",
+      description: "A blog article targeting organic search and SEO",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        slug: { type: "string" },
+        subtitle: { type: "string" },
+        summary: { type: "string" },
+        content: { type: "string" },
+        coverImage: { type: "string" },
+        gallery: { type: "array", items: { type: "string" } },
+        categoryId: { type: "string" },
+        tags: { type: "array", items: { type: "string" } },
+        authorId: { type: "string" },
+        publishedAt: { type: "string", format: "date-time" },
+        scheduledAt: { type: "string", format: "date-time" },
+        status: { type: "string", enum: ["draft", "published", "scheduled", "archived"] },
+        featured: { type: "boolean" },
+        relatedPosts: { type: "array", items: { type: "string" } },
+        relatedProducts: { type: "array", items: { type: "string" } },
+        relatedCategories: { type: "array", items: { type: "string" } },
+        readingTime: { type: "number" },
+        seo: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            description: { type: "string" },
+            canonical: { type: "string" },
+            keywords: { type: "string" },
+            ogImage: { type: "string" },
+            twitterImage: { type: "string" },
+            faq: { type: "array" }
+          }
+        },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        views: { type: "number" }
+      },
+      required: ["title", "slug", "content", "status", "createdAt"]
+    },
+    BlogCategory: {
+      title: "Blog Category",
+      description: "Category for grouping blog posts",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        slug: { type: "string" },
+        description: { type: "string" }
+      },
+      required: ["name", "slug"]
+    },
+    BlogTag: {
+      title: "Blog Tag",
+      description: "Tag label for blog posts",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        slug: { type: "string" }
+      },
+      required: ["name", "slug"]
+    },
+    BlogComment: {
+      title: "Blog Comment",
+      description: "User comments on blog posts",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        postId: { type: "string" },
+        authorName: { type: "string" },
+        authorEmail: { type: "string" },
+        content: { type: "string" },
+        status: { type: "string", enum: ["pending", "approved", "spam", "rejected"] },
+        createdAt: { type: "string", format: "date-time" }
+      },
+      required: ["postId", "authorName", "content", "status", "createdAt"]
+    },
+    BlogSettings: {
+      title: "Blog Settings",
+      description: "General configuration for the blog",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        blogName: { type: "string" },
+        blogDescription: { type: "string" },
+        postsPerPage: { type: "number" },
+        commentsModerated: { type: "boolean" },
+        seo: { type: "object" }
+      }
+    },
+    BlogAuthor: {
+      title: "Blog Author",
+      description: "Blog post writer profile",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        avatarUrl: { type: "string" },
+        bio: { type: "string" },
+        role: { type: "string" }
+      },
+      required: ["name"]
+    },
+    BlogStatistic: {
+      title: "Blog Statistic",
+      description: "Access and click metrics logging",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        postId: { type: "string" },
+        views: { type: "number" },
+        clicks: { type: "number" },
+        shares: { type: "number" },
+        avgTime: { type: "number" },
+        source: { type: "string" },
+        date: { type: "string" }
+      }
     }
   },
   firestore: {
@@ -750,6 +871,34 @@ export default {
     "public_catalog_cache": {
       schema: { type: "object" },
       description: "Compiled public catalog cache of products, categories and metadata"
+    },
+    "blog_posts": {
+      schema: { $ref: "#/entities/BlogPost" },
+      description: "Blog articles and SEO posts"
+    },
+    "blog_categories": {
+      schema: { $ref: "#/entities/BlogCategory" },
+      description: "Blog categories for post classification"
+    },
+    "blog_tags": {
+      schema: { $ref: "#/entities/BlogTag" },
+      description: "Blog tags for quick searching"
+    },
+    "blog_comments": {
+      schema: { $ref: "#/entities/BlogComment" },
+      description: "Comments on blog posts under moderation"
+    },
+    "blog_settings": {
+      schema: { $ref: "#/entities/BlogSettings" },
+      description: "General configurations for the blog ecosystem"
+    },
+    "blog_authors": {
+      schema: { $ref: "#/entities/BlogAuthor" },
+      description: "Information about blog authors"
+    },
+    "blog_statistics": {
+      schema: { $ref: "#/entities/BlogStatistic" },
+      description: "Logged metrics for views and clicks in the blog"
     }
   }
 }

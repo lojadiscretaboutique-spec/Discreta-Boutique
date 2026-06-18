@@ -102,3 +102,49 @@ export async function uploadBrandingImage(
     uploadDate: new Date().toISOString()
   };
 }
+
+export interface BlogImageInfo {
+  url: string;
+  path: string;
+  width: number;
+  height: number;
+  sizeKb: number;
+  alt: string;
+  caption: string;
+  versions: {
+    desktop: string;
+    mobile: string;
+    thumbnail: string;
+  };
+}
+
+export async function uploadBlogImage(
+  file: File,
+  alt: string = "",
+  caption: string = ""
+): Promise<BlogImageInfo> {
+  // 1. Optimize versions
+  const desktopOpt = await optimizeImage(file, 1200, 1200, 0.85, true);
+  const mobileOpt = await optimizeImage(file, 768, 768, 0.85, true);
+  const thumbOpt = await optimizeImage(file, 400, 400, 0.85, true);
+
+  // 2. Upload each
+  const desktopUploaded = await uploadBrandingImage(desktopOpt, 'blog_posts');
+  const mobileUploaded = await uploadBrandingImage(mobileOpt, 'blog_posts');
+  const thumbUploaded = await uploadBrandingImage(thumbOpt, 'blog_posts');
+
+  return {
+    url: desktopUploaded.url,
+    path: desktopUploaded.path,
+    width: desktopUploaded.width,
+    height: desktopUploaded.height,
+    sizeKb: desktopUploaded.sizeKb,
+    alt,
+    caption,
+    versions: {
+      desktop: desktopUploaded.url,
+      mobile: mobileUploaded.url,
+      thumbnail: thumbUploaded.url
+    }
+  };
+}
