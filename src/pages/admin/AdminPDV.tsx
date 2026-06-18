@@ -2257,7 +2257,7 @@ export function AdminPDV() {
 
                     <div className="pt-4 border-t border-white/10 mt-4">
                       <h4 className="text-sm font-bold text-white mb-4">
-                        Endereço (Obrigatório)
+                        Endereço (Opcional)
                       </h4>
 
                       <datalist id="estados-sugestoes">
@@ -2290,10 +2290,9 @@ export function AdminPDV() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
                           <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">
-                            Estado *
+                            Estado
                           </label>
                           <input
-                            required
                             list="estados-sugestoes"
                             placeholder="SP"
                             value={newCustomer.endereco?.estado || ""}
@@ -2319,10 +2318,9 @@ export function AdminPDV() {
                         </div>
                         <div>
                           <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">
-                            Cidade *
+                            Cidade
                           </label>
                           <input
-                            required
                             list="cidades-sugestoes"
                             placeholder="São Paulo"
                             value={newCustomer.endereco?.cidade || ""}
@@ -2351,10 +2349,9 @@ export function AdminPDV() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
                           <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">
-                            Bairro *
+                            Bairro
                           </label>
                           <input
-                            required
                             list="bairros-sugestoes"
                             placeholder="Centro"
                             value={newCustomer.endereco?.bairro || ""}
@@ -2380,10 +2377,9 @@ export function AdminPDV() {
                         </div>
                         <div>
                           <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">
-                            Rua *
+                            Rua
                           </label>
                           <input
-                            required
                             placeholder="Nome da rua"
                             value={newCustomer.endereco?.rua || ""}
                             onChange={(e) =>
@@ -2411,10 +2407,9 @@ export function AdminPDV() {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                         <div>
                           <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">
-                            Número *
+                            Número
                           </label>
                           <input
-                            required
                             placeholder="123"
                             value={newCustomer.endereco?.numero || ""}
                             onChange={(e) =>
@@ -2468,10 +2463,9 @@ export function AdminPDV() {
 
                       <div>
                         <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">
-                          Ponto de Referência *
+                          Ponto de Referência
                         </label>
                         <input
-                          required
                           placeholder="Próximo ao mercado X"
                           value={newCustomer.endereco?.referencia || ""}
                           onChange={(e) =>
