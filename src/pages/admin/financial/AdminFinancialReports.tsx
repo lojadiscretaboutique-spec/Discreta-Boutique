@@ -91,7 +91,7 @@ export function AdminFinancialReports() {
                
                // Try order snapshot first, then global product fallback
                let cost = 0;
-               if (typeof item.costPrice === 'number') {
+               if (typeof item.costPrice === 'number' && item.costPrice > 0) {
                  cost = item.costPrice;
                } else if (item.productId && typeof currentProductCosts[item.productId] === 'number') {
                  cost = currentProductCosts[item.productId];

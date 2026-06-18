@@ -647,7 +647,18 @@ export default {
         id: { type: "string" },
         name: { type: "string" },
         slug: { type: "string" },
-        description: { type: "string" }
+        description: { type: "string" },
+        shortDescription: { type: "string" },
+        seoTitle: { type: "string" },
+        seoDescription: { type: "string" },
+        keywords: { type: "string" },
+        coverImage: { type: "string" },
+        icon: { type: "string" },
+        color: { type: "string" },
+        order: { type: "number" },
+        status: { type: "string", enum: ["ativa", "oculta"] },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" }
       },
       required: ["name", "slug"]
     },
@@ -716,6 +727,94 @@ export default {
         avgTime: { type: "number" },
         source: { type: "string" },
         date: { type: "string" }
+      }
+    },
+    PrinterIntegrationToken: {
+      title: "Printer Integration Token",
+      description: "Tokens securely hashed for AC-Printer authentication",
+      type: "object",
+      properties: {
+        tokenHash: { type: "string" },
+        tokenPreview: { type: "string" },
+        active: { type: "boolean" },
+        used: { type: "boolean" },
+        revoked: { type: "boolean" },
+        createdAt: { type: "string" },
+        expiresAt: { type: "string" },
+        usedAt: { type: "string" },
+        usedByDeviceId: { type: "string" },
+        createdBy: { type: "string" }
+      }
+    },
+    PrinterDevice: {
+      title: "Printer Device",
+      description: "Local authorized print dispatch agents",
+      type: "object",
+      properties: {
+        deviceId: { type: "string" },
+        deviceName: { type: "string" },
+        authorized: { type: "boolean" },
+        blocked: { type: "boolean" },
+        online: { type: "boolean" },
+        lastSeenAt: { type: "string" },
+        appVersion: { type: "string" },
+        os: { type: "string" },
+        printers: { type: "array" },
+        defaultPrinter: { type: "string" },
+        createdAt: { type: "string" },
+        updatedAt: { type: "string" }
+      }
+    },
+    PrinterSettings: {
+      title: "Printer Settings",
+      description: "Global receipt printing configurations",
+      type: "object",
+      properties: {
+        autoPrint: { type: "boolean" },
+        paperWidth: { type: "string" },
+        copies: { type: "number" },
+        allowReprint: { type: "boolean" },
+        maxRetries: { type: "number" },
+        soundNotification: { type: "boolean" },
+        createJobOnNewOrder: { type: "boolean" },
+        defaultDeviceId: { type: "string" },
+        defaultPrinterName: { type: "string" },
+        updatedAt: { type: "string" }
+      }
+    },
+    PrinterJob: {
+      title: "Printer Job",
+      description: "Individual print request item queue",
+      type: "object",
+      properties: {
+        orderId: { type: "string" },
+        orderNumber: { type: "string" },
+        status: { type: "string" },
+        assignedDeviceId: { type: "string" },
+        printerName: { type: "string" },
+        attempts: { type: "number" },
+        maxAttempts: { type: "number" },
+        errorMessage: { type: "string" },
+        createdAt: { type: "string" },
+        updatedAt: { type: "string" },
+        startedAt: { type: "string" },
+        printedAt: { type: "string" },
+        cancelledAt: { type: "string" }
+      }
+    },
+    PrinterLog: {
+      title: "Printer Log",
+      description: "Activity timeline events of the printer system",
+      type: "object",
+      properties: {
+        type: { type: "string" },
+        level: { type: "string" },
+        deviceId: { type: "string" },
+        orderId: { type: "string" },
+        jobId: { type: "string" },
+        message: { type: "string" },
+        metadata: { type: "object" },
+        createdAt: { type: "string" }
       }
     }
   },
@@ -899,6 +998,26 @@ export default {
     "blog_statistics": {
       schema: { $ref: "#/entities/BlogStatistic" },
       description: "Logged metrics for views and clicks in the blog"
+    },
+    "printerIntegrationTokens": {
+      schema: { $ref: "#/entities/PrinterIntegrationToken" },
+      description: "Integration tokens securely hashed for AC-Printer authentication"
+    },
+    "printerDevices": {
+      schema: { $ref: "#/entities/PrinterDevice" },
+      description: "Authorized computers and device clients running AC-Printer"
+    },
+    "printerSettings": {
+      schema: { $ref: "#/entities/PrinterSettings" },
+      description: "Global printer configurations"
+    },
+    "printerJobs": {
+      schema: { $ref: "#/entities/PrinterJob" },
+      description: "Print job queue for automated matching"
+    },
+    "printerLogs": {
+      schema: { $ref: "#/entities/PrinterLog" },
+      description: "Security and print system diagnostic timeline"
     }
   }
 }

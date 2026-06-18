@@ -64,12 +64,14 @@ const AdminMarketingHub = lazy(() => import('./pages/admin/marketing/AdminMarket
 const AdminVisitors = lazy(() => import('./pages/admin/analytics/AdminVisitors').then(m => ({ default: m.AdminVisitors })));
 const AdminThemeManager = lazy(() => import('./pages/admin/AdminThemeManager').then(m => ({ default: m.AdminThemeManager })));
 const AdminTypography = lazy(() => import('./pages/admin/AdminTypography').then(m => ({ default: m.AdminTypography })));
+const AdminPrinterConfig = lazy(() => import('./pages/admin/AdminPrinterConfig').then(m => ({ default: m.AdminPrinterConfig })));
 const AdminLiveShop = lazy(() => import('./pages/admin/marketing/AdminLiveShop').then(m => ({ default: m.AdminLiveShop })));
 const AdminWifiUsers = lazy(() => import('./pages/admin/marketing/AdminWifiUsers'));
 const LiveShopPage = lazy(() => import('./pages/store/LiveShopPage').then(m => ({ default: m.LiveShopPage })));
 
 // Public Blog Pages
 const BlogPage = lazy(() => import('./pages/store/blog/BlogPage').then(m => ({ default: m.BlogPage })));
+const BlogCategoryPage = lazy(() => import('./pages/store/blog/BlogCategoryPage').then(m => ({ default: m.BlogCategoryPage })));
 const BlogArticlePage = lazy(() => import('./pages/store/blog/BlogArticlePage').then(m => ({ default: m.BlogArticlePage })));
 const BlogClusterPage = lazy(() => import('./pages/store/blog/BlogClusterPage').then(m => ({ default: m.BlogClusterPage })));
 const WebStoriesCatalog = lazy(() => import('./pages/store/blog/WebStoriesCatalog').then(m => ({ default: m.WebStoriesCatalog })));
@@ -189,6 +191,7 @@ function AppContent() {
             <Route path="/afiliados" element={<AffiliateLandingPage />} />
             <Route path="/live" element={<LiveShopPage />} />
             <Route path="/blog" element={<BlogPage />} />
+            <Route path="/blog/categoria/:slug" element={<BlogCategoryPage />} />
             <Route path="/blog/:slug" element={<BlogArticlePage />} />
             <Route path="/blog/guia/:clusterSlug" element={<BlogClusterPage />} />
             <Route path="/stories" element={<WebStoriesCatalog />} />
@@ -249,6 +252,7 @@ function AppContent() {
             <Route path="config" element={<AdminConfig />} />
             <Route path="config/theme-manager" element={<AdminThemeManager />} />
             <Route path="config/typography" element={<AdminTypography />} />
+            <Route path="config/impressao" element={<AdminPrinterConfig />} />
 
             {/* Admin Blog Routes */}
             <Route path="blog" element={<AdminBlogHub />} />

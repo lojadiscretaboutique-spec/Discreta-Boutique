@@ -763,6 +763,25 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
   </url>`;
             }
           });
+
+          // Live blog categories sitemap injection
+          try {
+            const blogCatSnap = await getDocs(collection(db, 'blog_categories'));
+            blogCatSnap.docs.forEach(catDocSnap => {
+              const bc = catDocSnap.data();
+              if (bc.status !== 'oculta' && bc.slug) {
+                xml += `
+  <url>
+    <loc>${domain}/blog/categoria/${bc.slug}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`;
+              }
+            });
+          } catch (blogCatErr) {
+            console.error("Error building sitemap.xml blog category nodes:", blogCatErr);
+          }
         } catch (blogErr) {
           console.error("Error building sitemap.xml blog nodes:", blogErr);
         }

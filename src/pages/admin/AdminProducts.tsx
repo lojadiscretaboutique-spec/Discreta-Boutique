@@ -672,11 +672,12 @@ export function AdminProducts() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Ensure all variants have barcode if not provided
+    // Ensure all variants have barcode if not provided and fallback costPrice to form.costPrice if not set
     const finalVariants = variants.map(v => ({
       ...v,
       barcode: v.barcode || generateEan13(),
-      sku: v.sku || generateSku()
+      sku: v.sku || generateSku(),
+      costPrice: (typeof v.costPrice === 'number' && v.costPrice > 0) ? v.costPrice : (Number(form.costPrice) || 0)
     }));
 
     const hasCategory = form.categoryId || (form.categoryIds && form.categoryIds.length > 0);
@@ -918,6 +919,7 @@ export function AdminProducts() {
         barcode: generateEan13(),
         stock: 0,
         price: form.price,
+        costPrice: Number(form.costPrice) || 0,
         active: true,
         attributes: attrs
       };
@@ -1400,7 +1402,7 @@ export function AdminProducts() {
                               </div>
                               <div>
                                 <label className="text-[10px] uppercase font-black text-slate-400 block mb-0.5">P. Custo (R$)</label>
-                                <input type="number" step="0.01" className="w-full h-8 text-xs bg-slate-800 border rounded px-2 focus:ring-1 focus:ring-red-500 outline-none" value={v.costPrice === null || v.costPrice === undefined ? '' : v.costPrice} onChange={e => {const nv = [...variants]; nv[i].costPrice = e.target.value === '' ? 0 : Number(e.target.value); setVariants(nv)}} />
+                                <input type="number" step="0.01" className="w-full h-8 text-xs bg-slate-800 border rounded px-2 focus:ring-1 focus:ring-red-500 outline-none" value={v.costPrice || form.costPrice || ''} onChange={e => {const nv = [...variants]; nv[i].costPrice = e.target.value === '' ? 0 : Number(e.target.value); setVariants(nv)}} />
                               </div>
                               <div>
                                 <label className="text-[10px] uppercase font-black text-slate-400 block mb-0.5" title="Apenas leitura. Use o mód. Movimentações.">Estoque (Leitura)</label>

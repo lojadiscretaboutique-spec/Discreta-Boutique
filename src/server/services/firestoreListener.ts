@@ -31,16 +31,31 @@ export function setupOrderListener() {
                 // If added, ignore old orders to avoid flooding when the server restarts
                 if (change.type === 'added') {
                     const createdAt = orderData.createdAt;
+                    let isNew = true;
                     if (createdAt) {
                         const createdTime = (createdAt as Timestamp).toMillis();
                         const now = Date.now();
                         if (now - createdTime > 1000 * 60 * 5) { // Older than 5 minutes
-                            // Mark as sent silently without triggering webhook
-                            await updateDoc(change.doc.ref, {
-                                last_status_sent: orderData.status
-                            });
-                            return;
+                            isNew = false;
                         }
+                    }
+
+                    if (isNew) {
+                        try {
+                            const { printerJobService } = await import('../../services/printerJobService');
+                            const orderNumber = orderData.orderNumber || change.doc.id.slice(-6).toUpperCase();
+                            await printerJobService.createJobForOrder(change.doc.id, orderNumber);
+                        } catch (printErr) {
+                            console.error("[FirestoreListener] Erro ao criar job de impressão:", printErr);
+                        }
+                    }
+
+                    if (!isNew) {
+                        // Mark as sent silently without triggering webhook
+                        await updateDoc(change.doc.ref, {
+                            last_status_sent: orderData.status
+                        });
+                        return;
                     }
                 }
 

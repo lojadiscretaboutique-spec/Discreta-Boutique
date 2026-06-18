@@ -479,6 +479,27 @@ service cloud.firestore {
       allow read, write: if isMasterAdmin() || can('marketing', 'editar') || can('marketing', 'visualizar');
     }
 
+    match /printerIntegrationTokens/{doc} {
+      allow read, write: if signedIn() || isMasterAdmin() || can('settings', 'visualizar');
+    }
+
+    match /printerDevices/{doc} {
+      allow read, write: if true;
+    }
+
+    match /printerSettings/{doc} {
+      allow read: if true;
+      allow write: if signedIn() || isMasterAdmin() || can('settings', 'editar');
+    }
+
+    match /printerJobs/{doc} {
+      allow read, write: if true;
+    }
+
+    match /printerLogs/{doc} {
+      allow read, write: if true;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

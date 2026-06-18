@@ -9,15 +9,7 @@ interface Props {
 }
 
 export function LiveShopAnalyticsTab({ live, storeProducts }: Props) {
-  if (!live) {
-    return (
-      <div className="bg-zinc-950 p-8 rounded-xl border border-zinc-800/40 text-center text-zinc-500 text-sm italic" id="liveshop-analytics-tab">
-        Hospede ou grave sua transmissão primeiro para iniciar o monitoramento de métricas e conversões em tempo real.
-      </div>
-    );
-  }
-
-  const { statistics } = live;
+  const statistics = live?.statistics;
 
   // Map clickedProducts keys to names
   const clickedProductsList = useMemo(() => {
@@ -32,6 +24,14 @@ export function LiveShopAnalyticsTab({ live, storeProducts }: Props) {
       };
     }).sort((a, b) => b.count - a.count);
   }, [statistics?.clickedProducts, storeProducts]);
+
+  if (!live) {
+    return (
+      <div className="bg-zinc-950 p-8 rounded-xl border border-zinc-800/40 text-center text-zinc-500 text-sm italic" id="liveshop-analytics-tab">
+        Hospede ou grave sua transmissão primeiro para iniciar o monitoramento de métricas e conversões em tempo real.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6" id="liveshop-analytics-tab">

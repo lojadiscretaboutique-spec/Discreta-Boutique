@@ -136,6 +136,17 @@ export interface BlogCategory {
   name: string;
   slug: string;
   description?: string;
+  shortDescription?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  keywords?: string;
+  coverImage?: string;
+  icon?: string;
+  color?: string;
+  order?: number;
+  status?: 'ativa' | 'oculta';
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface BlogTag {
@@ -304,7 +315,14 @@ export const blogService = {
     const categoryId = id || doc(collection(db, 'blog_categories')).id;
     const path = `blog_categories/${categoryId}`;
     try {
-      await setDoc(doc(db, 'blog_categories', categoryId), category, { merge: true });
+      const payload: any = {
+        ...category,
+        updatedAt: new Date().toISOString()
+      };
+      if (!id) {
+        payload.createdAt = new Date().toISOString();
+      }
+      await setDoc(doc(db, 'blog_categories', categoryId), payload, { merge: true });
       return categoryId;
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, path);

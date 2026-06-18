@@ -21,6 +21,7 @@ export interface NewStockMovement {
   orderId?: string;
   previousStock?: number;
   newStock?: number;
+  costPrice?: number;
   createdBy?: string;
   createdByName?: string;
   createdAt?: any;
@@ -51,8 +52,37 @@ export const stockMovementService = {
       // if (newStock < 0) throw new Error(`Operação Negada: O estoque atual é de ${currentStock} unid. Você solicitou subtrair ${data.quantity}.`);
 
       // 3. Create movement doc explicitly safely
+      // Resolve cost price with proper fallback if variant has no costPrice
+      let resolvedCostPrice = (data as any).costPrice;
+      if (typeof resolvedCostPrice !== 'number' || resolvedCostPrice <= 0) {
+        const docData = pSnap.data();
+        if (data.variantId) {
+          if (docData && typeof docData.costPrice === 'number' && docData.costPrice > 0) {
+            resolvedCostPrice = docData.costPrice;
+          } else {
+            // Fetch parent product to use as base fallback
+            try {
+              const parentSnap = await getDoc(doc(db, 'products', data.productId));
+              if (parentSnap.exists()) {
+                const parentData = parentSnap.data();
+                if (typeof parentData.costPrice === 'number') {
+                  resolvedCostPrice = parentData.costPrice;
+                }
+              }
+            } catch (e) {
+              console.warn("Could not fetch parent product for cost price fallback:", e);
+            }
+          }
+        } else {
+          if (docData && typeof docData.costPrice === 'number') {
+            resolvedCostPrice = docData.costPrice;
+          }
+        }
+      }
+
       const movementData: any = {
         ...data,
+        costPrice: resolvedCostPrice || 0,
         status: data.status || 'realizada',
         previousStock: currentStock,
         newStock: newStock,
