@@ -53,6 +53,7 @@ export function AdminLayout() {
         { name: 'Cupons', path: '/admin/marketing/cupons', permission: 'banners' },
         { name: 'Promoções Automáticas', path: '/admin/marketing/promocoes', permission: 'banners' },
         { name: 'Postagens', path: '/admin/marketing/postagem', permission: 'banners' },
+        { name: 'Clientes Wi-Fi', path: '/admin/marketing/wifi-users', permission: 'banners' },
         { name: 'Bot Conversa / Webhooks', path: '/admin/marketing/webhooks', permission: 'logs' },
         { name: 'Programa de Afiliados', path: '/admin/marketing/afiliados', permission: 'banners' },
         { name: 'Blog SEO ✍️', path: '/admin/blog', permission: 'banners' },

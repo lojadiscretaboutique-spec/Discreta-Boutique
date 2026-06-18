@@ -8,7 +8,7 @@ import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
 import { db } from './src/lib/firebase';
 import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
-import { geminiService } from "./src/server/services/geminiService";
+import { blogAiService } from "./src/server/services/blogAiService";
 
 // Verify connection
 (async () => {
@@ -171,28 +171,8 @@ async function startServer() {
     }
   });
 
-  // Gemini AI blog post generator endpoint
-  app.post("/api/blog/generate-ai", async (req, res) => {
-    try {
-      const { tema, objetivo, publico, tomVoz, palavras, categoria, palavrasChave } = req.body;
-      if (!tema || !categoria) {
-        return res.status(400).json({ error: "Tema e Categoria são obrigatórios" });
-      }
-      const result = await geminiService.generateBlogPost({
-        tema,
-        objetivo: objetivo || "Educar e converter em vendas",
-        publico: publico || "Geral",
-        tomVoz: tomVoz || "Empoderado e Sensual",
-        palavras: Number(palavras) || 500,
-        categoria,
-        palavrasChave: Array.isArray(palavrasChave) ? palavrasChave : []
-      });
-      res.json(result);
-    } catch (err: any) {
-      console.error("Error generating post content via Gemini:", err);
-      res.status(500).json({ error: err.message });
-    }
-  });
+  // Endpoint seguro migrado para /api/admin/blog/generate-ai
+  // Antigo endpoint Gemini removido.
 
   // Retry endpoint for BotConversa webhook
   app.post("/api/botconversa/retry", async (req, res) => {

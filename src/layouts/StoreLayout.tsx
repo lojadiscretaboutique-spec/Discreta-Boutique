@@ -8,6 +8,8 @@ import { SearchBar } from '../components/ui/SearchBar';
 import { useAuthStore } from '../store/authStore';
 import { PopupOverlay } from '../components/PopupOverlay';
 import { FloatingLivePlayer } from '../components/FloatingLivePlayer';
+import { useActiveLiveShop } from '../hooks/useActiveLiveShop';
+import { useUIStore } from '../store/uiStore';
 
 import { Truck } from 'lucide-react';
 import { usePromotion } from '../contexts/PromotionContext';
@@ -51,6 +53,36 @@ export function StoreLayout() {
   const hasGlobalFreeShipping = activePromotions.some(
     p => p.active && p.type === 'free_shipping' && p.scope === 'all'
   );
+
+  // Active Live Shop synchronization with floating mini-player
+  const { activeLive } = useActiveLiveShop();
+  const { 
+    setFloatingLiveId, 
+    setFloatingLiveUrl, 
+    setFloatingLiveTitle, 
+    floatingLiveUrl 
+  } = useUIStore();
+
+  useEffect(() => {
+    if (activeLive && activeLive.status === 'ao_vivo' && activeLive.settings?.enableFloatingPlayer) {
+      const isDismissed = sessionStorage.getItem(`dismissed_live_${activeLive.id}`) === 'true';
+      if (!isDismissed && location.pathname !== '/live' && !floatingLiveUrl) {
+        setFloatingLiveId(activeLive.id);
+        import('../services/liveShopService').then(({ liveShopService }) => {
+          const embedUrl = liveShopService.getEmbedUrl(activeLive.streamingUrl);
+          setFloatingLiveUrl(embedUrl);
+          setFloatingLiveTitle(activeLive.title);
+        }).catch(err => {
+          console.error("Failed to load live shop services", err);
+        });
+      }
+    } else {
+      if (floatingLiveUrl) {
+        setFloatingLiveUrl(null);
+        setFloatingLiveId(null);
+      }
+    }
+  }, [activeLive, location.pathname, floatingLiveUrl]);
 
   // Sync variables to root for full dynamic style updates
   useEffect(() => {

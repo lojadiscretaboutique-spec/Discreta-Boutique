@@ -1,5 +1,4 @@
 import OpenAI from 'openai';
-import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -1051,24 +1050,6 @@ Retorne estritamente um objeto JSON com a seguinte estrutura:
   async generateMarketingImage(imagePrompt: string, referenceUrl?: string): Promise<{ imageUrl: string }> {
     console.log(`[AI] Generating marketing image... Reference URL: ${referenceUrl}`);
     try {
-      if (process.env.GEMINI_API_KEY) {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const response = await ai.models.generateImages({
-          model: 'imagen-4.0-generate-001',
-          prompt: `${imagePrompt}. Premium lingerie photoshoot style, professional luxury lighting, high-end editorial, elegant, highly detailed, no text. ${referenceUrl ? `Styled similarly to: ${referenceUrl}` : ''}`,
-          config: {
-            numberOfImages: 1,
-            aspectRatio: '1:1',
-            outputMimeType: 'image/jpeg'
-          }
-        });
-        if (response.generatedImages?.[0]?.image?.imageBytes) {
-          const base64Bytes = response.generatedImages[0].image.imageBytes;
-          const dataUrl = `data:image/jpeg;base64,${base64Bytes}`;
-          return { imageUrl: dataUrl };
-        }
-      }
-      
       if (process.env.OPENAI_API_KEY) {
         const client = this.getClient();
         const response = await client.images.generate({

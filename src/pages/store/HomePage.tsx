@@ -20,6 +20,7 @@ import { cacheService } from '../../services/cacheService';
 import { SafeOptimizedImage } from '../../components/home/SafeOptimizedImage';
 import { isProductInCategory } from '../../utils/categoryUtils';
 import { measurePerformance } from '../../utils/performance';
+import { HomeLiveShopSection } from '../../components/home/HomeLiveShopSection';
 
 interface Banner {
   id: string;
@@ -659,6 +660,9 @@ export function HomePage() {
           </div>
         </section>
       )}
+
+      {/* 1.2 LIVE AND UPCOMING LIVE SHOP SECTIONS */}
+      <HomeLiveShopSection />
 
       {/* 1.5 CATEGORY EXPOSITION */}
       {(loading || categories.length > 0) && (

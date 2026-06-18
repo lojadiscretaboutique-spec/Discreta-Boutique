@@ -398,8 +398,18 @@ service cloud.firestore {
     match /lives/{doc} {
       allow read: if true;
       allow create: if can('banners', 'criar') || isMasterAdmin();
-      allow update: if can('banners', 'editar') || isMasterAdmin() || true; // Public updates allowed to increment views/clicks/conversions
+      allow update: if can('banners', 'editar') || isMasterAdmin();
       allow delete: if can('banners', 'excluir') || isMasterAdmin();
+    }
+
+    match /live_events/{doc} {
+      allow read, update, delete: if can('banners', 'visualizar') || isMasterAdmin();
+      allow create: if true;
+    }
+
+    match /live_metrics/{liveId}/events/{doc} {
+      allow read, update, delete: if can('banners', 'visualizar') || isMasterAdmin();
+      allow create: if true;
     }
 
     match /wifiLeads/{doc} {

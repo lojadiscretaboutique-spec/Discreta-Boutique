@@ -7,6 +7,7 @@ export function FloatingLivePlayer() {
   const navigate = useNavigate();
   const location = useLocation();
   const {
+    floatingLiveId,
     floatingLiveUrl,
     floatingLiveTitle,
     floatingLiveIsMuted,
@@ -21,6 +22,9 @@ export function FloatingLivePlayer() {
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (floatingLiveId) {
+      sessionStorage.setItem(`dismissed_live_${floatingLiveId}`, 'true');
+    }
     setFloatingLiveUrl(null);
   };
 

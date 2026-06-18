@@ -5,8 +5,9 @@ import { db } from '../../lib/firebase';
 import { useCartStore } from '../../store/cartStore';
 import { formatCurrency, cn, formatVariantName } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
-import { ArrowLeft, Check, ShoppingBag, Package, Zap, Share2, Truck, Tag } from 'lucide-react';
+import { ArrowLeft, Check, ShoppingBag, Package, Zap, Share2, Truck, Tag, AlertCircle } from 'lucide-react';
 import { Product, ProductVariant, productService } from '../../services/productService';
+import { ProductVariationSelector } from '../../components/product/ProductVariationSelector';
 import { motion } from 'motion/react';
 import { usePromotion } from '../../contexts/PromotionContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -51,6 +52,8 @@ export function ProductPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
+  const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
+  const [errorAlert, setErrorAlert] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [added, setAdded] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<{
@@ -58,6 +61,11 @@ export function ProductPage() {
     mensagem: string;
   } | null>(null);
   const addItem = useCartStore(s => s.addItem);
+
+  const triggerError = (msg: string) => {
+    setErrorAlert(msg);
+    setTimeout(() => setErrorAlert(null), 3000);
+  };
 
   // Dynamic Theme Colors
   const bgText = resolveThemeColor(currentTheme.backgroundTextColor, getAutoTextColor(currentTheme.backgroundColor || '#0a0a0a'));
@@ -267,36 +275,64 @@ export function ProductPage() {
   };
 
   const handleAddToCart = (redirect = false) => {
-    if (product.hasVariants && !selectedVariant) {
-      alert("Selecione uma opção (Cor/Tamanho/etc) antes de adicionar ao carrinho.");
-      return;
-    }
+    if (product.hasVariants) {
+      const selectedItems = Object.entries(selectedQuantities).filter(([, qty]) => qty > 0);
+      if (selectedItems.length === 0) {
+        triggerError("Selecione pelo menos uma opção para continuar.");
+        return;
+      }
 
-    if (isOutOfStock()) {
-      alert("Desculpe, este item ou opção está esgotado no momento.");
-      return;
+      selectedItems.forEach(([variantId, quantity]) => {
+        const variant = variants.find(v => v.id === variantId);
+        if (!variant) return;
+
+        addItem({
+          id: `${product.id}-${variantId}`,
+          productId: product.id,
+          name: product.name,
+          price: Number(variant.price || currentPrice),
+          quantity: quantity,
+          sku: variant.sku || product.sku,
+          gtin: variant.barcode || product.gtin,
+          imageUrl: variant.imageUrl || currentImage,
+          variantId: variant.id,
+          variantName: variant.name,
+          costPrice: variant.costPrice || product.costPrice || 0,
+          searchId,
+          isFreeShipping: pricing.isFreeShipping,
+          categoryId: product.categoryId,
+          originalPrice: originalPrice,
+          promoPrice: undefined,
+          promoAllowedPaymentMethods: pricing.promotion?.allowedPaymentMethods || [],
+          promotionId: pricing.promotion?.id
+        });
+      });
+      setSelectedQuantities({});
+    } else {
+      if (isOutOfStock()) {
+        triggerError("Desculpe, este item ou opção está esgotado no momento.");
+        return;
+      }
+      
+      addItem({
+        id: `${product.id}-base`,
+        productId: product.id,
+        name: product.name,
+        price: Number(currentPrice),
+        quantity: 1,
+        sku: product.sku,
+        gtin: product.gtin,
+        imageUrl: currentImage,
+        costPrice: product.costPrice || 0,
+        searchId,
+        isFreeShipping: pricing.isFreeShipping,
+        categoryId: product.categoryId,
+        originalPrice: originalPrice,
+        promoPrice: product.promoPrice,
+        promoAllowedPaymentMethods: pricing.promotion?.allowedPaymentMethods || [],
+        promotionId: pricing.promotion?.id
+      });
     }
-    
-    addItem({
-      id: `${product.id}-${selectedVariant?.id || 'base'}`,
-      productId: product.id,
-      name: product.name,
-      price: Number(currentPrice),
-      quantity: 1,
-      sku: selectedVariant?.sku || product.sku,
-      gtin: selectedVariant?.barcode || product.gtin,
-      imageUrl: currentImage,
-      variantId: selectedVariant?.id,
-      variantName: selectedVariant?.name,
-      costPrice: selectedVariant?.costPrice || product.costPrice || 0,
-      searchId,
-      isFreeShipping: pricing.isFreeShipping,
-      categoryId: product.categoryId,
-      originalPrice: originalPrice,
-      promoPrice: selectedVariant ? undefined : product.promoPrice,
-      promoAllowedPaymentMethods: pricing.promotion?.allowedPaymentMethods || [],
-      promotionId: pricing.promotion?.id
-    });
     
     // Track conversion
     productService.trackInteraction(product.id!, 'conversion', searchId);
@@ -467,6 +503,12 @@ export function ProductPage() {
                 color: cardText
               }}
             >
+              {errorAlert && (
+                <div className="mb-4 flex items-center gap-2 p-3 rounded-xl text-xs font-bold text-white shadow-lg animate-in fade-in" style={{ backgroundColor: currentTheme.primaryColor || '#D32F2F' }}>
+                  <AlertCircle size={16} />
+                  {errorAlert}
+                </div>
+              )}
               {/* Promotion Badge Background Glow */}
               {isPromoActive && (
                 <div 
@@ -535,46 +577,42 @@ export function ProductPage() {
               </div>
 
               {variants.length > 0 && (
-                <div 
-                  className="mb-8 p-6 rounded-2xl border"
-                  style={{
-                    backgroundColor: currentTheme.backgroundColor,
-                    borderColor: cardBorderHex
-                  }}
-                >
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-[10px] font-black uppercase tracking-[3px]" style={{ color: labelColor }}>Escolha a Opção</h3>
-                    {product.controlStock && selectedVariant && (
-                      <span className="text-[10px] font-bold uppercase" style={{ color: selectedVariant.stock > 0 ? '#10b981' : '#ef4444' }}>
-                        {selectedVariant.stock > 0 ? `Estoque: ${selectedVariant.stock}` : 'Esgotado'}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {variants.map(v => {
-                      const isSelected = selectedVariant?.id === v.id;
-                      const isOutOfStk = product.controlStock && !product.allowBackorder && v.stock <= 0;
-                      return (
-                        <button
-                          key={v.id}
-                          onClick={() => setSelectedVariant(v)}
-                          disabled={isOutOfStk}
-                          className={cn(
-                            "px-6 py-3 text-xs font-bold uppercase tracking-widest rounded-full border transition-all cursor-pointer",
-                            isOutOfStk && "opacity-50 grayscale cursor-not-allowed"
+                <>
+                  <ProductVariationSelector
+                    variants={variants}
+                    selectedQuantities={selectedQuantities}
+                    onQuantityChange={(vId, qty) => setSelectedQuantities(prev => ({ ...prev, [vId]: qty }))}
+                    accentColor={currentTheme.primaryColor || '#D32F2F'}
+                    textColor={bgText}
+                    cardColor={cardColorBg}
+                    borderColor={cardBorderHex}
+                  />
+                  
+                  {Object.values(selectedQuantities).reduce((acc, qty) => acc + qty, 0) > 0 && (
+                    <div className="mt-4 flex items-center justify-between p-4 border rounded-2xl" style={{ borderColor: cardBorderHex }}>
+                      <div>
+                        <p className="text-xs font-bold" style={{ color: labelColor }}>
+                          Selecionado: {Object.values(selectedQuantities).reduce((acc, qty) => acc + qty, 0)} itens
+                        </p>
+                        <p className="text-sm font-black" style={{ color: currentTheme.primaryColor }}>
+                          Subtotal: {formatCurrency(
+                            Object.entries(selectedQuantities).reduce((acc, [id, qty]) => {
+                              const v = variants.find(variant => variant.id === id);
+                              return acc + ((v?.price || currentPrice) * qty);
+                            }, 0)
                           )}
-                          style={{
-                            backgroundColor: isSelected ? currentTheme.primaryColor : 'transparent',
-                            color: isSelected ? (currentTheme.primaryTextColor || '#ffffff') : labelColor,
-                            borderColor: isSelected ? currentTheme.primaryColor : cardBorderHex
-                          }}
-                        >
-                          {formatVariantName(v.name)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => setSelectedQuantities({})}
+                        className="text-[10px] font-bold uppercase underline" 
+                        style={{ color: secondaryText }}
+                      >
+                        Limpar seleção
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="flex flex-col gap-4">

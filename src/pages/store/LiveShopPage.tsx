@@ -11,6 +11,7 @@ import {
 import { productService, Product } from '../../services/productService';
 import { Button } from '../../components/ui/button';
 import { useFeedback } from '../../contexts/FeedbackContext';
+import { liveShopService } from '../../services/liveShopService';
 
 interface LiveSession {
   id: string;
@@ -149,14 +150,16 @@ export function LiveShopPage() {
   // Handle Increments to Views Statistic (Firestore throttle simulation)
   useEffect(() => {
     if (activeLive && activeLive.status === 'ao_vivo') {
-      // Small simulated increment of live analytics views locally & on firestore
-      try {
-        const liveDocRef = doc(db, 'lives', activeLive.id);
-        updateDoc(liveDocRef, {
-          'statistics.views': increment(1)
+      // Safely register exactly 1 view per session via sessionStorage throttling
+      const hasViewedKey = `live_shop_viewed_${activeLive.id}`;
+      if (!sessionStorage.getItem(hasViewedKey)) {
+        sessionStorage.setItem(hasViewedKey, 'true');
+        liveShopService.trackLiveEvent({
+          liveId: activeLive.id,
+          type: 'view'
+        }).catch(err => {
+          console.warn('Failed to register safe view event:', err);
         });
-      } catch (e) {
-        // silent safe catch
       }
 
       // Viewer simulation
@@ -207,18 +210,19 @@ export function LiveShopPage() {
   const handleAddToCart = async (product: Product, specialPrice?: number) => {
     if (!product || !product.id) return;
     
-    // Increment product click count on live document statistics
+    // Save telemetry logs for product interaction safely as public events
     if (activeLive) {
-      try {
-        const liveDocRef = doc(db, 'lives', activeLive.id);
-        const clicksKey = `statistics.clickedProducts.${product.id}`;
-        updateDoc(liveDocRef, {
-          'statistics.productClicks': increment(1),
-          [clicksKey]: increment(1)
-        });
-      } catch (err) {
-        // silent safe
-      }
+      liveShopService.trackLiveEvent({
+        liveId: activeLive.id,
+        type: 'product_click',
+        productId: product.id
+      }).catch(err => console.warn('Could not register product_click event:', err));
+
+      liveShopService.trackLiveEvent({
+        liveId: activeLive.id,
+        type: 'add_to_cart',
+        productId: product.id
+      }).catch(err => console.warn('Could not register add_to_cart event:', err));
     }
 
     const cartItem: CartItem = {
@@ -241,14 +245,13 @@ export function LiveShopPage() {
 
   // Fast Apply live Coupon to shopping cart helper
   const handleClaimCoupon = (code: string, pctDiscount: number) => {
-    // Claim analytics update doc
+    // Save telemetry coupon clicked event safely as a public event
     if (activeLive) {
-      try {
-        const liveDocRef = doc(db, 'lives', activeLive.id);
-        updateDoc(liveDocRef, {
-          'statistics.couponsUsed': increment(1)
-        });
-      } catch (e) {}
+      liveShopService.trackLiveEvent({
+        liveId: activeLive.id,
+        type: 'coupon_click',
+        couponCode: code
+      }).catch(err => console.warn('Could not register coupon_click event:', err));
     }
 
     applyCoupon({
@@ -706,6 +709,15 @@ export function LiveShopPage() {
                           </Button>
                           <a
                             href={`/produto/${product.id}`}
+                            onClick={() => {
+                              if (activeLive) {
+                                liveShopService.trackLiveEvent({
+                                  liveId: activeLive.id,
+                                  type: 'product_click',
+                                  productId: product.id
+                                }).catch(err => console.warn('Could not register product_click event:', err));
+                              }
+                            }}
                             className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-bold h-7 rounded px-2 inline-flex items-center justify-center"
                           >
                             Ver Detalhes
@@ -733,6 +745,14 @@ export function LiveShopPage() {
                 href="https://wa.me/5588992340317?text=Oi! Estou assistindo a Live Shop da Discreta e quero tirar uma dúvida!"
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => {
+                  if (activeLive) {
+                    liveShopService.trackLiveEvent({
+                      liveId: activeLive.id,
+                      type: 'whatsapp_click'
+                    }).catch(err => console.warn('Could not register whatsapp_click event:', err));
+                  }
+                }}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 rounded-lg text-center shadow-lg transition-all"
               >
                 Atendimento no WhatsApp

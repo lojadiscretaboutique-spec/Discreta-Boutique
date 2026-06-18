@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { getAuth } from "firebase/auth";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { 
   ArrowLeft, 
@@ -79,7 +80,7 @@ export function AdminBlogEditor() {
   const [productSearchTerm, setProductSearchTerm] = useState("");
   const [activeProductBlockId, setActiveProductBlockId] = useState<string | null>(null);
 
-  // Gemini AI controls
+  // OpenAI AI controls
   const [aiExpanded, setAiExpanded] = useState(false);
   const [aiTema, setAiTema] = useState("");
   const [aiPublico, setAiPublico] = useState("");
@@ -607,8 +608,8 @@ export function AdminBlogEditor() {
     }
   };
 
-  // Gemini AI automatic generator trigger
-  const handleGeminiGenerateBlocks = async () => {
+  // OpenAI AI automatic generator trigger
+  const handleOpenAIGenerateBlocks = async () => {
     if (!aiTema.trim()) {
       alert("Por favor, informe o tema para criar o artigo.");
       return;
@@ -617,9 +618,14 @@ export function AdminBlogEditor() {
     setAiGenerating(true);
     try {
       const activeCat = categories.find(c => c.id === categoryId)?.name || "Geral";
-      const response = await fetch("/api/blog/generate-ai", {
+      const token = await getAuth().currentUser?.getIdToken();
+
+      const response = await fetch("/api/admin/blog/generate-ai", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` 
+        },
         body: JSON.stringify({
           tema: aiTema,
           categoria: activeCat,
@@ -635,27 +641,27 @@ export function AdminBlogEditor() {
       }
 
       const data = await response.json();
-      if (data) {
-        if (data.titulo) {
-          setTitle(data.titulo);
-          setSlug(data.titulo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-"));
+      if (data && data.success && data.post) {
+        const post = data.post;
+        if (post.titulo) {
+          setTitle(post.titulo);
+          setSlug(post.titulo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-"));
         }
-        if (data.subtitulo) setSubtitle(data.subtitulo);
-        if (data.sumario) setSummary(data.sumario);
-        if (data.tempoLeitura) setReadingTime(Number(data.tempoLeitura));
+        if (post.subtitulo) setSubtitle(post.subtitulo);
+        if (post.resumo) setSummary(post.resumo);
 
-        // Format Gemini Markdown contents straight to modern visual content blocks!
-        if (data.conteudo) {
-          setContentBlocks(parseMarkdownToBlocks(data.conteudo));
+        // Map OpenAI blocks
+        if (post.contentBlocks) {
+          setContentBlocks(post.contentBlocks);
         }
 
         // Add optional FAQ blocks if supplied by AI
-        if (data.faq && Array.isArray(data.faq)) {
-          const faqBlocks: BlogContentBlock[] = data.faq.map((f: any) => ({
+        if (post.faqs && Array.isArray(post.faqs)) {
+          const faqBlocks: BlogContentBlock[] = post.faqs.map((f: any) => ({
             id: generateId(),
             type: 'faq',
-            question: f.pergunta || f.question || '',
-            answer: f.resposta || f.answer || ''
+            question: f.question || '',
+            answer: f.answer || ''
           }));
           setContentBlocks(prev => [...prev, ...faqBlocks]);
         }
@@ -666,7 +672,7 @@ export function AdminBlogEditor() {
       }
     } catch (err) {
       console.error(err);
-      alert("Erro ao invocar o assistente. Verifique a chave @google/genai ou chaves secretas.");
+      alert("Erro ao invocar o assistente. Verifique a configuração da chave OpenAI.");
     } finally {
       setAiGenerating(false);
     }
@@ -824,8 +830,8 @@ export function AdminBlogEditor() {
             <div className="flex items-center gap-2.5">
               <Sparkles size={16} className="text-red-500" />
               <div>
-                <h4 className="font-extrabold text-xs uppercase text-white tracking-wide">Gerador de Artigos Otimizados (IA Gemini)</h4>
-                <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-black mt-0.5">Produza artigos profissionais fatiados em blocos estruturados automaticamente</p>
+                <h4 className="font-extrabold text-xs uppercase text-white tracking-wide">Gerador de Artigos Otimizados (OpenAI)</h4>
+                <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-black mt-0.5">Produza artigos profissionais fatiados em blocos estruturados automaticamente via OpenAI</p>
               </div>
             </div>
             <span className="text-xs font-bold uppercase text-red-500 hover:underline">
@@ -880,12 +886,12 @@ export function AdminBlogEditor() {
                 </div>
               </div>
               <button
-                onClick={handleGeminiGenerateBlocks}
+                onClick={handleOpenAIGenerateBlocks}
                 disabled={aiGenerating}
                 className="w-full py-2.5 bg-red-650 hover:bg-red-500 font-extrabold text-xs uppercase tracking-widest text-white rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-55"
               >
                 <Wand2 size={13} />
-                {aiGenerating ? "Redigindo e segmentando artigo com Gemini..." : "Gerar Artigo em Bloco Profissional"}
+                {aiGenerating ? "Redigindo e segmentando artigo com OpenAI..." : "Gerar Artigo em Bloco Profissional"}
               </button>
             </div>
           )}

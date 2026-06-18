@@ -65,6 +65,7 @@ const AdminVisitors = lazy(() => import('./pages/admin/analytics/AdminVisitors')
 const AdminThemeManager = lazy(() => import('./pages/admin/AdminThemeManager').then(m => ({ default: m.AdminThemeManager })));
 const AdminTypography = lazy(() => import('./pages/admin/AdminTypography').then(m => ({ default: m.AdminTypography })));
 const AdminLiveShop = lazy(() => import('./pages/admin/marketing/AdminLiveShop').then(m => ({ default: m.AdminLiveShop })));
+const AdminWifiUsers = lazy(() => import('./pages/admin/marketing/AdminWifiUsers'));
 const LiveShopPage = lazy(() => import('./pages/store/LiveShopPage').then(m => ({ default: m.LiveShopPage })));
 
 // Public Blog Pages
@@ -220,6 +221,7 @@ function AppContent() {
             <Route path="marketing/cupons" element={<AdminCoupons />} />
             <Route path="marketing/promocoes" element={<AdminPromotions />} />
             <Route path="marketing/postagem" element={<AdminPostagem />} />
+            <Route path="marketing/wifi-users" element={<AdminWifiUsers />} />
             <Route path="clientes" element={<AdminCustomers />} />
             <Route path="caixa" element={<AdminCaixa />} />
             <Route path="pdv" element={<AdminPDV />} />

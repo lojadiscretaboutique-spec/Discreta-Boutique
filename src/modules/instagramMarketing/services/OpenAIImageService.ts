@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { GoogleGenAI } from '@google/genai';
+// (no Gemini import)
 
 export class OpenAIImageService {
   private openai: OpenAI | null = null;
@@ -129,48 +129,6 @@ Diretrizes Visuais Importantes:
         });
         return response.data[0]?.url || '';
       } catch (dalle2Error: any) {
-        console.warn(`[OpenAIImageService] Falha no dall-e-2 no index ${index}, tentando Gemini (gemini-2.5-flash-image)...`, dalle2Error.message || dalle2Error);
-        
-        // Try Gemini Fallback
-        if (process.env.GEMINI_API_KEY) {
-          try {
-            const ai = new GoogleGenAI({
-              apiKey: process.env.GEMINI_API_KEY,
-              httpOptions: {
-                headers: {
-                  'User-Agent': 'aistudio-build',
-                }
-              }
-            });
-            const geminiResponse = await ai.models.generateContent({
-              model: 'gemini-2.5-flash-image',
-              contents: {
-                parts: [
-                  {
-                    text: fullPrompt,
-                  },
-                ],
-              },
-              config: {
-                imageConfig: {
-                  aspectRatio: "1:1"
-                }
-              },
-            });
-            
-            if (geminiResponse.candidates?.[0]?.content?.parts) {
-              for (const part of geminiResponse.candidates[0].content.parts) {
-                if (part.inlineData) {
-                  const base64EncodeString: string = part.inlineData.data;
-                  return `data:image/png;base64,${base64EncodeString}`;
-                }
-              }
-            }
-          } catch (geminiError: any) {
-            console.error(`[OpenAIImageService] Erro no fallback do Gemini no index ${index}:`, geminiError.message || geminiError);
-          }
-        }
-        
         // Ultimate bulletproof placeholder fallback
         console.warn(`[OpenAIImageService] Todos os modelos de IA falharam no index ${index}. Usando picsum placeholder se semeado para resiliência total.`);
         return `https://picsum.photos/seed/${encodeURIComponent(theme + '_' + index)}/1024/1024`;

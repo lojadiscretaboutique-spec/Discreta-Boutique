@@ -42,6 +42,9 @@ import {
   XCircle,
   Loader2,
   RotateCcw,
+  Share2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { orderReversalService } from "../../services/orderReversalService";
 import { canReverseOrder } from "../../utils/orderReversalValidation";
@@ -646,6 +649,97 @@ export function AdminOrders() {
     return "...";
   };
 
+  const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
+
+  const getCleanWhatsapp = (num: string) => {
+    if (!num) return "";
+    const clean = num.replace(/\D/g, "");
+    if (clean.length === 10 || clean.length === 11) {
+      return "55" + clean;
+    }
+    return clean;
+  };
+
+  const generateShareText = (order: Order) => {
+    const shortId = order.id.slice(-6).toUpperCase();
+    const dateStr = order.createdAt ? formatOrderDate(order.createdAt, "dd/MM/yyyy HH:mm") : "";
+    
+    let text = `🌸 *DISCRETA BOUTIQUE - DETALHES DO PEDIDO* 🌸\n\n`;
+    text += `📝 *Pedido:* #${shortId}\n`;
+    if (dateStr) text += `📅 *Data:* ${dateStr}\n`;
+    text += `👤 *Cliente:* ${order.customerName}\n`;
+    if (order.customerWhatsapp) text += `📞 *WhatsApp:* ${order.customerWhatsapp}\n`;
+    if (order.customerAddress) text += `📍 *Endereço:* ${order.customerAddress}\n`;
+    text += `💳 *Método de Pagamento:* ${order.paymentMethod || "A DEFINIR"}\n`;
+    text += `📊 *Status:* ${order.status}\n\n`;
+    
+    text += `🛒 *ÍTENS DO PEDIDO:*\n`;
+    order.items.forEach((item) => {
+      const formattedPrice = formatCurrency(item.price);
+      const totalItem = formatCurrency(item.price * item.quantity);
+      text += `- ${item.quantity}x ${item.name} (${formattedPrice} cada) = ${totalItem}\n`;
+    });
+    text += `\n`;
+
+    if (order.subTotal && order.subTotal !== order.total) {
+      text += `🔹 *Subtotal:* ${formatCurrency(order.subTotal)}\n`;
+    }
+    if (order.discount && order.discount > 0) {
+      text += `➖ *Desconto:* -${formatCurrency(order.discount)}\n`;
+    }
+    if (order.deliveryFee && order.deliveryFee > 0) {
+      text += `➕ *Frete:* ${formatCurrency(order.deliveryFee)}\n`;
+    } else if (order.shipping && order.shipping > 0) {
+      text += `➕ *Frete:* ${formatCurrency(order.shipping)}\n`;
+    }
+    if (order.additionalAmount && order.additionalAmount > 0) {
+      text += `➕ *Acréscimo:* ${formatCurrency(order.additionalAmount)}\n`;
+    }
+    
+    text += `💰 *TOTAL DO PEDIDO:* *${formatCurrency(order.total)}*\n\n`;
+    
+    if (order.notes) {
+      text += `ℹ️ *Observações:* "${order.notes}"\n\n`;
+    }
+    
+    text += `Obrigada pela preferência! Caso precise de algo, estamos à disposição. ✨`;
+    return text;
+  };
+
+  const handleCopySummary = (order: Order) => {
+    try {
+      const text = generateShareText(order);
+      navigator.clipboard.writeText(text);
+      setCopiedOrderId(order.id);
+      toast({
+        title: "Sucesso!",
+        message: "Resumo do pedido copiado para a área de transferência.",
+        type: "success",
+      });
+      setTimeout(() => {
+        setCopiedOrderId(null);
+      }, 3000);
+    } catch (err) {
+      toast({
+        title: "Erro!",
+        message: "Não foi possível copiar o resumo do pedido.",
+        type: "error",
+      });
+    }
+  };
+
+  const handleShareWhatsapp = (order: Order) => {
+    const text = generateShareText(order);
+    const encodedText = encodeURIComponent(text);
+    const cleanPhone = getCleanWhatsapp(order.customerWhatsapp);
+    
+    const url = cleanPhone 
+      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`
+      : `https://api.whatsapp.com/send?text=${encodedText}`;
+      
+    window.open(url, "_blank");
+  };
+
   const filteredOrders = orders.filter((o) => {
     const matchesSearch =
       o.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -921,6 +1015,16 @@ export function AdminOrders() {
                           <Eye size={16} className="text-slate-400" />
                         </Button>
 
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="w-8 h-8 rounded-full hover:bg-emerald-500/10 hover:shadow-sm text-emerald-500"
+                          title="Compartilhar no WhatsApp"
+                          onClick={() => handleShareWhatsapp(order)}
+                        >
+                          <Share2 size={16} />
+                        </Button>
+
                         {canEdit && (
                           <Button
                             variant="ghost"
@@ -1096,6 +1200,32 @@ export function AdminOrders() {
                             {selectedOrder.customerWhatsapp}
                           </p>
                         </div>
+                      </div>
+                      <div className="mt-3 flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="bg-slate-950 text-slate-300 border-slate-800 text-[10px] font-black uppercase tracking-wider h-8 rounded-xl px-3 hover:text-white hover:bg-slate-900"
+                          onClick={() => handleCopySummary(selectedOrder)}
+                        >
+                          {copiedOrderId === selectedOrder.id ? (
+                            <>
+                              <Check size={12} className="mr-1 text-emerald-550" /> Copiado!
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={12} className="mr-1" /> Copiar Resumo
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="bg-emerald-950/20 text-emerald-400 border-emerald-900/45 text-[10px] font-black uppercase tracking-wider h-8 rounded-xl px-3 hover:bg-emerald-950/60 hover:text-emerald-300"
+                          onClick={() => handleShareWhatsapp(selectedOrder)}
+                        >
+                          <Share2 size={12} className="mr-1" /> WhatsApp
+                        </Button>
                       </div>
                     </section>
 

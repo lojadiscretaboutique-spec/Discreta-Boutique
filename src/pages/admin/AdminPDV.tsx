@@ -290,6 +290,7 @@ export function AdminPDV() {
           barcode: pData.gtin || pData.barcode || "",
           price: Number(pData.price) || 0,
           promotionalPrice: Number(pData.promoPrice) || 0,
+          promoPrice: Number(pData.promoPrice) || 0,
           stock: Number(pData.stock) ?? 0,
           imageThumb: pData.images?.[0]?.url || "",
           categoryId: pData.categoryId || "",
@@ -2042,9 +2043,22 @@ export function AdminPDV() {
                           <h3 className="text-xs font-bold text-slate-100 line-clamp-2 leading-tight h-8 mb-2 group-hover:text-red-500 transition-colors">
                             {p.name}
                           </h3>
-                          <p className="text-sm font-black text-white">
-                            {formatCurrency(p.promoPrice || p.price)}
-                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {p.promoPrice && p.promoPrice < p.price ? (
+                              <>
+                                <span className="text-sm font-black text-emerald-400">
+                                  {formatCurrency(p.promoPrice)}
+                                </span>
+                                <span className="text-[10px] line-through text-slate-400 font-semibold">
+                                  {formatCurrency(p.price)}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-sm font-black text-white">
+                                {formatCurrency(p.price)}
+                              </span>
+                            )}
+                          </div>
                         </button>
                       );
                     })}
