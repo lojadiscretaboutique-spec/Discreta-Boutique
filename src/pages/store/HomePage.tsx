@@ -21,6 +21,7 @@ import { SafeOptimizedImage } from '../../components/home/SafeOptimizedImage';
 import { isProductInCategory } from '../../utils/categoryUtils';
 import { measurePerformance } from '../../utils/performance';
 import { HomeLiveShopSection } from '../../components/home/HomeLiveShopSection';
+import { StoryShopCarousel } from '../../components/store/StoryShopCarousel';
 
 interface Banner {
   id: string;
@@ -668,11 +669,6 @@ export function HomePage() {
       {(loading || categories.length > 0) && (
         <section className="bg-black py-6 md:py-16 border-b border-zinc-900">
           <div className="max-w-7xl mx-auto px-4">
-            <div className="flex flex-col mb-4 md:mb-10">
-              <h2 className="text-sm font-black uppercase tracking-[4px] text-zinc-600 mb-2">Coleções</h2>
-              <div className="w-12 h-1 bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"></div>
-            </div>
-
             <div className="flex items-start gap-4 md:gap-8 overflow-x-auto no-scrollbar pb-6 scroll-p-4">
               {loading ? (
                 Array(8).fill(0).map((_, i) => (
@@ -719,6 +715,9 @@ export function HomePage() {
           </div>
         </section>
       )}
+
+      {/* 1.3 STORY SHOP */}
+      <StoryShopCarousel />
 
       {/* 1.7 DAILY OFFERS BANNERS (OFERTAS DO DIA) */}
       {!loading && offerBanners.length > 0 && (

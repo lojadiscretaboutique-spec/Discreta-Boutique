@@ -426,6 +426,18 @@ service cloud.firestore {
       allow write: if isMasterAdmin() || can('banners', 'editar') || can('banners', 'criar');
     }
 
+    match /public_story_shop_cache/{doc} {
+      allow read: if true;
+      allow write: if isMasterAdmin();
+    }
+
+    match /story_shop/{doc} {
+      allow read: if isMasterAdmin() || signedIn();
+      allow create: if isMasterAdmin() || can('banners', 'criar');
+      allow update: if isMasterAdmin() || can('banners', 'editar');
+      allow delete: if isMasterAdmin() || can('banners', 'excluir');
+    }
+
     match /blog_posts/{doc} {
       allow read: if true;
       allow create: if isMasterAdmin() || can('marketing', 'criar');

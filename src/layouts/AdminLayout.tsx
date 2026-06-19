@@ -47,6 +47,7 @@ export function AdminLayout() {
         { name: 'Insights IA 🧠', path: '/admin/ia-insights', permission: 'dashboard' },
         { name: 'Visitantes', path: '/admin/analytics/visitors', permission: 'dashboard' },
         { name: 'Live Shop 🎥', path: '/admin/marketing/live-shop', permission: 'banners' },
+        { name: 'Story Shop 📱', path: '/admin/marketing/story-shop', permission: 'banners' },
         { name: 'Visual Home 🎨', path: '/admin/marketing/visual-home', permission: 'banners' },
         { name: 'Banners', path: '/admin/marketing/banners', permission: 'banners' },
         { name: 'Popups', path: '/admin/marketing/popups', permission: 'banners' },

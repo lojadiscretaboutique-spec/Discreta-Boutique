@@ -66,6 +66,7 @@ const AdminThemeManager = lazy(() => import('./pages/admin/AdminThemeManager').t
 const AdminTypography = lazy(() => import('./pages/admin/AdminTypography').then(m => ({ default: m.AdminTypography })));
 const AdminPrinterConfig = lazy(() => import('./pages/admin/AdminPrinterConfig').then(m => ({ default: m.AdminPrinterConfig })));
 const AdminLiveShop = lazy(() => import('./pages/admin/marketing/AdminLiveShop').then(m => ({ default: m.AdminLiveShop })));
+const AdminStoryShopManager = lazy(() => import('./pages/admin/marketing/AdminStoryShopManager').then(m => ({ default: m.AdminStoryShopManager })));
 const AdminWifiUsers = lazy(() => import('./pages/admin/marketing/AdminWifiUsers'));
 const LiveShopPage = lazy(() => import('./pages/store/LiveShopPage').then(m => ({ default: m.LiveShopPage })));
 
@@ -218,6 +219,7 @@ function AppContent() {
             <Route path="logs" element={<AdminLogs />} />
             <Route path="marketing/visual-home" element={<AdminVisualHome />} />
             <Route path="marketing/live-shop" element={<AdminLiveShop />} />
+            <Route path="marketing/story-shop" element={<AdminStoryShopManager />} />
             <Route path="live-shop" element={<AdminLiveShop />} />
             <Route path="marketing/banners" element={<AdminBanners />} />
             <Route path="marketing/popups" element={<AdminPopups />} />
