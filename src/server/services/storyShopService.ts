@@ -3,6 +3,7 @@ import {
     collection, 
     addDoc, 
     getDocs, 
+    getDoc,
     query, 
     orderBy, 
     doc, 
@@ -46,6 +47,50 @@ export const storyShopService = {
   },
 
   async deleteStory(id: string): Promise<void> {
-    await deleteDoc(doc(db, COLLECTION, id));
+    const docRef = doc(db, COLLECTION, id);
+    try {
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data() as StoryShop;
+        
+        // Dynamic import to prevent bundler problems and keep file lazy loaded
+        const { storage } = await import('../../lib/storage');
+        const { ref: storageRef, deleteObject } = await import('firebase/storage');
+
+        // Verify and delete video from Storage
+        if (
+          data.videoSource === 'firebase_storage' && 
+          data.videoStoragePath && 
+          data.videoStoragePath.startsWith('story-shop/videos/')
+        ) {
+          try {
+            const videoRef = storageRef(storage, data.videoStoragePath);
+            await deleteObject(videoRef);
+            console.log(`[STORAGE] Deleted video: ${data.videoStoragePath}`);
+          } catch (storageErr) {
+            console.error(`[STORAGE] Could not delete video at ${data.videoStoragePath}:`, storageErr);
+          }
+        }
+
+        // Verify and delete thumbnail from Storage
+        if (
+          data.thumbnailSource === 'firebase_storage' && 
+          data.thumbnailStoragePath && 
+          data.thumbnailStoragePath.startsWith('story-shop/thumbnails/')
+        ) {
+          try {
+            const thumbRef = storageRef(storage, data.thumbnailStoragePath);
+            await deleteObject(thumbRef);
+            console.log(`[STORAGE] Deleted thumbnail: ${data.thumbnailStoragePath}`);
+          } catch (storageErr) {
+            console.error(`[STORAGE] Could not delete thumbnail at ${data.thumbnailStoragePath}:`, storageErr);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[storyShopService] Pre-delete storage sweep encountered an error:", err);
+    }
+
+    await deleteDoc(docRef);
   }
 };

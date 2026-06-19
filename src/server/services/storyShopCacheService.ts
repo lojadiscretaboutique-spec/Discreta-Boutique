@@ -44,10 +44,26 @@ export const storyShopCacheService = {
       // Sort in memory
       stories.sort((a, b) => (a.order || 0) - (b.order || 0));
 
+      const cachedItems = stories.map(s => ({
+        id: s.id,
+        title: s.title,
+        thumbnailUrl: s.thumbnailUrl,
+        videoUrl: s.videoUrl,
+        productId: s.productId,
+        productName: s.productName || null,
+        productSlug: s.productSlug || null,
+        productImageThumb: s.productImageThumb || null,
+        price: s.price || null,
+        promotionalPrice: s.promotionalPrice || null,
+        hasVariants: s.hasVariants || false,
+        inStock: s.inStock ?? true,
+        order: s.order || 0
+      }));
+
       await setDoc(doc(db, 'public_story_shop_cache', 'items'), {
-        items: stories,
+        items: cachedItems,
         updatedAt: serverTimestamp(),
-        totalItems: stories.length
+        totalItems: cachedItems.length
       });
 
       console.log('✅ Story Shop Cache successfully regenerated!');

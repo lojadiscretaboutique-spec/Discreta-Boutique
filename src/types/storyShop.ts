@@ -25,6 +25,12 @@ export interface StoryShop {
   hasVariants?: boolean;
   createdAt: Timestamp | Date;
   updatedAt: Timestamp | Date;
+  
+  // Storage source tracking to support robust file storage management
+  videoSource?: 'url' | 'firebase_storage';
+  videoStoragePath?: string | null;
+  thumbnailSource?: 'url' | 'firebase_storage';
+  thumbnailStoragePath?: string | null;
 }
 
 export interface PublicStoryShopCache {
