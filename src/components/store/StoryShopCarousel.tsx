@@ -7,6 +7,7 @@ import { ShoppingCart, Maximize2, ChevronLeft, ChevronRight, Play } from 'lucide
 import { useCartStore } from '../../store/cartStore';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface StoryCardProps {
   story: StoryShop;
@@ -22,30 +23,77 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
   const [isPlaying, setIsPlaying] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
-  // Auto-play/pause based on active index + viewport presence
+  // Auto-play/pause safe flow
   useEffect(() => {
-    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (!video) return;
 
-    if (isActive && sectionVisible) {
+    if (isActive && sectionVisible && canRenderVideo) {
       setLoadError(false);
-      videoRef.current.currentTime = 0;
-      videoRef.current.play()
-        .then(() => setIsPlaying(true))
-        .catch((err) => {
-          if (import.meta.env.DEV) {
-            console.warn('[STORY_SHOP] Video playback blocked or interrupted:', err.message);
-          }
-          setIsPlaying(false);
-        });
+      
+      // Explicitly configure muted/playsInline properties on DOM node before trigger
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      video.currentTime = 0;
+      
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => setIsPlaying(true))
+          .catch((err) => {
+            if (import.meta.env.DEV) {
+              console.warn('[STORY_SHOP] Autoplay blocked, showing poster/thumbnail:', err?.message || err);
+            }
+            setIsPlaying(false);
+          });
+      }
     } else {
-      videoRef.current.pause();
+      try {
+        video.pause();
+      } catch (err) {
+        // Safe catch
+      }
       setIsPlaying(false);
     }
-  }, [isActive, sectionVisible]);
+
+    return () => {
+      if (video) {
+        try {
+          video.pause();
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+  }, [isActive, sectionVisible, canRenderVideo]);
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isActive) {
+      if (videoRef.current) {
+        if (videoRef.current.paused) {
+          videoRef.current.play()
+            .then(() => setIsPlaying(true))
+            .catch((err) => {
+              if (import.meta.env.DEV) {
+                console.warn('[STORY_SHOP] Manual playback blocked:', err?.message || err);
+              }
+            });
+        } else {
+          onOpenModal();
+        }
+      } else {
+        onOpenModal();
+      }
+    } else {
+      onActivate();
+    }
+  };
 
   return (
     <div 
-      onClick={onActivate}
+      onClick={handleCardClick}
       className={`relative flex-none flex flex-col transition-all duration-500 cursor-pointer snap-center select-none ${
         isActive 
           ? 'w-[240px] md:w-[300px] scale-100 z-10' 
@@ -55,12 +103,12 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
       <div 
         className={`w-full aspect-[9/16] rounded-3xl overflow-hidden bg-zinc-950 flex items-center justify-center relative transition-all duration-500 ${
           isActive 
-            ? 'ring-4 ring-red-600 shadow-[0_0_30px_rgba(220,38,38,0.55)]' 
+            ? 'ring-4 ring-[var(--primary-color)] shadow-[0_0_30px_var(--color-primary-glow)]' 
             : 'border border-zinc-900'
         }`}
       >
         
-        {/* Render actual <video> tag ONLY for active & adjacent slots to keep low network footprint */}
+        {/* Render actual <video> tag ONLY for active slot when the whole section is visible */}
         {canRenderVideo && story.videoUrl && !loadError ? (
           <video
             ref={videoRef}
@@ -70,7 +118,10 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
             muted
             playsInline
             loop
+            autoPlay
             preload="metadata"
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
             onError={(e) => {
               if (import.meta.env.DEV) {
                 console.warn('[STORY_SHOP] Failed to load MP4 video:', story.videoUrl);
@@ -82,7 +133,7 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
           <img 
             src={story.thumbnailUrl} 
             alt={story.title} 
-            className="w-full h-full object-cover" 
+            className="w-full h-full object-cover animate-fadeIn" 
           />
         )}
 
@@ -103,7 +154,7 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
               e.stopPropagation();
               onOpenModal();
             }}
-            className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white rounded-full p-2.5 backdrop-blur-md transition-all z-10 border border-zinc-800"
+            className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white rounded-full p-2.5 backdrop-blur-md transition-all z-10 border border-zinc-800 cursor-pointer"
             title="Ver em tela cheia"
           >
             <Maximize2 size={15} />
@@ -118,7 +169,7 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
                 e.stopPropagation();
                 onOpenModal();
               }}
-              className="w-12 h-12 rounded-full border-2 border-red-600 overflow-hidden bg-black shadow-lg animate-pulse cursor-pointer pointer-events-auto"
+              className="w-12 h-12 rounded-full border-2 border-[var(--primary-color)] overflow-hidden bg-black shadow-lg animate-pulse cursor-pointer pointer-events-auto"
             >
               <img 
                 src={story.thumbnailUrl} 
@@ -148,11 +199,46 @@ export function StoryShopCarousel() {
   
   const containerRef = useRef<HTMLDivElement>(null);
   const sectionRef = useRef<HTMLDivElement>(null);
-  const [sectionVisible, setSectionVisible] = useState(false);
+  const [sectionVisible, setSectionVisible] = useState(true);
+
+  // Responsive padding calculation through ResizeObserver of the container width
+  const [paddingLeftRight, setPaddingLeftRight] = useState('calc(50% - 120px)');
+  
+  // Programmatic scrolling flags to prevent jumping indices during animation transitions
+  const isScrollingProgrammatically = useRef(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { addItem } = useCartStore();
   const { toast } = useFeedback();
   const navigate = useNavigate();
+
+  // Auto scroll to active center element helper
+  const scrollToActive = (index: number) => {
+    if (containerRef.current) {
+      const container = containerRef.current;
+      const child = container.children[index] as HTMLElement;
+      if (child) {
+        isScrollingProgrammatically.current = true;
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+
+        const containerWidth = container.offsetWidth;
+        const isMobileSize = containerWidth < 768;
+        const childWidth = isMobileSize ? 240 : 300;
+        
+        const scrollLeft = child.offsetLeft - (containerWidth / 2) + (childWidth / 2);
+        
+        container.scrollTo({
+          left: scrollLeft,
+          behavior: 'smooth'
+        });
+
+        // Set safety lock timeout so scrolling momentum doesn't override active index
+        scrollTimeoutRef.current = setTimeout(() => {
+          isScrollingProgrammatically.current = false;
+        }, 600);
+      }
+    }
+  };
 
   // 1. Fetch exactly the cache items document
   useEffect(() => {
@@ -169,6 +255,11 @@ export function StoryShopCarousel() {
           if (import.meta.env.DEV) {
             console.log(`[STORY_SHOP] Story Shop cache carregado: ${list.length} items`);
           }
+
+          // Center the first item after layout render
+          setTimeout(() => {
+            scrollToActive(0);
+          }, 150);
         }
       } catch (err) {
         console.error('[STORY_SHOP] Error loading stories public cache', err);
@@ -177,7 +268,24 @@ export function StoryShopCarousel() {
     fetchCarousel();
   }, []);
 
-  // 2. Intersection observer on the whole viewport section
+  // 1.1 DEV logging for active item parameters
+  useEffect(() => {
+    if (import.meta.env.DEV && stories.length > 0) {
+      const activeStory = stories[activeIndex];
+      if (activeStory) {
+        console.log('[StoryShop] item ativo', {
+          id: activeStory.id,
+          title: activeStory.title,
+          videoUrl: activeStory.videoUrl,
+          thumbnailUrl: activeStory.thumbnailUrl,
+          activeIndex,
+          isSectionVisible: sectionVisible
+        });
+      }
+    }
+  }, [stories, activeIndex, sectionVisible]);
+
+  // 2. Intersection observer on the whole viewport section to play/pause intelligently
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => {
       setSectionVisible(entry.isIntersecting);
@@ -187,6 +295,32 @@ export function StoryShopCarousel() {
       observer.observe(sectionRef.current);
     }
     return () => observer.disconnect();
+  }, []);
+
+  // 3. Compute dynamic center padding on container element resize
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+    
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        const width = entry.contentRect.width;
+        // On mobile (width < 768px), cards are w-[240px] (half is 120px). On desktop, cards are w-[300px] (half is 150px)
+        const isMobileSize = width < 768;
+        const cardHalf = isMobileSize ? 120 : 150;
+        setPaddingLeftRight(`calc(50% - ${cardHalf}px)`);
+      }
+    });
+    
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  // 4. Programmatic scrolling cleanup
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    };
   }, []);
 
   if (stories.length === 0) return null;
@@ -203,46 +337,37 @@ export function StoryShopCarousel() {
     hasVariations: activeStory.hasVariants || false
   } : null;
 
-  // Auto scroll to active center element helper
-  const scrollToActive = (index: number) => {
-    if (containerRef.current) {
-      const container = containerRef.current;
-      const child = container.children[index] as HTMLElement;
-      if (child) {
-        const scrollLeft = child.offsetLeft - (container.offsetWidth / 2) + (child.offsetWidth / 2);
-        container.scrollTo({
-          left: scrollLeft,
-          behavior: 'smooth'
-        });
-      }
-    }
-  };
-
-  // 3. Horizontal Snapping scroll calculative detection
+  // 5. Horizontal Snapping scroll calculative detection
   const handleScrollAndDetect = () => {
+    if (isScrollingProgrammatically.current) return;
     if (!containerRef.current || stories.length === 0) return;
-    const container = containerRef.current;
-    const scrollLeft = container.scrollLeft;
-    const containerWidth = container.offsetWidth;
     
-    const children = Array.from(container.children) as HTMLElement[];
-    let closestIndex = 0;
-    let minDistance = Infinity;
-    
-    const containerCenter = scrollLeft + (containerWidth / 2);
-    
-    children.forEach((child, idx) => {
-      const childCenter = child.offsetLeft + (child.offsetWidth / 2);
-      const distance = Math.abs(containerCenter - childCenter);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestIndex = idx;
+    // Use requestAnimationFrame to offset layout query costs
+    requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (!container) return;
+      
+      const scrollLeft = container.scrollLeft;
+      const containerWidth = container.offsetWidth;
+      const containerCenter = scrollLeft + (containerWidth / 2);
+      
+      const children = Array.from(container.children) as HTMLElement[];
+      let closestIndex = activeIndex;
+      let minDistance = Infinity;
+      
+      children.forEach((child, idx) => {
+        const childCenter = child.offsetLeft + (child.offsetWidth / 2);
+        const distance = Math.abs(containerCenter - childCenter);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestIndex = idx;
+        }
+      });
+      
+      if (closestIndex !== activeIndex) {
+        setActiveIndex(closestIndex);
       }
     });
-    
-    if (closestIndex !== activeIndex) {
-      setActiveIndex(closestIndex);
-    }
   };
 
   const navigatePrev = () => {
@@ -298,21 +423,42 @@ export function StoryShopCarousel() {
     >
       <div className="max-w-7xl mx-auto px-4 relative">
         
+        {/* Navigation Buttons: Side Chevrons (Desktop only) */}
+        <button
+          type="button"
+          onClick={navigatePrev}
+          disabled={activeIndex === 0}
+          className="absolute left-6 top-1/2 -translate-y-1/2 z-20 bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800 disabled:opacity-20 disabled:pointer-events-none text-white p-3.5 rounded-full backdrop-blur-md transition-all shadow-[0_4px_24px_rgba(0,0,0,0.6)] active:scale-95 hidden md:flex items-center justify-center cursor-pointer"
+          title="Anterior"
+        >
+          <ChevronLeft size={20} className="text-zinc-200" />
+        </button>
+
+        <button
+          type="button"
+          onClick={navigateNext}
+          disabled={activeIndex === stories.length - 1}
+          className="absolute right-6 top-1/2 -translate-y-1/2 z-20 bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800 disabled:opacity-20 disabled:pointer-events-none text-white p-3.5 rounded-full backdrop-blur-md transition-all shadow-[0_4px_24px_rgba(0,0,0,0.6)] active:scale-95 hidden md:flex items-center justify-center cursor-pointer"
+          title="Próximo"
+        >
+          <ChevronRight size={20} className="text-zinc-200" />
+        </button>
+
         <div 
           ref={containerRef}
           onScroll={handleScrollAndDetect}
           className="flex gap-4 md:gap-7 overflow-x-auto no-scrollbar py-8 items-center cursor-grab active:cursor-grabbing snap-x snap-mandatory"
           style={{ 
             scrollSnapType: 'x mandatory',
-            // Centering padding tricks: calculates dynamically based on card size
-            paddingLeft: 'calc(50% - 120px)', 
-            paddingRight: 'calc(50% - 120px)'
+            paddingLeft: paddingLeftRight,
+            paddingRight: paddingLeftRight,
+            scrollBehavior: 'smooth'
           }}
         >
           {stories.map((story, idx) => {
             const isCenter = idx === activeIndex;
-            // Lazy load limits: only render actual video if adjacent or active
-            const canRenderVideo = Math.abs(idx - activeIndex) <= 1;
+            // Strict condition: Render video ONLY for the active card when the section viewport is visible
+            const canRenderVideo = isCenter && sectionVisible;
 
             return (
               <StoryCard 
@@ -347,7 +493,7 @@ export function StoryShopCarousel() {
                       <img 
                         src={src} 
                         alt={activeProduct.name || ''} 
-                        className="w-full h-full object-cover" 
+                        className="w-full h-full object-cover animate-fadeIn" 
                       />
                     ) : (
                       <div className="w-full h-full bg-zinc-900" />
@@ -365,7 +511,7 @@ export function StoryShopCarousel() {
                         <span className="text-[10px] text-zinc-500 line-through">
                           R$ {activeProduct.price.toFixed(2)}
                         </span>
-                        <span className="text-xs font-extrabold text-red-600">
+                        <span className="text-xs font-extrabold text-[var(--primary-color)]">
                           R$ {activeProduct.promoPrice.toFixed(2)}
                         </span>
                       </>
@@ -381,7 +527,8 @@ export function StoryShopCarousel() {
               <div className="flex items-center gap-2">
                 <button 
                   onClick={handleAddToCart}
-                  className="px-4 h-10 rounded-xl bg-red-600 hover:bg-red-700 flex items-center justify-center text-white flex-shrink-0 shadow transition-transform active:scale-95 text-[11px] font-black uppercase tracking-tight gap-2"
+                  className="px-4 h-10 rounded-xl hover:opacity-90 flex items-center justify-center flex-shrink-0 shadow transition-transform active:scale-95 text-[11px] font-black uppercase tracking-tight gap-2 cursor-pointer"
+                  style={{ backgroundColor: 'var(--primary-color)', color: 'var(--button-color-text)' }}
                   title={activeProduct.hasVariations ? 'Ver opções' : 'Adicionar ao Carrinho'}
                 >
                   <ShoppingCart size={15} />
@@ -402,9 +549,9 @@ export function StoryShopCarousel() {
                 setActiveIndex(idx);
                 scrollToActive(idx);
               }}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
+              className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
                 idx === activeIndex 
-                  ? 'w-6 bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.8)]' 
+                  ? 'w-6 bg-[var(--primary-color)] shadow-[0_0_8px_var(--color-primary-glow)]' 
                   : 'w-1.5 bg-zinc-800 hover:bg-zinc-650'
               }`}
             />

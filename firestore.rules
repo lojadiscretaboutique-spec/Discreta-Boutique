@@ -431,6 +431,11 @@ service cloud.firestore {
       allow write: if isMasterAdmin();
     }
 
+    match /public_promotions_cache/{doc} {
+      allow read: if true;
+      allow write: if isMasterAdmin() || can('banners', 'editar') || can('banners', 'criar');
+    }
+
     match /story_shop/{doc} {
       allow read: if isMasterAdmin() || signedIn();
       allow create: if isMasterAdmin() || can('banners', 'criar');
