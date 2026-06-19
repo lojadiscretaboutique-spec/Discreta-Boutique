@@ -93,7 +93,7 @@ export interface MktAffiliateRankingItem {
 export interface MktPromotion {
   id: string;
   code: string;
-  type: 'cupom' | 'frete_gratis' | 'compre_ganhe';
+  type: 'cupom' | 'frete_gratis' | 'compre_ganhe' | 'gift_with_purchase';
   description: string;
   startDate: string;
   endDate: string;

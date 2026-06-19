@@ -67,6 +67,15 @@ interface CartItem {
   gtin?: string;
   imageUrl?: string;
   discount?: number;
+
+  // Gift With Purchase Specific Fields
+  isGift?: boolean;
+  giftPromotionId?: string;
+  giftTierId?: string;
+  lockedPrice?: boolean;
+  cannotEditPrice?: boolean;
+  cannotApplyCoupon?: boolean;
+  removeIfNotEligible?: boolean;
 }
 
 // Utility for POS beep sound
@@ -547,6 +556,69 @@ export function AdminPDV() {
     }, [discountType, discountBase, cartSubtotal]);
   const [editingOrderType, setEditingOrderType] = useState<string | null>(null);
   const [showMobileCart, setShowMobileCart] = useState(false);
+
+  // Sync gifts function for PDV
+  const syncGifts = useCallback(async (currentCart: CartItem[]) => {
+    try {
+      const { giftCartService } = await import("../../services/giftCartService");
+      
+      // Map PDV CartItem to standard CartItem for the service
+      // The service expects id, but PDV doesn't have id in its interface (it uses indices or productId+variantId)
+      const mappedItems = currentCart.map(item => ({
+        ...item,
+        id: item.isCombo ? item.comboId! : (item.variantId ? `${item.productId}-${item.variantId}` : item.productId)
+      })) as any;
+
+      const eligibleGifts = await giftCartService.calculateEligibleGifts(mappedItems);
+      
+      if (eligibleGifts.length === 0) {
+        const hasGifts = currentCart.some(i => i.isGift);
+        if (hasGifts) {
+          setCart(prev => prev.filter(i => !i.isGift));
+        }
+        return;
+      }
+
+      // Map back to PDV CartItem structure
+      const pdvGifts: CartItem[] = eligibleGifts.map(gift => ({
+        productId: gift.productId,
+        variantId: gift.variantId,
+        name: gift.name,
+        variantName: gift.variantName,
+        price: gift.price,
+        costPrice: gift.costPrice || 0,
+        quantity: gift.quantity,
+        sku: gift.sku || "",
+        imageUrl: gift.imageUrl,
+        isGift: true,
+        giftPromotionId: gift.giftPromotionId,
+        giftTierId: gift.giftTierId,
+        lockedPrice: true,
+        cannotEditPrice: true,
+        cannotApplyCoupon: true,
+        removeIfNotEligible: true
+      }));
+
+      setCart(prev => {
+        const nonGifts = prev.filter(i => !i.isGift);
+        return [...nonGifts, ...pdvGifts];
+      });
+    } catch (error) {
+      console.error("[PDV] Error syncing gifts:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (cart.length > 0) {
+      const timer = setTimeout(() => {
+        // Only sync if there are regular items
+        if (cart.some(i => !i.isGift)) {
+          syncGifts(cart);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [cartSubtotal, syncGifts]);
 
   const [currentSession, setCurrentSession] = useState<CashSession | null>(
     null,
@@ -1265,6 +1337,9 @@ export function AdminPDV() {
           isCombo: item.isCombo || false,
           comboId: item.comboId || null,
           subtotal: roundTo2(item.price * item.quantity - (item.discount || 0)),
+          isGift: item.isGift || false,
+          giftPromotionId: item.giftPromotionId || null,
+          giftTierId: item.giftTierId || null,
         })),
         subtotal: cartSubtotal,
         total,
@@ -2566,9 +2641,16 @@ export function AdminPDV() {
                     )}
                   </div>
                   <div className="flex-1 flex flex-col justify-center min-w-0">
-                    <h4 className="text-xs font-bold text-white truncate">
-                      {item.name}
-                    </h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-bold text-white truncate">
+                        {item.name}
+                      </h4>
+                      {item.isGift && (
+                        <span className="bg-green-500 text-white text-[8px] px-1.5 py-0.5 rounded font-black uppercase shrink-0">
+                          Mimo
+                        </span>
+                      )}
+                    </div>
                     {item.variantName && (
                       <span className="text-[10px] text-red-500 font-bold uppercase">
                         {formatVariantName(item.variantName)}
@@ -2576,18 +2658,21 @@ export function AdminPDV() {
                     )}
                     <div className="mt-2 flex justify-between items-center">
                       <div className="flex items-center gap-3">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            updateQty(idx, -1);
-                          }}
-                          className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-900/10 hover:bg-red-600 transition-colors"
-                        >
-                          <Minus size={12} />
-                        </button>
+                        {!item.isGift && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateQty(idx, -1);
+                            }}
+                            className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-900/10 hover:bg-red-600 transition-colors"
+                          >
+                            <Minus size={12} />
+                          </button>
+                        )}
                         <input
                           type="number"
                           value={item.quantity}
+                          disabled={item.isGift}
                           onChange={(e) => {
                             const newQty = parseInt(e.target.value) || 1;
                             setCart((prev) => {
@@ -2596,44 +2681,56 @@ export function AdminPDV() {
                               return newCart;
                             });
                           }}
-                          className="w-10 text-sm font-black text-center bg-slate-950 border border-white/10 rounded-lg outline-none focus:border-red-500"
+                          className={cn(
+                            "w-10 text-sm font-black text-center bg-slate-950 border border-white/10 rounded-lg outline-none focus:border-red-500",
+                            item.isGift && "opacity-50 cursor-not-allowed"
+                          )}
                         />
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            updateQty(idx, 1);
-                          }}
-                          className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-900/10 hover:bg-red-600 transition-colors"
-                        >
-                          <Plus size={12} />
-                        </button>
+                        {!item.isGift && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateQty(idx, 1);
+                            }}
+                            className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-900/10 hover:bg-red-600 transition-colors"
+                          >
+                            <Plus size={12} />
+                          </button>
+                        )}
                       </div>
                       <div className="flex flex-col items-end">
-                        <span className="text-sm font-black text-white">
-                          {formatCurrency(item.price * item.quantity)}
-                        </span>
-                        <div className="flex items-center gap-1 mt-1">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">
-                            Desc Reais:
+                        {item.isGift && item.price === 0 && (
+                          <span className="text-[10px] text-slate-500 line-through">
+                            {formatCurrency((item as any).originalPrice || 0)}
                           </span>
-                          <input
-                            type="number"
-                            value={item.discount || 0}
-                            onChange={(e) =>
-                              updateItemDiscount(
-                                idx,
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                            onBlur={(e) =>
-                              updateItemDiscount(
-                                idx,
-                                roundTo2(parseFloat(e.target.value)) || 0,
-                              )
-                            }
-                            className="w-16 bg-slate-900/5 border border-white/10 rounded px-1.5 py-0.5 text-[10px] font-black text-green-500 outline-none focus:border-green-500 transition-colors"
-                          />
-                        </div>
+                        )}
+                        <span className="text-sm font-black text-white">
+                          {item.isGift && item.price === 0 ? "GRÁTIS" : formatCurrency(item.price * item.quantity)}
+                        </span>
+                        {!item.isGift && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">
+                              Desc Reais:
+                            </span>
+                            <input
+                              type="number"
+                              value={item.discount || 0}
+                              onChange={(e) =>
+                                updateItemDiscount(
+                                  idx,
+                                  parseFloat(e.target.value) || 0,
+                                )
+                              }
+                              onBlur={(e) =>
+                                updateItemDiscount(
+                                  idx,
+                                  roundTo2(parseFloat(e.target.value)) || 0,
+                                )
+                              }
+                              className="w-16 bg-slate-900/5 border border-white/10 rounded px-1.5 py-0.5 text-[10px] font-black text-green-500 outline-none focus:border-green-500 transition-colors"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

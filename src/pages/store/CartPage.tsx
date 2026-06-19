@@ -180,6 +180,21 @@ export function CartPage() {
   const [showMpBrick, setShowMpBrick] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
 
+  const [activeGiftPromotions, setActiveGiftPromotions] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchActiveGifts = async () => {
+      try {
+        const { promotionCacheService } = await import('../../services/promotionCacheService');
+        const gifts = await promotionCacheService.getActiveGifts();
+        setActiveGiftPromotions(gifts || []);
+      } catch (err) {
+        console.error("Error fetching active gifts:", err);
+      }
+    };
+    fetchActiveGifts();
+  }, []);
+
   // Out of stock validation states
   const [outOfStockItems, setOutOfStockItems] = useState<{
     id: string;
@@ -1028,7 +1043,10 @@ export function CartPage() {
             quantity: i.quantity,
             sku: i.sku || '',
             gtin: i.gtin || '',
-            searchId: i.searchId || null
+            searchId: i.searchId || null,
+            isGift: i.isGift || false,
+            giftPromotionId: i.giftPromotionId || null,
+            giftTierId: i.giftTierId || null
           };
         }),
         createdAt: new Date().toISOString(),
@@ -1311,6 +1329,70 @@ export function CartPage() {
                   className="space-y-8"
                 >
                   {/* Items List */}
+                  {activeGiftPromotions.length > 0 && subTotal > 0 && (
+                    <div className="rounded-[2rem] p-6 border shadow-2xl overflow-hidden relative group transition-all duration-500 mb-8" style={{ backgroundColor: cardBg, borderColor: `${currentTheme.primaryColor}20`, color: cardText }}>
+                       {activeGiftPromotions.map(promo => {
+                         const applicableTiers = [...(promo.tiers || [])].sort((a,b) => a.minSubtotal - b.minSubtotal);
+                         const nextTier = applicableTiers.find(t => t.minSubtotal > subTotal);
+                         const currentTier = [...applicableTiers].reverse().find(t => t.minSubtotal <= subTotal);
+                         
+                         if (!nextTier && !currentTier) return null;
+                         
+                         const progress = nextTier ? (subTotal / nextTier.minSubtotal) * 100 : 100;
+                         
+                         return (
+                           <div key={promo.id} className="space-y-3">
+                             <div className="flex justify-between items-end">
+                               <div>
+                                 <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: currentTheme.primaryColor }}>
+                                   <Sparkles size={14} className="animate-pulse" />
+                                   {nextTier ? "Progresso para ganhar Mimo" : "Você ganhou todos os Mimos!"}
+                                 </h3>
+                                 <p className="text-[10px] opacity-70 mt-1 uppercase font-bold tracking-wider">
+                                   {nextTier 
+                                     ? `Faltam ${formatCurrency(nextTier.minSubtotal - subTotal)} para ganhar seu próximo mimo`
+                                     : `Parabéns! Você atingiu o nível máximo de mimos desta promoção.`}
+                                 </p>
+                               </div>
+                             </div>
+                             
+                             {/* Progress Bar */}
+                             <div className="h-3 bg-slate-900/10 rounded-full overflow-hidden border border-white/5 relative">
+                                <motion.div 
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${Math.min(100, progress)}%` }}
+                                  className="h-full relative"
+                                  style={{ backgroundColor: currentTheme.primaryColor }}
+                                >
+                                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                                </motion.div>
+                             </div>
+
+                             {/* Tiers Markers */}
+                             <div className="flex justify-between px-1 relative">
+                               {applicableTiers.map((tier, idx) => {
+                                 const isReached = subTotal >= tier.minSubtotal;
+                                 return (
+                                   <div key={idx} className="flex flex-col items-center">
+                                     <div className={cn(
+                                       "w-2 h-2 rounded-full mb-1 border shadow-lg transition-all duration-500",
+                                       isReached ? "scale-125" : "scale-75 opacity-30"
+                                     )} style={{ backgroundColor: isReached ? currentTheme.primaryColor : subTextCardColor, borderColor: borderCardHex }} />
+                                     <span className={cn(
+                                       "text-[8px] font-black uppercase tracking-[0.1em]",
+                                       isReached ? "opacity-100" : "opacity-30"
+                                     )} style={{ color: isReached ? currentTheme.primaryColor : cardText }}>
+                                       {formatCurrency(tier.minSubtotal)}
+                                     </span>
+                                   </div>
+                                 );
+                               })}
+                             </div>
+                           </div>
+                         );
+                       })}
+                    </div>
+                  )}
                   <div className="rounded-[2rem] border shadow-2xl overflow-hidden transition-all duration-300" style={{ backgroundColor: cardBg, borderColor: borderCardHex, color: cardText }}>
                     <div className="p-4 sm:p-6 border-b flex items-center justify-between" style={{ backgroundColor: `${currentTheme.backgroundColor}40`, borderColor: borderCardHex }}>
                       <h2 className="text-lg font-black uppercase italic tracking-tighter storefront-check-title" style={{ color: cardText }}>Sua Sacola</h2>
@@ -1354,7 +1436,12 @@ export function CartPage() {
                                   ) : (
                                     <div className="w-full h-full flex flex-col items-center justify-center border" style={{ backgroundColor: currentTheme.backgroundColor, borderColor: borderHex }}>
                                       <Sparkles size={18} className="mb-1 animate-pulse" style={{ color: currentTheme.primaryColor }} />
-                                      <span className="text-[8px] font-black tracking-widest uppercase" style={{ color: subTextColor }}>Premium</span>
+                                      <span className="text-[8px] font-black tracking-widest uppercase" style={{ color: subTextColor }}>{item.isGift ? "Mimo" : "Premium"}</span>
+                                    </div>
+                                  )}
+                                  {item.isGift && (
+                                    <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg border border-white/20 z-10">
+                                      Brinde
                                     </div>
                                   )}
                                   {/* Quantity Badge for Mobile */}
@@ -1370,10 +1457,17 @@ export function CartPage() {
                                 <div className="flex-1 min-w-0 py-1 flex flex-col justify-center">
                                   <div className="flex flex-wrap items-center gap-3">
                                     <div className="flex flex-col">
-                                      <span className="text-[9px] font-black uppercase tracking-widest mb-0.5 storefront-check-label" style={{ color: subTextCardColor }}>Preço Unitário</span>
-                                      <span className="font-black text-lg sm:text-2xl tracking-tighter storefront-cart-subtotal" style={{ color: cardText }}>
-                                        {formatCurrency(activeItemPrice)}
-                                      </span>
+                                      <span className="text-[9px] font-black uppercase tracking-widest mb-0.5 storefront-check-label" style={{ color: subTextCardColor }}>{item.isGift ? "Valor do Mimo" : "Preço Unitário"}</span>
+                                      <div className="flex flex-col">
+                                        {item.isGift && item.originalPrice && item.price === 0 && (
+                                          <span className="text-[10px] text-slate-500 line-through">
+                                            {formatCurrency(item.originalPrice)}
+                                          </span>
+                                        )}
+                                        <span className="font-black text-lg sm:text-2xl tracking-tighter storefront-cart-subtotal" style={{ color: item.isGift && item.price === 0 ? '#10b981' : cardText }}>
+                                          {item.isGift && item.price === 0 ? "GRÁTIS" : formatCurrency(activeItemPrice)}
+                                        </span>
+                                      </div>
                                       {isPromoInvalid && (
                                         <span className="text-[8px] text-red-500 font-bold uppercase tracking-wider mt-1">
                                           Promoção indisponível para esta forma de pagamento
@@ -1395,45 +1489,59 @@ export function CartPage() {
                                   </div>
                                 </div>
 
-                            {/* Actions & Quantity Selector */}
-                            <div className="flex flex-col items-end gap-5 shrink-0">
-                              <div className="flex items-center gap-1.5 p-1 rounded-2xl border shadow-2xl relative overflow-hidden group/controls" style={{ backgroundColor: currentTheme.backgroundColor, borderColor: borderHex }}>
-                                <div className="absolute inset-x-0 bottom-0 h-[2px] transform scale-x-0 group-hover/controls:scale-x-100 transition-transform duration-500" style={{ backgroundColor: currentTheme.primaryColor }} />
-                                
-                                <button 
-                                  onClick={() => handleUpdateQuantity(item.id, item.productId, item.variantId, item.quantity, item.quantity - 1)} 
-                                  className="w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-90 group/minus" style={{ color: subTextColor }}
-                                  title="Diminuir"
-                                >
-                                  <Minus size={18} className="group-hover/minus:scale-110 transition-transform" />
-                                </button>
-                                
-                                <div className="w-8 flex flex-col items-center">
-                                  <span className="text-[8px] font-black uppercase tracking-tighter mb-0.5" style={{ color: subTextColor }}>Qtd</span>
-                                  <span className="font-black text-base" style={{ color: bgText }}>{item.quantity}</span>
+                                {/* Actions & Quantity Selector */}
+                                <div className="flex flex-col items-end gap-5 shrink-0">
+                              {!item.isGift ? (
+                                <div className="flex items-center gap-1.5 p-1 rounded-2xl border shadow-2xl relative overflow-hidden group/controls" style={{ backgroundColor: currentTheme.backgroundColor, borderColor: borderHex }}>
+                                  <div className="absolute inset-x-0 bottom-0 h-[2px] transform scale-x-0 group-hover/controls:scale-x-100 transition-transform duration-500" style={{ backgroundColor: currentTheme.primaryColor }} />
+                                  
+                                  <button 
+                                    onClick={() => handleUpdateQuantity(item.id, item.productId, item.variantId, item.quantity, item.quantity - 1)} 
+                                    className="w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-90 group/minus" style={{ color: subTextColor }}
+                                    title="Diminuir"
+                                  >
+                                    <Minus size={18} className="group-hover/minus:scale-110 transition-transform" />
+                                  </button>
+                                  
+                                  <div className="w-8 flex flex-col items-center">
+                                    <span className="text-[8px] font-black uppercase tracking-tighter mb-0.5" style={{ color: subTextColor }}>Qtd</span>
+                                    <span className="font-black text-base" style={{ color: bgText }}>{item.quantity}</span>
+                                  </div>
+                                  
+                                  <button 
+                                    onClick={() => handleUpdateQuantity(item.id, item.productId, item.variantId, item.quantity, item.quantity + 1)} 
+                                    className="w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-90 group/plus" style={{ color: subTextColor }}
+                                    title="Aumentar"
+                                  >
+                                    <Plus size={18} className="group-hover/plus:scale-110 transition-transform" />
+                                  </button>
                                 </div>
-                                
-                                <button 
-                                  onClick={() => handleUpdateQuantity(item.id, item.productId, item.variantId, item.quantity, item.quantity + 1)} 
-                                  className="w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-90 group/plus" style={{ color: subTextColor }}
-                                  title="Aumentar"
-                                >
-                                  <Plus size={18} className="group-hover/plus:scale-110 transition-transform" />
-                                </button>
-                              </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5 p-2 rounded-2xl border shadow-lg relative bg-slate-900/5" style={{ borderColor: borderHex }}>
+                                  <div className="w-12 flex flex-col items-center">
+                                    <span className="text-[8px] font-black uppercase tracking-tighter mb-0.5" style={{ color: subTextColor }}>Qtd Mimo</span>
+                                    <span className="font-black text-base" style={{ color: bgText }}>{item.quantity}</span>
+                                  </div>
+                                </div>
+                              )}
                               
                               <button 
                                 onClick={() => removeItem(item.id)} 
-                                className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-300 group/remove border animate-none" style={{ color: subTextColor, borderColor: 'transparent' }}
+                                disabled={item.isGift}
+                                className={cn(
+                                  "flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-300 group/remove border animate-none",
+                                  item.isGift && "opacity-20 cursor-not-allowed"
+                                )}
+                                style={{ color: subTextColor, borderColor: 'transparent' }}
                               >
-                                <Trash2 size={16} className="group-hover/remove:rotate-12 transition-transform duration-300" />
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-0 group-hover/remove:opacity-100 transition-opacity hidden sm:inline">Excluir Item</span>
+                                <Trash2 size={16} className={cn(!item.isGift && "group-hover/remove:rotate-12 transition-transform duration-300")} />
+                                <span className={cn("text-[10px] font-black uppercase tracking-[0.2em] opacity-0 transition-opacity hidden sm:inline", !item.isGift && "group-hover/remove:opacity-100")}>Excluir Item</span>
                               </button>
                             </div>
                           </div>
                         </motion.li>
-                        );
-                        })}
+                    );
+                  })}
                       </AnimatePresence>
                     </ul>
                   </div>
