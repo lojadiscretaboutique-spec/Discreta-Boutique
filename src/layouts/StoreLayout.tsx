@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { ShoppingBag, Menu, X, LayoutDashboard } from 'lucide-react';
+import { Menu, X, LayoutDashboard } from 'lucide-react';
 import { useCartStore } from '../store/cartStore';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -188,13 +188,18 @@ export function StoreLayout() {
         <div className="max-w-7xl mx-auto px-4 h-20 md:h-24 flex items-center justify-between relative transition-all duration-300">
           
           <div className="flex items-center">
-            {/* Mobile Menu Button */}
+            {/* Mobile Menu Button - Prominent Hamburger styled like the reference image */}
             <button 
               className="md:hidden p-2 -ml-2 transition-colors duration-300"
-              style={{ color: textSecondaryColor }}
+              style={{ color: currentTheme.backgroundTextColor || '#ffffff' }}
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label="Menu"
             >
-              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              {isMobileMenuOpen ? (
+                <X size={32} className="stroke-[2px]" />
+              ) : (
+                <Menu size={32} className="stroke-[2.5px]" />
+              )}
             </button>
 
             {/* Desktop Nav */}
@@ -216,7 +221,7 @@ export function StoreLayout() {
             </nav>
           </div>
 
-          {/* Logo - Absolute Centered */}
+          {/* Logo - Center Aligned - Sized exactly like the display image */}
           <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center py-1 px-3 z-10 w-full max-w-[210px] sm:max-w-[240px] md:max-w-[290px] select-none transition-all duration-300">
             {(() => {
               const lh = currentTheme.branding?.logoHorizontal;
@@ -226,14 +231,14 @@ export function StoreLayout() {
                   <img 
                     src={url} 
                     alt={currentTheme.branding?.appName || "Discreta Boutique"} 
-                    className="w-auto h-auto min-h-[46px] max-h-[56px] md:min-h-[58px] md:max-h-[68px] object-contain drop-shadow-sm transition-all duration-300 hover:opacity-90"
+                    className="w-auto h-auto min-h-[50px] max-h-[60px] md:min-h-[64px] md:max-h-[74px] object-contain drop-shadow-sm transition-all duration-300 hover:opacity-90"
                   />
                 );
               }
-              // Fallback to text
+              // Fallback to text logo with dynamic colors from admin
               return (
                 <span 
-                  className="brand-logo-text text-2xl md:text-3xl font-black tracking-tighter uppercase italic transition-colors duration-500 line-clamp-1"
+                  className="brand-logo-text text-2xl md:text-3.5xl font-black tracking-tighter uppercase italic transition-colors duration-500 line-clamp-1"
                   style={{ color: currentTheme.primaryColor }}
                 >
                   {currentTheme.branding?.shortName || "DISCRETA"}
@@ -242,7 +247,7 @@ export function StoreLayout() {
             })()}
           </Link>
 
-          {/* Actions */}
+          {/* Actions - Featuring the premium heart detail shopping bag with always-on badge */}
           <div className="flex items-center space-x-2 sm:space-x-4">
             <Link 
               to="/area-cliente" 
@@ -253,22 +258,37 @@ export function StoreLayout() {
             </Link>
             <Link 
               to="/carrinho" 
-              className="p-2 relative transition-colors duration-300 hover:opacity-80"
-              style={{ color: textSecondaryColor }}
+              className="p-2 relative transition-colors duration-300 hover:opacity-80 flex items-center justify-center"
+              style={{ color: currentTheme.primaryColor }}
+              title="Carrinho de Compras"
             >
-              <ShoppingBag size={20} />
-              {cartCount > 0 && (
-                <span 
-                  className="absolute top-0 right-0 text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2"
-                  style={{
-                    backgroundColor: currentTheme.primaryColor,
-                    color: currentTheme.primaryTextColor,
-                    borderColor: currentTheme.cardColor
-                  }}
-                >
-                  {cartCount}
-                </span>
-              )}
+              {/* Premium Heart Shopping Bag SVG exactly matching the design of reference brand */}
+              <svg 
+                viewBox="0 0 24 24" 
+                width="31" 
+                height="31" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="1.8" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                className="transition-colors duration-300"
+              >
+                {/* Bag handle */}
+                <path d="M16 10V7a4 4 0 0 0-8 0v3" />
+                {/* Bag body */}
+                <rect x="5" y="9" width="14" height="12" rx="1.5" ry="1.5" />
+                {/* Custom Heart in the center */}
+                <path d="M12 17.2s-2.2-1.5-2.2-2.7a1.1 1.1 0 0 1 1.9-0.8 1.1 1.1 0 0 1 1.9 0.8c0 1.2-2.2 2.7-2.2 2.7z" fill="none" strokeWidth="1.3" />
+              </svg>
+              
+              {/* Badge showing item count, matching the color and placement of reference image */}
+              <span 
+                className="absolute -bottom-0.5 -right-0.5 text-[10.5px] font-bold w-[20px] h-[20px] rounded-full flex items-center justify-center text-white bg-[#dc3545] border-2 shadow-sm select-none"
+                style={{ borderColor: currentTheme.cardColor }}
+              >
+                {cartCount}
+              </span>
             </Link>
           </div>
         </div>
@@ -282,7 +302,7 @@ export function StoreLayout() {
               borderColor: borderColor 
             }}
           >
-             <SearchBar placeholder="O que você busca hoje? Encontre prazer..." />
+             <SearchBar placeholder="Digite o que você procura" />
           </div>
         )}
 

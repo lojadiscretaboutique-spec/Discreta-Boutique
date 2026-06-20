@@ -140,28 +140,23 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
   const textSecondaryColor = isDarkBackground ? '#a0a0a0' : '#4b5563';
   const borderColor = isDarkBackground ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)';
 
+  // Determine dynamic colors according to the admin setting
+  const themeTextColor = currentTheme.cardTextColor || currentTheme.backgroundTextColor || '#ffffff';
+  const inputBgColor = isDarkBackground ? 'rgba(0, 0, 0, 0.35)' : 'rgba(0, 0, 0, 0.05)';
+
   return (
-    <div ref={containerRef} className={cn("w-full max-w-2xl mx-auto px-4 relative z-[100]", className)}>
+    <div ref={containerRef} className={cn("w-full max-w-4xl mx-auto px-4 relative z-[100]", className)}>
       <form onSubmit={onSubmit} className="relative">
         
-        {/* Integrated Premium Container Single Piece */}
+        {/* Integrated Premium Container Single Piece - Styled exactly like the reference image */}
         <div 
-          className="relative flex items-center overflow-hidden transition-all duration-300 rounded-full border-transparent group pr-1.5 pl-4"
+          className="relative flex items-center overflow-hidden transition-all duration-300 rounded-[4px] border-2 group px-4"
           style={{
-            backgroundColor: 'transparent',
-            borderColor: 'transparent',
-            boxShadow: 'none',
-            height: '56px'
+            borderColor: themeTextColor,
+            backgroundColor: inputBgColor,
+            height: '52px'
           }}
         >
-          {/* Magnifying Glass Indicator - Premium Highlight on Click */}
-          <div 
-            className="transition-colors duration-300 mr-2 flex items-center justify-center"
-            style={{ color: isFocused ? currentTheme.primaryColor : textSecondaryColor }}
-          >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : <Search size={20} />}
-          </div>
-
           {/* Campo de Pesquisa */}
           <input 
             ref={inputRef}
@@ -170,14 +165,14 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
             onChange={handleInputChange}
             onFocus={() => setIsFocused(true)}
             placeholder={placeholder}
-            className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:border-none focus:ring-0 focus:ring-offset-0 py-4 px-1 font-bold text-lg md:text-xl h-full placeholder:text-sm md:placeholder:text-base placeholder:font-medium appearance-none"
+            className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:border-none focus:ring-0 focus:ring-offset-0 py-3 pr-10 font-light text-base md:text-lg h-full placeholder:text-current placeholder:opacity-50 appearance-none"
             style={{ 
-              color: currentTheme.backgroundTextColor
+              color: themeTextColor
             }}
           />
 
-          {/* Action Buttons Container */}
-          <div className="flex items-center gap-1.5 h-full py-1.5">
+          {/* Action Buttons & Magnifying Glass Container on the RIGHT */}
+          <div className="absolute right-3 flex items-center gap-2 h-full">
             {search && (
               <button
                 type="button"
@@ -186,25 +181,26 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
                   setSuggestions([]);
                   inputRef.current?.focus();
                 }}
-                className="p-2 transition-colors rounded-full hover:bg-white/10"
-                style={{ color: textSecondaryColor }}
+                className="p-1.5 transition-colors rounded-full hover:bg-white/10"
+                style={{ color: themeTextColor, opacity: 0.7 }}
                 title="Limpar busca"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             )}
             
-            {/* Custom Theme Master Action Button */}
+            {/* Magnifying Glass Indicator Action Button on the Right */}
             <button
               type="submit"
-              className="h-full px-5 md:px-7 rounded-full text-[10px] md:text-xs font-black uppercase tracking-[2px] transition-all duration-300 hover:scale-[1.02] active:scale-95 flex items-center gap-2 shadow-md select-none"
-              style={{
-                backgroundColor: currentTheme.buttonColor,
-                color: currentTheme.buttonTextColor
-              }}
+              className="p-2 transition-transform duration-300 hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer"
+              style={{ color: themeTextColor }}
+              title="Pesquisar"
             >
-              <span className="hidden sm:inline">Pesquisar</span>
-              <ArrowRight size={14} />
+              {loading ? (
+                <Loader2 size={24} className="animate-spin" style={{ color: themeTextColor }} />
+              ) : (
+                <Search size={26} className="font-light stroke-[2px]" style={{ color: themeTextColor }} />
+              )}
             </button>
           </div>
         </div>

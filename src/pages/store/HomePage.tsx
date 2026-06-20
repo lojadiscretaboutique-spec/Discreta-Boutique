@@ -65,6 +65,19 @@ export function HomePage() {
   const setHomeReady = useUIStore(s => s.setHomeReady);
 
   const [visibleProducts, setVisibleProducts] = useState<Product[]>([]);
+  const categoriesScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollCategories = (direction: 'left' | 'right') => {
+    if (categoriesScrollRef.current) {
+      const el = categoriesScrollRef.current;
+      const scrollAmount = el.clientWidth * 0.75;
+      el.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
   const [visualStructure, setVisualStructure] = useState<{
     settings: Record<string, any>;
     layouts: Record<string, any>;
@@ -174,14 +187,8 @@ export function HomePage() {
       try {
         const cSnap = await getDocs(query(collection(db, 'categories'), where('isActive', '==', true)));
         allCats = cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
-        // Show them immediately with a quick fallback rank
-        const initialSortedCats = [...allCats].filter(c => c.level === 0).sort((a, b) => {
-          const scoreB = b.accessCount || 0;
-          const scoreA = a.accessCount || 0;
-          if (scoreB !== scoreA) return scoreB - scoreA;
-          if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
-          return a.name.localeCompare(b.name);
-        });
+        // Show them immediately with a quick random/shuffled fallback
+        const initialSortedCats = [...allCats].sort(() => Math.random() - 0.5);
         setCategories(initialSortedCats);
       } catch (e) {
         console.error("Error loading categories:", e);
@@ -275,7 +282,7 @@ export function HomePage() {
         }
       });
 
-      const visibleRootCats = allCats.filter(c => c.level === 0 && categoryIdsWithProducts.has(c.id));
+      const visibleRootCats = allCats.filter(c => categoryIdsWithProducts.has(c.id));
       const categoriesWithImages = visibleRootCats.map(cat => {
         if (cat.image?.url) return cat;
 
@@ -297,13 +304,8 @@ export function HomePage() {
         return cat;
       });
 
-      const sortedCategoriesWithImages = [...categoriesWithImages].sort((a, b) => {
-        const scoreB = b.accessCount || 0;
-        const scoreA = a.accessCount || 0;
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
-        return a.name.localeCompare(b.name);
-      });
+      // Shuffle the categories randomly as requested
+      const sortedCategoriesWithImages = [...categoriesWithImages].sort(() => Math.random() - 0.5);
 
       setCategories(sortedCategoriesWithImages);
 
@@ -667,50 +669,67 @@ export function HomePage() {
 
       {/* 1.5 CATEGORY EXPOSITION */}
       {(loading || categories.length > 0) && (
-        <section className="bg-black py-6 md:py-16 border-b border-zinc-900">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="flex items-start gap-4 md:gap-8 overflow-x-auto no-scrollbar pb-6 scroll-p-4">
-              {loading ? (
-                Array(8).fill(0).map((_, i) => (
-                  <div key={i} className="flex flex-col items-center shrink-0 w-20 md:w-28 animate-pulse">
-                    <div className="w-20 h-20 md:w-28 md:h-28 rounded-full bg-zinc-900 border border-zinc-800 mb-3 shadow-2xl" />
-                    <div className="h-3 bg-zinc-900 rounded w-16 mb-2" />
-                  </div>
-                ))
-              ) : (
-                categories.map(cat => (
-                  <Link 
-                    key={cat.id} 
-                    to={`/catalogo?categoria=${cat.slug || cat.id}`} 
-                    className="group flex flex-col items-center shrink-0 w-20 md:w-28"
-                  >
-                    {/* Circular Image Container - Smaller */}
-                    <div className="relative w-20 h-20 md:w-28 md:h-28 rounded-full overflow-hidden bg-zinc-900 transition-all duration-500 shadow-2xl mb-3 group-hover:shadow-red-900/20 group-hover:scale-105 border border-zinc-900">
-                      {cat.image?.url ? (
-                        <SafeOptimizedImage 
-                          src={cat.image.url} 
-                          alt={cat.name} 
-                          width={140}
-                          quality={60}
-                          className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110" 
+        <section className="bg-black py-10 md:py-20 border-b border-zinc-900 relative overflow-hidden">
+          <div className="max-w-7xl mx-auto px-4 relative">
+            <h2 
+              className="text-center text-white mb-8 md:mb-14 uppercase select-none font-light tracking-[0.12em] sm:tracking-[0.25em] whitespace-nowrap overflow-hidden text-ellipsis px-2"
+              style={{ fontSize: 'clamp(1rem, 4vw, 1.875rem)' }}
+            >
+              COMPRE <span className="font-extrabold" style={{ color: 'var(--highlight-color)' }}>POR CATEGORIA</span>
+            </h2>
+
+            <div className="relative flex items-center group/carousel select-none">
+              {/* Slider list */}
+              <div 
+                ref={categoriesScrollRef}
+                className="w-full flex items-center gap-6 md:gap-10 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth py-6 px-4"
+              >
+                {loading ? (
+                  Array(6).fill(0).map((_, i) => (
+                    <div key={i} className="flex flex-col items-center shrink-0 w-[180px] h-[180px] md:w-[280px] md:h-[280px] rounded-full animate-pulse bg-zinc-900 border border-zinc-850" />
+                  ))
+                ) : (
+                  categories.map(cat => (
+                    <Link 
+                      key={cat.id} 
+                      to={`/catalogo?categoria=${cat.slug || cat.id}`} 
+                      className="snap-center shrink-0 group relative flex flex-col items-center justify-center w-[180px] h-[180px] md:w-[280px] md:h-[280px] rounded-full overflow-hidden border-2 transition-all duration-500 hover:scale-105 shadow-[0_4px_15px_var(--color-primary-glow)] hover:shadow-[0_8px_30px_var(--color-primary-glow)] cursor-pointer"
+                      style={{ borderColor: 'var(--primary-color)' }}
+                    >
+                      {/* Original image underlay blurred but still visible structure */}
+                      <div className="absolute inset-0 w-full h-full scale-110">
+                        {cat.image?.url ? (
+                          <SafeOptimizedImage 
+                            src={cat.image.url} 
+                            alt={cat.name} 
+                            width={320}
+                            quality={75}
+                            className="w-full h-full object-cover blur-[6px] opacity-65 group-hover:opacity-80 transition-all duration-700 ease-out group-hover:scale-110" 
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-zinc-950 animate-pulse" />
+                        )}
+                        {/* Core/primary color of the active theme with opacity for superb colorful styling */}
+                        <div 
+                          className="absolute inset-0 opacity-55 mix-blend-multiply transition-opacity duration-500 group-hover:opacity-45" 
+                          style={{ backgroundColor: 'var(--primary-color)' }}
                         />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xl md:text-2xl font-black italic text-zinc-800 bg-zinc-900 uppercase">
-                          {cat.name.substring(0, 1)}
-                        </div>
-                      )}
-                      
-                      {/* Subtle Overlay on hover */}
-                      <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    </div>
-                    
-                    {/* Title Below - Smaller text */}
-                    <h3 className="text-[9px] md:text-[10px] font-black uppercase tracking-[1px] text-zinc-400 group-hover:text-red-500 text-center transition-colors duration-500 line-clamp-2 leading-tight px-1">
-                      {cat.name}
-                    </h3>
-                  </Link>
-                ))
-              )}
+                        <div className="absolute inset-0 bg-black/30" />
+                      </div>
+
+                      {/* Accent/highlight color text inside */}
+                      <div className="relative z-10 text-center px-4 select-none pointer-events-none transition-transform duration-500 group-hover:scale-105">
+                        <h3 
+                          className="text-sm md:text-xl font-black uppercase tracking-[2px] font-sans drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]"
+                          style={{ color: 'var(--highlight-color)' }}
+                        >
+                          {cat.name}
+                        </h3>
+                      </div>
+                    </Link>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </section>

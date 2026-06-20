@@ -101,11 +101,15 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
       }`}
     >
       <div 
-        className={`w-full aspect-[9/16] rounded-3xl overflow-hidden bg-zinc-950 flex items-center justify-center relative transition-all duration-500 ${
+        className={`w-full aspect-[9/16] rounded-3xl overflow-hidden flex items-center justify-center relative transition-all duration-500 ${
           isActive 
             ? 'ring-4 ring-[var(--primary-color)] shadow-[0_0_30px_var(--color-primary-glow)]' 
-            : 'border border-zinc-900'
+            : 'border'
         }`}
+        style={{ 
+          backgroundColor: 'var(--card-color)', 
+          borderColor: isActive ? 'var(--primary-color)' : 'var(--card-color)' 
+        }}
       >
         
         {/* Render actual <video> tag ONLY for active slot when the whole section is visible */}
@@ -154,7 +158,11 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
               e.stopPropagation();
               onOpenModal();
             }}
-            className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white rounded-full p-2.5 backdrop-blur-md transition-all z-10 border border-zinc-800 cursor-pointer"
+            className="absolute top-4 right-4 text-white rounded-full p-2.5 backdrop-blur-md transition-all z-10 border cursor-pointer hover:scale-105 active:scale-95"
+            style={{ 
+              backgroundColor: 'rgba(0,0,0,0.6)', 
+              borderColor: 'rgba(255,255,255,0.1)' 
+            }}
             title="Ver em tela cheia"
           >
             <Maximize2 size={15} />
@@ -169,7 +177,8 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
                 e.stopPropagation();
                 onOpenModal();
               }}
-              className="w-12 h-12 rounded-full border-2 border-[var(--primary-color)] overflow-hidden bg-black shadow-lg animate-pulse cursor-pointer pointer-events-auto"
+              className="w-12 h-12 rounded-full border-2 border-[var(--primary-color)] overflow-hidden shadow-lg animate-pulse cursor-pointer pointer-events-auto"
+              style={{ backgroundColor: 'var(--card-color)' }}
             >
               <img 
                 src={story.thumbnailUrl} 
@@ -182,8 +191,11 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
 
         {/* Overlay Title on non-active thumbnail cards */}
         {!isActive && (
-          <div className="absolute bottom-4 left-3 right-3 p-2 bg-gradient-to-t from-black/80 to-transparent text-center rounded-xl backdrop-blur-[2px]">
-            <p className="text-[10px] md:text-xs font-black text-white truncate">{story.title}</p>
+          <div 
+            className="absolute bottom-4 left-3 right-3 p-2 text-center rounded-xl backdrop-blur-[2px]" 
+            style={{ backgroundColor: 'rgba(0,0,0,0.6)', color: 'white' }}
+          >
+            <p className="text-[10px] md:text-xs font-black truncate">{story.title}</p>
           </div>
         )}
 
@@ -323,7 +335,47 @@ export function StoryShopCarousel() {
     };
   }, []);
 
-  if (stories.length === 0) return null;
+  if (stories.length === 0) {
+    return (
+      <section 
+        className="pt-8 pb-10 md:pt-12 md:pb-14 border-b overflow-hidden relative h-[660px] md:h-[820px]"
+        style={{ 
+          backgroundColor: 'var(--background-color)', 
+          borderColor: 'rgba(128,128,128,0.1)' 
+        }}
+      >
+        <div className="max-w-7xl mx-auto px-4 relative select-none">
+          <div 
+            className="flex gap-4 md:gap-7 overflow-x-hidden py-8 items-center justify-center"
+          >
+            {/* Center loader card matching aspect-[9/16] sizes */}
+            <div 
+              className="w-[190px] md:w-[240px] aspect-[9/16] rounded-3xl animate-pulse border shrink-0 opacity-40" 
+              style={{ backgroundColor: 'var(--card-color)', borderColor: 'rgba(128,128,128,0.1)' }}
+            />
+            <div 
+              className="w-[240px] md:w-[300px] aspect-[9/16] rounded-3xl animate-pulse border-4 shrink-0 shadow-[0_0_20px_var(--color-primary-glow)]" 
+              style={{ backgroundColor: 'var(--card-color)', borderColor: 'var(--primary-color)' }}
+            />
+            <div 
+              className="w-[190px] md:w-[240px] aspect-[9/16] rounded-3xl animate-pulse border shrink-0 opacity-40" 
+              style={{ backgroundColor: 'var(--card-color)', borderColor: 'rgba(128,128,128,0.1)' }}
+            />
+          </div>
+
+          {/* Loader details drawer block to maintain height */}
+          <div className="max-w-md mx-auto mt-6 px-2 h-[82px] md:h-[92px]">
+            <div 
+              className="border rounded-3xl p-3.5 flex items-center justify-between animate-pulse h-full" 
+              style={{ backgroundColor: 'var(--card-color)', borderColor: 'rgba(128,128,128,0.1)' }}
+            />
+          </div>
+
+          <div className="flex justify-center gap-2 mt-8 h-1.5" />
+        </div>
+      </section>
+    );
+  }
 
   // Active story payload
   const activeStory = stories[activeIndex];
@@ -388,26 +440,7 @@ export function StoryShopCarousel() {
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!activeProduct?.id) return;
-    
-    if (activeProduct.hasVariations) {
-      handleGoToProduct(e);
-      toast('Este produto possui variações, escolha seu tamanho na página!', 'info');
-      return;
-    }
-
-    addItem({
-      id: activeProduct.id,
-      productId: activeProduct.id,
-      name: activeProduct.name || '',
-      price: activeProduct.promoPrice || activeProduct.price,
-      quantity: 1,
-      imageUrl: activeProduct.imageUrl || activeStory.thumbnailUrl,
-      originalPrice: activeProduct.price,
-      promoPrice: activeProduct.promoPrice
-    });
-    
-    toast('Adicionado ao carrinho! 🛒', 'success');
+    handleGoToProduct(e);
   };
 
   const handleGoToProduct = (e: React.MouseEvent) => {
@@ -419,7 +452,11 @@ export function StoryShopCarousel() {
   return (
     <section 
       ref={sectionRef}
-      className="bg-black py-8 md:py-14 border-b border-zinc-950 overflow-hidden relative"
+      className="pt-8 pb-10 md:pt-12 md:pb-14 border-b overflow-hidden relative h-[660px] md:h-[820px]"
+      style={{ 
+        backgroundColor: 'var(--background-color)', 
+        borderColor: 'var(--card-color)' 
+      }}
     >
       <div className="max-w-7xl mx-auto px-4 relative">
         
@@ -428,20 +465,30 @@ export function StoryShopCarousel() {
           type="button"
           onClick={navigatePrev}
           disabled={activeIndex === 0}
-          className="absolute left-6 top-1/2 -translate-y-1/2 z-20 bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800 disabled:opacity-20 disabled:pointer-events-none text-white p-3.5 rounded-full backdrop-blur-md transition-all shadow-[0_4px_24px_rgba(0,0,0,0.6)] active:scale-95 hidden md:flex items-center justify-center cursor-pointer"
+          className="absolute left-6 top-1/2 -translate-y-1/2 z-20 disabled:opacity-20 disabled:pointer-events-none p-3.5 rounded-full backdrop-blur-md transition-all shadow-[0_4px_24px_rgba(0,0,0,0.3)] active:scale-95 hidden md:flex items-center justify-center cursor-pointer border hover:scale-105"
+          style={{ 
+            backgroundColor: 'var(--card-color)', 
+            borderColor: 'var(--primary-color)',
+            color: 'var(--card-color-text)' 
+          }}
           title="Anterior"
         >
-          <ChevronLeft size={20} className="text-zinc-200" />
+          <ChevronLeft size={20} className="stroke-[2.5px]" />
         </button>
 
         <button
           type="button"
           onClick={navigateNext}
           disabled={activeIndex === stories.length - 1}
-          className="absolute right-6 top-1/2 -translate-y-1/2 z-20 bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800 disabled:opacity-20 disabled:pointer-events-none text-white p-3.5 rounded-full backdrop-blur-md transition-all shadow-[0_4px_24px_rgba(0,0,0,0.6)] active:scale-95 hidden md:flex items-center justify-center cursor-pointer"
+          className="absolute right-6 top-1/2 -translate-y-1/2 z-20 disabled:opacity-20 disabled:pointer-events-none p-3.5 rounded-full backdrop-blur-md transition-all shadow-[0_4px_24px_rgba(0,0,0,0.3)] active:scale-95 hidden md:flex items-center justify-center cursor-pointer border hover:scale-105"
+          style={{ 
+            backgroundColor: 'var(--card-color)', 
+            borderColor: 'var(--primary-color)',
+            color: 'var(--card-color-text)' 
+          }}
           title="Próximo"
         >
-          <ChevronRight size={20} className="text-zinc-200" />
+          <ChevronRight size={20} className="stroke-[2.5px]" />
         </button>
 
         <div 
@@ -478,15 +525,27 @@ export function StoryShopCarousel() {
         </div>
 
         {/* BOTTOM ACTIVE CARD DETAILS DRAWER */}
-        {activeStory && activeProduct && (
-          <div className="max-w-md mx-auto mt-6 px-2">
-            <div className="bg-zinc-950 border border-zinc-900 text-white rounded-3xl p-3.5 flex items-center justify-between gap-3 shadow-[0_12px_32px_rgba(0,0,0,0.85)] animate-slideUp">
-              
+        <div className="max-w-md mx-auto mt-6 px-2 h-[82px] md:h-[92px]">
+          {activeStory && activeProduct ? (
+            <div 
+              className="border rounded-3xl p-3.5 flex items-center justify-between gap-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] animate-slideUp h-full"
+              style={{
+                backgroundColor: 'var(--card-color)',
+                borderColor: 'var(--primary-color)',
+                color: 'var(--card-color-text)'
+              }}
+            >
               <div 
                 className="flex items-center gap-3 min-w-0 cursor-pointer"
                 onClick={handleGoToProduct}
               >
-                <div className="w-11 h-11 rounded-xl overflow-hidden bg-zinc-900 flex-shrink-0 border border-zinc-800">
+                <div 
+                  className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 border"
+                  style={{
+                    backgroundColor: 'var(--background-color)',
+                    borderColor: 'rgba(128,128,128,0.15)'
+                  }}
+                >
                   {(() => {
                     const src = (activeProduct.imageUrl || activeStory.thumbnailUrl || '').trim();
                     return src ? (
@@ -496,19 +555,22 @@ export function StoryShopCarousel() {
                         className="w-full h-full object-cover animate-fadeIn" 
                       />
                     ) : (
-                      <div className="w-full h-full bg-zinc-900" />
+                      <div className="w-full h-full opacity-20" style={{ backgroundColor: 'var(--background-color)' }} />
                     );
                   })()}
                 </div>
 
                 <div className="min-w-0 flex flex-col justify-center">
-                  <h3 className="text-xs font-black text-white truncate leading-snug max-w-[200px] md:max-w-[240px]">
+                  <h3 
+                    className="text-xs font-black truncate leading-snug max-w-[200px] md:max-w-[240px]"
+                    style={{ color: 'var(--card-color-text)' }}
+                  >
                     {activeProduct.name}
                   </h3>
                   <div className="flex items-center gap-1.5 mt-1 leading-none">
                     {activeProduct.promoPrice ? (
                       <>
-                        <span className="text-[10px] text-zinc-500 line-through">
+                        <span className="text-[10px] line-through opacity-40">
                           R$ {activeProduct.price.toFixed(2)}
                         </span>
                         <span className="text-xs font-extrabold text-[var(--primary-color)]">
@@ -516,7 +578,7 @@ export function StoryShopCarousel() {
                         </span>
                       </>
                     ) : (
-                      <span className="text-xs font-extrabold text-zinc-300">
+                      <span className="text-xs font-extrabold opacity-75">
                         R$ {activeProduct.price.toFixed(2)}
                       </span>
                     )}
@@ -528,7 +590,7 @@ export function StoryShopCarousel() {
                 <button 
                   onClick={handleAddToCart}
                   className="px-4 h-10 rounded-xl hover:opacity-90 flex items-center justify-center flex-shrink-0 shadow transition-transform active:scale-95 text-[11px] font-black uppercase tracking-tight gap-2 cursor-pointer"
-                  style={{ backgroundColor: 'var(--primary-color)', color: 'var(--button-color-text)' }}
+                  style={{ backgroundColor: 'var(--primary-color)', color: 'var(--button-text-color)' }}
                   title={activeProduct.hasVariations ? 'Ver opções' : 'Adicionar ao Carrinho'}
                 >
                   <ShoppingCart size={15} />
@@ -537,25 +599,47 @@ export function StoryShopCarousel() {
               </div>
 
             </div>
-          </div>
-        )}
+          ) : (
+            <div 
+              className="border rounded-3xl p-3.5 flex items-center justify-between gap-3 opacity-20 h-full animate-pulse"
+              style={{
+                backgroundColor: 'var(--card-color)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--card-color-text)'
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-gray-500/20" />
+                <div className="flex flex-col gap-1.5">
+                  <div className="h-3 w-28 bg-gray-500/20 rounded" />
+                  <div className="h-2.5 w-16 bg-gray-500/20 rounded" />
+                </div>
+              </div>
+              <div className="h-10 w-24 bg-gray-500/25 rounded-xl" />
+            </div>
+          )}
+        </div>
 
         {/* CAROUSEL BOTTOM DOTS/PAGE INDICATORS */}
         <div className="flex justify-center gap-2 mt-8">
-          {stories.map((_, idx) => (
-            <button
-              key={idx}
-              onClick={() => {
-                setActiveIndex(idx);
-                scrollToActive(idx);
-              }}
-              className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
-                idx === activeIndex 
-                  ? 'w-6 bg-[var(--primary-color)] shadow-[0_0_8px_var(--color-primary-glow)]' 
-                  : 'w-1.5 bg-zinc-800 hover:bg-zinc-650'
-              }`}
-            />
-          ))}
+          {stories.map((_, idx) => {
+            const isCurrent = idx === activeIndex;
+            return (
+              <button
+                key={idx}
+                onClick={() => {
+                  setActiveIndex(idx);
+                  scrollToActive(idx);
+                }}
+                className="h-1.5 rounded-full transition-all duration-300 cursor-pointer"
+                style={{
+                  width: isCurrent ? '24px' : '6px',
+                  backgroundColor: isCurrent ? 'var(--primary-color)' : 'rgba(128,128,128,0.25)',
+                  boxShadow: isCurrent ? '0 0 8px var(--color-primary-glow)' : 'none'
+                }}
+              />
+            );
+          })}
         </div>
 
       </div>
