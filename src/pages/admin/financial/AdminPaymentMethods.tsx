@@ -1,5 +1,16 @@
 import { useState, useEffect } from 'react';
-import { settingsService, PaymentSettings, MethodConfig } from '../../../services/settingsService';
+import { settingsService, PaymentSettings } from '../../../services/settingsService';
+import { 
+  paymentFinanceService, 
+  BankConfig, 
+  MachineConfig, 
+  PaymentFee, 
+  Receivable, 
+  Reconciliation,
+  MethodConfig,
+  Acquirer,
+  CardBrand
+} from '../../../services/paymentFinanceService';
 import { useFeedback } from '../../../contexts/FeedbackContext';
 import { Button } from '../../../components/ui/button';
 import { 
@@ -31,59 +42,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-// Interfaces for additional configurations
-interface BankConfig {
-  id: string;
-  name: string;
-  agency: string;
-  account: string;
-  pixKey: string;
-  isDefault: boolean;
-}
-
-interface MachineConfig {
-  id: string;
-  name: string;
-  serial: string;
-  operator: string;
-  status: 'active' | 'inactive';
-}
-
-interface CardRate {
-  id: string;
-  machineId: string;
-  type: string;
-  brand: string;
-  fee: number;
-}
-
-interface Receivable {
-  id: string;
-  saleId: string;
-  originalAmount: number;
-  netAmount: number;
-  fee: number;
-  payoutDate: string;
-  status: 'pending' | 'cleared';
-  method: string;
-}
-
-interface Reconciliation {
-  id: string;
-  date: string;
-  systemTotal: number;
-  expectedTotal: number;
-  reconciled: boolean;
-  operator: string;
-}
-
-interface FinancialConfig {
-  defaultPayoutTerm: string;
-  antiFraudThreshold: number;
-  autoPayoutEnabled: boolean;
-  allowBankTransfer: boolean;
-}
-
 export function AdminPaymentMethods() {
   const { toast } = useFeedback();
   const [loading, setLoading] = useState(true);
@@ -108,96 +66,47 @@ export function AdminPaymentMethods() {
     settings: Settings,
   };
 
-  // Additional financial states persisted via LocalStorage
-  const [banks, setBanks] = useState<BankConfig[]>(() => {
-    const saved = localStorage.getItem('discreta_financial_banks');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', name: 'Itaú Unibanco', agency: '0340', account: '48392-1', pixKey: 'CNPJ: 14.819.382/0001-44', isDefault: true },
-      { id: '2', name: 'C6 Bank SP', agency: '0001', account: '912384-5', pixKey: 'financeiro@discretaboutique.com.br', isDefault: false }
-    ];
-  });
-
-  const [machines, setMachines] = useState<MachineConfig[]>(() => {
-    const saved = localStorage.getItem('discreta_financial_machines');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', name: 'Stone Terminal Pro', serial: 'ST-9283749', operator: 'Stone', status: 'active' },
-      { id: '2', name: 'Moderninha Smart 2', serial: 'PAG-481923', operator: 'PagSeguro', status: 'active' }
-    ];
-  });
-
-  const [cardRates, setCardRates] = useState<CardRate[]>(() => {
-    const saved = localStorage.getItem('discreta_financial_card_rates');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', machineId: '1', type: 'Débito', brand: 'Visa/Master', fee: 1.25 },
-      { id: '2', machineId: '1', type: 'Crédito à Vista', brand: 'Visa/Master', fee: 2.79 },
-      { id: '3', machineId: '1', type: 'Crédito Parcelado 2x-6x', brand: 'Visa/Master', fee: 3.20 },
-      { id: '4', machineId: '2', type: 'Débito', brand: 'Elo/Amex', fee: 1.80 },
-      { id: '5', machineId: '2', type: 'Crédito à Vista', brand: 'Elo/Amex', fee: 3.10 }
-    ];
-  });
-
-  const [receivables, setReceivables] = useState<Receivable[]>(() => {
-    const saved = localStorage.getItem('discreta_financial_receivables');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', saleId: 'PDV-#PBPNSH', originalAmount: 68.90, netAmount: 67.21, fee: 1.69, payoutDate: '2026-06-17', status: 'pending', method: 'Crédito' },
-      { id: '2', saleId: 'PDV-#PBPNDA', originalAmount: 250.00, netAmount: 246.88, fee: 3.12, payoutDate: '2026-06-18', status: 'pending', method: 'Débito' },
-      { id: '3', saleId: 'PDV-#PBPNDF', originalAmount: 180.00, netAmount: 180.00, fee: 0.00, payoutDate: '2026-06-16', status: 'cleared', method: 'Pix' }
-    ];
-  });
-
-  const [reconciliations, setReconciliations] = useState<Reconciliation[]>(() => {
-    const saved = localStorage.getItem('discreta_financial_reconciliations');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', date: '2026-06-15', systemTotal: 1540.90, expectedTotal: 1540.90, reconciled: true, operator: 'Gerente Administrativo' },
-      { id: '2', date: '2026-06-16', systemTotal: 2120.50, expectedTotal: 2120.50, reconciled: false, operator: 'Caixa 01' }
-    ];
-  });
-
-  const [financialConfigs, setFinancialConfigs] = useState<FinancialConfig>(() => {
-    const saved = localStorage.getItem('discreta_financial_configs');
-    return saved ? JSON.parse(saved) : {
+  const [banks, setBanks] = useState<BankConfig[]>([]);
+  const [machines, setMachines] = useState<MachineConfig[]>([]);
+  const [paymentFees, setPaymentFees] = useState<PaymentFee[]>([]);
+  const [acquirers, setAcquirers] = useState<Acquirer[]>([]);
+  const [cardBrands, setCardBrands] = useState<CardBrand[]>([]);
+  const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [financialConfigs, setFinancialConfigs] = useState<FinancialConfig>({
       defaultPayoutTerm: '1',
       antiFraudThreshold: 10000,
       autoPayoutEnabled: true,
       allowBankTransfer: true
-    };
-  });
+    });
 
-  // Keep lists synced with LocalStorage
-  useEffect(() => {
-    localStorage.setItem('discreta_financial_banks', JSON.stringify(banks));
-  }, [banks]);
-
-  useEffect(() => {
-    localStorage.setItem('discreta_financial_machines', JSON.stringify(machines));
-  }, [machines]);
-
-  useEffect(() => {
-    localStorage.setItem('discreta_financial_card_rates', JSON.stringify(cardRates));
-  }, [cardRates]);
-
-  useEffect(() => {
-    localStorage.setItem('discreta_financial_receivables', JSON.stringify(receivables));
-  }, [receivables]);
-
-  useEffect(() => {
-    localStorage.setItem('discreta_financial_reconciliations', JSON.stringify(reconciliations));
-  }, [reconciliations]);
-
-  useEffect(() => {
-    localStorage.setItem('discreta_financial_configs', JSON.stringify(financialConfigs));
-  }, [financialConfigs]);
-
-
+  // Keep lists synced with Firestore-only as the single source of truth
+  
   // Load Firestore settings
   useEffect(() => {
     async function load() {
       try {
-        const data = await settingsService.getPaymentSettings();
-        setSettings(data);
+        setLoading(true);
+        const [settingsData, banksData, machinesData, feesData, acquirersData, brandsData, receivablesData] = await Promise.all([
+          settingsService.getPaymentSettings(),
+          paymentFinanceService.getBankAccounts(),
+          paymentFinanceService.getMachines(),
+          paymentFinanceService.getPaymentFees(),
+          paymentFinanceService.getAcquirers(),
+          paymentFinanceService.getCardBrands(),
+          paymentFinanceService.getReceivables()
+        ]);
+        
+        setSettings(settingsData);
+        setBanks(banksData);
+        setMachines(machinesData);
+        setPaymentFees(feesData);
+        setAcquirers(acquirersData);
+        setCardBrands(brandsData);
+        setReceivables(receivablesData);
+
       } catch (err) {
         console.error(err);
-        toast("Erro ao carregar configurações de checkout", 'error');
+        toast("Erro ao carregar dados financeiros do banco de dados", 'error');
       } finally {
         setLoading(false);
       }
@@ -226,29 +135,25 @@ export function AdminPaymentMethods() {
   };
 
   // State/Input state variables for sub-forms
-  // New Payment Method states
-  const [newMethodLabel, setNewMethodLabel] = useState('');
-  const [newMethodIconKey, setNewMethodIconKey] = useState('card');
-  const [newMethodEnabledDelivery, setNewMethodEnabledDelivery] = useState(true);
-  const [newMethodEnabledPickup, setNewMethodEnabledPickup] = useState(true);
-  const [newMethodUseIntegration, setNewMethodUseIntegration] = useState(false);
+  // New payment method state
+  const [newMethodName, setNewMethodName] = useState('');
+  const [newMethodType, setNewMethodType] = useState<MethodConfig['type']>('pix');
+  const [newMethodIcon, setNewMethodIcon] = useState('smartphone');
 
-  // Banks Form state
-  const [newBankName, setNewBankName] = useState('');
-  const [newBankAgency, setNewBankAgency] = useState('');
-  const [newBankAccount, setNewBankAccount] = useState('');
-  const [newBankPix, setNewBankPix] = useState('');
+  // Adquirers state
+  const [newAcquirerName, setNewAcquirerName] = useState('');
+  const [newAcquirerDescription, setNewAcquirerDescription] = useState('');
+  
+  // Brands state
+  const [newBrandName, setNewBrandName] = useState('');
 
-  // Machines form state
-  const [newMachineName, setNewMachineName] = useState('');
-  const [newMachineSerial, setNewMachineSerial] = useState('');
-  const [newMachineOperator, setNewMachineOperator] = useState('Stone');
-
-  // Rates form state
-  const [newRateMachineId, setNewRateMachineId] = useState('1');
-  const [newRateType, setNewRateType] = useState('Débito');
-  const [newRateBrand, setNewRateBrand] = useState('Visa/Master');
-  const [newRateFee, setNewRateFee] = useState(1.5);
+  // Payment Fees state
+  const [newFeeMethodId, setNewFeeMethodId] = useState('');
+  const [newFeePercentage, setNewFeePercentage] = useState(0);
+  const [newFeeFixed, setNewFeeFixed] = useState(0);
+  const [newFeeDays, setNewFeeDays] = useState(30);
+  const [newFeeDaysType, setNewFeeDaysType] = useState<'corridos' | 'uteis'>('corridos');
+  const [newFeeInstallments, setNewFeeInstallments] = useState(1);
 
   const handleAddPaymentMethod = (e: React.FormEvent) => {
     e.preventDefault();
@@ -306,83 +211,190 @@ export function AdminPaymentMethods() {
     toast("Meio de pagamento removido! Salve para persistir no banco.", "success");
   };
 
-  const handleAddBank = (e: React.FormEvent) => {
+  const handleAddBank = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newBankName || !newBankAccount) {
-      toast("Preencha o nome do banco e a conta", "error");
-      return;
+    if (!newBankName?.trim()) {
+        toast("Nome do banco é obrigatório", "error");
+        return;
     }
+    if (!newBankAccount?.trim()) {
+        toast("Número da conta é obrigatório", "error");
+        return;
+    }
+
     const newBank: BankConfig = {
       id: Date.now().toString(),
-      name: newBankName,
-      agency: newBankAgency,
-      account: newBankAccount,
-      pixKey: newBankPix,
-      isDefault: banks.length === 0
+      name: newBankName.trim(),
+      agency: newBankAgency.trim(),
+      account: newBankAccount.trim(),
+      accountType: 'corrente', // Default type
+      titular: '', // Default empty
+      pixKey: newBankPix.trim(),
+      isDefault: banks.length === 0,
+      active: true // Ensure it's active
     };
-    setBanks([...banks, newBank]);
-    setNewBankName('');
-    setNewBankAgency('');
-    setNewBankAccount('');
-    setNewBankPix('');
-    toast("Banco cadastrado com sucesso!", "success");
+    
+    try {
+        setSaving(true);
+        await paymentFinanceService.addDocument('financial_bank_accounts', newBank);
+        setBanks([...banks, newBank]);
+        setNewBankName('');
+        setNewBankAgency('');
+        setNewBankAccount('');
+        setNewBankPix('');
+        toast("Banco cadastrado com sucesso!", "success");
+    } catch (e) {
+        toast("Erro ao cadastrar banco: " + (e as Error).message, "error");
+    } finally {
+        setSaving(false);
+    }
   };
 
-  const handleSetDefaultBank = (id: string) => {
-    setBanks(banks.map(b => ({ ...b, isDefault: b.id === id })));
-    toast("Conta padrão de recebimento alterada!", "success");
+  const handleSetDefaultBank = async (id: string) => {
+    const updatedBanks = banks.map(b => ({ ...b, isDefault: b.id === id }));
+    try {
+        await Promise.all(updatedBanks.map(b => financialConfigService.updateDocument('financialBankAccounts', b)));
+        setBanks(updatedBanks);
+        toast("Conta padrão de recebimento alterada!", "success");
+    } catch (e) {
+        toast("Erro ao atualizar conta padrão", "error");
+    }
   };
 
-  const handleDeleteBank = (id: string) => {
-    setBanks(banks.filter(b => b.id !== id));
-    toast("Conta bancária removida", "success");
+  const handleDeleteBank = async (id: string) => {
+    try {
+        await financialConfigService.deleteDocument('financialBankAccounts', id);
+        setBanks(banks.filter(b => b.id !== id));
+        toast("Conta bancária removida", "success");
+    } catch (e) {
+        toast("Erro ao remover conta", "error");
+    }
   };
 
-  const handleAddMachine = (e: React.FormEvent) => {
+  const handleAddMachine = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMachineName || !newMachineSerial) {
-      toast("Preencha as informações da maquininha", "error");
+    if (!newMachineName?.trim()) {
+      toast("Identificação é obrigatória", "error");
+      return;
+    }
+    if (!newMachineSerial?.trim()) {
+      toast("Número de série é obrigatório", "error");
       return;
     }
     const newMac: MachineConfig = {
       id: Date.now().toString(),
-      name: newMachineName,
-      serial: newMachineSerial,
-      operator: newMachineOperator,
-      status: 'active'
+      name: newMachineName.trim(),
+      acquirerId: newMachineAcquirerId,
+      serial: newMachineSerial.trim(),
+      bankAccountId: '', // FIXME: link in UI later
+      monthlyFee: 0,
+      active: true
     };
-    setMachines([...machines, newMac]);
-    setNewMachineName('');
-    setNewMachineSerial('');
-    toast("Maquininha adicionada com sucesso!", "success");
+    try {
+        setSaving(true);
+        await paymentFinanceService.addDocument('financial_card_machines', newMac);
+        setMachines([...machines, newMac]);
+        setNewMachineName('');
+        setNewMachineSerial('');
+        toast("Maquininha adicionada com sucesso!", "success");
+    } catch (e) {
+        toast("Erro ao cadastrar maquininha: " + (e as Error).message, "error");
+    } finally {
+        setSaving(false);
+    }
   };
 
-  const toggleMachineStatus = (id: string) => {
-    setMachines(machines.map(m => m.id === id ? { ...m, status: m.status === 'active' ? 'inactive' : 'active' } : m));
-    toast("Status da maquininha alterado!", "success");
+  const toggleMachineStatus = async (id: string) => {
+    const updated = machines.map(m => m.id === id ? { ...m, status: m.status === 'active' ? 'inactive' : 'active' } : m);
+    const mac = updated.find(m => m.id === id);
+    if (!mac) return;
+    try {
+        await financialConfigService.updateDocument('financialCardMachines', mac);
+        setMachines(updated);
+        toast("Status da maquininha alterado!", "success");
+    } catch (e) {
+        toast("Erro ao alterar status", "error");
+    }
   };
 
-  const handleDeleteMachine = (id: string) => {
-    setMachines(machines.filter(m => m.id !== id));
-    toast("Maquininha removida", "success");
+  const handleDeleteMachine = async (id: string) => {
+    try {
+      await financialConfigService.deleteDocument('financialCardMachines', id);
+      setMachines(machines.filter(m => m.id !== id));
+      toast("Maquininha removida", "success");
+    } catch (e) {
+      toast("Erro ao remover maquininha", "error");
+    }
   };
 
-  const handleAddRate = (e: React.FormEvent) => {
+  const handleAddPaymentFee = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newRate: CardRate = {
+    // Validate
+    if (newRateFee < 0) {
+        toast("Taxa percentual não pode ser negativa", "error");
+        return;
+    }
+    
+    // Construct PaymentFee
+    const newFee: PaymentFee = {
       id: Date.now().toString(),
-      machineId: newRateMachineId,
-      type: newRateType,
-      brand: newRateBrand,
-      fee: Number(newRateFee) || 0
+      paymentMethodId: '...', // Need dynamic binding
+      paymentMethodNameSnapshot: '...',
+      installments: 1,
+      percentageFee: Number(newRateFee) || 0,
+      fixedFee: 0,
+      compensationDays: 30,
+      compensationDaysType: 'corridos',
+      active: true
     };
-    setCardRates([...cardRates, newRate]);
-    toast("Taxa de cartão cadastrada!", "success");
+    try {
+      setSaving(true);
+      await paymentFinanceService.addPaymentFee(newFee);
+      setPaymentFees([...paymentFees, newFee]);
+      toast("Taxa de Pagamento cadastrada!", "success");
+    } catch (e) {
+      toast("Erro ao cadastrar taxa", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDeleteRate = (id: string) => {
-    setCardRates(cardRates.filter(r => r.id !== id));
-    toast("Taxa de cartão removida", "success");
+  const handleAddAcquirer = async (name: string, description: string) => {
+    try {
+      const newAcquirer: Acquirer = { id: Date.now().toString(), name, description, active: true };
+      setSaving(true);
+      await paymentFinanceService.addAcquirer(newAcquirer);
+      setAcquirers([...acquirers, newAcquirer]);
+      toast("Adquirente cadastrada!", "success");
+    } catch (e) {
+      toast("Erro ao cadastrar adquirente", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddBrand = async (name: string) => {
+    try {
+      const newBrand: CardBrand = { id: Date.now().toString(), name, active: true };
+      setSaving(true);
+      await paymentFinanceService.addCardBrand(newBrand);
+      setCardBrands([...cardBrands, newBrand]);
+      toast("Bandeira cadastrada!", "success");
+    } catch (e) {
+      toast("Erro ao cadastrar bandeira", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteRate = async (id: string) => {
+    try {
+        await financialConfigService.deleteDocument('financialCardFees', id);
+        setCardRates(cardRates.filter(r => r.id !== id));
+        toast("Taxa de cartão removida", "success");
+    } catch (e) {
+        toast("Erro ao remover taxa", "error");
+    }
   };
 
   const handleReconcile = (id: string) => {
@@ -950,15 +962,12 @@ export function AdminPaymentMethods() {
                     <div>
                       <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">Operadora / Adquirente</label>
                       <select 
-                        value={newMachineOperator} 
-                        onChange={e => setNewMachineOperator(e.target.value)}
+                        value={newMachineAcquirerId} 
+                        onChange={e => setNewMachineAcquirerId(e.target.value)}
                         className="w-full h-11 bg-zinc-950 border border-zinc-800 rounded-xl px-4 text-xs text-white focus:outline-none focus:border-red-600"
                       >
-                        <option value="Stone">Stone</option>
-                        <option value="Rede">Redecard</option>
-                        <option value="Cielo">Cielo</option>
-                        <option value="PagSeguro">PagSeguro</option>
-                        <option value="Mercado Pago">Mercado Pago</option>
+                         <option value="">Selecione...</option>
+                         {acquirers.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                       </select>
                     </div>
                     <Button 

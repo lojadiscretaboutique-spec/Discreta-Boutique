@@ -235,6 +235,28 @@ service cloud.firestore {
       allow delete: if can('financeiro', 'excluir') || can('orders', 'editar') || can('orders', 'excluir');
     }
 
+    match /financial_bank_accounts/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financial_card_machines/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financial_card_fees/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financial_receivables/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financial_reconciliations/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financial_payment_methods/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financial_payment_configs/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+
     match /purchases/{doc} {
       allow read: if can('compras', 'visualizar');
       allow create: if can('compras', 'criar');

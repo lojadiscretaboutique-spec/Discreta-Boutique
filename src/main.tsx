@@ -25,13 +25,29 @@ if (import.meta.env.DEV) {
 // RECURSO DE AUTOPURGA E BYPASS DE CACHE CASO O BUNDLE NO SERVIDOR TENHA MUDADO
 // -------------------------------------------------------------------------
 
+// Função utilitária para limpar CacheStorage silenciosamente antes do reload para forçar novos chunks
+const clearAppCachesAndReload = () => {
+  localStorage.removeItem('app_code_version');
+  localStorage.removeItem('app_data_version');
+  
+  if ('caches' in window) {
+    caches.keys().then((keys) => {
+      return Promise.all(keys.map(key => caches.delete(key)));
+    }).catch((err) => {
+      console.warn('[Discreta Cache] Erro limpando caches:', err);
+    }).finally(() => {
+      window.location.reload();
+    });
+  } else {
+    window.location.reload();
+  }
+};
+
 // Captura erro nativo do Vite quando tenta carregar um chunk inexistente/antigo (ex. após novo deploy)
 window.addEventListener('vite:preloadError', (event) => {
   console.warn('[Discreta Cache] Erro de pré-carregamento do Vite (chunk desatualizado). Limpando versão e reiniciando...');
   event.preventDefault();
-  localStorage.removeItem('app_code_version');
-  localStorage.removeItem('app_data_version');
-  window.location.reload();
+  clearAppCachesAndReload();
 });
 
 // Captura rejeições de Promises de imports dinâmicos que falharam por rota inexistente ou hash desatualizada
@@ -41,6 +57,7 @@ window.addEventListener('unhandledrejection', (event) => {
     errorMsg.includes('Failed to fetch dynamically imported module') ||
     errorMsg.includes('chunk') ||
     errorMsg.includes('Loading chunk') ||
+    errorMsg.includes('Importing a module script failed') ||
     errorMsg.includes('MIME type')
   ) {
     console.warn('[Discreta Cache] Falha de import dinâmico interceptada:', errorMsg);
@@ -50,9 +67,7 @@ window.addEventListener('unhandledrejection', (event) => {
     // Throttle de 10 segundos para impedir reload em loop infinito se o cliente estiver 100% offline
     if (!lastReload || now - parseInt(lastReload, 10) > 10000) {
       sessionStorage.setItem('last_chunk_reload', String(now));
-      localStorage.removeItem('app_code_version');
-      localStorage.removeItem('app_data_version');
-      window.location.reload();
+      clearAppCachesAndReload();
     }
   }
 });
@@ -67,6 +82,7 @@ window.addEventListener('error', (event) => {
     errorMsg.includes('Failed to fetch dynamically imported module') ||
     errorMsg.includes('chunk') ||
     errorMsg.includes('Loading chunk') ||
+    errorMsg.includes('Importing a module script failed') ||
     isTagFailure
   ) {
     console.warn('[Discreta Cache] Erro no carregamento de tag ou recurso físico:', errorMsg);
@@ -74,9 +90,7 @@ window.addEventListener('error', (event) => {
     const now = Date.now();
     if (!lastReload || now - parseInt(lastReload, 10) > 10000) {
       sessionStorage.setItem('last_chunk_reload', String(now));
-      localStorage.removeItem('app_code_version');
-      localStorage.removeItem('app_data_version');
-      window.location.reload();
+      clearAppCachesAndReload();
     }
   }
 }, true); // useCapture para capturar falha de carregamento de recursos estáticos

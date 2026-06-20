@@ -6,17 +6,32 @@ import { ChevronLeft, ChevronRight, Flame } from 'lucide-react';
 import { Product } from '../../services/productService';
 import { openaiOfferSorting } from '../../services/openaiOfferSorting';
 import { ProductItemCard } from '../ui/ProductItemCard';
+import { useInfiniteAutoScroll } from '../../hooks/useInfiniteAutoScroll';
 
 interface ImperdiveisCarouselProps {
   products: Product[];
   loading?: boolean;
+  autoScroll?: boolean;
+  autoScrollSpeed?: 'slow' | 'medium' | 'fast' | number;
+  infiniteLoop?: boolean;
 }
 
-export function ImperdiveisCarousel({ products: initialProducts, loading: initialLoading }: ImperdiveisCarouselProps) {
+export function ImperdiveisCarousel({ 
+  products: initialProducts, 
+  loading: initialLoading,
+  autoScroll = true,
+  autoScrollSpeed = 'slow',
+  infiniteLoop = true
+}: ImperdiveisCarouselProps) {
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [visibleCount, setVisibleCount] = useState(4); // Carrega 4 inicialmente (conforme pedido de carregar pouco)
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useInfiniteAutoScroll(scrollRef, {
+    enabled: autoScroll && !loading && !initialLoading && allProducts.length >= 4,
+    speed: autoScrollSpeed,
+  });
 
   useEffect(() => {
     async function rank() {
@@ -61,6 +76,7 @@ export function ImperdiveisCarousel({ products: initialProducts, loading: initia
   if (loading || initialLoading || allProducts.length === 0) return null;
 
   const visibleProducts = allProducts.slice(0, visibleCount);
+  const displayProducts = visibleProducts;
 
   return (
     <section className="relative group/offers py-8 md:py-12 w-full">
@@ -80,16 +96,16 @@ export function ImperdiveisCarousel({ products: initialProducts, loading: initia
             Ver tudo
           </Link>
         </div>
-
+ 
         <div className="relative">
           <div 
             ref={scrollRef}
             onScroll={handleScroll}
             className="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-4"
           >
-            {visibleProducts.map((product, idx) => (
+            {displayProducts.map((product, idx) => (
               <motion.div
-                key={product.id}
+                key={product.id || idx}
                 initial={{ opacity: 0, x: 20 }}
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true, margin: "-10px" }}

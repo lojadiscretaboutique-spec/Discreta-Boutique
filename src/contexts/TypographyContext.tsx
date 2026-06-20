@@ -444,6 +444,7 @@ interface TypographyContextType {
   loading: boolean;
   saveTypography: (newConfig: AdvancedTypographyConfig) => Promise<void>;
   resetToDefault: () => Promise<void>;
+  isUsingFallback?: boolean;
 }
 
 const TypographyContext = createContext<TypographyContextType | undefined>(undefined);
@@ -451,13 +452,41 @@ const TypographyContext = createContext<TypographyContextType | undefined>(undef
 export function TypographyProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<AdvancedTypographyConfig>(INITIAL_DEFAULT_TYPOGRAPHY);
   const [loading, setLoading] = useState(true);
+  const [isUsingFallback, setIsUsingFallback] = useState(false);
 
   // Load configuration from Firestore and set up real-time listener
   useEffect(() => {
     const docRef = doc(db, 'settings', 'typography');
     const isAdmin = window.location.pathname.includes('/admin');
+    const cacheKey_typography = 'cached_typography_config';
+
+    let cachedTypo: any = null;
+    if (!isAdmin && typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const tStr = localStorage.getItem(cacheKey_typography);
+        if (tStr) cachedTypo = JSON.parse(tStr);
+      } catch (e) {
+        console.warn("Error parsing cached typography from localStorage:", e);
+      }
+    }
+
+    if (cachedTypo) {
+      setConfig(cachedTypo);
+      setIsUsingFallback(false);
+      setLoading(false);
+    }
+
+    const timeoutDuration = cachedTypo ? 8000 : 6000;
+    const timeoutId = setTimeout(() => {
+      if (!cachedTypo) {
+        console.warn('[Typography] Initialization took too long (2s). Falling back with default typography in background.');
+        setIsUsingFallback(true);
+        setLoading(false);
+      }
+    }, timeoutDuration);
 
     const handleDoc = (docSnap: any) => {
+      clearTimeout(timeoutId);
       if (docSnap.exists()) {
         const rawData = docSnap.data();
         
@@ -480,6 +509,15 @@ export function TypographyProvider({ children }: { children: ReactNode }) {
         };
         
         setConfig(parsed);
+        setIsUsingFallback(false);
+
+        if (!isAdmin && typeof window !== 'undefined' && window.localStorage) {
+          try {
+            localStorage.setItem(cacheKey_typography, JSON.stringify(parsed));
+          } catch (e) {
+            console.warn("Failed saving typography config to local storage:", e);
+          }
+        }
       } else {
         setConfig(INITIAL_DEFAULT_TYPOGRAPHY);
       }
@@ -490,14 +528,19 @@ export function TypographyProvider({ children }: { children: ReactNode }) {
       const unsubscribe = onSnapshot(docRef, (docSnap) => {
         handleDoc(docSnap);
       }, (error) => {
+        clearTimeout(timeoutId);
         console.error('Error listening to typography updates:', error);
         setLoading(false);
       });
-      return () => unsubscribe();
+      return () => {
+        clearTimeout(timeoutId);
+        unsubscribe();
+      };
     } else {
       getDoc(docRef).then((docSnap) => {
         handleDoc(docSnap);
       }).catch((error) => {
+        clearTimeout(timeoutId);
         console.error('Error loading typography via getDoc:', error);
         setLoading(false);
       });
@@ -894,7 +937,7 @@ export function TypographyProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TypographyContext.Provider value={{ config, loading, saveTypography, resetToDefault }}>
+    <TypographyContext.Provider value={{ config, loading, saveTypography, resetToDefault, isUsingFallback }}>
       {children}
     </TypographyContext.Provider>
   );

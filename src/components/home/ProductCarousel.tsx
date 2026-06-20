@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Product } from '../../services/productService';
 import { ProductItemCard, SkeletonCard } from '../ui/ProductItemCard';
+import { useInfiniteAutoScroll } from '../../hooks/useInfiniteAutoScroll';
 
 export function ProductCarousel({ 
   title, 
@@ -17,7 +18,10 @@ export function ProductCarousel({
   themeColor,
   themeBg,
   layout,
-  loading 
+  loading,
+  autoScroll = true,
+  autoScrollSpeed = 'slow',
+  infiniteLoop = true
 }: { 
   title: string, 
   subtitle?: string,
@@ -30,7 +34,10 @@ export function ProductCarousel({
   themeColor?: string,
   themeBg?: string,
   layout?: any,
-  loading?: boolean 
+  loading?: boolean,
+  autoScroll?: boolean,
+  autoScrollSpeed?: 'slow' | 'medium' | 'fast' | number,
+  infiniteLoop?: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(6);
@@ -54,9 +61,13 @@ export function ProductCarousel({
   };
 
   const displayProducts = loading ? Array(4).fill(0) : products.slice(0, visibleCount);
-
   const isVertical = layout?.orientation === 'vertical';
   const isCompactStyle = layout?.style === 'compact';
+
+  useInfiniteAutoScroll(scrollRef, {
+    enabled: autoScroll && !isVertical && !loading && products.length >= 4,
+    speed: autoScrollSpeed,
+  });
 
   const gridColsClass = isVertical 
     ? cn(
@@ -131,7 +142,7 @@ export function ProductCarousel({
             ) : displayProducts.length > 0 ? (
               displayProducts.map((product: any, idx: number) => (
                 <div 
-                  key={product.id} 
+                  key={product.id || idx} 
                   className={cn(isVertical ? "w-full" : "min-w-[42%] sm:min-w-[240px] snap-start h-full")}
                 >
                   <ProductItemCard product={product} isPriority={idx < 2} />

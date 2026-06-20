@@ -17,7 +17,16 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
     promoPrice: product.promoPrice
   });
 
-  const mainImage = (product as any).imageThumb || product.images?.find(i => i.isMain)?.url || product.images?.[0]?.url;
+  const imageFallbacks = [
+    (product as any).imageThumb,
+    (product as any).thumbnailUrl,
+    product.imageUrl,
+    (product as any).mainImage,
+    product.images?.find(i => i.isMain)?.url,
+    product.images?.[0]?.url
+  ].filter((url): url is string => typeof url === 'string' && url.trim() !== '');
+
+  const mainImage = imageFallbacks[0] || '';
   const isOut = product.controlStock && !product.allowBackorder && product.stock <= 0;
   
   // Use calculated promotion if available
@@ -91,19 +100,16 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
       )}
     >
       <div className="aspect-[3/4] relative bg-white overflow-hidden group-hover:bg-zinc-50 transition-colors duration-500">
-        {mainImage ? (
-          <ResponsiveImage 
-            src={mainImage} 
-            alt={product.name} 
-            isPriority={isPriority}
-            className={cn(
-              "w-full h-full object-cover transition-transform duration-1000 ease-out",
-              !isOut && "group-hover:scale-105"
-            )}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-zinc-800 text-[10px] font-black uppercase tracking-widest text-center px-4 italic">Sem Imagem</div>
-        )}
+        <ResponsiveImage 
+          src={mainImage} 
+          alt={product.name} 
+          isPriority={isPriority}
+          className={cn(
+            "w-full h-full object-cover transition-transform duration-1000 ease-out",
+            !isOut && "group-hover:scale-105"
+          )}
+          fallbackUrls={imageFallbacks}
+        />
         
         {/* Organic Floating Badges */}
         <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">

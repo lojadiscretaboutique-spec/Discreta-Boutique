@@ -15,6 +15,8 @@ import { Truck } from 'lucide-react';
 import { usePromotion } from '../contexts/PromotionContext';
 import { cn } from '../lib/utils';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSettings } from '../contexts/SettingsContext';
+import { useTypography } from '../contexts/TypographyContext';
 import { hexToRgb } from '../utils/themeUtils';
 
 function FreeShippingBar() {
@@ -38,7 +40,13 @@ function FreeShippingBar() {
 }
 
 export function StoreLayout() {
-  const { currentTheme } = useTheme();
+  const themeContext = useTheme();
+  const currentTheme = themeContext.currentTheme;
+  const settingsContext = useSettings();
+  const typographyContext = useTypography();
+
+  const isBackgroundLoading = themeContext.isUsingFallback || settingsContext.isUsingFallback || typographyContext.isUsingFallback;
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const cartItems = useCartStore(state => state.items);
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
@@ -366,6 +374,14 @@ export function StoreLayout() {
 
       {/* Floating Live Player & Floating Admin Button */}
       <FloatingLivePlayer />
+
+      {/* Background loading indicator */}
+      {isBackgroundLoading && (
+        <div className="fixed bottom-4 left-4 z-50 bg-black/85 text-white text-[10px] sm:text-xs py-2 px-4 rounded-full border border-neutral-800 shadow-2xl flex items-center gap-2 select-none pointer-events-none animate-pulse">
+          <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full shrink-0"></span>
+          <span className="font-medium text-neutral-300">Carregando alguns dados em segundo plano...</span>
+        </div>
+      )}
 
       {/* Floating Admin Button */}
       {user && (

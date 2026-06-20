@@ -73,7 +73,7 @@ export const cacheService = {
 
   /**
    * Força uma limpeza robusta de todo vestígio de armazenamento no dispositivo
-   * e reinicia limpíssimo.
+   * e reinicia limpíssimo, preservando as chaves essenciais do usuário (carrinho, afiliados, preferências).
    */
   async hardReset(newVersion: string, newDataTime: string) {
     console.log("[Cache] Executando Hard Reset para total consistência...");
@@ -105,9 +105,37 @@ export const cacheService = {
       }
     }
 
-    // 4. Limpa localStorage e sessionStorage com segurança preservando as novas credenciais
+    // 4. Limpa localStorage e sessionStorage preservando com segurança os dados e carrinho do usuário
+    const savedCart = localStorage.getItem('discreta-cart');
+    const savedRef = localStorage.getItem('discreta_ref');
+    const savedAdminTheme = localStorage.getItem('admin-theme');
+    const savedWifiLeadName = localStorage.getItem('wifi_lead_name');
+    const savedWifiLeadPhone = localStorage.getItem('wifi_lead_phone');
+    const savedWifiLeadSubmitted = localStorage.getItem('wifi_lead_submitted');
+    const savedPendingLabels = localStorage.getItem('pending_labels');
+    const savedFinancialBanks = localStorage.getItem('discreta_financial_banks');
+    const savedFinancialMachines = localStorage.getItem('discreta_financial_machines');
+    const savedFinancialRates = localStorage.getItem('discreta_financial_card_rates');
+    const savedFinancialReceivables = localStorage.getItem('discreta_financial_receivables');
+    const savedFinancialReconciliations = localStorage.getItem('discreta_financial_reconciliations');
+    const savedFinancialConfigs = localStorage.getItem('discreta_financial_configs');
+
     localStorage.clear();
     sessionStorage.clear();
+
+    if (savedCart) localStorage.setItem('discreta-cart', savedCart);
+    if (savedRef) localStorage.setItem('discreta_ref', savedRef);
+    if (savedAdminTheme) localStorage.setItem('admin-theme', savedAdminTheme);
+    if (savedWifiLeadName) localStorage.setItem('wifi_lead_name', savedWifiLeadName);
+    if (savedWifiLeadPhone) localStorage.setItem('wifi_lead_phone', savedWifiLeadPhone);
+    if (savedWifiLeadSubmitted) localStorage.setItem('wifi_lead_submitted', savedWifiLeadSubmitted);
+    if (savedPendingLabels) localStorage.setItem('pending_labels', savedPendingLabels);
+    if (savedFinancialBanks) localStorage.setItem('discreta_financial_banks', savedFinancialBanks);
+    if (savedFinancialMachines) localStorage.setItem('discreta_financial_machines', savedFinancialMachines);
+    if (savedFinancialRates) localStorage.setItem('discreta_financial_card_rates', savedFinancialRates);
+    if (savedFinancialReceivables) localStorage.setItem('discreta_financial_receivables', savedFinancialReceivables);
+    if (savedFinancialReconciliations) localStorage.setItem('discreta_financial_reconciliations', savedFinancialReconciliations);
+    if (savedFinancialConfigs) localStorage.setItem('discreta_financial_configs', savedFinancialConfigs);
 
     localStorage.setItem('app_code_version', newVersion);
     localStorage.setItem('app_data_version', newDataTime);

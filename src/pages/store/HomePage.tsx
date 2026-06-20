@@ -22,6 +22,7 @@ import { isProductInCategory } from '../../utils/categoryUtils';
 import { measurePerformance } from '../../utils/performance';
 import { HomeLiveShopSection } from '../../components/home/HomeLiveShopSection';
 import { StoryShopCarousel } from '../../components/store/StoryShopCarousel';
+import { useInfiniteAutoScroll } from '../../hooks/useInfiniteAutoScroll';
 
 interface Banner {
   id: string;
@@ -66,6 +67,11 @@ export function HomePage() {
 
   const [visibleProducts, setVisibleProducts] = useState<Product[]>([]);
   const categoriesScrollRef = useRef<HTMLDivElement>(null);
+
+  useInfiniteAutoScroll(categoriesScrollRef, {
+    enabled: !loading && categories.length >= 4,
+    speed: 'slow',
+  });
 
   const scrollCategories = (direction: 'left' | 'right') => {
     if (categoriesScrollRef.current) {
@@ -689,9 +695,9 @@ export function HomePage() {
                     <div key={i} className="flex flex-col items-center shrink-0 w-[180px] h-[180px] md:w-[280px] md:h-[280px] rounded-full animate-pulse bg-zinc-900 border border-zinc-850" />
                   ))
                 ) : (
-                  categories.map(cat => (
+                  categories.map((cat, idx) => (
                     <Link 
-                      key={cat.id} 
+                      key={cat.id || idx} 
                       to={`/catalogo?categoria=${cat.slug || cat.id}`} 
                       className="snap-center shrink-0 group relative flex flex-col items-center justify-center w-[180px] h-[180px] md:w-[280px] md:h-[280px] rounded-full overflow-hidden border-2 transition-all duration-500 hover:scale-105 shadow-[0_4px_15px_var(--color-primary-glow)] hover:shadow-[0_8px_30px_var(--color-primary-glow)] cursor-pointer"
                       style={{ borderColor: 'var(--primary-color)' }}

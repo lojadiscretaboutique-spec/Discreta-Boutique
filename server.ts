@@ -3,7 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
-import aiRoutes from './src/server/routes/aiRoutes.js';
+import aiRoutes from './src/server/routes/aiRoutes';
 import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
 import { db } from './src/lib/firebase';
@@ -310,7 +310,7 @@ async function startServer() {
 
       // Lazy load Firebase Admin and getAdminDb to guarantee safety & portability
       const admin = (await import('firebase-admin')).default;
-      const { getAdminDb } = await import('./src/server/lib/firebaseAdmin.js');
+      const { getAdminDb } = await import('./src/server/lib/firebaseAdmin');
       const adminDb = getAdminDb();
       if (!adminDb) {
         throw new Error("Não foi possível inicializar a conexão com a base administrativa.");
@@ -410,7 +410,7 @@ async function startServer() {
           console.warn("[Blog AI Generate] Failed to capture product catalog list:", err);
         }
 
-        const { blogAiService } = await import('./src/server/services/blogAiService.js');
+        const { blogAiService } = await import('./src/server/services/blogAiService');
         
         const generatedPayload = await blogAiService.generateBlogPost({
           tema,
@@ -521,7 +521,7 @@ async function startServer() {
         console.warn("[Blog AI Cluster Generate] Failed to capture product catalog list:", err);
       }
 
-      const { blogAiService } = await import('./src/server/services/blogAiService.js');
+      const { blogAiService } = await import('./src/server/services/blogAiService');
       const clusterPlans = await blogAiService.generateSEOClusterSuggestions({
         tema,
         catalogProductsList

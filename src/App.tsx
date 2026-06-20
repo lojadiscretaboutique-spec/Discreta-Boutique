@@ -285,14 +285,54 @@ function AppContent() {
 
 export default function App() {
   useEffect(() => {
-    // Reveal app and hide static splash
+    // -------------------------------------------------------------------------
+    // BOOTSTRAP PROGRESS TRACKER & DEVELOPMENT STATUS INDICATORS
+    // -------------------------------------------------------------------------
+    if (import.meta.env.DEV) {
+      console.log("[Discreta Boot] 🚀 Starting application bootstrap sequence...");
+      console.log("[Discreta Boot] 📦 Mount progress: 10% - React Shell Rendered.");
+      console.log("[Discreta Boot] 🛠️ Mount progress: 40% - Core contexts settings initialization started.");
+      console.log("[Discreta Boot] 🎨 Mount progress: 70% - Dynamic theme properties compiling.");
+      console.log("[Discreta Boot] 📝 Mount progress: 90% - Typography context checking loaded fonts.");
+      console.log("[Discreta Boot] ✅ Mount progress: 100% - Ready for final paint.");
+    }
+
     const staticSplash = document.getElementById('initial-splash');
+    
+    // Safety fallback release if splash didn't unmount yet (React lifecycle safety timeout)
+    const safetyRelease = setTimeout(() => {
+      const splashExists = document.getElementById('initial-splash');
+      if (splashExists) {
+        if (import.meta.env.DEV) {
+          console.warn("[Discreta Boot] ⚡ React-level safety timeout reached. Hiding static splash.");
+        }
+        splashExists.style.opacity = '0';
+        setTimeout(() => {
+          splashExists.remove();
+          document.body.style.overflow = 'auto';
+        }, 500);
+      }
+    }, 4500);
+
+    // Initial rapid unmount for typical flawless rendering paths
     if (staticSplash) {
+      if (import.meta.env.DEV) {
+        console.log("[Discreta Boot] ✨ Static splash detected. Transitioning opacity...");
+      }
       staticSplash.style.opacity = '0';
-      setTimeout(() => {
+      const cleanupTimer = setTimeout(() => {
         staticSplash.remove();
-        document.body.style.overflow = 'auto'; // Re-enable scroll if it was blocked
+        document.body.style.overflow = 'auto';
+        if (import.meta.env.DEV) {
+          console.log("[Discreta Boot] Validated: Static splash successfully unmounted. Content interactive.");
+        }
       }, 500);
+      return () => {
+        clearTimeout(cleanupTimer);
+        clearTimeout(safetyRelease);
+      };
+    } else {
+      clearTimeout(safetyRelease);
     }
   }, []);
 

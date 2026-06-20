@@ -44,6 +44,28 @@
       <div class="splash-bar"></div>
       <div class="splash-tagline">Sedução & Sigilo</div>
     </div>
+    <script>
+      (function() {
+        // Detect standalone PWA mode
+        var isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        var timeoutMs = isPWA ? 6000 : 4000;
+        
+        // Guard with absolute maximum safe layout release
+        setTimeout(function() {
+          var staticSplash = document.getElementById('initial-splash');
+          if (staticSplash) {
+            console.warn('[Discreta HTML Boot] Native safety timeout reached (' + timeoutMs + 'ms). Forcing splash unmount.');
+            staticSplash.style.opacity = '0';
+            setTimeout(function() {
+              if (staticSplash.parentNode) {
+                staticSplash.parentNode.removeChild(staticSplash);
+              }
+              document.body.style.overflow = 'auto';
+            }, 500);
+          }
+        }, timeoutMs);
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

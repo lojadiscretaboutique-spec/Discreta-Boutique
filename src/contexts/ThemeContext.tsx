@@ -13,6 +13,7 @@ interface ThemeContextType {
   saveCustomTheme: (theme: ThemeConfig) => Promise<string>;
   deleteCustomTheme: (id: string, name: string) => Promise<void>;
   refreshThemes: () => Promise<void>;
+  isUsingFallback?: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -27,6 +28,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // References to keep track of current loaded stored active theme
   const storedThemeRef = useRef<ThemeConfig | null>(null);
+
+  const [isUsingFallbackStatus, setIsUsingFallbackStatus] = useState(false);
 
   // Expose function to update list of loaded themes
   const refreshThemes = useCallback(async () => {
@@ -74,21 +77,81 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Fetch saved configuration on mount and schedule check on periodic loop.
   useEffect(() => {
-    const init = async () => {
+    let completed = false;
+    const cacheKey_theme = 'cached_active_theme';
+    const cacheKey_list = 'cached_all_themes';
+    
+    let cachedTheme: any = null;
+    let cachedList: any = null;
+    const isAdmin = window.location.pathname.includes('/admin');
+
+    if (!isAdmin && typeof window !== 'undefined' && window.localStorage) {
       try {
-        setLoading(true);
+        const tStr = localStorage.getItem(cacheKey_theme);
+        const lStr = localStorage.getItem(cacheKey_list);
+        if (tStr) cachedTheme = JSON.parse(tStr);
+        if (lStr) cachedList = JSON.parse(lStr);
+      } catch (e) {
+        console.warn("Error parsing cached themes from localStorage:", e);
+      }
+    }
+
+    if (cachedTheme) {
+      storedThemeRef.current = cachedTheme;
+      setCurrentTheme(cachedTheme);
+      if (cachedList) setAllThemes(cachedList);
+      applyVariables(cachedTheme);
+      setIsUsingFallbackStatus(false);
+      setLoading(false);
+    }
+
+    const init = async () => {
+      const timeoutDuration = cachedTheme ? 8000 : 6000;
+      const timeoutId = setTimeout(() => {
+        if (completed) return;
+        if (!cachedTheme) {
+          console.warn("[ThemeEngine] Initialization took too long (2s). Falling back with default theme in background.");
+          storedThemeRef.current = themeService.getDefaultTheme();
+          setCurrentTheme(themeService.getDefaultTheme());
+          setAllThemes([themeService.getDefaultTheme()]);
+          applyVariables(themeService.getDefaultTheme());
+          setIsUsingFallbackStatus(true);
+          setLoading(false);
+        } else {
+          setLoading(false);
+        }
+      }, timeoutDuration);
+
+      try {
+        if (!cachedTheme) {
+          setLoading(true);
+        }
         const [activeTheme, list] = await Promise.all([
           themeService.getActiveTheme(),
           themeService.getThemes()
         ]);
         
-        storedThemeRef.current = activeTheme;
-        setCurrentTheme(activeTheme);
-        setAllThemes(list);
-        applyVariables(activeTheme);
+        if (!completed) {
+          clearTimeout(timeoutId);
+          storedThemeRef.current = activeTheme;
+          setCurrentTheme(activeTheme);
+          setAllThemes(list);
+          applyVariables(activeTheme);
+          setIsUsingFallbackStatus(false);
+
+          if (!isAdmin && typeof window !== 'undefined' && window.localStorage) {
+            try {
+              localStorage.setItem(cacheKey_theme, JSON.stringify(activeTheme));
+              localStorage.setItem(cacheKey_list, JSON.stringify(list));
+            } catch (e) {
+              console.warn("Failed saving themes to local storage:", e);
+            }
+          }
+        }
       } catch (err) {
         console.error("Failed initializing ThemeEngine:", err);
       } finally {
+        completed = true;
         setLoading(false);
       }
     };
@@ -176,6 +239,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     saveCustomTheme,
     deleteCustomTheme,
     refreshThemes,
+    isUsingFallback: isUsingFallbackStatus,
   };
 
   return (
