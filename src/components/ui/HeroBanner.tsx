@@ -40,9 +40,9 @@ export function HeroBanner({ banner, isEager, onLoad }: HeroBannerProps) {
   };
 
   return (
-    <div className="relative h-full w-full bg-zinc-950">
+    <div className="relative w-full h-auto">
       {!loaded && (
-        <div className="absolute inset-0 animate-pulse bg-zinc-900" />
+        <div className="absolute inset-0 animate-pulse bg-zinc-900" style={{ aspectRatio: '16/9' }} />
       )}
       
       <img
@@ -53,7 +53,7 @@ export function HeroBanner({ banner, isEager, onLoad }: HeroBannerProps) {
         decoding={isEager ? 'async' : 'auto'}
         {...(isEager ? { fetchPriority: 'high' } : {})}
         className={cn(
-          "w-full h-full object-contain transition-opacity duration-1000",
+          "w-full h-auto object-contain transition-opacity duration-1000",
           loaded ? "opacity-100" : "opacity-0"
         )}
         onLoad={handleLoad}
@@ -63,6 +63,7 @@ export function HeroBanner({ banner, isEager, onLoad }: HeroBannerProps) {
     </div>
   );
 }
+
 
 function cn(...classes: string[]) {
   return classes.filter(Boolean).join(' ');

@@ -618,19 +618,19 @@ export function HomePage() {
     <div className="flex-1 flex flex-col bg-black text-white">
       {/* 1. HERO BANNERS */}
       {banners.length > 0 && (
-        <section className="relative z-10 w-full max-w-xl md:max-w-2xl mx-auto bg-transparent group px-4 pt-6 pb-8 sm:px-6 md:pt-8 md:pb-10">
-          <div className="relative w-full aspect-square rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-zinc-950">
+        <section className="relative z-10 w-full bg-transparent overflow-hidden">
+          <div className="relative w-full">
             <AnimatePresence mode="wait">
               <motion.div
                 key={banners[currentBanner].id}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.8, ease: "easeInOut" }}
-                className="absolute inset-0"
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+                className="w-full"
               >
                 {banners[currentBanner].linkUrl ? (
-                  <Link to={banners[currentBanner].linkUrl} className="block h-full w-full cursor-pointer">
+                  <Link to={banners[currentBanner].linkUrl} className="block w-full cursor-pointer">
                     <HeroBanner banner={banners[currentBanner]} isEager={currentBanner === 0} onLoad={handleBannerImageLoaded} />
                   </Link>
                 ) : (
@@ -640,32 +640,18 @@ export function HomePage() {
             </AnimatePresence>
             
             {/* Dots */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3 z-10">
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-20">
               {banners.map((_, i) => (
                 <button 
                   key={i} 
                   onClick={() => setCurrentBanner(i)}
                   className={cn(
-                    "h-1 transition-all rounded-full",
-                    i === currentBanner ? "bg-red-600 w-10" : "bg-white/20 w-4"
+                    "h-1.5 transition-all rounded-full",
+                    i === currentBanner ? "bg-white w-8 shadow-sm" : "bg-white/50 w-2"
                   )}
                 />
               ))}
             </div>
-            
-            {/* Arrows (Subtle) */}
-            <button 
-              onClick={() => setCurrentBanner(prev => (prev - 1 + banners.length) % banners.length)}
-              className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-black/10 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-red-600/50 transition-all z-10 opacity-0 md:group-hover:opacity-100 group-hover:opacity-100"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button 
-              onClick={() => setCurrentBanner(prev => (prev + 1) % banners.length)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-black/10 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-red-600/50 transition-all z-10 opacity-0 md:group-hover:opacity-100 group-hover:opacity-100"
-            >
-              <ChevronRight size={20} />
-            </button>
           </div>
         </section>
       )}

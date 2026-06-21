@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { collection, query, getDocs, doc, deleteDoc, addDoc, serverTimestamp, updateDoc, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db } from '../../lib/firebase';
 import { storage } from '../../lib/storage';
 import { Plus, Trash2, X, Upload, Calendar, Image as ImageIcon } from 'lucide-react';
@@ -16,6 +16,7 @@ interface Banner {
   id: string;
   title: string;
   imageUrl: string;
+  storagePath?: string;
   linkUrl: string;
   active: boolean;
   createdAt?: any;
@@ -25,6 +26,7 @@ interface OfferBanner {
   id: string;
   name: string;
   imageUrl: string;
+  storagePath?: string;
   linkUrl: string;
   active: boolean;
   startDate: string;
@@ -48,8 +50,8 @@ export function AdminBanners() {
   const canEdit = hasPermission('banners', 'editar');
   const canDelete = hasPermission('banners', 'excluir');
   
-  // Form State (Shared for both, naming might vary)
-  const [title, setTitle] = useState(''); // name for offers
+  // Form State 
+  const [title, setTitle] = useState(''); 
   const [linkUrl, setLinkUrl] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -57,27 +59,17 @@ export function AdminBanners() {
   const [isActive, setIsActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const loadData = async () => {
-    // No-op because we listen to Firestore onSnapshot live!
-  };
-
   useEffect(() => {
     setLoading(true);
     const qMain = query(collection(db, 'banners'));
     const unsubscribeMain = onSnapshot(qMain, (snapshot) => {
       setBanners(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
       setLoading(false);
-    }, (error) => {
-      console.error("Error listening to banners:", error);
-      setLoading(false);
     });
 
     const qOffer = query(collection(db, 'offer_banners'));
     const unsubscribeOffer = onSnapshot(qOffer, (snapshot) => {
       setOfferBanners(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as OfferBanner)));
-      setLoading(false);
-    }, (error) => {
-      console.error("Error listening to offer banners:", error);
       setLoading(false);
     });
 
@@ -87,7 +79,17 @@ export function AdminBanners() {
     };
   }, []);
 
-  const handleDelete = async (id: string) => {
+  const deleteFile = async (path?: string) => {
+    if (!path) return;
+    try {
+      const fileRef = ref(storage, path);
+      await deleteObject(fileRef);
+    } catch (e) {
+      console.error("Error deleting old image:", e);
+    }
+  };
+
+  const handleDelete = async (item: Banner | OfferBanner) => {
     const ok = await confirm({
       title: 'Excluir Banner',
       message: `Tem certeza que deseja apagar este banner?`,
@@ -98,21 +100,20 @@ export function AdminBanners() {
     if (ok) {
        try {
          const collectionName = activeTab === 'main' ? 'banners' : 'offer_banners';
-         await deleteDoc(doc(db, collectionName, id));
+         await deleteDoc(doc(db, collectionName, item.id));
+         await deleteFile(item.storagePath);
          await cacheService.notifyChange();
-         loadData();
          toast("Banner removido com sucesso!");
        } catch {
          toast("Erro ao excluir banner.", 'error');
        }
      }
    };
- 
+
    const toggleStatus = async (id: string, currentStatus: boolean) => {
      const collectionName = activeTab === 'main' ? 'banners' : 'offer_banners';
      await updateDoc(doc(db, collectionName, id), { active: !currentStatus });
      await cacheService.notifyChange();
-     loadData();
    };
 
   const startEdit = (banner: Banner | OfferBanner) => {
@@ -137,49 +138,54 @@ export function AdminBanners() {
     setSubmitting(true);
     try {
       let imageUrl = bannerToEdit ? bannerToEdit.imageUrl : '';
+      let storagePath = bannerToEdit ? bannerToEdit.storagePath : '';
       
       if (imageFile) {
-        const processImageToSquareWebP = async (file: File): Promise<File> => {
+        const processImageToWebP = async (file: File): Promise<{file: File, width: number, height: number}> => {
           return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
-              const maxSize = 1200; 
-              let size = Math.max(img.width, img.height);
-              let scale = 1;
-              if (size > maxSize) {
-                scale = maxSize / size;
-                size = maxSize;
+              const maxWidth = 1920; 
+              let width = img.width;
+              let height = img.height;
+              
+              if (width > maxWidth) {
+                 height = (maxWidth * height) / width;
+                 width = maxWidth;
               }
               
               const canvas = document.createElement('canvas');
-              canvas.width = size;
-              canvas.height = size;
+              canvas.width = width;
+              canvas.height = height;
               const ctx = canvas.getContext('2d');
               if (!ctx) return reject('No canvas context');
 
-              ctx.clearRect(0, 0, size, size);
-
-              const targetW = img.width * scale;
-              const targetH = img.height * scale;
-              const dx = (size - targetW) / 2;
-              const dy = (size - targetH) / 2;
-              
-              ctx.drawImage(img, dx, dy, targetW, targetH);
+              ctx.drawImage(img, 0, 0, width, height);
 
               canvas.toBlob((blob) => {
                 if (!blob) return reject('Blob creation failed');
-                resolve(new File([blob], `${file.name.split('.')[0]}_square.webp`, { type: 'image/webp' }));
-              }, 'image/webp', 0.92);
+                resolve({
+                    file: new File([blob], `${file.name.split('.')[0]}.webp`, { type: 'image/webp' }),
+                    width,
+                    height
+                });
+              }, 'image/webp', 0.8);
             };
             img.onerror = reject;
             img.src = URL.createObjectURL(file);
           });
         };
 
-        const optimizedFile = await processImageToSquareWebP(imageFile);
+        const { file: optimizedFile, width, height } = await processImageToWebP(imageFile);
+        
+        // Remove old image
+        if (bannerToEdit) {
+            await deleteFile(bannerToEdit.storagePath);
+        }
 
-        const path = activeTab === 'main' ? 'banners' : 'offer_banners';
-        const fileRef = ref(storage, `${path}/${Date.now()}_${optimizedFile.name}`);
+        const path = activeTab === 'main' ? 'banners/super' : 'banners/ofertas';
+        storagePath = `${path}/${Date.now()}_${optimizedFile.name}`;
+        const fileRef = ref(storage, storagePath);
         await uploadBytes(fileRef, optimizedFile);
         imageUrl = await getDownloadURL(fileRef);
       }
@@ -189,11 +195,13 @@ export function AdminBanners() {
         title,
         linkUrl,
         imageUrl,
+        storagePath,
         active: isActive,
       } : {
         name: title || "",
         linkUrl: linkUrl || "",
         imageUrl,
+        storagePath,
         active: !!isActive,
         startDate: startDate ? new Date(startDate).toISOString() : null,
         endDate: endDate ? new Date(endDate).toISOString() : null,
@@ -201,17 +209,15 @@ export function AdminBanners() {
 
       if (bannerToEdit) {
         await updateDoc(doc(db, collectionName, bannerToEdit.id), { ...data, updatedAt: serverTimestamp() });
-        await cacheService.notifyChange();
         toast("Banner atualizado com sucesso!");
       } else {
         await addDoc(collection(db, collectionName), { ...data, createdAt: serverTimestamp() });
-        await cacheService.notifyChange();
         toast("Banner salvo com sucesso!");
       }
       
+      await cacheService.notifyChange();
       setShowForm(false);
       resetForm();
-      loadData();
     } catch(err) {
       console.error(err);
       toast("Erro ao salvar banner", 'error');
@@ -229,6 +235,7 @@ export function AdminBanners() {
     setIsActive(true);
     setBannerToEdit(null);
   };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -448,7 +455,7 @@ export function AdminBanners() {
                     )}
                     {canDelete && (
                       <button 
-                        onClick={() => handleDelete(item.id)}
+                        onClick={() => handleDelete(item)}
                         className="w-9 h-9 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center text-slate-100 hover:bg-red-600 transition-all border border-white/10"
                         title="Excluir"
                       >
