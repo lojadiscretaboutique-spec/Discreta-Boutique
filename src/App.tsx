@@ -8,6 +8,7 @@ import { PromotionProvider } from './contexts/PromotionContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { TypographyProvider } from './contexts/TypographyContext';
 import { cacheService } from './services/cacheService';
+import { useAuthStore } from './store/authStore';
 
 const AdminLayout = lazy(() => import('./layouts/AdminLayout').then(m => ({ default: m.AdminLayout })));
 
@@ -111,6 +112,7 @@ const AdminBlogClusters = lazy(() => import('./pages/admin/blog/AdminBlogCluster
 // Loading Component (Splash Screen)
 function PageLoader() {
   const settings = useSettings();
+  console.log('Renderizando componente: PageLoader');
   
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black gap-6 overflow-hidden">
@@ -161,6 +163,11 @@ function ScrollToTop() {
 
 function AppContent() {
   const location = useLocation();
+  const checkAuth = useAuthStore(s => s.checkAuth);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   useEffect(() => {
     cacheService.validateCache();
@@ -195,15 +202,15 @@ function AppContent() {
             {/* Protected Customer Routes */}
             <Route element={<AreaClienteLayout />}>
               <Route path="/area-cliente" element={<CustomerAreaPage />} />
-              <Route path="/area-cliente/dados" element={<CustomerAccountDataPage />} />
-              <Route path="/area-cliente/pedidos" element={<CustomerOrdersPage />} />
-              <Route path="/area-cliente/enderecos" element={<CustomerAddressesPage />} />
-              <Route path="/area-cliente/favoritos" element={<CustomerFavoritesPage />} />
-              <Route path="/area-cliente/fidelidade" element={<CustomerLoyaltyPage />} />
-              <Route path="/area-cliente/avaliacoes" element={<CustomerReviewsPage />} />
-              <Route path="/area-cliente/notificacoes" element={<CustomerNotificationsPage />} />
-              <Route path="/area-cliente/suporte" element={<CustomerSupportPage />} />
-              <Route path="/area-cliente/alterar-senha" element={<CustomerChangePasswordPage />} />
+              <Route path="/area-cliente/dados" element={<CustomerAreaPage />} />
+              <Route path="/area-cliente/pedidos" element={<CustomerAreaPage />} />
+              <Route path="/area-cliente/enderecos" element={<CustomerAreaPage />} />
+              <Route path="/area-cliente/favoritos" element={<CustomerAreaPage />} />
+              <Route path="/area-cliente/fidelidade" element={<CustomerAreaPage />} />
+              <Route path="/area-cliente/avaliacoes" element={<CustomerAreaPage />} />
+              <Route path="/area-cliente/notificacoes" element={<CustomerAreaPage />} />
+              <Route path="/area-cliente/suporte" element={<CustomerAreaPage />} />
+              <Route path="/area-cliente/alterar-senha" element={<CustomerAreaPage />} />
             </Route>
 
             <Route path="/login" element={<LoginPage />} />

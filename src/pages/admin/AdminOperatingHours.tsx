@@ -107,7 +107,15 @@ export function AdminOperatingHours() {
     setSettings({ ...settings, closedDates: newClosed });
   };
 
-  if (loading) return <div className="p-8 text-center text-slate-400">Carregando...</div>;
+  if (loading) {
+    console.log('Renderizando componente: AdminOperatingHours (loading)');
+    return (
+      <div className="min-h-[400px] flex flex-col items-center justify-center p-8 text-center">
+        <div className="h-8 w-8 border-2 border-red-650 border-t-transparent rounded-full animate-spin shadow-[0_0_15px_rgba(220,38,38,0.3)] mb-4" />
+        <span className="text-xs font-bold tracking-widest text-slate-400 uppercase animate-pulse">Carregando horários de funcionamento...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto pb-20">

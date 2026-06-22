@@ -408,86 +408,89 @@ export function StoreLayout() {
             borderColor: borderColor
           }}
         >
-          <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12">
-            <div className="max-w-md">
-              <div className="flex items-center gap-3 mb-6">
-                 {(() => {
-                    const lh = currentTheme.branding?.logoHorizontal;
-                    const url = typeof lh === 'string' ? lh : lh?.url;
-                    if (url) {
+          {/* Only display institutional and categories links on the home page (/) */}
+          {location.pathname === '/' && (
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12 mb-12">
+              <div className="max-w-md">
+                <div className="flex items-center gap-3 mb-6">
+                   {(() => {
+                      const lh = currentTheme.branding?.logoHorizontal;
+                      const url = typeof lh === 'string' ? lh : lh?.url;
+                      if (url) {
+                        return (
+                          <img 
+                            src={url} 
+                            alt={currentTheme.branding?.appName || "Discreta Boutique"} 
+                            className="w-auto max-h-[48px] object-contain drop-shadow-sm opacity-90 hover:opacity-100 transition-opacity"
+                          />
+                        );
+                      }
                       return (
-                        <img 
-                          src={url} 
-                          alt={currentTheme.branding?.appName || "Discreta Boutique"} 
-                          className="w-auto max-h-[48px] object-contain drop-shadow-sm opacity-90 hover:opacity-100 transition-opacity"
-                        />
+                        <h2 
+                          className="brand-logo-text text-2xl font-black tracking-tighter italic transition-colors duration-300"
+                          style={{ color: currentTheme.primaryColor }}
+                        >
+                          {currentTheme.branding?.appName || "DISCRETA BOUTIQUE"}
+                        </h2>
                       );
-                    }
-                    return (
-                      <h2 
-                        className="brand-logo-text text-2xl font-black tracking-tighter italic transition-colors duration-300"
-                        style={{ color: currentTheme.primaryColor }}
-                      >
-                        {currentTheme.branding?.appName || "DISCRETA BOUTIQUE"}
-                      </h2>
-                    );
-                 })()}
-              </div>
-              <p 
-                className="text-sm leading-relaxed"
-                style={{ color: textSecondaryColor }}
-              >
-                Sua boutique especializada em momentos inesquecíveis. Produtos selecionados com rigor, 
-                garantindo máxima qualidade, prazer e segurança.
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-8">
-              <div className="flex flex-col space-y-3">
-                <h3 
-                  className="text-xs font-bold uppercase tracking-[3px] mb-2"
-                  style={{ color: currentTheme.primaryColor }}
+                   })()}
+                </div>
+                <p 
+                  className="text-sm leading-relaxed"
+                  style={{ color: textSecondaryColor }}
                 >
-                  Shopping
-                </h3>
-                {categories.map(cat => (
-                  <Link 
-                    key={cat.id} 
-                    to={`/catalogo?categoria=${cat.slug || cat.id}`} 
-                    className="text-sm transition-colors hover:opacity-80"
-                    style={{ color: textSecondaryColor }}
+                  Sua boutique especializada em momentos inesquecíveis. Produtos selecionados com rigor, 
+                  garantindo máxima qualidade, prazer e segurança.
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-8">
+                <div className="flex flex-col space-y-3">
+                  <h3 
+                    className="text-xs font-bold uppercase tracking-[3px] mb-2"
+                    style={{ color: currentTheme.primaryColor }}
                   >
-                    {cat.name}
-                  </Link>
-                ))}
-              </div>
-              <div className="flex flex-col space-y-3 min-w-0">
-                <h3 
-                  className="text-xs font-bold uppercase tracking-[3px] mb-2"
-                  style={{ color: currentTheme.primaryColor }}
-                >
-                  Institucional
-                </h3>
-                <Link to="/quem-somos" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Quem Somos</Link>
-                <Link to="/blog" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Blog</Link>
-                <Link to="/politica-de-privacidade" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Privacidade</Link>
-                <Link to="/trocas-e-devolucoes" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Trocas e Devoluções</Link>
-                <Link to="/entrega-discreta" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Entrega Discreta</Link>
-                <Link to="/contato" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Contato</Link>
-                <Link to="/lgpd" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>LGPD</Link>
-                <Link to="/afiliados" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Afiliados</Link>
-                <h3 
-                  className="text-xs font-bold uppercase tracking-[3px] mb-2 mt-4"
-                  style={{ color: currentTheme.primaryColor }}
-                >
-                  Suporte
-                </h3>
-                <a href="mailto:contato@discretaboutique.com.br" className="text-sm transition-colors break-all hover:opacity-80" style={{ color: textSecondaryColor }}>contato@discretaboutique.com.br</a>
-                <a href="https://wa.me/5588992340317" target="_blank" rel="noopener noreferrer" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>WhatsApp</a>
-                <Link to="/admin" className="text-sm transition-colors hover:opacity-80 font-bold" style={{ color: currentTheme.primaryColor }}>Painel Admin</Link>
+                    Shopping
+                  </h3>
+                  {categories.map(cat => (
+                    <Link 
+                      key={cat.id} 
+                      to={`/catalogo?categoria=${cat.slug || cat.id}`} 
+                      className="text-sm transition-colors hover:opacity-80"
+                      style={{ color: textSecondaryColor }}
+                    >
+                      {cat.name}
+                    </Link>
+                  ))}
+                </div>
+                <div className="flex flex-col space-y-3 min-w-0">
+                  <h3 
+                    className="text-xs font-bold uppercase tracking-[3px] mb-2"
+                    style={{ color: currentTheme.primaryColor }}
+                  >
+                    Institucional
+                  </h3>
+                  <Link to="/quem-somos" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Quem Somos</Link>
+                  <Link to="/blog" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Blog</Link>
+                  <Link to="/politica-de-privacidade" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Privacidade</Link>
+                  <Link to="/trocas-e-devolucoes" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Trocas e Devoluções</Link>
+                  <Link to="/entrega-discreta" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Entrega Discreta</Link>
+                  <Link to="/contato" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Contato</Link>
+                  <Link to="/lgpd" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>LGPD</Link>
+                  <Link to="/afiliados" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Afiliados</Link>
+                  <h3 
+                    className="text-xs font-bold uppercase tracking-[3px] mb-2 mt-4"
+                    style={{ color: currentTheme.primaryColor }}
+                  >
+                    Suporte
+                  </h3>
+                  <a href="mailto:contato@discretaboutique.com.br" className="text-sm transition-colors break-all hover:opacity-80" style={{ color: textSecondaryColor }}>contato@discretaboutique.com.br</a>
+                  <a href="https://wa.me/5588992340317" target="_blank" rel="noopener noreferrer" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>WhatsApp</a>
+                  <Link to="/admin" className="text-sm transition-colors hover:opacity-80 font-bold" style={{ color: currentTheme.primaryColor }}>Painel Admin</Link>
+                </div>
               </div>
             </div>
-          </div>
+          )}
           <div 
             className="max-w-7xl mx-auto mt-16 pt-8 border-t flex flex-col md:flex-row justify-between items-center gap-6 text-[10px] font-bold uppercase tracking-widest text-center md:text-left"
             style={{ borderColor: borderColor }}

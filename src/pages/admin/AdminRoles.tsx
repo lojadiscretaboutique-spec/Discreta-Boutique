@@ -243,7 +243,15 @@ export function AdminRoles() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {loading ? (
-                    <div className="p-6 text-center text-slate-400 font-medium">Carregando perfis...</div>
+                    (() => {
+                        console.log('Renderizando componente: AdminRoles (loading)');
+                        return (
+                            <div className="col-span-full p-12 text-center flex flex-col items-center justify-center">
+                                <div className="h-7 w-7 border-2 border-red-650 border-t-transparent rounded-full animate-spin shadow-[0_0_12px_rgba(220,38,38,0.25)] mb-4" />
+                                <span className="text-sm font-bold text-slate-400 tracking-wider uppercase animate-pulse">Carregando perfis...</span>
+                            </div>
+                        );
+                    })()
                 ) : roles.map(role => (
                     <div key={role.id} className="bg-slate-900 border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-4">
                         <div className="flex justify-between items-start">

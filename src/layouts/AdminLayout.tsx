@@ -205,12 +205,20 @@ export function AdminLayout() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
-  if (isLoading) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white gap-4">
-      <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-      <p className="text-sm font-bold tracking-widest uppercase opacity-50">Autenticando...</p>
-    </div>
-  );
+  if (isLoading) {
+    console.log('Renderizando componente: AdminLayout (isLoading)');
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-black gap-6 overflow-hidden relative">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-from)_0%,_transparent_70%)] from-red-900/10 to-transparent animate-pulse pointer-events-none"></div>
+        <div className="relative flex flex-col items-center">
+          <div className="w-10 h-10 border-2 border-red-600 border-t-transparent rounded-full animate-spin shadow-[0_0_15px_rgba(220,38,38,0.4)]"></div>
+          <span className="text-[10px] font-black tracking-[6px] uppercase text-zinc-500 animate-pulse mt-6">
+            Autenticando Boutique...
+          </span>
+        </div>
+      </div>
+    );
+  }
   if (!user) return null;
   
   // Basic check: if not admin, must have at least one permission to see admin layout

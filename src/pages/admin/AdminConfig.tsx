@@ -123,7 +123,15 @@ export function AdminConfig() {
     }
   };
 
-  if (loading) return <div>Carregando...</div>;
+  if (loading) {
+    console.log('Renderizando componente: AdminConfig (loading)');
+    return (
+      <div className="min-h-[400px] flex flex-col items-center justify-center p-8 text-center">
+        <div className="h-8 w-8 border-2 border-red-650 border-t-transparent rounded-full animate-spin shadow-[0_0_15px_rgba(220,38,38,0.3)] mb-4" />
+        <span className="text-xs font-bold tracking-widest text-slate-400 uppercase animate-pulse">Carregando configurações...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-8 max-w-4xl pb-20">
