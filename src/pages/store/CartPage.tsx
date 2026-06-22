@@ -15,6 +15,7 @@ import { couponService } from '../../services/couponService';
 import { deliveryAreaService, State, City, DeliveryArea } from '../../services/deliveryAreaService';
 import { settingsService, PaymentSettings, MercadoPagoSettings, OperatingHoursSettings } from '../../services/settingsService';
 import { doc, getDoc } from 'firebase/firestore';
+import { paymentFinanceService, MethodConfig } from '../../services/paymentFinanceService';
 import { db } from '../../lib/firebase';
 
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
@@ -117,6 +118,8 @@ export function CartPage() {
   // Settings
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings | null>(null);
   const [mpSettings, setMpSettings] = useState<MercadoPagoSettings | null>(null);
+  const [allPaymentMethods, setAllPaymentMethods] = useState<MethodConfig[]>([]);
+  const [activePaymentMethods, setActivePaymentMethods] = useState<MethodConfig[]>([]);
   const [operatingHours, setOperatingHours] = useState<OperatingHoursSettings | null>(null);
   
   // Checkout form fields
@@ -497,13 +500,14 @@ export function CartPage() {
     // Load all necessary address data at once for independent text fields
     const loadData = async () => {
       try {
-        const [states, cities, areas, pSettings, mpData, opHours] = await Promise.all([
+        const [states, cities, areas, pSettings, mpData, opHours, dbMethods] = await Promise.all([
           deliveryAreaService.listStates(),
           deliveryAreaService.listCities(),
           deliveryAreaService.listDeliveryAreas(),
           settingsService.getPaymentSettings(),
           settingsService.getMercadoPagoSettings(),
-          settingsService.getOperatingHours()
+          settingsService.getOperatingHours(),
+          paymentFinanceService.getPaymentMethods()
         ]);
         
         // Use more relaxed filter (include active or undefined status)
@@ -515,6 +519,7 @@ export function CartPage() {
         setDbCities(activeCities);
         setDbAreas(activeAreas);
         setPaymentSettings(pSettings);
+        setAllPaymentMethods(dbMethods);
         setMpSettings(mpData);
         setOperatingHours(opHours);
       } catch (error) {
@@ -523,6 +528,33 @@ export function CartPage() {
     };
     loadData();
   }, []);
+
+  useEffect(() => {
+    const fetchActiveMethods = async () => {
+      try {
+        if (receiveMethod === 'entrega') {
+          const m = await paymentFinanceService.getPaymentMethodsForSiteDelivery();
+          setActivePaymentMethods(m);
+        } else if (receiveMethod === 'retirada') {
+          const m = await paymentFinanceService.getPaymentMethodsForSitePickup();
+          setActivePaymentMethods(m);
+        } else {
+          setActivePaymentMethods([]);
+        }
+      } catch (err) {
+        console.error("Error loading active checkout methods:", err);
+      }
+    };
+    fetchActiveMethods();
+  }, [receiveMethod]);
+
+  useEffect(() => {
+    if (paymentMethod && activePaymentMethods.length > 0) {
+      if (!activePaymentMethods.some(m => m.id === paymentMethod)) {
+        setPaymentMethod('');
+      }
+    }
+  }, [activePaymentMethods]);
 
   const normalizeStr = (str: string) => 
     str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
@@ -645,7 +677,7 @@ export function CartPage() {
       
       if (coupon.allowedPaymentMethods && coupon.allowedPaymentMethods.length > 0 && paymentMethod) {
         if (!coupon.allowedPaymentMethods.includes(paymentMethod)) {
-          toast(`Este cupom só é válido para pagamentos via: ${coupon.allowedPaymentMethods.map(id => paymentSettings?.methods.find(m => m.id === id)?.label || id).join(', ')}.`, "warning");
+          toast(`Este cupom só é válido para pagamentos via: ${coupon.allowedPaymentMethods.map(id => allPaymentMethods.find(m => m.id === id)?.name || allPaymentMethods.find(m => m.id === id)?.label || id).join(', ')}.`, "warning");
           return;
         }
       }
@@ -952,7 +984,7 @@ export function CartPage() {
 
     if (appliedCoupon && appliedCoupon.allowedPaymentMethods && appliedCoupon.allowedPaymentMethods.length > 0) {
       if (!appliedCoupon.allowedPaymentMethods.includes(paymentMethod)) {
-        const methodLabel = paymentSettings?.methods.find(m => m.id === paymentMethod)?.label || paymentMethod;
+        const methodLabel = allPaymentMethods.find(m => m.id === paymentMethod)?.name || allPaymentMethods.find(m => m.id === paymentMethod)?.label || paymentMethod;
         toast(`O cupom "${appliedCoupon.code}" não é válido para a forma de pagamento ${methodLabel}.`, "warning");
         return;
       }
@@ -1002,8 +1034,11 @@ export function CartPage() {
           status: 'ativo'
       });
 
-      const selectedMethodConfig = paymentSettings?.methods.find(m => m.id === paymentMethod);
-      const isCash = selectedMethodConfig?.label.toLowerCase().includes('dinheiro') || selectedMethodConfig?.id === 'cash';
+      const selectedMethodConfig = allPaymentMethods.find(m => m.id === paymentMethod);
+      const isCash = selectedMethodConfig?.name?.toLowerCase().includes('dinheiro') || 
+                     selectedMethodConfig?.label?.toLowerCase().includes('dinheiro') || 
+                     selectedMethodConfig?.id === 'cash' || 
+                     selectedMethodConfig?.type === 'dinheiro';
 
       let finalNotes = notes;
       if (isCash && trocoPara) {
@@ -1025,8 +1060,13 @@ export function CartPage() {
         total: receiveMethod === 'entrega' ? orderTotal : subTotal - couponDiscount, // Ensure total considers discount even for store pickup
         coupon: appliedCoupon ? { code: appliedCoupon.code, discountValue: couponDiscount } : null,
         deliveryAreaId: validArea?.id || null,
-        paymentMethod: paymentMethod,
-        status: 'NOVO',
+        paymentMethod: selectedMethodConfig?.name || selectedMethodConfig?.label || paymentMethod,
+        paymentMethodId: paymentMethod,
+        paymentMethodNameSnapshot: selectedMethodConfig?.name || selectedMethodConfig?.label || paymentMethod,
+        paymentMethodType: selectedMethodConfig?.type || 'outro',
+        gatewayProvider: selectedMethodConfig?.gatewayProvider || 'manual',
+        paymentContext: receiveMethod === 'entrega' ? 'site_delivery' : 'site_pickup',
+        status: (mpSettings?.active && selectedMethodConfig?.useIntegration) ? 'AGUARDANDO_PAGAMENTO' : 'NOVO',
         type: 'online',
         items: items.map(i => {
           const isPromoInvalid = i.promoAllowedPaymentMethods && 
@@ -1094,7 +1134,7 @@ export function CartPage() {
       const isOnlineMethod = selectedMethodConfig?.useIntegration;
       const useIntegration = mpSettings?.active && isOnlineMethod;
 
-      if (useIntegration && mpSettings?.accessToken && mpSettings?.publicKey) {
+      if (useIntegration && mpSettings?.publicKey) {
          setCreatedOrderId(docRef.id);
          setShowMpBrick(true);
          setLoading(false);
@@ -1133,7 +1173,6 @@ export function CartPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           formData, 
-          accessToken: mpSettings?.accessToken, 
           orderId: createdOrderId 
         })
       });
@@ -1899,15 +1938,18 @@ export function CartPage() {
                     </h3>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
-                      {paymentSettings?.methods
-                        .filter(m => receiveMethod === 'entrega' ? m.enabledDelivery : m.enabledPickup)
-                        .map(method => (
+                      {activePaymentMethods.length === 0 ? (
+                        <div className="col-span-full p-6 text-center text-xs opacity-60 font-medium bg-zinc-500/5 border border-zinc-800/20 rounded-2xl" style={{ color: subTextColor }}>
+                          Nenhuma forma de pagamento disponível para esta opção. Configure em Financeiro &gt; Formas de Pagamento.
+                        </div>
+                      ) : (
+                        activePaymentMethods.map(method => (
                           <button
                             key={method.id}
                             onClick={() => {
                               if (appliedCoupon && appliedCoupon.allowedPaymentMethods && appliedCoupon.allowedPaymentMethods.length > 0) {
                                 if (!appliedCoupon.allowedPaymentMethods.includes(method.id)) {
-                                  toast(`O cupom "${appliedCoupon.code}" não é válido para pagamentos via ${method.label}.`, "warning");
+                                  toast(`O cupom "${appliedCoupon.code}" não é válido para pagamentos via ${method.name || method.label}.`, "warning");
                                 }
                               }
                               setPaymentMethod(method.id);
@@ -1918,14 +1960,14 @@ export function CartPage() {
                               : { backgroundColor: currentTheme.backgroundColor, borderColor: borderHex, color: subTextColor }
                             }
                           >
-                            <span className="text-lg font-black italic tracking-tighter mb-0.5 uppercase storefront-check-title" style={{ color: paymentMethod === method.id ? currentTheme.primaryColor : cardText }}>{method.label}</span>
+                            <span className="text-lg font-black italic tracking-tighter mb-0.5 uppercase storefront-check-title" style={{ color: paymentMethod === method.id ? currentTheme.primaryColor : cardText }}>{method.name || method.label}</span>
                             <span className="text-[9px] font-black uppercase tracking-widest opacity-60 italic storefront-check-label" style={{ color: subTextCardColor }}>Disponível</span>
                           </button>
                         ))
-                      }
+                      )}
                     </div>
 
-                    {paymentSettings?.methods.find(m => m.id === paymentMethod)?.label.toLowerCase().includes('dinheiro') && (
+                    {(activePaymentMethods.find(m => m.id === paymentMethod)?.name?.toLowerCase().includes('dinheiro') || activePaymentMethods.find(m => m.id === paymentMethod)?.label?.toLowerCase().includes('dinheiro')) && (
                       <div className="mb-6 space-y-3">
                         <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Troco para quanto?</label>
                         <input 
@@ -2025,7 +2067,7 @@ export function CartPage() {
                         <div className="flex justify-between items-center text-red-500">
                           <span className="text-[9px] font-black uppercase tracking-widest">Desconto ({appliedCoupon.code}):</span>
                           <span className="text-xs font-bold text-red-400 uppercase tracking-wider">
-                            Inválido para {paymentSettings?.methods.find(m => m.id === paymentMethod)?.label || 'este pagamento'}
+                            Inválido para {allPaymentMethods.find(m => m.id === paymentMethod)?.name || allPaymentMethods.find(m => m.id === paymentMethod)?.label || 'este pagamento'}
                           </span>
                         </div>
                       )

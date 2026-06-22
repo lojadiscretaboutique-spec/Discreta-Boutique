@@ -17,6 +17,11 @@ export interface FinancialTransaction {
   category: string;
   contact?: string;
   paymentMethod?: string;
+  paymentMethodId?: string;
+  paymentMethodNameSnapshot?: string;
+  paymentMethodType?: string;
+  gatewayProvider?: string;
+  paymentContext?: string;
   notes?: string;
   orderId?: string;
   userId?: string;

@@ -670,7 +670,7 @@ export function AdminOrders() {
     text += `👤 *Cliente:* ${order.customerName}\n`;
     if (order.customerWhatsapp) text += `📞 *WhatsApp:* ${order.customerWhatsapp}\n`;
     if (order.customerAddress) text += `📍 *Endereço:* ${order.customerAddress}\n`;
-    text += `💳 *Método de Pagamento:* ${order.paymentMethod || "A DEFINIR"}\n`;
+    text += `💳 *Método de Pagamento:* ${order.paymentMethodNameSnapshot || order.paymentMethod || "A DEFINIR"}\n`;
     text += `📊 *Status:* ${order.status}\n\n`;
     
     text += `🛒 *ÍTENS DO PEDIDO:*\n`;
@@ -986,8 +986,8 @@ export function AdminOrders() {
                       <div className="text-sm font-black text-white">
                         {formatCurrency(order.total)}
                       </div>
-                      <div className="text-[9px] text-red-600 tracking-widest">
-                        {order.paymentMethod || "A DEFINIR"}
+                      <div className="text-[9px] text-red-600 tracking-widest block max-w-[120px] truncate-tight">
+                        {order.paymentMethodNameSnapshot || order.paymentMethod || "A DEFINIR"}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -1252,7 +1252,7 @@ export function AdminOrders() {
                       </h3>
                       <div className="flex items-center gap-2 text-red-600 font-black uppercase italic text-sm tracking-tighter">
                         <CreditCard size={18} />
-                        {selectedOrder.paymentMethod || "A DEFINIR"}
+                        {selectedOrder.paymentMethodNameSnapshot || selectedOrder.paymentMethod || "A DEFINIR"}
                       </div>
                     </section>
 
@@ -1681,7 +1681,7 @@ export function AdminOrders() {
                   ))}
                 </div>
               ) : (
-                <div>{selectedOrder.paymentMethod || "A DEFINIR"}</div>
+                <div>{selectedOrder.paymentMethodNameSnapshot || selectedOrder.paymentMethod || "A DEFINIR"}</div>
               )}
               {selectedOrder.notes && (
                 <>

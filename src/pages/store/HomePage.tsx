@@ -42,7 +42,7 @@ interface OfferBanner {
   endDate?: string;
 }
 
-export function HomePage() {
+export default function HomePage() {
   const homeStartTime = useRef<number>(performance.now());
   const hasLoggedStart = useRef(false);
   if (import.meta.env.DEV && !hasLoggedStart.current) {

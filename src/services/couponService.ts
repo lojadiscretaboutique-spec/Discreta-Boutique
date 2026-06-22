@@ -14,6 +14,8 @@ export interface Coupon {
   endDate?: string;
   active: boolean;
   allowedPaymentMethods?: string[];
+  allowedPaymentMethodIds?: string[];
+  allowedPaymentMethodSnapshots?: { id: string; name: string; type: string }[];
 }
 
 export const couponService = {

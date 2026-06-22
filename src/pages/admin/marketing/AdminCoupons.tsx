@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { couponService, Coupon } from '../../../services/couponService';
-import { settingsService } from '../../../services/settingsService';
+import { paymentFinanceService } from '../../../services/paymentFinanceService';
 import { useFeedback } from '../../../contexts/FeedbackContext';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -34,10 +34,13 @@ export function AdminCoupons() {
   useEffect(() => {
     const loadPaymentMethods = async () => {
       try {
-        const settings = await settingsService.getPaymentSettings();
-        if (settings && settings.methods && settings.methods.length > 0) {
-          setPaymentMethods(settings.methods);
-        }
+        const methodsObj = await paymentFinanceService.getPaymentMethodsForCoupons();
+        const formatted = methodsObj.map(m => ({
+          id: m.id,
+          label: m.name || m.label || m.id,
+          type: m.type
+        }));
+        setPaymentMethods(formatted);
       } catch (err) {
         console.error("Erro ao carregar formas de pagamento", err);
       }
@@ -71,7 +74,23 @@ export function AdminCoupons() {
     }
 
     try {
-      await couponService.saveCoupon(editCoupon as Omit<Coupon, 'id'>);
+      const allowedIds = editCoupon.allowedPaymentMethods || [];
+      const snapshots = allowedIds.map(id => {
+        const found = paymentMethods.find(m => m.id === id);
+        return {
+          id: id,
+          name: found?.label || id,
+          type: (found as any)?.type || 'outro'
+        };
+      });
+
+      const couponPayload = {
+        ...editCoupon,
+        allowedPaymentMethodIds: allowedIds,
+        allowedPaymentMethodSnapshots: snapshots
+      };
+
+      await couponService.saveCoupon(couponPayload as Omit<Coupon, 'id'>);
       toast("Cupom salvo com sucesso!", "success");
       setIsModalOpen(false);
       loadCoupons();

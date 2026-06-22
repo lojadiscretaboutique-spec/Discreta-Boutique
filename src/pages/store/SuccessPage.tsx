@@ -1,5 +1,5 @@
 import { useLocation, Link, Navigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle, MessageCircle } from 'lucide-react';
+import { CheckCircle, MessageCircle, Copy, Clock, Check } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
@@ -15,6 +15,7 @@ export function SuccessPage() {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [orderData, setOrderData] = useState<DocumentData | null>(null);
+  const [pixCopied, setPixCopied] = useState(false);
 
   useEffect(() => {
     const s = location.state as { orderId: string, whatsapp?: string } | null;
@@ -70,7 +71,7 @@ export function SuccessPage() {
   }
 
   const mpStatus = searchParams.get('status'); // approved, pending, failure
-  const isPaidOnline = mpStatus === 'approved' || orderData?.paymentStatus === 'pago';
+  const isPaidOnline = mpStatus === 'approved' || orderData?.paymentStatus === 'approved' || orderData?.paymentStatus === 'pago';
 
   const adminWhatsApp = "5588992340317";
   
@@ -131,6 +132,55 @@ export function SuccessPage() {
             <p className="text-zinc-400 text-sm leading-relaxed font-medium">
               Recebemos seu pagamento online corretamente. Seu pedido está em fase de separação e será enviado o mais breve possível.
             </p>
+          </div>
+        ) : orderData?.paymentQrCode ? (
+          <div className="space-y-6 text-left border-l-4 border-amber-500 pl-8 mb-10">
+            <h2 className="font-black text-xl uppercase tracking-tighter text-amber-500 italic flex items-center gap-2">
+              <Clock size={20} className="text-amber-500 shrink-0" />
+              Aguardando Pagamento Pix
+            </h2>
+            <p className="text-zinc-400 text-sm leading-relaxed font-medium">
+              Utilize o QR Code oficial abaixo ou copie o código Pix "Copia e Cola" para concluir seu pedido de forma instantânea e segura:
+            </p>
+            
+            <div className="flex flex-col items-center justify-center p-4 bg-white rounded-3xl max-w-xs mx-auto shadow-xl border border-zinc-200 mt-2">
+              {orderData.paymentQrCodeBase64 ? (
+                <img 
+                  src={`data:image/png;base64,${orderData.paymentQrCodeBase64}`} 
+                  alt="QR Code Pix"
+                  className="w-44 h-44 object-contain"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-44 h-44 bg-zinc-150 flex items-center justify-center text-zinc-500 text-xs text-center p-4 font-mono font-bold">
+                  Gerando QR Code...
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1.5 mt-4">
+              <label className="block text-[10px] font-black uppercase tracking-[2px] text-zinc-500">Chave Pix Copia e Cola</label>
+              <div className="flex gap-2 items-center bg-zinc-950 p-2.5 rounded-2xl border border-zinc-800">
+                <input 
+                  type="text" 
+                  readOnly 
+                  value={orderData.paymentQrCode} 
+                  className="bg-transparent text-zinc-300 font-mono text-[10px] flex-1 border-none focus:outline-none focus:ring-0 leading-relaxed overflow-x-auto select-all" 
+                />
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    navigator.clipboard.writeText(orderData.paymentQrCode || '');
+                    setPixCopied(true);
+                    setTimeout(() => setPixCopied(false), 2000);
+                  }}
+                  className="p-2 hover:bg-zinc-900 text-zinc-400 hover:text-white rounded-xl transition-colors shrink-0 flex items-center gap-1.5 text-xs font-black font-sans"
+                >
+                  {pixCopied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  <span>{pixCopied ? 'Copiado!' : 'Copiar'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-6 text-left border-l-4 border-red-600 pl-8 mb-10">

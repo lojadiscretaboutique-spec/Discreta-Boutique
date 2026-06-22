@@ -11,6 +11,7 @@ import { financialService, FinancialTransaction, TransactionType, TransactionSta
 import { cashService } from '../../../services/cashService';
 import { useFeedback } from '../../../contexts/FeedbackContext';
 import { useAuthStore } from '../../../store/authStore';
+import { paymentFinanceService, MethodConfig } from '../../../services/paymentFinanceService';
 
 export function AdminFinancial() {
   const location = useLocation();
@@ -67,6 +68,19 @@ export function AdminFinancial() {
   };
   
   const [form, setForm] = useState<Partial<FinancialTransaction>>(initialForm);
+  const [paymentMethods, setPaymentMethods] = useState<MethodConfig[]>([]);
+
+  useEffect(() => {
+    const fetchMethods = async () => {
+      try {
+        const list = await paymentFinanceService.getPaymentMethodsForFinancialLaunches();
+        setPaymentMethods(list);
+      } catch (err) {
+        console.error("Error fetching financial payment methods:", err);
+      }
+    };
+    fetchMethods();
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -415,15 +429,38 @@ export function AdminFinancial() {
                        <select 
                          className="w-full h-10 px-3 rounded-md border border-slate-600 bg-slate-900 text-sm outline-none focus:ring-2 focus:ring-blue-600"
                          value={form.paymentMethod || ''}
-                         onChange={e => setForm({...form, paymentMethod: e.target.value})}
+                         onChange={e => {
+                           const mIdOrName = e.target.value;
+                           const found = paymentMethods.find(m => m.id === mIdOrName || m.name === mIdOrName || m.label === mIdOrName);
+                           if (found) {
+                             setForm({
+                               ...form,
+                               paymentMethod: found.name || found.label || found.id,
+                               paymentMethodId: found.id,
+                               paymentMethodNameSnapshot: found.name || found.label || found.id,
+                               paymentMethodType: found.type,
+                               gatewayProvider: found.gatewayProvider || 'manual',
+                               paymentContext: 'lancamentos_financeiros'
+                             });
+                           } else {
+                             setForm({
+                               ...form,
+                               paymentMethod: '',
+                               paymentMethodId: undefined,
+                               paymentMethodNameSnapshot: undefined,
+                               paymentMethodType: undefined,
+                               gatewayProvider: undefined,
+                               paymentContext: undefined
+                             });
+                           }
+                         }}
                        >
                          <option value="">Nenhum / Indefinido</option>
-                         <option value="Dinheiro">Dinheiro</option>
-                         <option value="PIX">PIX</option>
-                         <option value="Cartão de Crédito">Cartão de Crédito</option>
-                         <option value="Cartão de Débito">Cartão de Débito</option>
-                         <option value="Boleto">Boleto</option>
-                         <option value="Transferência">Transferência Bancária</option>
+                         {paymentMethods.map(m => (
+                           <option key={m.id} value={m.name || m.label || m.id}>
+                             {m.name || m.label || m.id}
+                           </option>
+                         ))}
                        </select>
                     </div>
 

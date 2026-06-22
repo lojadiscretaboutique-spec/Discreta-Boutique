@@ -48,6 +48,7 @@ import { Customer } from "../../services/customerService";
 import { stockMovementService } from "../../services/stockMovementService";
 import { cashService, CashSession } from "../../services/cashService";
 import { financialService } from "../../services/financialService";
+import { paymentFinanceService, MethodConfig } from "../../services/paymentFinanceService";
 import { pdvFinancialService } from "../../services/pdvFinancialService";
 import { comboService, Combo } from "../../services/comboService";
 import { motion, AnimatePresence } from "motion/react";
@@ -501,9 +502,18 @@ export function AdminPDV() {
   const [saveAsNewOrder, setSaveAsNewOrder] = useState(false);
   const [activeTab, setActiveTab] = useState<"pdv" | "customer">("pdv");
   const [payments, setPayments] = useState<
-    { method: string; amount: number }[]
+    {
+      method: string;
+      amount: number;
+      paymentMethodId?: string;
+      paymentMethodNameSnapshot?: string;
+      paymentMethodType?: string;
+      gatewayProvider?: string;
+      paymentContext?: 'pdv';
+    }[]
   >([]);
   const [paymentMethod, setPaymentMethod] = useState<string>("");
+  const [pdvPaymentMethods, setPdvPaymentMethods] = useState<MethodConfig[]>([]);
   const [receivedAmount, setReceivedAmount] = useState("");
   const [isFinishing, setIsFinishing] = useState(false);
   const [checkoutStatus, setCheckoutStatus] = useState("");
@@ -517,6 +527,24 @@ export function AdminPDV() {
   const [partialAmount, setPartialAmount] = useState<string>("");
   const [isDelivery, setIsDelivery] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
+
+  useEffect(() => {
+    const loadPdvMethods = async () => {
+      try {
+        const methods = await paymentFinanceService.getPaymentMethodsForPDV();
+        setPdvPaymentMethods(methods);
+      } catch (err) {
+        console.error("Error loading PDV payment methods:", err);
+      }
+    };
+    loadPdvMethods();
+  }, []);
+
+  const getMethodIcon = (type: string) => {
+    if (type === 'pix') return <QrCode size={28} />;
+    if (type === 'dinheiro') return <Banknote size={28} />;
+    return <CreditCard size={28} />;
+  };
 
   const resetPDV = useCallback((targetStep: "cart" | "payment" | "success" = "cart") => {
     setCart([]);
@@ -1353,6 +1381,11 @@ export function AdminPDV() {
           .map((p) => `${p.method} (${formatCurrency(p.amount)})`)
           .join(" + "),
         payments: payments,
+        paymentMethodId: payments[0]?.paymentMethodId || null,
+        paymentMethodNameSnapshot: payments[0]?.paymentMethodNameSnapshot || null,
+        paymentMethodType: payments[0]?.paymentMethodType || null,
+        gatewayProvider: payments[0]?.gatewayProvider || null,
+        paymentContext: 'pdv',
         status: saveAsNewOrder ? "NOVO" : "ENTREGUE",
         type: isDelivery ? "pdv_entrega" : (editingOrderId ? editingOrderType : "pdv"),
         isDelivery: isDelivery,
@@ -2948,70 +2981,48 @@ export function AdminPDV() {
                       Forma de Pagamento
                     </label>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                       <PaymentBtn
-                          icon={<QrCode size={28} />}
-                          label="PIX"
-                          active={paymentMethod === "pix"}
-                          onClick={() => {
-                            setPaymentMethod("pix");
-                            const val = parseFloat(partialAmount || "0");
-                            if (val > 0) {
-                              setPayments([...payments, { method: "Pix", amount: val }]);
-                              toast(`Lançado: ${formatCurrency(val)} no Pix`, "success");
-                            } else {
-                              toast("Informe um valor maior que zero", "warning");
-                            }
-                          }}
-                       />
-                       <PaymentBtn
-                          icon={<CreditCard size={28} />}
-                          label="Crédito"
-                          active={paymentMethod === "credito"}
-                          onClick={() => {
-                            setPaymentMethod("credito");
-                            const val = parseFloat(partialAmount || "0");
-                            if (val > 0) {
-                              setPayments([...payments, { method: "Cartão Crédito", amount: val }]);
-                              toast(`Lançado: ${formatCurrency(val)} no Crédito`, "success");
-                            } else {
-                              toast("Informe um valor maior que zero", "warning");
-                            }
-                          }}
-                       />
-                       <PaymentBtn
-                          icon={<CreditCard size={28} />}
-                          label="Débito"
-                          active={paymentMethod === "debito"}
-                          onClick={() => {
-                            setPaymentMethod("debito");
-                            const val = parseFloat(partialAmount || "0");
-                            if (val > 0) {
-                              setPayments([...payments, { method: "Cartão Débito", amount: val }]);
-                              toast(`Lançado: ${formatCurrency(val)} no Débito`, "success");
-                            } else {
-                              toast("Informe um valor maior que zero", "warning");
-                            }
-                          }}
-                       />
-                       <PaymentBtn
-                          icon={<Banknote size={28} />}
-                          label="Dinheiro"
-                          active={paymentMethod === "dinheiro"}
-                          onClick={() => {
-                            setPaymentMethod("dinheiro");
-                            const val = parseFloat(partialAmount || "0");
-                            if (val > 0) {
-                              setPayments([...payments, { method: "Dinheiro", amount: val }]);
-                              toast(`Lançado: ${formatCurrency(val)} em Dinheiro`, "success");
-                            } else {
-                              toast("Informe um valor maior que zero", "warning");
-                            }
-                          }}
-                       />
+                      {pdvPaymentMethods.length === 0 ? (
+                        <div className="col-span-full p-4 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-xl text-xs font-semibold">
+                          Nenhuma forma de pagamento disponível para o PDV. Configure em Financeiro &gt; Formas de Pagamento.
+                        </div>
+                      ) : (
+                        pdvPaymentMethods.map(method => {
+                          const isActive = paymentMethod === method.id;
+                          return (
+                            <PaymentBtn
+                              key={method.id}
+                              icon={getMethodIcon(method.type)}
+                              label={method.name}
+                              active={isActive}
+                              onClick={() => {
+                                setPaymentMethod(method.id);
+                                const val = parseFloat(partialAmount || "0");
+                                if (val > 0) {
+                                  setPayments([
+                                    ...payments,
+                                    {
+                                      method: method.name,
+                                      amount: val,
+                                      paymentMethodId: method.id,
+                                      paymentMethodNameSnapshot: method.name,
+                                      paymentMethodType: method.type,
+                                      gatewayProvider: method.gatewayProvider || 'manual',
+                                      paymentContext: 'pdv'
+                                    }
+                                  ]);
+                                  toast(`Lançado: ${formatCurrency(val)} em ${method.name}`, "success");
+                                } else {
+                                  toast("Informe um valor maior que zero", "warning");
+                                }
+                              }}
+                            />
+                          );
+                        })
+                      )}
                     </div>
                   </div>
 
-                  {paymentMethod === "dinheiro" && (
+                  {pdvPaymentMethods.find(m => m.id === paymentMethod)?.type === 'dinheiro' && (
                     <div className="p-6 bg-slate-950 rounded-2xl border-2 border-white/5 animate-in fade-in slide-in-from-top-4 shrink-0">
                       <label className="block text-[10px] md:text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-4">
                          Assistente de Troco (Opcional)
@@ -3037,11 +3048,23 @@ export function AdminPDV() {
                           <Button
                             onClick={() => {
                               const val = parseFloat(receivedAmount);
-                              setPayments([...payments, { method: "Dinheiro", amount: val }]);
+                              const selectedMethod = pdvPaymentMethods.find(m => m.id === paymentMethod);
+                              setPayments([
+                                ...payments,
+                                {
+                                  method: selectedMethod?.name || "Dinheiro",
+                                  amount: val,
+                                  paymentMethodId: paymentMethod,
+                                  paymentMethodNameSnapshot: selectedMethod?.name || "Dinheiro",
+                                  paymentMethodType: "dinheiro",
+                                  gatewayProvider: selectedMethod?.gatewayProvider || "manual",
+                                  paymentContext: "pdv"
+                                }
+                              ]);
                               setPartialAmount("0.00");
                               setReceivedAmount("");
                               setPaymentMethod("");
-                              toast(`Lançado: ${formatCurrency(val)} em Dinheiro`, "success");
+                              toast(`Lançado: ${formatCurrency(val)} em ${selectedMethod?.name || "Dinheiro"}`, "success");
                             }}
                             className="w-full sm:w-auto h-16 rounded-xl bg-green-600 hover:bg-green-500 border-b-4 border-green-800 text-white font-black uppercase tracking-widest px-8 mt-4 sm:mt-0 transition-transform active:translate-y-1 active:border-b-0"
                           >

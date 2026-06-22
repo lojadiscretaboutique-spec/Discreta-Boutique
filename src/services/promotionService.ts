@@ -29,6 +29,8 @@ export interface Promotion {
   createdAt?: any;
   updatedAt?: any;
   allowedPaymentMethods?: string[];
+  allowedPaymentMethodIds?: string[];
+  allowedPaymentMethodSnapshots?: { id: string; name: string; type: string }[];
   
   // Gift With Purchase Specific Fields
   stackable?: boolean;

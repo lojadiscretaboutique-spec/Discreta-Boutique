@@ -12,12 +12,25 @@ import { cacheService } from './services/cacheService';
 const AdminLayout = lazy(() => import('./layouts/AdminLayout').then(m => ({ default: m.AdminLayout })));
 
 // Store Pages
-const HomePage = lazy(() => import('./pages/store/HomePage').then(m => ({ default: m.HomePage })));
+const HomePage = lazy(() => import('./pages/store/HomePage'));
 const CatalogPage = lazy(() => import('./pages/store/CatalogPage').then(m => ({ default: m.CatalogPage })));
 const ProductPage = lazy(() => import('./pages/store/ProductPage').then(m => ({ default: m.ProductPage })));
 const CartPage = lazy(() => import('./pages/store/CartPage').then(m => ({ default: m.CartPage })));
+const LoginPage = lazy(() => import('./pages/store/LoginPage').then(m => ({ default: m.LoginPage })));
+const CadastroPage = lazy(() => import('./pages/store/CadastroPage').then(m => ({ default: m.CadastroPage })));
 const SuccessPage = lazy(() => import('./pages/store/SuccessPage').then(m => ({ default: m.SuccessPage })));
 const CustomerAreaPage = lazy(() => import('./pages/store/CustomerAreaPage').then(m => ({ default: m.CustomerAreaPage })));
+const AreaClienteLayout = lazy(() => import('./layouts/AreaClienteLayout').then(m => ({ default: m.AreaClienteLayout })));
+const CustomerAccountDataPage = lazy(() => import('./pages/store/area-cliente/CustomerAccountDataPage').then(m => ({ default: m.CustomerAccountDataPage })));
+const CustomerOrdersPage = lazy(() => import('./pages/store/area-cliente/CustomerOrdersPage').then(m => ({ default: m.CustomerOrdersPage })));
+const CustomerAddressesPage = lazy(() => import('./pages/store/area-cliente/CustomerAddressesPage').then(m => ({ default: m.CustomerAddressesPage })));
+const CustomerFavoritesPage = lazy(() => import('./pages/store/area-cliente/CustomerFavoritesPage').then(m => ({ default: m.CustomerFavoritesPage })));
+const CustomerLoyaltyPage = lazy(() => import('./pages/store/area-cliente/CustomerLoyaltyPage').then(m => ({ default: m.CustomerLoyaltyPage })));
+const CustomerReviewsPage = lazy(() => import('./pages/store/area-cliente/CustomerReviewsPage').then(m => ({ default: m.CustomerReviewsPage })));
+const CustomerNotificationsPage = lazy(() => import('./pages/store/area-cliente/CustomerNotificationsPage').then(m => ({ default: m.CustomerNotificationsPage })));
+const CustomerSupportPage = lazy(() => import('./pages/store/area-cliente/CustomerSupportPage').then(m => ({ default: m.CustomerSupportPage })));
+const CustomerChangePasswordPage = lazy(() => import('./pages/store/area-cliente/CustomerChangePasswordPage').then(m => ({ default: m.CustomerChangePasswordPage })));
+
 const PrivacyPolicyPage = lazy(() => import('./pages/store/PrivacyPolicyPage'));
 const AboutUsPage = lazy(() => import('./pages/store/AboutUsPage'));
 const ExchangePolicyPage = lazy(() => import('./pages/store/ExchangePolicyPage'));
@@ -178,7 +191,23 @@ function AppContent() {
             <Route path="/" element={<HomePage />} />
             <Route path="/catalogo" element={<CatalogPage />} />
             <Route path="/categoria/:slug" element={<CatalogPage />} />
-            <Route path="/area-cliente" element={<CustomerAreaPage />} />
+            
+            {/* Protected Customer Routes */}
+            <Route element={<AreaClienteLayout />}>
+              <Route path="/area-cliente" element={<CustomerAreaPage />} />
+              <Route path="/area-cliente/dados" element={<CustomerAccountDataPage />} />
+              <Route path="/area-cliente/pedidos" element={<CustomerOrdersPage />} />
+              <Route path="/area-cliente/enderecos" element={<CustomerAddressesPage />} />
+              <Route path="/area-cliente/favoritos" element={<CustomerFavoritesPage />} />
+              <Route path="/area-cliente/fidelidade" element={<CustomerLoyaltyPage />} />
+              <Route path="/area-cliente/avaliacoes" element={<CustomerReviewsPage />} />
+              <Route path="/area-cliente/notificacoes" element={<CustomerNotificationsPage />} />
+              <Route path="/area-cliente/suporte" element={<CustomerSupportPage />} />
+              <Route path="/area-cliente/alterar-senha" element={<CustomerChangePasswordPage />} />
+            </Route>
+
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/cadastro" element={<CadastroPage />} />
             <Route path="/politica-de-privacidade" element={<PrivacyPolicyPage />} />
             <Route path="/quem-somos" element={<AboutUsPage />} />
             <Route path="/politica-de-troca" element={<ExchangePolicyPage />} />

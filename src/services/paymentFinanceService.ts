@@ -64,9 +64,45 @@ export interface PaymentFee {
   updatedAt?: any;
 }
 
+export interface Receivable {
+  id: string;
+  saleId: string;
+  paymentMethodId: string;
+  paymentMethodNameSnapshot: string;
+  cardBrandId?: string;
+  cardBrandNameSnapshot?: string;
+  cardMachineId?: string;
+  cardMachineNameSnapshot?: string;
+  feeRuleId?: string;
+  originalAmount: number; // Gross amount
+  netAmount: number; // Net amount after fees
+  fee: number; // Total deduction (percentageFee + fixedFee in value)
+  percentageFee?: number;
+  fixedFee?: number;
+  payoutDate: string; // Predicted compensation date
+  compensationDaysType?: 'corridos' | 'uteis';
+  status: 'pending' | 'cleared';
+  notes?: string;
+  method?: string; // Legacy fallback
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface Reconciliation {
+  id: string;
+  date: string;
+  systemTotal: number;
+  expectedTotal: number;
+  reconciled: boolean;
+  operator: string;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
 export interface MethodConfig {
   id: string;
   name: string;
+  label?: string; // Legacy fallback
   type: 'pix' | 'dinheiro' | 'debito' | 'credito' | 'transferencia' | 'link_pagamento' | 'gateway_online' | 'outro';
   icon: string;
   active: boolean;
@@ -148,17 +184,118 @@ export const paymentFinanceService = {
     return this.getCollection<MethodConfig>('financial_payment_methods');
   },
 
-  async listPaymentMethodsByContext(context: 'site' | 'pdv' | 'delivery' | 'pickup'): Promise<MethodConfig[]> {
-      const methods = await this.getPaymentMethods();
-      return methods
-        .filter(m => m.active)
-        .filter(m => {
-            if (context === 'site') return m.showOnSite;
-            if (context === 'pdv') return m.showOnPDV;
-            if (context === 'delivery') return m.availableForDelivery;
-            if (context === 'pickup') return m.availableForPickup;
-            return true;
-        })
-        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  async listActivePaymentMethods(): Promise<MethodConfig[]> {
+    const list = await this.getPaymentMethods();
+    return list.filter(m => m.active).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  },
+
+  // Context listing helper
+  async listPaymentMethodsByContext(context: 'site' | 'pdv' | 'caixa' | 'pedidos' | 'financeiro' | 'recebiveis' | 'checkout_entrega' | 'checkout_retirada' | 'delivery' | 'pickup' | 'cupons' | 'promocoes'): Promise<MethodConfig[]> {
+    const methods = await this.getPaymentMethods();
+    return methods
+      .filter(m => m.active)
+      .filter(m => {
+        if (context === 'site') return m.showOnSite;
+        if (context === 'pdv' || context === 'caixa') return m.showOnPDV;
+        if (context === 'checkout_entrega' || context === 'delivery') return m.showOnSite && (m.availableForDelivery ?? m.enabledDelivery);
+        if (context === 'checkout_retirada' || context === 'pickup') return m.showOnSite && (m.availableForPickup ?? m.enabledPickup);
+        // orders, financial launches, coupons, promotions just need to be active (already filtered above)
+        return true;
+      })
+      .sort((a, b) => (a.sortOrder ?? 10) - (b.sortOrder ?? 10) || (a.name || '').localeCompare(b.name || ''));
+  },
+
+  // Compatibility wrappers for older/newer context calls
+  async getPaymentMethodsForSiteDelivery(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('checkout_entrega');
+  },
+
+  async getPaymentMethodsForSitePickup(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('checkout_retirada');
+  },
+
+  async getPaymentMethodsForPDV(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('pdv');
+  },
+
+  async getPaymentMethodsForCashier(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('caixa');
+  },
+
+  async getPaymentMethodsForSite(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('site');
+  },
+
+  async getPaymentMethodsForDelivery(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('delivery');
+  },
+
+  async getPaymentMethodsForPickup(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('pickup');
+  },
+
+  async getPaymentMethodsForFinancialLaunch(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('financeiro');
+  },
+
+  async getPaymentMethodsForFinancialLaunches(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('financeiro');
+  },
+
+  async getPaymentMethodsForOrders(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('pedidos');
+  },
+
+  async getPaymentMethodsForCoupons(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('cupons');
+  },
+
+  async getPaymentMethodsForPromotions(): Promise<MethodConfig[]> {
+    return this.listPaymentMethodsByContext('promocoes');
+  },
+
+  async getPaymentMethodById(id: string): Promise<MethodConfig | undefined> {
+    const list = await this.getPaymentMethods();
+    return list.find(m => m.id === id);
+  },
+
+  // Receivables
+  async getReceivables(): Promise<Receivable[]> {
+    const list: Receivable[] = [];
+    try {
+      const snap = await getDocs(query(collection(db, 'financial_receivables'), orderBy('updatedAt', 'desc')));
+      snap.docs.forEach(doc => {
+        list.push({ id: doc.id, ...doc.data() } as Receivable);
+      });
+    } catch (e) {
+      console.warn("Could not fetch elements from financial_receivables:", e);
+    }
+
+    try {
+      const snapOld = await getDocs(query(collection(db, 'financialReceivables'), orderBy('updatedAt', 'desc')));
+      snapOld.docs.forEach(doc => {
+        const d = doc.data();
+        // Avoid duplicate entry if same ID
+        if (list.some(item => item.id === doc.id)) return;
+        list.push({
+          id: doc.id,
+          saleId: d.saleId || '',
+          paymentMethodId: d.paymentMethodId || '',
+          paymentMethodNameSnapshot: d.paymentMethodNameSnapshot || d.method || '',
+          originalAmount: d.originalAmount !== undefined ? d.originalAmount : (d.value || 0),
+          netAmount: d.netAmount !== undefined ? d.netAmount : (d.value || 0),
+          fee: d.fee || 0,
+          payoutDate: d.payoutDate || '',
+          status: d.status || 'pending',
+          method: d.method || '',
+          createdAt: d.createdAt,
+          updatedAt: d.updatedAt
+        } as Receivable);
+      });
+    } catch (e) {
+      console.warn("Could not fetch elements from legacy financialReceivables:", e);
+    }
+
+    return list;
   },
 };

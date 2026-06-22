@@ -1,508 +1,77 @@
-import { useEffect, useState, useMemo } from 'react';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { UserCircle, Save, Search, LogOut } from 'lucide-react';
-import { useAuthStore } from '../../store/authStore';
-import { useCustomerAuthStore } from '../../store/customerAuthStore';
-import { Input } from '../../components/ui/input';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getAuth, signOut } from 'firebase/auth';
 import { Button } from '../../components/ui/button';
-import { useFeedback } from '../../contexts/FeedbackContext';
-import { customerService } from '../../services/customerService';
-import { deliveryAreaService, State, City, DeliveryArea } from '../../services/deliveryAreaService';
-import { abandonedCartWebhookService } from '../../services/abandonedCartWebhookService';
-import { useCartStore } from '../../store/cartStore';
+import { ChevronRight, LogOut, Package, MapPin, Heart, Wallet, Star, ShieldCheck, Mail, Headphones, Lock, User } from 'lucide-react';
+import { themeService } from '../../services/themeService';
+import { ThemeConfig } from '../../types/theme';
 
-export function CustomerAreaPage() {
-  const { user } = useAuthStore();
-  const { currentCustomer, setCustomer, clearCustomer } = useCustomerAuthStore();
-  const cartItems = useCartStore(state => state.items);
-  const { toast } = useFeedback();
+export const CustomerAreaPage = () => {
+    const navigate = useNavigate();
+    const [theme, setTheme] = useState<ThemeConfig | null>(null);
 
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState({
-    nome: '',
-    email: '',
-    dataNascimento: '',
-    enderecoObj: {
-      rua: '', numero: '', bairro: '', cidade: '', estado: '', complemento: '', referencia: ''
-    }
-  });
+    useEffect(() => {
+        themeService.getActiveTheme().then(setTheme);
+    }, []);
 
-  const [searchedWhatsapp, setSearchedWhatsapp] = useState('');
-  const [loadingSearch, setLoadingSearch] = useState(false);
-  const [isRegisteringNew, setIsRegisteringNew] = useState(false);
-  // We consider "customer found" either by auth user acting as customer or our customer auth store presence
-  const customerFound = !!currentCustomer;
-  const foundCustomerId = currentCustomer?.id || null;
-
-  // Delivery Areas Data for suggestions
-  const [allStates, setAllStates] = useState<State[]>([]);
-  const [allCities, setAllCities] = useState<City[]>([]);
-  const [allBairros, setAllBairros] = useState<DeliveryArea[]>([]);
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-    // Load active delivery areas
-    const loadDeliveryAreas = async () => {
-      try {
-        const states = await deliveryAreaService.listStates();
-        const cities = await deliveryAreaService.listCities();
-        const bairros = await deliveryAreaService.listDeliveryAreas();
-        setAllStates(states.filter(s => s.status === 'ativo'));
-        setAllCities(cities.filter(c => c.status === 'ativo'));
-        setAllBairros(bairros.filter(b => b.status === 'ativo'));
-      } catch (e) {
-        console.error("Erro ao carregar áreas de entrega", e);
-      }
-    };
-    loadDeliveryAreas();
-  }, []);
-
-  const availableCities = useMemo(() => {
-    if (!data.enderecoObj.estado) return allCities;
-    const currentState = allStates.find(s => s.sigla.toLowerCase() === data.enderecoObj.estado.toLowerCase());
-    if (currentState) {
-      return allCities.filter(c => c.stateId === currentState.id);
-    }
-    return allCities;
-  }, [allCities, allStates, data.enderecoObj.estado]);
-
-  const availableBairros = useMemo(() => {
-    let filtered = allBairros;
-    if (data.enderecoObj.estado) {
-      const currentState = allStates.find(s => s.sigla.toLowerCase() === data.enderecoObj.estado.toLowerCase());
-      if (currentState) {
-        filtered = filtered.filter(b => b.stateId === currentState.id);
-      }
-    }
-    if (data.enderecoObj.cidade) {
-       const selectedCityName = data.enderecoObj.cidade.toLowerCase();
-       filtered = filtered.filter(b => b.cityName.toLowerCase() === selectedCityName);
-    }
-    return filtered;
-  }, [allBairros, allStates, data.enderecoObj.estado, data.enderecoObj.cidade]);
-
-
-  // Load user data prioritizing currentCustomer store, then Firebase auth
-  useEffect(() => {
-    if (currentCustomer && !user) {
-      setSearchedWhatsapp(currentCustomer.whatsapp);
-      setData({
-        nome: currentCustomer.nome || '',
-        email: currentCustomer.email || '',
-        dataNascimento: currentCustomer.dataNascimento || '',
-        enderecoObj: currentCustomer.enderecoObj ? { ...currentCustomer.enderecoObj } : {
-           rua: '', numero: '', bairro: '', cidade: '', estado: '', complemento: '', referencia: ''
-        }
-      });
-    } else if (user) {
-      getDoc(doc(db, 'users', user.uid)).then(snap => {
-        if (snap.exists()) {
-          const d = snap.data();
-          setData({
-            nome: d.nome || user.displayName || '',
-            email: d.email || user.email || '',
-            dataNascimento: d.dataNascimento || '',
-            enderecoObj: typeof d.endereco === 'object' && d.endereco !== null ? {
-              rua: d.endereco.rua || '',
-              numero: d.endereco.numero || '',
-              bairro: d.endereco.bairro || '',
-              cidade: d.endereco.cidade || '',
-              estado: d.endereco.estado || '',
-              complemento: d.endereco.complemento || '',
-              referencia: d.endereco.referencia || ''
-            } : {
-              rua: typeof d.endereco === 'string' ? d.endereco : '',
-              numero: '',
-              bairro: '',
-              cidade: '',
-              estado: '',
-              complemento: '',
-              referencia: ''
-            }
-          });
-        } else {
-          setData(prev => ({
-            ...prev,
-            nome: user.displayName || '',
-            email: user.email || ''
-          }));
-        }
-      });
-    }
-  }, [user, currentCustomer]);
-
-  const handleSearchCustomer = async () => {
-    const cleanPhone = searchedWhatsapp.replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 8) {
-      toast('Digite um número de telefone válido.', 'warning');
-      return;
-    }
-    setLoadingSearch(true);
-    try {
-      let customer = await customerService.getCustomerByWhatsapp(searchedWhatsapp);
-      
-      if (!customer) {
-        setIsRegisteringNew(true);
-        setData({
-          nome: '',
-          email: '',
-          dataNascimento: '',
-          enderecoObj: { rua: '', numero: '', bairro: '', cidade: '', estado: '', complemento: '', referencia: '' }
-        });
-        toast('Cadastro não encontrado. Preencha seus dados para criar um novo.', 'info');
-      } else {
-        toast('Carregamos o seu cadastro.', 'success');
-        setIsRegisteringNew(false);
-
-        const currentEnd = {
-          rua: customer.endereco?.rua || '',
-          numero: customer.endereco?.numero || '',
-          bairro: customer.endereco?.bairro || '',
-          cidade: customer.endereco?.cidade || '',
-          estado: customer.endereco?.estado || '',
-          complemento: customer.endereco?.complemento || '',
-          referencia: customer.endereco?.referencia || ''
-        };
-        
-        setCustomer({
-           id: customer.id!,
-           nome: customer.nome,
-           email: customer.email,
-           whatsapp: customer.whatsapp,
-           dataNascimento: customer.dataNascimento,
-           enderecoObj: currentEnd
-        });
-
-        if (cartItems && cartItems.length > 0) {
-           abandonedCartWebhookService.sendImmediateCartWebhook(customer.nome, customer.whatsapp, cartItems).catch(err => console.error(err));
-        }
-      }
-    } catch (err) {
-      toast('Erro ao buscar dados.', 'error');
-    } finally {
-      setLoadingSearch(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!data.nome) {
-      toast('Nome completo é obrigatório.', 'error');
-      return;
-    }
-
-    if (data.enderecoObj.estado || data.enderecoObj.cidade || data.enderecoObj.bairro) {
-      const formEstado = data.enderecoObj.estado || '';
-      const formCidade = data.enderecoObj.cidade || '';
-      const formBairro = data.enderecoObj.bairro || '';
-
-      const isStateValid = allStates.some(s => s.sigla.toLowerCase() === formEstado.toLowerCase());
-      if (!isStateValid) {
-        toast('Estado não atendido pela loja. Selecione um estado válido da lista.', 'error');
-        return;
-      }
-      
-      const currentState = allStates.find(s => s.sigla.toLowerCase() === formEstado.toLowerCase());
-      const isCityValid = allCities.some(c => c.nome.toLowerCase() === formCidade.toLowerCase() && c.stateId === currentState?.id);
-      if (!isCityValid) {
-        toast('Cidade não atendida pela loja. Selecione uma cidade válida da lista.', 'error');
-        return;
-      }
-
-      const isBairroValid = allBairros.some(b => b.bairro.toLowerCase() === formBairro.toLowerCase() && b.cityName.toLowerCase() === formCidade.toLowerCase());
-      if (!isBairroValid) {
-        toast('Bairro não atendido pela loja. Selecione um bairro válido da lista.', 'error');
-        return;
-      }
-    }
-
-    setLoading(true);
-    try {
-      if (user) {
-        await updateDoc(doc(db, 'users', user.uid), {
-          nome: data.nome,
-          email: data.email,
-          dataNascimento: data.dataNascimento,
-          endereco: data.enderecoObj
-        });
-      } else if (foundCustomerId) {
-        await updateDoc(doc(db, 'customers', foundCustomerId), {
-          nome: data.nome,
-          email: data.email,
-          dataNascimento: data.dataNascimento,
-          endereco: data.enderecoObj
-        });
-        // Update local auth store so context stays updated
-        setCustomer({
-          ...currentCustomer!,
-          nome: data.nome,
-          email: data.email,
-          dataNascimento: data.dataNascimento,
-          enderecoObj: data.enderecoObj
-        });
-      } else if (isRegisteringNew) {
-        // Create new customer
-        const newCustomerId = await customerService.saveCustomer({
-           nome: data.nome,
-           email: data.email,
-           whatsapp: searchedWhatsapp,
-           dataNascimento: data.dataNascimento,
-           status: 'ativo',
-           endereco: data.enderecoObj
-        });
-        
-        setIsRegisteringNew(false);
-        setCustomer({
-           id: newCustomerId,
-           nome: data.nome,
-           email: data.email,
-           whatsapp: searchedWhatsapp,
-           dataNascimento: data.dataNascimento,
-           enderecoObj: data.enderecoObj
-        });
-
-        if (cartItems && cartItems.length > 0) {
-           abandonedCartWebhookService.sendImmediateCartWebhook(data.nome, searchedWhatsapp, cartItems).catch(err => console.error(err));
-        }
-      }
-      toast('Seus dados foram atualizados.', 'success');
-    } catch (err) {
-      toast('Falha ao atualizar dados.', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-      clearCustomer();
-      setSearchedWhatsapp('');
-      setIsRegisteringNew(false);
-      setData({
-        nome: '',
-        email: '',
-        dataNascimento: '',
-        enderecoObj: { rua: '', numero: '', bairro: '', cidade: '', estado: '', complemento: '', referencia: '' }
-      });
-      toast('Você saiu com sucesso.', 'info');
-  };
-
-  const handleRequestDeletion = () => {
-    if (!data.nome || (!data.email && !searchedWhatsapp)) {
-      toast('Preencha seus dados para identificação.', 'error');
-      return;
-    }
-    const endStr = [data.enderecoObj.rua, data.enderecoObj.numero, data.enderecoObj.bairro, data.enderecoObj.cidade, data.enderecoObj.estado].filter(Boolean).join(', ');
-    const text = `Olá, solicito a exclusão do meu cadastro e de todos os meus dados do sistema da Discreta Boutique.%0A%0A*Meus Dados para Identificação:*%0A- Nome: ${data.nome}%0A- E-mail: ${data.email}%0A- Data de Nascimento: ${data.dataNascimento}%0A- WhatsApp: ${searchedWhatsapp}%0A- Endereço: ${endStr}`;
-    window.open(`https://wa.me/5588992340317?text=${text}`, '_blank');
-  };
-
-  const updateEndereco = (field: string, value: string) => {
-    setData(prev => ({
-      ...prev,
-      enderecoObj: {
-        ...prev.enderecoObj,
-        [field]: value
-      }
-    }));
-  };
-
-  return (
-    <div className="flex-1 bg-black text-white py-16 px-4">
-      <div className="max-w-3xl mx-auto bg-zinc-950 p-8 md:p-12 rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-red-600/10 rounded-full blur-[100px] pointer-events-none"></div>
-        
-        <div className="flex flex-col items-center justify-center text-center gap-4 mb-10 relative z-10">
-          <div className="w-16 h-16 bg-red-600/20 text-red-500 rounded-full flex items-center justify-center">
-            <UserCircle size={32} />
-          </div>
-          <div>
-            <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white">Área do Cliente</h2>
-            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-2 block">
-              {user || customerFound ? 'Gerencie seus dados e privacidade' : 'Acesse seus dados cadastrais'}
-            </p>
-          </div>
-        </div>
-
-        {!user && !customerFound && !isRegisteringNew ? (
-          <div className="max-w-sm mx-auto space-y-6 relative z-10 pb-4">
-            <p className="text-sm text-zinc-400 text-center">
-              Você não está logado. Para visualizar ou alterar seu cadastro, informe seu número de WhatsApp abaixo.
-            </p>
-            <div>
-              <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">Seu WhatsApp</label>
-              <Input 
-                value={searchedWhatsapp} 
-                onChange={e => setSearchedWhatsapp(e.target.value)}
-                placeholder="(00) 00000-0000"
-                className="bg-black border-zinc-800 text-white h-12 text-center text-lg"
-              />
-            </div>
-            <Button 
-              onClick={handleSearchCustomer}
-              disabled={loadingSearch}
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest text-xs h-12 rounded-full shadow-lg shadow-red-900/20"
-            >
-              {loadingSearch ? 'Buscando...' : <><Search size={16} className="mr-2" /> Buscar Meu Cadastro</>}
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-8 relative z-10">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">Nome Completo *</label>
-                <Input 
-                  value={data.nome} 
-                  onChange={e => setData({...data, nome: e.target.value})}
-                  className="bg-black border-zinc-800 text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">E-mail *</label>
-                <Input 
-                  value={data.email} 
-                  onChange={e => setData({...data, email: e.target.value})}
-                  className="bg-black border-zinc-800 text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">Data de Nascimento</label>
-                <Input 
-                  type="date"
-                  value={data.dataNascimento} 
-                  onChange={e => setData({...data, dataNascimento: e.target.value})}
-                  className="bg-black border-zinc-800 text-white css-invert-calendar"
-                />
-              </div>
-            </div>
-
-            <div className="border-t border-zinc-900 pt-8 mt-8">
-              <h3 className="text-xl font-bold uppercase tracking-widest text-zinc-400 mb-6 flex items-center gap-2">
-                Endereço de Entrega
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">Estado</label>
-                  <Input 
-                    list="estados-sugestoes"
-                    value={data.enderecoObj.estado} 
-                    onChange={e => updateEndereco('estado', e.target.value)}
-                    className="bg-black border-zinc-800 text-white"
-                    placeholder="UF (Ex: CE)"
-                  />
-                  <datalist id="estados-sugestoes">
-                    {allStates.map(state => (
-                      <option key={state.id} value={state.sigla}>{state.nome}</option>
-                    ))}
-                  </datalist>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">Cidade</label>
-                  <Input 
-                    list="cidades-sugestoes"
-                    value={data.enderecoObj.cidade} 
-                    onChange={e => updateEndereco('cidade', e.target.value)}
-                    className="bg-black border-zinc-800 text-white"
-                  />
-                  <datalist id="cidades-sugestoes">
-                    {availableCities.map(city => (
-                      <option key={city.id} value={city.nome} />
-                    ))}
-                  </datalist>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">Bairro</label>
-                  <Input 
-                    list="bairros-sugestoes"
-                    value={data.enderecoObj.bairro} 
-                    onChange={e => updateEndereco('bairro', e.target.value)}
-                    className="bg-black border-zinc-800 text-white"
-                  />
-                  <datalist id="bairros-sugestoes">
-                    {availableBairros.map(bairro => (
-                      <option key={bairro.id} value={bairro.bairro} />
-                    ))}
-                  </datalist>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">Rua / Avenida</label>
-                  <Input 
-                    value={data.enderecoObj.rua} 
-                    onChange={e => updateEndereco('rua', e.target.value)}
-                    className="bg-black border-zinc-800 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">Número</label>
-                  <Input 
-                    value={data.enderecoObj.numero} 
-                    onChange={e => updateEndereco('numero', e.target.value)}
-                    className="bg-black border-zinc-800 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">Complemento</label>
-                  <Input 
-                    value={data.enderecoObj.complemento} 
-                    onChange={e => updateEndereco('complemento', e.target.value)}
-                    className="bg-black border-zinc-800 text-white"
-                    placeholder="Apto, Bloco, etc (Opcional)"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">Ponto de Referência</label>
-                  <Input 
-                    value={data.enderecoObj.referencia} 
-                    onChange={e => updateEndereco('referencia', e.target.value)}
-                    className="bg-black border-zinc-800 text-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-8 border-t border-zinc-800 flex flex-col items-center gap-6">
-              <div className="flex gap-4 w-full sm:w-auto">
-                <Button 
-                  onClick={handleSave}
-                  disabled={loading}
-                  className="flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest text-xs h-12 px-8 rounded-full shadow-lg shadow-red-900/20"
-                >
-                  {loading ? 'Salvando...' : (
-                    <><Save size={16} className="mr-2" /> Salvar</>
-                  )}
-                </Button>
+    const handleLogout = async () => {
+        await signOut(getAuth());
+        navigate('/login');
+    };                
+    
+    // Minimal mock data for structure as requested in the "perfil like" image
+    const menuItems = [
+        { label: 'Meus Pedidos', path: '/area-cliente/pedidos', icon: Package },
+        { label: 'Meus Endereços', path: '/area-cliente/enderecos', icon: MapPin },
+        { label: 'Favoritos', path: '/area-cliente/favoritos', icon: Heart },
+        { label: 'Fidelidade', path: '/area-cliente/fidelidade', icon: Star },
+        { label: 'Minhas Avaliações', path: '/area-cliente/avaliacoes', icon: Star },
+        { label: 'Notificações', path: '/area-cliente/notificacoes', icon: Mail },
+        { label: 'Suporte', path: '/area-cliente/suporte', icon: Headphones },
+        { label: 'Alterar Senha', path: '/area-cliente/alterar-senha', icon: Lock },
+    ];
+    
+    return (
+        <div className="bg-slate-50 min-h-screen" style={{ backgroundColor: theme?.backgroundColor }}>
+            <div className="max-w-2xl mx-auto min-h-screen shadow-sm" style={{ backgroundColor: theme?.cardColor }}>
                 
-                {customerFound && !user && (
-                    <Button 
-                      onClick={handleLogout}
-                      variant="outline"
-                      className="flex-1 sm:flex-none border-zinc-800 text-zinc-400 hover:bg-zinc-900 hover:text-white font-bold uppercase tracking-widest text-xs h-12 px-8 rounded-full"
-                    >
-                      <LogOut size={16} className="mr-2" /> Sair
-                    </Button>
-                )}
-
-                {isRegisteringNew && !customerFound && (
-                    <Button 
-                      onClick={() => setIsRegisteringNew(false)}
-                      variant="outline"
-                      className="flex-1 sm:flex-none border-zinc-800 text-zinc-400 hover:bg-zinc-900 hover:text-white font-bold uppercase tracking-widest text-xs h-12 px-8 rounded-full"
-                    >
-                      Voltar
-                    </Button>
-                )}
-              </div>
-
-              <button 
-                onClick={handleRequestDeletion}
-                className="text-zinc-600 hover:text-zinc-400 text-[10px] uppercase tracking-widest transition-colors flex items-center bg-transparent border-none cursor-pointer p-2"
-              >
-                Solicitar exclusão dos dados
-              </button>
+                <header className="px-6 pt-12 pb-6 border-b border-slate-100 flex items-center gap-4">
+                    <div className="w-20 h-20 rounded-full flex items-center justify-center font-bold text-3xl border" style={{ backgroundColor: theme?.secondaryColor, borderColor: theme?.primaryColor, color: theme?.primaryTextColor }}>
+                        <User className="w-10 h-10" />
+                    </div>
+                    <div onClick={() => navigate('/area-cliente/dados')} className="cursor-pointer flex-1">
+                        <h1 className="text-2xl font-bold" style={{ color: theme?.cardTextColor }}>Felipe Denis</h1>
+                        <p className="text-base font-medium" style={{ color: theme?.primaryColor }}>Ver dados da conta</p>
+                    </div>
+                </header>
+                
+                <nav className="px-2 py-4">
+                    <ul className="space-y-1">
+                        {menuItems.map(item => {
+                            const Icon = item.icon;
+                            return (
+                                <li key={item.label} onClick={() => navigate(item.path)} className="flex justify-between items-center p-4 rounded-xl cursor-pointer transition-colors group" style={{ color: theme?.cardTextColor }}>
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg transition-colors" style={{ backgroundColor: theme?.secondaryColor, color: theme?.primaryColor }}>
+                                            <Icon className="w-5 h-5" />
+                                        </div>
+                                        <span className="font-semibold">{item.label}</span>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 transition-colors" style={{ color: theme?.primaryColor }} />
+                                </li>
+                            );
+                        })}
+                        
+                        <li className="pt-4 px-4">
+                            <Button onClick={handleLogout} className="w-full justify-start gap-3 px-0 text-base" size="lg" style={{ backgroundColor: theme?.buttonColor, color: theme?.buttonTextColor }}>
+                                <LogOut className="w-5 h-5" />
+                                Sair da conta
+                            </Button>
+                        </li>
+                    </ul>
+                </nav>
             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+        </div>
+    );
+};
+

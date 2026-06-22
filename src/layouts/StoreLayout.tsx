@@ -19,6 +19,8 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useTypography } from '../contexts/TypographyContext';
 import { hexToRgb } from '../utils/themeUtils';
 
+import { BottomNav } from '../components/store/BottomNav';
+
 function FreeShippingBar() {
   const { activePromotions } = usePromotion();
 
@@ -364,13 +366,15 @@ export function StoreLayout() {
 
       {/* Main Content */}
       <main className={cn(
-        "flex-1 flex flex-col",
+        "flex-1 flex flex-col pb-16 md:pb-0",
         (location.pathname === '/' || location.pathname === '/catalogo') 
           ? (hasGlobalFreeShipping ? "pt-[204px] sm:pt-[214px] md:pt-[236px]" : "pt-[168px] sm:pt-[178px] md:pt-[196px]") 
           : "pt-28 md:pt-36"
       )}>
         <Outlet />
       </main>
+
+      <BottomNav />
 
       {/* Floating Live Player & Floating Admin Button */}
       <FloatingLivePlayer />

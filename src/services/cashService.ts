@@ -65,15 +65,16 @@ export const cashService = {
     return docId;
   },
 
-  async closeSession(sessionId: string, finalBalance: number, notes?: string): Promise<void> {
+  async closeSession(sessionId: string, finalBalance: number, notes?: string, methodTotals?: Record<string, number>): Promise<void> {
     const ref = doc(db, 'cashSessions', sessionId);
     await updateDoc(ref, {
         status: 'fechado',
         closedAt: serverTimestamp(),
         finalBalance,
-        notes: notes || ''
+        notes: notes || '',
+        methodTotalsSnapshot: methodTotals || null
     });
-    await auditLogService.logAction('Fechar Caixa', 'caixa', sessionId, { saldoFinal: finalBalance });
+    await auditLogService.logAction('Fechar Caixa', 'caixa', sessionId, { saldoFinal: finalBalance, methodTotals });
   },
 
   async reopenSession(sessionId: string): Promise<void> {

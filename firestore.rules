@@ -238,22 +238,46 @@ service cloud.firestore {
     match /financial_bank_accounts/{doc} {
       allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
     }
+    match /financialBankAccounts/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
     match /financial_card_machines/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financialCardMachines/{doc} {
       allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
     }
     match /financial_card_fees/{doc} {
       allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
     }
+    match /financialCardFees/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financial_payment_fees/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
     match /financial_receivables/{doc} {
       allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
     }
+    match /financialReceivables/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
     match /financial_reconciliations/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financialReconciliations/{doc} {
       allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
     }
     match /financial_payment_methods/{doc} {
       allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
     }
     match /financial_payment_configs/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financial_acquirers/{doc} {
+      allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+    }
+    match /financial_card_brands/{doc} {
       allow read, write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
     }
 
@@ -463,6 +487,20 @@ service cloud.firestore {
       allow create: if isMasterAdmin() || can('banners', 'criar');
       allow update: if isMasterAdmin() || can('banners', 'editar');
       allow delete: if isMasterAdmin() || can('banners', 'excluir');
+    }
+
+    match /web_stories/{doc} {
+      allow read: if true;
+      allow create: if isMasterAdmin() || can('marketing', 'criar');
+      allow update: if isMasterAdmin() || can('marketing', 'editar');
+      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+    }
+
+    match /newsletter_subscribers/{doc} {
+      allow read: if isMasterAdmin() || can('marketing', 'visualizar');
+      allow create: if true; // Public subscription
+      allow update: if isMasterAdmin() || can('marketing', 'editar');
+      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
     }
 
     match /blog_posts/{doc} {

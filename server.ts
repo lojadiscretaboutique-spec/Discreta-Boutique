@@ -7,6 +7,7 @@ import aiRoutes from './src/server/routes/aiRoutes';
 import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
 import { db } from './src/lib/firebase';
+import { getAdminDb } from './src/server/lib/firebaseAdmin';
 import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { blogAiService } from "./src/server/services/blogAiService";
 
@@ -157,6 +158,84 @@ async function startServer() {
     }
   });
 
+  // WhatsApp Verification Endpoints
+  app.post("/api/customer/send-whatsapp-code", async (req, res) => {
+    try {
+      const { uid, name, phone } = req.body;
+      if (!uid || !name || !phone) return res.status(400).json({ error: "Campos obrigatórios ausentes" });
+
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date();
+      expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+      
+      const verificationData = {
+        uid,
+        phone,
+        code,
+        expiresAt,
+        verified: false,
+        attempts: 0,
+        createdAt: serverTimestamp()
+      };
+
+      await addDoc(collection(db, 'customer_whatsapp_verifications'), verificationData);
+
+      // Trigger Webhook
+      await sendWebhook({
+        id: `verification_${uid}_${Date.now()}`,
+        nome: name,
+        telefone: phone,
+        codigo: code,
+        origem: 'cadastro_cliente',
+        meta_type: 'whatsapp_verification'
+      });
+
+      res.json({ success: true, message: "Código enviado" });
+    } catch (error: any) {
+      console.error("Erro ao enviar código:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.post("/api/customer/verify-whatsapp-code", async (req, res) => {
+    try {
+      const { uid, phone, code } = req.body;
+      
+      const q = query(
+        collection(db, 'customer_whatsapp_verifications'),
+        where('uid', '==', uid),
+        where('phone', '==', phone),
+        where('code', '==', code),
+        where('verified', '==', false)
+      );
+      
+      const snap = await getDocs(q);
+      
+      if (snap.empty) {
+        return res.status(400).json({ error: "Código inválido ou expirado" });
+      }
+
+      const docSnap = snap.docs[0];
+      const data = docSnap.data();
+      
+      if (new Date() > data.expiresAt.toDate()) {
+        return res.status(400).json({ error: "Código expirado" });
+      }
+
+      await updateDoc(docSnap.ref, { verified: true, updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, 'users', uid), { 
+        whatsappVerified: true, 
+        whatsappVerifiedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      res.json({ success: true, message: "Verificado com sucesso" });
+    } catch (error: any) {
+      console.error("Erro ao verificar código:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   // Intelligent Categorization
   app.post("/api/products/categorize", async (req, res) => {
     try {
@@ -212,13 +291,685 @@ async function startServer() {
     }
   });
 
+  // --- SECURE MERCADO PAGO INTEGRATION ENDPOINTS AND HELPERS ---
+  
+  const MOCK_DB_PATH = path.join(process.cwd(), '.mock_db.json');
+  function getMockDb() {
+    if (fs.existsSync(MOCK_DB_PATH)) {
+      return JSON.parse(fs.readFileSync(MOCK_DB_PATH, 'utf-8'));
+    }
+    return {};
+  }
+  function saveMockDb(data: any) {
+    fs.writeFileSync(MOCK_DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  }
+
+  async function getMercadoPagoConfigDoc() {
+    try {
+      const adminDb = getAdminDb();
+      const snap = await adminDb.collection('financial_integrations').doc('mercado_pago').get();
+      return {
+        exists: () => snap.exists,
+        data: () => snap.data()
+      };
+    } catch (e: any) {
+      if (e.message && e.message.includes("PERMISSION_DENIED")) {
+        console.warn("[Admin SDK] Falling back to local mock DB for getMercadoPagoConfigDoc");
+        const mdb = getMockDb();
+        const data = mdb.mercado_pago_config;
+        return { exists: () => !!data, data: () => data };
+      }
+      throw e;
+    }
+  }
+
+  async function setMercadoPagoConfigDoc(payload: any) {
+    try {
+      const adminDb = getAdminDb();
+      await adminDb.collection('financial_integrations').doc('mercado_pago').set(payload);
+    } catch (e: any) {
+      if (e.message && e.message.includes("PERMISSION_DENIED")) {
+        const mdb = getMockDb();
+        mdb.mercado_pago_config = payload;
+        saveMockDb(mdb);
+      } else throw e;
+    }
+  }
+
+  async function updateMercadoPagoConfigDoc(payload: any) {
+    try {
+      const adminDb = getAdminDb();
+      await adminDb.collection('financial_integrations').doc('mercado_pago').update(payload);
+    } catch (e: any) {
+      if (e.message && e.message.includes("PERMISSION_DENIED")) {
+        const mdb = getMockDb();
+        mdb.mercado_pago_config = { ...(mdb.mercado_pago_config || {}), ...payload };
+        saveMockDb(mdb);
+      } else throw e;
+    }
+  }
+
+  async function setFinancialReceivable(receivableKey: string, data: any, options?: { merge: boolean }) {
+    try {
+      const adminDb = getAdminDb();
+      const docRef = adminDb.collection('financial_receivables').doc(receivableKey);
+      if (options?.merge) {
+        await docRef.set(data, { merge: true });
+      } else {
+        await docRef.set(data);
+      }
+      console.log(`✅ [Admin SDK] Financial receivable successfully synchronized: ${receivableKey}`);
+    } catch (err: any) {
+      if (err.message && err.message.includes("PERMISSION_DENIED")) {
+        console.warn(`[Admin SDK] Local fallback for syncing receivable ${receivableKey}`);
+        const mdb = getMockDb();
+        mdb.financial_receivables = mdb.financial_receivables || {};
+        mdb.financial_receivables[receivableKey] = options?.merge ? { ...(mdb.financial_receivables[receivableKey] || {}), ...data } : data;
+        saveMockDb(mdb);
+      } else {
+        console.error(`❌ [Admin SDK] Failed to save financial receivable ${receivableKey}:`, err);
+      }
+    }
+  }
+
+  async function addWebhookLog(data: any) {
+    try {
+      const adminDb = getAdminDb();
+      const docRef = await adminDb.collection('payment_webhook_logs').add(data);
+      return docRef.id;
+    } catch (e: any) {
+      if (e.message && e.message.includes("PERMISSION_DENIED")) {
+        const mdb = getMockDb();
+        mdb.payment_webhook_logs = mdb.payment_webhook_logs || {};
+        const id = 'log_' + Date.now();
+        mdb.payment_webhook_logs[id] = data;
+        saveMockDb(mdb);
+        return id;
+      }
+      console.error("[Admin SDK] Error adding webhook log:", e);
+      return null;
+    }
+  }
+
+  async function updateWebhookLog(logId: string, data: any) {
+    try {
+      if (!logId) return;
+      const adminDb = getAdminDb();
+      await adminDb.collection('payment_webhook_logs').doc(logId).update(data);
+    } catch (e: any) {
+      if (e.message && e.message.includes("PERMISSION_DENIED")) {
+        const mdb = getMockDb();
+        if (mdb.payment_webhook_logs && mdb.payment_webhook_logs[logId]) {
+          mdb.payment_webhook_logs[logId] = { ...mdb.payment_webhook_logs[logId], ...data };
+          saveMockDb(mdb);
+        }
+        return;
+      }
+      console.error("[Admin SDK] Error updating webhook log:", e);
+    }
+  }
+
+  async function handleApprovedPayment(orderId: string, paymentResponse: any) {
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      const orderDoc = await getDoc(orderRef);
+      if (!orderDoc.exists()) {
+        console.error(`Order ${orderId} not found during payment approval processing`);
+        return;
+      }
+      const orderData = orderDoc.data();
+      
+      // 1. Update order status and record payment ID details
+      await updateDoc(orderRef, {
+        paymentStatus: 'approved',
+        status: 'NOVO',
+        mercadopagoPaymentId: String(paymentResponse.id),
+        paymentId: String(paymentResponse.id),
+        paymentApprovedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      
+      // 2. Trigger BotConversa Webhook for the newly paid order
+      try {
+        const updatedOrder = { 
+          id: orderId, 
+          ...orderData, 
+          status: 'NOVO', 
+          paymentStatus: 'approved', 
+          mercadopagoPaymentId: String(paymentResponse.id),
+          paymentId: String(paymentResponse.id)
+        };
+        await sendWebhook(updatedOrder as any);
+      } catch (e) {
+        console.error("Error triggering BotConversa webhook for approved payment:", e);
+      }
+      
+      // 3. Create or update financial receivable (idempotent key provider + paymentId)
+      try {
+        const gross = Number(paymentResponse.transaction_amount || orderData.total || 0);
+        const feeDetails = paymentResponse.fee_details || [];
+        const feeAmount = feeDetails.reduce((acc: number, f: any) => acc + (f.amount || 0), 0) || 0;
+        const netAmount = paymentResponse.transaction_details?.net_received_amount || (gross - feeAmount);
+        
+        const receivableKey = `mercado_pago_${paymentResponse.id}`;
+        
+        await setFinancialReceivable(receivableKey, {
+          orderId: orderId,
+          provider: 'mercado_pago',
+          mercadoPagoPaymentId: String(paymentResponse.id),
+          paymentMethodId: orderData.paymentMethodId || 'online_payment',
+          paymentMethodNameSnapshot: orderData.paymentMethodNameSnapshot || orderData.paymentMethod || 'Mercado Pago',
+          paymentMethodType: orderData.paymentMethodType || 'online',
+          grossAmount: gross,
+          feeAmount: feeAmount,
+          netAmount: netAmount,
+          expectedSettlementDate: paymentResponse.money_release_date || new Date().toISOString(),
+          status: 'recebido',
+          paymentStatus: 'approved',
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (e) {
+        console.error("Error creating financial receivable for approved payment:", e);
+      }
+    } catch (error) {
+      console.error("Error in handleApprovedPayment helper:", error);
+    }
+  }
+
+  async function updatePaymentStatus(orderId: string, paymentResponse: any) {
+    const status = paymentResponse.status;
+    const paymentId = String(paymentResponse.id);
+    
+    if (status === 'approved') {
+      await handleApprovedPayment(orderId, paymentResponse);
+      return;
+    }
+    
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      const orderDoc = await getDoc(orderRef);
+      if (!orderDoc.exists()) return;
+      
+      const existingData = orderDoc.data();
+      
+      // Update paymentStatus
+      const orderUpdate: any = {
+        paymentStatus: status,
+        mercadopagoPaymentId: paymentId,
+        paymentId: paymentId,
+        updatedAt: serverTimestamp()
+      };
+      
+      if (status === 'pending' || status === 'in_process') {
+        orderUpdate.status = 'AGUARDANDO_PAGAMENTO';
+      }
+      
+      await updateDoc(orderRef, orderUpdate);
+      
+      // Update receivable if it exists, save as previsto
+      try {
+        const gross = Number(paymentResponse.transaction_amount || existingData.total || 0);
+        const feeDetails = paymentResponse.fee_details || [];
+        const feeAmount = feeDetails.reduce((acc: number, f: any) => acc + (f.amount || 0), 0) || 0;
+        const netAmount = paymentResponse.transaction_details?.net_received_amount || (gross - feeAmount);
+        
+        const receivableKey = `mercado_pago_${paymentId}`;
+        
+        await setFinancialReceivable(receivableKey, {
+          orderId: orderId,
+          provider: 'mercado_pago',
+          mercadoPagoPaymentId: paymentId,
+          paymentMethodId: existingData.paymentMethodId || 'online_payment',
+          paymentMethodNameSnapshot: existingData.paymentMethodNameSnapshot || existingData.paymentMethod || 'Mercado Pago',
+          paymentMethodType: existingData.paymentMethodType || 'online',
+          grossAmount: gross,
+          feeAmount: feeAmount,
+          netAmount: netAmount,
+          expectedSettlementDate: paymentResponse.money_release_date || new Date().toISOString(),
+          status: 'previsto',
+          paymentStatus: status,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (e) {
+        console.warn("Could not synchronize pending/failed receivable:", e);
+      }
+    } catch (err) {
+      console.error("Error in updatePaymentStatus:", err);
+    }
+  }
+
+  // Admin GET config (secure/masked)
+  app.get("/api/admin/mercadopago/config", async (req, res) => {
+    try {
+      const configDoc = await getMercadoPagoConfigDoc();
+      if (configDoc.exists()) {
+        const data = configDoc.data();
+        let maskedToken = '';
+        if (data.accessToken) {
+          const original = data.accessToken;
+          if (original.length > 8) {
+            maskedToken = original.substring(0, 11) + '****' + original.slice(-4);
+          } else {
+            maskedToken = '****';
+          }
+        }
+        return res.json({
+          enabled: data.enabled || false,
+          environment: data.environment || 'sandbox',
+          publicKey: data.publicKey || '',
+          accessToken: maskedToken,
+          pixEnabled: data.pixEnabled !== undefined ? data.pixEnabled : true,
+          creditCardEnabled: data.creditCardEnabled !== undefined ? data.creditCardEnabled : true,
+          debitEnabled: data.debitEnabled !== undefined ? data.debitEnabled : false,
+          webhookUrl: data.webhookUrl || '',
+          webhookConfigured: data.webhookConfigured || false,
+          lastValidationAt: data.lastValidationAt || null,
+          lastValidationStatus: data.lastValidationStatus || null,
+          accountName: data.accountName || null,
+          accountId: data.accountId || null
+        });
+      } else {
+        return res.json({
+          enabled: false,
+          environment: 'sandbox',
+          publicKey: '',
+          accessToken: '',
+          pixEnabled: true,
+          creditCardEnabled: true,
+          debitEnabled: false,
+          webhookUrl: '',
+          webhookConfigured: false,
+          lastValidationAt: null,
+          lastValidationStatus: null,
+          accountName: null,
+          accountId: null
+        });
+      }
+    } catch (error: any) {
+      console.error("Error loading MP config:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Admin POST config save
+  app.post("/api/admin/mercadopago/save-config", async (req, res) => {
+    try {
+      const incoming = req.body;
+      const existingDoc = await getMercadoPagoConfigDoc();
+      
+      let finalAccessToken = incoming.accessToken || '';
+      
+      if (existingDoc.exists()) {
+        const existingData = existingDoc.data();
+        if (incoming.accessToken && (incoming.accessToken.includes('****') || incoming.accessToken === '****')) {
+          finalAccessToken = existingData.accessToken || '';
+        }
+      }
+      
+      const payload = {
+        enabled: incoming.enabled || false,
+        environment: incoming.environment || 'sandbox',
+        publicKey: incoming.publicKey || '',
+        accessToken: finalAccessToken,
+        pixEnabled: incoming.pixEnabled !== undefined ? incoming.pixEnabled : true,
+        creditCardEnabled: incoming.creditCardEnabled !== undefined ? incoming.creditCardEnabled : true,
+        debitEnabled: incoming.debitEnabled !== undefined ? incoming.debitEnabled : false,
+        webhookUrl: incoming.webhookUrl || '',
+        webhookConfigured: incoming.webhookConfigured || false,
+        lastValidationAt: incoming.lastValidationAt || (existingDoc.exists() ? existingDoc.data().lastValidationAt : null),
+        lastValidationStatus: incoming.lastValidationStatus || (existingDoc.exists() ? existingDoc.data().lastValidationStatus : null),
+        accountName: incoming.accountName || (existingDoc.exists() ? existingDoc.data().accountName : null),
+        accountId: incoming.accountId || (existingDoc.exists() ? existingDoc.data().accountId : null),
+        createdAt: existingDoc.exists() ? (existingDoc.data().createdAt || new Date().toISOString()) : new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      await setMercadoPagoConfigDoc(payload);
+      
+      // ALSO sync with public settings/mercadopago_config for backwards safety (excluding token!)
+      const adminDb = getAdminDb();
+      try {
+        await adminDb.collection('settings').doc('mercadopago_config').set({
+          publicKey: payload.publicKey,
+          active: payload.enabled,
+          testMode: payload.environment === 'sandbox',
+          pixEnabled: payload.pixEnabled,
+          creditCardEnabled: payload.creditCardEnabled,
+          debitEnabled: payload.debitEnabled,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (e: any) {
+        if (e.message && e.message.includes("PERMISSION_DENIED")) {
+          const mdb = getMockDb();
+          mdb.settings = mdb.settings || {};
+          mdb.settings.mercadopago_config = {
+            ...mdb.settings.mercadopago_config,
+            publicKey: payload.publicKey,
+            active: payload.enabled,
+            testMode: payload.environment === 'sandbox',
+            pixEnabled: payload.pixEnabled,
+            creditCardEnabled: payload.creditCardEnabled,
+            debitEnabled: payload.debitEnabled,
+            updatedAt: new Date().toISOString()
+          };
+          saveMockDb(mdb);
+        } else {
+          throw e;
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error saving MP config:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Admin connection tester
+  app.post("/api/admin/mercadopago/test-connection", async (req, res) => {
+    try {
+      const { accessToken, publicKey, environment } = req.body;
+      const existingDoc = await getMercadoPagoConfigDoc();
+      
+      let tokenToUse = accessToken || '';
+      if (tokenToUse.includes('****') || tokenToUse === '****') {
+        tokenToUse = existingDoc.exists() ? (existingDoc.data().accessToken || '') : '';
+      }
+      
+      if (!tokenToUse) {
+        return res.status(400).json({ error: "Access token é necessário para testar a conexão" });
+      }
+      
+      const { default: axios } = await import('axios');
+      try {
+        const response = await axios.get('https://api.mercadopago.com/users/me', {
+          headers: {
+            Authorization: `Bearer ${tokenToUse}`
+          },
+          timeout: 5000
+        });
+        
+        const accountData = response.data;
+        const validationStatus = 'success';
+        const validationTime = new Date().toISOString();
+        const accountName = accountData.nickname || 'Conta Mercado Pago';
+        const accountId = String(accountData.id || '');
+        
+        if (existingDoc.exists()) {
+          await updateMercadoPagoConfigDoc({
+            lastValidationAt: validationTime,
+            lastValidationStatus: validationStatus,
+            accountName: accountName,
+            accountId: accountId,
+            updatedAt: validationTime
+          });
+        }
+        
+        return res.json({
+          success: true,
+          accountName,
+          accountId,
+          lastValidationAt: validationTime,
+          lastValidationStatus: validationStatus
+        });
+      } catch (err: any) {
+        console.error("MP test-connection failure:", err.response?.data || err.message);
+        const errMsg = err.response?.data?.message || "Credenciais inválidas do Mercado Pago";
+        const validationTime = new Date().toISOString();
+        
+        if (existingDoc.exists()) {
+          await updateMercadoPagoConfigDoc({
+            lastValidationAt: validationTime,
+            lastValidationStatus: 'failed',
+            updatedAt: validationTime
+          });
+        }
+        
+        return res.status(400).json({
+          error: errMsg,
+          lastValidationAt: validationTime,
+          lastValidationStatus: 'failed'
+        });
+      }
+    } catch (error: any) {
+      console.error("Error testing association connection:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Mercado Pago Pix payment generation (Secure billing: reads amount from DB)
+  app.post("/api/payments/mercadopago/create-pix", async (req, res) => {
+    try {
+      const { orderId, email, firstName, lastName, cpfNumber } = req.body;
+      if (!orderId) {
+        return res.status(400).json({ error: "ID do pedido é obrigatório" });
+      }
+
+      // Fetch config
+      const mpConfigDoc = await getMercadoPagoConfigDoc();
+      if (!mpConfigDoc.exists() || !mpConfigDoc.data().enabled) {
+        return res.status(400).json({ error: "Integração do Mercado Pago inativa ou não configurada" });
+      }
+      const { accessToken } = mpConfigDoc.data();
+      if (!accessToken) {
+        return res.status(400).json({ error: "Access Token ausente no servidor" });
+      }
+
+      // Fetch order details – NEVER trust price parameter from the frontend!
+      const orderDoc = await getDoc(doc(db, 'orders', orderId));
+      if (!orderDoc.exists()) {
+        return res.status(404).json({ error: "Pedido não encontrado" });
+      }
+      const orderData = orderDoc.data();
+      const amount = Number(orderData.total);
+
+      const client = new MercadoPagoConfig({ accessToken, options: { timeout: 5000 } });
+      const { Payment } = await import('mercadopago');
+      const payment = new Payment(client);
+
+      const cleanCpf = cpfNumber ? cpfNumber.replace(/\D/g, '') : '';
+
+      const mpResponse = await payment.create({
+        body: {
+          transaction_amount: amount,
+          description: `Pedido ${orderId} na Discreta Boutique`,
+          payment_method_id: 'pix',
+          payer: {
+            email: email || orderData.customerEmail || 'cliente@discretaboutique.com.br',
+            first_name: firstName || orderData.customerName?.split(' ')[0] || 'Cliente',
+            last_name: lastName || orderData.customerName?.split(' ').slice(1).join(' ') || 'Boutique',
+            identification: cleanCpf ? {
+              type: 'CPF',
+              number: cleanCpf
+            } : undefined
+          },
+          external_reference: orderId,
+        }
+      });
+
+      // Update order state
+      const pId = String(mpResponse.id);
+      const qrc = mpResponse.point_of_interaction?.transaction_data?.qr_code || '';
+      const qrcb64 = mpResponse.point_of_interaction?.transaction_data?.qr_code_base64 || '';
+      const status = mpResponse.status || 'pending';
+
+      await updateDoc(doc(db, 'orders', orderId), {
+        mercadopagoPaymentId: pId,
+        paymentId: pId,
+        paymentStatus: status,
+        paymentQrCode: qrc,
+        paymentQrCodeBase64: qrcb64,
+        updatedAt: serverTimestamp()
+      });
+
+      res.json({
+        success: true,
+        id: pId,
+        status: status,
+        qr_code: qrc,
+        qr_code_base64: qrcb64
+      });
+    } catch (error: any) {
+      console.error("MP Create Pix Error:", error);
+      res.status(500).json({ error: error.message || "Erro ao processar Pix" });
+    }
+  });
+
+  // Mercado Pago Card Payment (Secure billing: reads amount from DB)
+  app.post("/api/payments/mercadopago/create-card", async (req, res) => {
+    try {
+      const { orderId, token, installments, payment_method_id, issuer_id, payer } = req.body;
+      if (!orderId) {
+        return res.status(400).json({ error: "ID do pedido é obrigatório" });
+      }
+
+      const mpConfigDoc = await getMercadoPagoConfigDoc();
+      if (!mpConfigDoc.exists() || !mpConfigDoc.data().enabled) {
+        return res.status(400).json({ error: "Integração do Mercado Pago inativa" });
+      }
+      const { accessToken } = mpConfigDoc.data();
+      if (!accessToken) {
+        return res.status(400).json({ error: "Access Token ausente no servidor" });
+      }
+
+      // Fetch order details
+      const orderDoc = await getDoc(doc(db, 'orders', orderId));
+      if (!orderDoc.exists()) {
+        return res.status(404).json({ error: "Pedido não encontrado" });
+      }
+      const orderData = orderDoc.data();
+      const amount = Number(orderData.total);
+
+      const client = new MercadoPagoConfig({ accessToken, options: { timeout: 5000 } });
+      const { Payment } = await import('mercadopago');
+      const payment = new Payment(client);
+
+      const mpResponse = await payment.create({
+        body: {
+          transaction_amount: amount,
+          token: token,
+          description: `Pedido ${orderId} na Discreta Boutique`,
+          installments: Number(installments),
+          payment_method_id: payment_method_id,
+          issuer_id: issuer_id,
+          payer: {
+            email: payer.email,
+            identification: payer.identification
+          },
+          external_reference: orderId,
+        }
+      });
+
+      const pId = String(mpResponse.id);
+      const status = mpResponse.status || 'pending';
+
+      await updatePaymentStatus(orderId, mpResponse);
+
+      res.json({
+        success: true,
+        status: status,
+        detail: mpResponse.status_detail,
+        id: pId
+      });
+    } catch (error: any) {
+      console.error("MP Create Card Error:", error);
+      res.status(500).json({ error: error.message || "Erro no processamento do cartão" });
+    }
+  });
+
+  // Mercado Pago Webhook Hook (Validated directly against API)
+  app.post("/api/webhooks/mercadopago", async (req, res) => {
+    try {
+      console.log("🔔 WEBHOOK MERCADO PAGO:", JSON.stringify(req.body));
+      
+      const event = req.body;
+      const eventId = String(event.id || '');
+      const paymentId = String(event.data?.id || event.id || '');
+      const type = event.type || event.topic || '';
+      
+      const logId = await addWebhookLog({
+        provider: 'mercado_pago',
+        eventId: eventId,
+        paymentId: paymentId,
+        type: type,
+        receivedAt: new Date().toISOString(),
+        processedAt: new Date().toISOString(),
+        success: false,
+        payload: event
+      });
+
+      if (!paymentId || (type !== 'payment' && type !== 'payment.created' && type !== 'payment.updated')) {
+        if (logId) await updateWebhookLog(logId, {
+          success: true,
+          notes: "Evento ignorado (não-pagamento)"
+        });
+        return res.json({ status: "ignored" });
+      }
+
+      const configDoc = await getMercadoPagoConfigDoc();
+      if (!configDoc.exists()) {
+        if (logId) await updateWebhookLog(logId, { error: "Sem configuração cadastrada" });
+        return res.status(400).json({ error: "Integração inativa" });
+      }
+      
+      const { accessToken } = configDoc.data();
+      if (!accessToken) {
+        if (logId) await updateWebhookLog(logId, { error: "Access token ausente" });
+        return res.status(400).json({ error: "Token ausente" });
+      }
+
+      const { default: axios } = await import('axios');
+      try {
+        const pResponse = await axios.get(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          },
+          timeout: 5000
+        });
+
+        const paymentData = pResponse.data;
+        const orderId = paymentData.external_reference;
+
+        if (!orderId) {
+          if (logId) await updateWebhookLog(logId, { error: "external_reference ausente" });
+          return res.json({ status: "success", notes: "Sem orderId" });
+        }
+
+        await updatePaymentStatus(orderId, paymentData);
+
+        if (logId) await updateWebhookLog(logId, {
+          orderId: orderId,
+          status: paymentData.status,
+          success: true,
+          processedAt: new Date().toISOString()
+        });
+
+        res.json({ status: "processed" });
+      } catch (err: any) {
+        console.error("Webhook processing error resolving payment:", err.response?.data || err.message);
+        if (logId) await updateWebhookLog(logId, { error: err.message });
+        res.json({ status: "failed_api", error: err.message });
+      }
+    } catch (error: any) {
+      console.error("General Webhook Crash:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Mercado Pago Preference Creation
   app.post("/api/payments/create-preference", async (req, res) => {
     try {
-      const { items, accessToken, orderId } = req.body;
+      const { items, orderId } = req.body;
 
+      // Safe access token retrieval from server DB
+      const configDoc = await getMercadoPagoConfigDoc();
+      if (!configDoc.exists()) {
+        return res.status(400).json({ error: "Configuração do Mercado Pago não encontrada" });
+      }
+      const { accessToken } = configDoc.data();
       if (!accessToken) {
-        return res.status(400).json({ error: "Access token is required" });
+        return res.status(400).json({ error: "Access token é necessário para criar a preferência" });
       }
 
       const client = new MercadoPagoConfig({ accessToken, options: { timeout: 5000 } });
@@ -541,11 +1292,29 @@ async function startServer() {
   // Mercado Pago Transparent Payment Processing
   app.post("/api/payments/process", async (req, res) => {
     try {
-      const { formData, accessToken, orderId } = req.body;
+      const { formData, orderId } = req.body;
 
+      if (!orderId) {
+        return res.status(400).json({ error: "ID do pedido é obrigatório" });
+      }
+
+      // Safe access token retrieval from server DB
+      const configDoc = await getMercadoPagoConfigDoc();
+      if (!configDoc.exists()) {
+        return res.status(400).json({ error: "Configuração do Mercado Pago não encontrada" });
+      }
+      const { accessToken } = configDoc.data();
       if (!accessToken) {
         return res.status(400).json({ error: "Access token is required" });
       }
+
+      // Secure billing: Retrieve the order total from the database
+      const orderDoc = await getDoc(doc(db, 'orders', orderId));
+      if (!orderDoc.exists()) {
+        return res.status(404).json({ error: "Pedido não encontrado" });
+      }
+      const orderData = orderDoc.data();
+      const amount = Number(orderData.total);
 
       const client = new MercadoPagoConfig({ accessToken, options: { timeout: 5000 } });
       const { Payment } = await import('mercadopago');
@@ -553,7 +1322,7 @@ async function startServer() {
 
       const response = await payment.create({
         body: {
-          transaction_amount: formData.transaction_amount,
+          transaction_amount: amount,
           token: formData.token,
           description: formData.description || `Pedido ${orderId}`,
           installments: formData.installments,
@@ -566,6 +1335,9 @@ async function startServer() {
           external_reference: orderId,
         }
       });
+
+      // Synchronize the order status and receivables securely
+      await updatePaymentStatus(orderId, response);
 
       res.json({ success: true, status: response.status, detail: response.status_detail, id: response.id });
     } catch (error: unknown) {

@@ -8,7 +8,7 @@ import { formatCurrency, cn } from '../../../lib/utils';
 import { collection, getDocs, query, orderBy, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useSettings } from '../../../contexts/SettingsContext';
-import { settingsService } from '../../../services/settingsService';
+import { paymentFinanceService } from '../../../services/paymentFinanceService';
 
 interface Category {
   id: string;
@@ -109,10 +109,13 @@ export function AdminPromotions() {
 
   const loadPaymentMethods = async () => {
     try {
-      const settings = await settingsService.getPaymentSettings();
-      if (settings && settings.methods && settings.methods.length > 0) {
-        setPaymentMethods(settings.methods);
-      }
+      const methodsObj = await paymentFinanceService.getPaymentMethodsForPromotions();
+      const formatted = methodsObj.map(m => ({
+        id: m.id,
+        label: m.name || m.label || m.id,
+        type: m.type
+      }));
+      setPaymentMethods(formatted);
     } catch (err) {
       console.error("Erro ao carregar formas de pagamento", err);
     }
@@ -130,11 +133,27 @@ export function AdminPromotions() {
     }
 
     try {
-      if (editPromotion.id) {
-        await promotionService.update(editPromotion.id, editPromotion);
+      const allowedIds = editPromotion.allowedPaymentMethods || [];
+      const snapshots = allowedIds.map(id => {
+        const found = paymentMethods.find(m => m.id === id);
+        return {
+          id: id,
+          name: found?.label || id,
+          type: (found as any)?.type || 'outro'
+        };
+      });
+
+      const promotionPayload = {
+        ...editPromotion,
+        allowedPaymentMethodIds: allowedIds,
+        allowedPaymentMethodSnapshots: snapshots
+      };
+
+      if (promotionPayload.id) {
+        await promotionService.update(promotionPayload.id, promotionPayload);
         toast("Promoção atualizada com sucesso", "success");
       } else {
-        await promotionService.create(editPromotion as Omit<Promotion, 'id' | 'createdAt' | 'updatedAt'>);
+        await promotionService.create(promotionPayload as Omit<Promotion, 'id' | 'createdAt' | 'updatedAt'>);
         toast("Promoção criada com sucesso", "success");
       }
       setIsModalOpen(false);

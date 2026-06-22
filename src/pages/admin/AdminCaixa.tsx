@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { cashService, CashSession, CashTransaction } from '../../services/cashService';
 import { useFeedback } from '../../contexts/FeedbackContext';
+import { paymentFinanceService, MethodConfig } from '../../services/paymentFinanceService';
 import { useAuthStore } from '../../store/authStore';
 import { format } from 'date-fns';
 import { 
@@ -31,8 +32,11 @@ export function AdminCaixa() {
   const [transactions, setTransactions] = useState<CashTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'status' | 'history' | 'report'>('status');
+  const [cashierMethods, setCashierMethods] = useState<MethodConfig[]>([]);
+  const [allPaymentMethods, setAllPaymentMethods] = useState<MethodConfig[]>([]);
   
   const { toast, confirm } = useFeedback();
+
   const { user } = useAuthStore();
 
   const canCreate = hasPermission('caixa', 'criar');
@@ -47,7 +51,7 @@ export function AdminCaixa() {
   const [transDesc, setTransDesc] = useState('');
   const [transType, setTransType] = useState<'entrada' | 'saida'>('entrada');
   const [transCategory, setTransCategory] = useState('Suprimento');
-  const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
+  const [paymentMethod, setPaymentMethod] = useState('');
   const [closingBalance, setClosingBalance] = useState('0');
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,9 +59,99 @@ export function AdminCaixa() {
   const [sessionTransactions, setSessionTransactions] = useState<CashTransaction[]>([]);
   const [loadingSessionTrans, setLoadingSessionTrans] = useState(false);
 
+  // Helper normalizer function
+  const getNormalizedMethodName = useCallback((rawMethodNameOrId: string) => {
+    if (!rawMethodNameOrId) return 'Dinheiro';
+    const clean = rawMethodNameOrId.trim();
+    const cleanLower = clean.toLowerCase();
+
+    // 1. Direct match by ID, Name or Label
+    let found = allPaymentMethods.find(m => 
+      m.id.toLowerCase() === cleanLower || 
+      (m.name && m.name.toLowerCase() === cleanLower) || 
+      (m.label && m.label.toLowerCase() === cleanLower)
+    );
+
+    if (found) {
+      return found.name || found.label || found.id;
+    }
+
+    // 2. Type fallback matches for classic legacy names
+    if (
+      cleanLower === 'dinheiro' || 
+      cleanLower === 'cash' || 
+      cleanLower === 'dinheiro em especie' || 
+      cleanLower === 'dinheiro em espécie'
+    ) {
+      found = allPaymentMethods.find(m => m.type === 'dinheiro');
+      if (found) return found.name || found.label || found.id;
+    }
+
+    if (
+      cleanLower === 'pix' || 
+      cleanLower === 'transferência pix' || 
+      cleanLower === 'transferencia pix'
+    ) {
+      found = allPaymentMethods.find(m => m.type === 'pix');
+      if (found) return found.name || found.label || found.id;
+    }
+
+    if (
+      cleanLower === 'cartao de credito' || 
+      cleanLower === 'cartão de crédito' || 
+      cleanLower === 'credit_card' || 
+      cleanLower === 'credito' || 
+      cleanLower === 'crédito'
+    ) {
+      found = allPaymentMethods.find(m => m.type === 'credito');
+      if (found) return found.name || found.label || found.id;
+    }
+
+    if (
+      cleanLower === 'cartao de debito' || 
+      cleanLower === 'cartão de débito' || 
+      cleanLower === 'debit_card' || 
+      cleanLower === 'debito' || 
+      cleanLower === 'débito'
+    ) {
+      found = allPaymentMethods.find(m => m.type === 'debito');
+      if (found) return found.name || found.label || found.id;
+    }
+
+    if (cleanLower === 'boleto' || cleanLower === 'boleto bancario' || cleanLower === 'boleto bancário') {
+      found = allPaymentMethods.find(m => m.type === 'outro' && (m.name.toLowerCase().includes('boleto') || m.id.toLowerCase().includes('boleto')));
+      if (found) return found.name || found.label || found.id;
+    }
+
+    if (
+      cleanLower === 'transferencia' || 
+      cleanLower === 'transferência' || 
+      cleanLower === 'transferencianbancaria' || 
+      cleanLower === 'transferência bancária' || 
+      cleanLower === 'transferencia bancaria' || 
+      cleanLower === 'ted' || 
+      cleanLower === 'doc'
+    ) {
+      found = allPaymentMethods.find(m => m.type === 'transferencia');
+      if (found) return found.name || found.label || found.id;
+    }
+
+    // 3. Fallback match
+    found = allPaymentMethods.find(m => 
+      m.name.toLowerCase().includes(cleanLower) || 
+      (m.label && m.label.toLowerCase().includes(cleanLower))
+    );
+    if (found) {
+      return found.name || found.label || found.id;
+    }
+
+    return clean;
+  }, [allPaymentMethods]);
+
   // Derived state for current session totals by method
   const methodTotals = transactions.reduce((acc, t) => {
-    const method = t.paymentMethod || 'Dinheiro';
+    const rawMethod = t.paymentMethod || 'Dinheiro';
+    const method = getNormalizedMethodName(rawMethod);
     if (!acc[method]) acc[method] = 0;
     if (t.type === 'entrada') acc[method] = roundTo2(acc[method] + t.amount);
     else acc[method] = roundTo2(acc[method] - t.amount);
@@ -68,7 +162,9 @@ export function AdminCaixa() {
   const calculatedTotalOutputs = roundTo2(transactions.filter(t => t.type === 'saida').reduce((sum, t) => sum + t.amount, 0));
   
   if (currentSession) {
-    methodTotals['Dinheiro'] = roundTo2((methodTotals['Dinheiro'] || 0) + (currentSession.initialBalance || 0));
+    const cashMethodName = cashierMethods.find(m => m.type === 'dinheiro')?.name || 'Dinheiro';
+    const normalizedCashName = getNormalizedMethodName(cashMethodName);
+    methodTotals[normalizedCashName] = roundTo2((methodTotals[normalizedCashName] || 0) + (currentSession.initialBalance || 0));
   }
 
   const loadData = useCallback(() => {
@@ -79,6 +175,50 @@ export function AdminCaixa() {
     setLoading(true);
     let sessionsList: CashSession[] = [];
     let transactionsList: CashTransaction[] = [];
+    let loadedAllMethods: MethodConfig[] = [];
+    let loadedActiveMethods: MethodConfig[] = [];
+
+    const localNormalize = (raw: string) => {
+      if (!raw) return 'Dinheiro';
+      const clean = raw.trim();
+      const cleanLower = clean.toLowerCase();
+      
+      // search in loadedAllMethods
+      let found = loadedAllMethods.find(m => 
+        m.id.toLowerCase() === cleanLower ||
+        (m.name && m.name.toLowerCase() === cleanLower) ||
+        (m.label && m.label.toLowerCase() === cleanLower)
+      );
+      if (found) return found.name || found.label || found.id;
+      
+      // fallbacks by type
+      if (cleanLower === 'dinheiro' || cleanLower === 'cash' || cleanLower === 'dinheiro em especie' || cleanLower === 'dinheiro em espécie') {
+        found = loadedAllMethods.find(m => m.type === 'dinheiro');
+        if (found) return found.name || found.label || found.id;
+      }
+      if (cleanLower === 'pix' || cleanLower === 'transferência pix' || cleanLower === 'transferencia pix') {
+        found = loadedAllMethods.find(m => m.type === 'pix');
+        if (found) return found.name || found.label || found.id;
+      }
+      if (cleanLower === 'cartao de credito' || cleanLower === 'cartão de crédito' || cleanLower === 'credit_card' || cleanLower === 'credito' || cleanLower === 'crédito') {
+        found = loadedAllMethods.find(m => m.type === 'credito');
+        if (found) return found.name || found.label || found.id;
+      }
+      if (cleanLower === 'cartao de debito' || cleanLower === 'cartão de débito' || cleanLower === 'debit_card' || cleanLower === 'debito' || cleanLower === 'débito') {
+        found = loadedAllMethods.find(m => m.type === 'debito');
+        if (found) return found.name || found.label || found.id;
+      }
+      if (cleanLower === 'boleto' || cleanLower === 'boleto bancario' || cleanLower === 'boleto bancário') {
+        found = loadedAllMethods.find(m => m.type === 'outro' && (m.name.toLowerCase().includes('boleto') || m.id.toLowerCase().includes('boleto')));
+        if (found) return found.name || found.label || found.id;
+      }
+      if (cleanLower === 'transferencia' || cleanLower === 'transferência' || cleanLower === 'transferência bancária' || cleanLower === 'transferencia bancaria') {
+        found = loadedAllMethods.find(m => m.type === 'transferencia');
+        if (found) return found.name || found.label || found.id;
+      }
+      
+      return clean;
+    };
 
     const handleUpdates = () => {
       const current = sessionsList.find(s => s.status === 'aberto') || null;
@@ -92,13 +232,16 @@ export function AdminCaixa() {
 
       if (current) {
         const mTotals = currentTrans.reduce((acc, t) => {
-          const method = t.paymentMethod || 'Dinheiro';
+          const rawMethod = t.paymentMethod || 'Dinheiro';
+          const method = localNormalize(rawMethod);
           if (!acc[method]) acc[method] = 0;
           if (t.type === 'entrada') acc[method] = roundTo2(acc[method] + t.amount);
           else acc[method] = roundTo2(acc[method] - t.amount);
           return acc;
         }, {} as Record<string, number>);
-        const expectedCash = roundTo2((mTotals['Dinheiro'] || 0) + (current.initialBalance || 0));
+        const cashMethodName = loadedActiveMethods.find(m => m.type === 'dinheiro')?.name || 'Dinheiro';
+        const normalizedCashName = localNormalize(cashMethodName);
+        const expectedCash = roundTo2((mTotals[normalizedCashName] || 0) + (current.initialBalance || 0));
         setClosingBalance(expectedCash.toString());
       }
 
@@ -112,8 +255,10 @@ export function AdminCaixa() {
         if (s.id) {
           const sTrans = transactionsList.filter(t => t.sessionId === s.id);
           const dineroTotal = sTrans.reduce((sum, t) => {
-            const method = t.paymentMethod || 'Dinheiro';
-            if (method === 'Dinheiro') {
+            const rawMethod = t.paymentMethod || 'Dinheiro';
+            const method = localNormalize(rawMethod);
+            const isDinheiro = method === 'Dinheiro' || loadedAllMethods.some(m => m.type === 'dinheiro' && (m.name === method || m.label === method || m.id === method));
+            if (isDinheiro) {
               if (t.type === 'entrada') return sum + t.amount;
               else return sum - t.amount;
             }
@@ -125,27 +270,49 @@ export function AdminCaixa() {
       setSessionsCashTotals(cashTotalsMap);
     };
 
-    const qSessions = query(collection(db, 'cashSessions'), orderBy('openedAt', 'desc'), limit(50));
-    const unsubscribeSessions = onSnapshot(qSessions, (snapshot) => {
-      sessionsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashSession));
-      handleUpdates();
-      setLoading(false);
-    }, (error) => {
-      console.error("Error listening to cash sessions:", error);
-      setLoading(false);
-    });
+    let unsubscribeSessions: (() => void) | null = null;
+    let unsubscribeTransactions: (() => void) | null = null;
 
-    const qTransactions = query(collection(db, 'cashTransactions'), orderBy('createdAt', 'desc'), limit(2000));
-    const unsubscribeTransactions = onSnapshot(qTransactions, (snapshot) => {
-      transactionsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashTransaction));
-      handleUpdates();
-    }, (error) => {
-      console.error("Error listening to transactions:", error);
+    const startListen = () => {
+      const qSessions = query(collection(db, 'cashSessions'), orderBy('openedAt', 'desc'), limit(50));
+      unsubscribeSessions = onSnapshot(qSessions, (snapshot) => {
+        sessionsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashSession));
+        handleUpdates();
+        setLoading(false);
+      }, (error) => {
+        console.error("Error listening to cash sessions:", error);
+        setLoading(false);
+      });
+
+      const qTransactions = query(collection(db, 'cashTransactions'), orderBy('createdAt', 'desc'), limit(2000));
+      unsubscribeTransactions = onSnapshot(qTransactions, (snapshot) => {
+        transactionsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashTransaction));
+        handleUpdates();
+      }, (error) => {
+        console.error("Error listening to transactions:", error);
+      });
+    };
+
+    paymentFinanceService.getPaymentMethods().then(allList => {
+      loadedAllMethods = allList;
+      setAllPaymentMethods(allList);
+      
+      loadedActiveMethods = allList.filter(m => m.active).sort((a, b) => (a.sortOrder ?? 10) - (b.sortOrder ?? 10) || (a.name || '').localeCompare(b.name || ''));
+      setCashierMethods(loadedActiveMethods);
+      
+      if (loadedActiveMethods.length > 0) {
+        setPaymentMethod(loadedActiveMethods[0].name || loadedActiveMethods[0].label || loadedActiveMethods[0].id);
+      }
+      
+      startListen();
+    }).catch(err => {
+      console.error("Failed to load methods inside onSnapshot sync:", err);
+      startListen();
     });
 
     return () => {
-      unsubscribeSessions();
-      unsubscribeTransactions();
+      if (unsubscribeSessions) unsubscribeSessions();
+      if (unsubscribeTransactions) unsubscribeTransactions();
     };
   }, [selectedSession]);
 
@@ -242,7 +409,7 @@ export function AdminCaixa() {
 
       setSubmitting(true);
       try {
-          await cashService.closeSession(currentSession.id!, roundTo2(parseFloat(closingBalance)));
+          await cashService.closeSession(currentSession.id!, roundTo2(parseFloat(closingBalance)), '', methodTotals);
           toast("Caixa fechado com sucesso.", 'success');
           loadData();
       } catch (err: unknown) {
@@ -320,7 +487,7 @@ export function AdminCaixa() {
       const time = t.createdAt 
         ? format(t.createdAt.toDate ? t.createdAt.toDate() : new Date(t.createdAt as unknown as string), "HH:mm") 
         : '--:--';
-      const method = (t.paymentMethod || 'Outros').toUpperCase();
+      const method = getNormalizedMethodName(t.paymentMethod || 'Outros').toUpperCase();
       const sign = t.type === 'entrada' ? '+' : '-';
       const valStr = formatCurrency(t.amount);
       
@@ -643,7 +810,7 @@ export function AdminCaixa() {
                                     <p className="text-[10px] uppercase text-slate-400">{t.category}</p>
                                 </td>
                                 <td className="p-4 text-slate-400 text-xs">
-                                   {t.paymentMethod}
+                                   {getNormalizedMethodName(t.paymentMethod)}
                                 </td>
                                 <td className={`p-4 text-right font-bold ${t.type === 'entrada' ? 'text-emerald-600' : 'text-rose-600'}`}>
                                     {t.type === 'entrada' ? '+' : '-'} {formatCurrency(t.amount)}
@@ -755,10 +922,9 @@ export function AdminCaixa() {
                           value={paymentMethod}
                           onChange={e => setPaymentMethod(e.target.value)}
                         >
-                            <option value="Dinheiro">Dinheiro</option>
-                            <option value="PIX">PIX</option>
-                            <option value="Cartão de Crédito">Cartão de Crédito</option>
-                            <option value="Cartão de Débito">Cartão de Débito</option>
+                            {cashierMethods.map(m => (
+                              <option key={m.id} value={m.name || m.label || m.id}>{m.name || m.label || m.id}</option>
+                            ))}
                         </select>
                     </div>
 
@@ -792,7 +958,11 @@ export function AdminCaixa() {
                         <div className="flex justify-between items-center text-sm">
                             <span className="text-slate-400 italic">Total Esperado (Dinheiro):</span>
                             <span className="font-black text-emerald-400">
-                              {formatCurrency(methodTotals['Dinheiro'] || 0)}
+                              {(() => {
+                                const cashMethodName = cashierMethods.find(m => m.type === 'dinheiro')?.name || 'Dinheiro';
+                                const normalizedCashName = getNormalizedMethodName(cashMethodName);
+                                return formatCurrency(methodTotals[normalizedCashName] || 0);
+                              })()}
                             </span>
                         </div>
 
@@ -800,7 +970,9 @@ export function AdminCaixa() {
                           <div className="flex justify-between items-center text-sm py-1 border-y border-slate-800/50 dashed">
                               <span className="text-slate-400">Resultado de Caixa:</span>
                               {(() => {
-                                 const expectedCash = methodTotals['Dinheiro'] || 0;
+                                 const cashMethodName = cashierMethods.find(m => m.type === 'dinheiro')?.name || 'Dinheiro';
+                                 const normalizedCashName = getNormalizedMethodName(cashMethodName);
+                                 const expectedCash = methodTotals[normalizedCashName] || 0;
                                  const physicalCash = parseFloat(closingBalance) || 0;
                                  const diff = roundTo2(physicalCash - expectedCash);
                                  return (
@@ -978,18 +1150,21 @@ export function AdminCaixa() {
                   <div className="p-4 rounded-xl bg-slate-800 border">
                     <p className="text-[10px] font-bold text-slate-400 uppercase">Resultado em Dinheiro</p>
                     {(() => {
-                        const methodTotals = sessionTransactions.reduce((acc, t) => {
-                          const method = t.paymentMethod || 'Dinheiro';
-                          if (!acc[method]) acc[method] = 0;
-                          if (t.type === 'entrada') acc[method] = roundTo2(acc[method] + t.amount);
-                          else acc[method] = roundTo2(acc[method] - t.amount);
-                          return acc;
-                        }, {} as Record<string, number>);
-                        
-                        const expectedCash = roundTo2((methodTotals['Dinheiro'] || 0) + (selectedSession.initialBalance || 0));
-                        const d = roundTo2((selectedSession.finalBalance || 0) - expectedCash);
-                        
-                        return (
+                        const mTotals = sessionTransactions.reduce((acc, t) => {
+                          const rawMethod = t.paymentMethod || 'Dinheiro';
+                          const method = getNormalizedMethodName(rawMethod);
+                           if (!acc[method]) acc[method] = 0;
+                           if (t.type === 'entrada') acc[method] = roundTo2(acc[method] + t.amount);
+                           else acc[method] = roundTo2(acc[method] - t.amount);
+                           return acc;
+                         }, {} as Record<string, number>);
+                         
+                         const cashMethodName = cashierMethods.find(m => m.type === 'dinheiro')?.name || 'Dinheiro';
+                         const normalizedCashName = getNormalizedMethodName(cashMethodName);
+                         const expectedCash = roundTo2((mTotals[normalizedCashName] || 0) + (selectedSession.initialBalance || 0));
+                         const d = roundTo2((selectedSession.finalBalance || 0) - expectedCash);
+                         
+                         return (
                           <div className="flex flex-col">
                             <p className={`text-lg font-black ${d >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                               {d === 0 ? 'OK' : d > 0 ? `+${formatCurrency(d)}` : formatCurrency(d)}
@@ -1021,7 +1196,7 @@ export function AdminCaixa() {
                         <tr key={st.id} className="hover:bg-slate-800 transition-colors">
                            <td className="p-4 text-xs text-slate-400">{format(st.createdAt?.toDate() || new Date(), "dd/MM/yy HH:mm")}</td>
                            <td className="p-4"><span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded font-black uppercase text-slate-300">{st.category}</span></td>
-                           <td className="p-4 text-slate-400 text-xs">{st.paymentMethod}</td>
+                           <td className="p-4 text-slate-400 text-xs">{getNormalizedMethodName(st.paymentMethod)}</td>
                            <td className="p-4 font-medium text-white">{st.description || '-'}</td>
                            <td className={`p-4 text-right font-black ${st.type === 'entrada' ? 'text-emerald-600' : 'text-rose-600'}`}>
                               {st.type === 'entrada' ? '+' : '-'} {formatCurrency(st.amount)}
