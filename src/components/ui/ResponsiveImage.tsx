@@ -1,5 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { cn } from '../../lib/utils';
+
+// Module-level cache to disable the CDN if it fails once during the current session
+let isWeservDisabled = false;
+
+try {
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    isWeservDisabled = window.sessionStorage.getItem('disable_weserv_cdn') === 'true';
+  }
+} catch (e) {
+  // Ignore
+}
+
+export function disableWeservGlobally() {
+  isWeservDisabled = true;
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.setItem('disable_weserv_cdn', 'true');
+    }
+  } catch (e) {
+    // Ignore
+  }
+}
 
 interface ResponsiveImageProps {
   src: string;
@@ -22,6 +44,10 @@ export function optimizeImageUrl(src: string, options?: { width?: number; qualit
   if (!src) return '';
   
   if (src.startsWith('/') || src.startsWith('data:') || src.startsWith('blob:')) {
+    return src;
+  }
+
+  if (isWeservDisabled) {
     return src;
   }
 
@@ -65,6 +91,7 @@ export function ResponsiveImage({
 }: ResponsiveImageProps) {
   const [loaded, setLoaded] = useState(false);
   const [attemptIndex, setAttemptIndex] = useState(0);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   // Compile full fallback list including the initial src and fallbackUrls
   const urlsToTry = [src, ...fallbackUrls, DISCRETA_PLACEHOLDER].filter(
@@ -74,6 +101,13 @@ export function ResponsiveImage({
   const uniqueUrlsToTry = Array.from(new Set(urlsToTry));
   const activeUrl = uniqueUrlsToTry[attemptIndex] || DISCRETA_PLACEHOLDER;
   const [currentSrc, setCurrentSrc] = useState(() => optimizeImageUrl(activeUrl, { width, quality }));
+
+  // Check if image is already cached or complete in browser
+  useEffect(() => {
+    if (imgRef.current && imgRef.current.complete) {
+      setLoaded(true);
+    }
+  }, [currentSrc]);
 
   // Update currentSrc if src changes
   useEffect(() => {
@@ -89,8 +123,8 @@ export function ResponsiveImage({
       if (process.env.NODE_ENV === 'development') {
         console.warn(`[Image Optimizer Error / Dev Mode] Optimized URL failed for "${alt}". Trying raw URL: ${activeUrl}`);
       }
+      disableWeservGlobally(); // Fail-safe to avoid other images failing
       setCurrentSrc(activeUrl);
-      setLoaded(false);
     } else {
       // Move to the next fallback URL in the sequence
       const nextIndex = attemptIndex + 1;
@@ -112,6 +146,7 @@ export function ResponsiveImage({
   return (
     <div className={cn("relative overflow-hidden bg-zinc-950 w-full h-full flex items-center justify-center", !loaded && "animate-pulse")}>
       <img
+        ref={imgRef}
         src={currentSrc}
         alt={alt}
         loading={isPriority ? 'eager' : loading}
@@ -119,7 +154,7 @@ export function ResponsiveImage({
         sizes={sizes}
         decoding="async"
         className={cn(
-          "w-full h-full object-cover transition-opacity duration-1000",
+          "w-full h-full object-cover transition-opacity duration-300",
           loaded ? "opacity-100" : "opacity-0",
           className
         )}
