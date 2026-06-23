@@ -4,25 +4,47 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="google-site-verification" content="LX078OA3UVQbV7HA4vY8eIhf2sb2y3V8vbsn09QP0BQ" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#0A0A0A" /> <!-- Updated to default background -->
     <link rel="manifest" href="/manifest.json" />
     <title>Discreta Boutique | Sensualidade e Elegância</title>
     <style>
-      body { margin: 0; background: #000; font-family: system-ui, -apple-system, sans-serif; }
+      :root {
+        /* Essential base fallbacks to prevent empty vars */
+        --primary-color: #D32F2F;
+        --secondary-color: #0A0A0A;
+        --button-color: #D32F2F;
+        --background-color: #0A0A0A;
+        --card-color: #161616;
+        --text-color: #ffffff;
+        --link-color: #ffffff;
+        --highlight-color: #D32F2F;
+        --primary-color-text: #ffffff;
+        --secondary-color-text: #ffffff;
+        --button-color-text: #ffffff;
+        --card-color-text: #ffffff;
+        --link-color-text: #ffffff;
+        --highlight-color-text: #ffffff;
+        --color-primary: #D32F2F;
+        --color-bg: #0A0A0A;
+        --color-surface: #161616;
+        --color-text-main: #ffffff;
+        --color-primary-glow: rgba(211, 47, 47, 0.25);
+      }
+      body { margin: 0; background-color: var(--background-color, #0A0A0A); font-family: system-ui, -apple-system, sans-serif; }
       #initial-splash {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: #000; display: flex; flex-direction: column;
+        background-color: var(--background-color, #0A0A0A); display: flex; flex-direction: column;
         align-items: center; justify-content: center; z-index: 10000;
         transition: opacity 0.5s ease;
       }
       .splash-logo {
-        color: #fff; font-size: 4rem; font-weight: 900; font-style: italic;
+        color: var(--primary-color, #D32F2F); font-size: 4rem; font-weight: 900; font-style: italic;
         letter-spacing: -0.05em; text-transform: uppercase; margin-bottom: 2rem;
         opacity: 0; transform: scale(0.9);
         animation: splash-fade 0.8s forwards ease-out;
       }
       .splash-bar {
-        width: 120px; height: 3px; background: #dc2626; border-radius: 99px;
+        width: 120px; height: 3px; background: var(--highlight-color, #D32F2F); border-radius: 99px;
         position: relative; overflow: hidden;
       }
       .splash-bar::after {
@@ -31,14 +53,71 @@
         animation: splash-loading 1.2s infinite ease-in-out;
       }
       .splash-tagline {
-        color: #444; font-size: 10px; font-weight: 900; text-transform: uppercase;
+        color: var(--text-color, #ffffff); opacity: 0.6; font-size: 10px; font-weight: 900; text-transform: uppercase;
         letter-spacing: 5px; margin-top: 1.5rem;
       }
       @keyframes splash-fade { to { opacity: 1; transform: scale(1); } }
       @keyframes splash-loading { 0% { left: -100%; } 50% { left: 0%; } 100% { left: 100%; } }
     </style>
+    <script>
+      // Immediately apply cached theme to avoid any white screen or FOUC
+      (function() {
+        try {
+          var tStr = localStorage.getItem('discreta_active_theme_cache');
+          if (tStr) {
+            var theme = JSON.parse(tStr);
+            var root = document.documentElement;
+            
+            var hexToRgb = function(hex) {
+              var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+              return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+              } : { r: 0, g: 0, b: 0 };
+            };
+
+            var setSafe = function(prop, val, fallback) {
+              if (val && String(val) !== 'undefined' && String(val) !== 'null' && String(val) !== 'NaN') {
+                root.style.setProperty(prop, val);
+              } else if (fallback) {
+                root.style.setProperty(prop, fallback);
+              }
+            };
+
+            setSafe('--primary-color', theme.primaryColor, '#D32F2F');
+            setSafe('--secondary-color', theme.secondaryColor, '#0A0A0A');
+            setSafe('--button-color', theme.buttonColor, theme.primaryColor);
+            setSafe('--background-color', theme.backgroundColor, '#0A0A0A');
+            setSafe('--card-color', theme.cardColor, '#161616');
+            setSafe('--text-color', theme.backgroundTextColor, '#ffffff');
+            setSafe('--link-color', theme.linkColor, theme.primaryColor);
+            setSafe('--highlight-color', theme.highlightColor, theme.primaryColor);
+            
+            setSafe('--primary-color-text', theme.primaryTextColor, '#ffffff');
+            setSafe('--secondary-color-text', theme.secondaryTextColor, '#ffffff');
+            setSafe('--button-color-text', theme.buttonTextColor, '#ffffff');
+            setSafe('--card-color-text', theme.cardTextColor, '#ffffff');
+            setSafe('--link-color-text', theme.linkTextColor, '#ffffff');
+            setSafe('--highlight-color-text', theme.highlightTextColor, '#ffffff');
+
+            setSafe('--color-primary', theme.primaryColor, '#D32F2F');
+            setSafe('--color-bg', theme.backgroundColor, '#0A0A0A');
+            setSafe('--color-surface', theme.cardColor, '#161616');
+            setSafe('--color-text-main', theme.backgroundTextColor, '#ffffff');
+
+            if (theme.primaryColor) {
+               var rgb = hexToRgb(theme.primaryColor);
+               root.style.setProperty('--color-primary-glow', 'rgba(' + rgb.r + ', ' + rgb.g + ', ' + rgb.b + ', 0.25)');
+            }
+          }
+        } catch (e) {
+          console.error('Error pre-loading theme in head:', e);
+        }
+      })();
+    </script>
   </head>
-  <body style="background-color: #000;">
+  <body>
     <div id="initial-splash">
       <div class="splash-logo">DISCRETA</div>
       <div class="splash-bar"></div>
@@ -57,8 +136,12 @@
             }, 500);
           }
         };
-        window.onload = hideSplash;
-        setTimeout(hideSplash, 5000); // Fail-safe
+        // Wait longer if react didn't mount yet, but 5s max failsafe
+        window.addEventListener('load', function() {
+           // Provide a slight delay so React can paint
+           setTimeout(hideSplash, 100);
+        });
+        setTimeout(hideSplash, 5000);
       })();
     </script>
   </body>

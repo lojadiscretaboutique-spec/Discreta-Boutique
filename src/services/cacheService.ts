@@ -141,7 +141,7 @@ export const cacheService = {
     localStorage.setItem('app_data_version', newDataTime);
 
     // 5. Reinicia o sistema na raiz como primeira vez
-    window.location.replace('/');
+    console.warn('[Cache] versão antiga detectada, mas sem redirecionamento automático.');
   },
 
   /**

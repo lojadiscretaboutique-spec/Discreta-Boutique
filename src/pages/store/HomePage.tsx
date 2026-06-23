@@ -23,6 +23,7 @@ import { measurePerformance } from '../../utils/performance';
 import { HomeLiveShopSection } from '../../components/home/HomeLiveShopSection';
 import { StoryShopCarousel } from '../../components/store/StoryShopCarousel';
 import { useInfiniteAutoScroll } from '../../hooks/useInfiniteAutoScroll';
+import { homeCacheService } from '../../services/homeCacheService';
 
 interface Banner {
   id: string;
@@ -384,7 +385,6 @@ export default function HomePage() {
     const cacheLoadStartTime = performance.now();
     try {
       setLoading(true);
-      const { homeCacheService } = await import('../../services/homeCacheService');
       const cachedData = await homeCacheService.getHomeCache();
 
       if (cachedData) {

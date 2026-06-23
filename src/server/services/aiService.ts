@@ -205,7 +205,7 @@ class AIService {
     }
   }
 
-  async huntProducts(query: string, products: any[]): Promise<{ 
+  async huntProducts(searchQuery: string, products: any[]): Promise<{ 
     rankedIds: string[], 
     mensagem: string, 
     curadoria: string,
@@ -220,7 +220,7 @@ class AIService {
       t: { c: p.cliques || 0, v: p.conversoes || 0, s: p.score || 0 }
     }));
 
-    console.log(`[AI] Realizando busca semântica para: ${query}`);
+    console.log(`[AI] Realizando busca semântica para: ${searchQuery}`);
     const startTime = Date.now();
 
     // Buscar métricas de buscas recentes para dar contexto de tendência
@@ -238,7 +238,7 @@ class AIService {
     const prompt = `
       Você é o Especialista de Vendas da Discreta Boutique. Sua missão é selecionar e ranquear os MELHORES produtos do catálogo para a busca do cliente.
       
-      BUSCA DO CLIENTE: "${query}"
+      BUSCA DO CLIENTE: "${searchQuery}"
       ${trendContext ? `\nCONTEXTO DE TENDÊNCIA: ${trendContext}` : ''}
       
       CATÁLOGO DISPONÍVEL (ID, Nome, Categoria, Keywords, Descrição, Stats[Cliques c/Vendas v/Relevância s]):

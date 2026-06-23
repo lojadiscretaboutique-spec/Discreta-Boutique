@@ -46,40 +46,56 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = document.documentElement;
     if (!root) return;
 
+    const setSafe = (prop: string, val: string | undefined, fallback: string) => {
+      if (val && String(val) !== 'undefined' && String(val) !== 'null' && String(val) !== 'NaN') {
+        root.style.setProperty(prop, val);
+      } else if (fallback) {
+        root.style.setProperty(prop, fallback);
+      }
+    };
+
     // Standard client requested CSS variables
-    root.style.setProperty('--primary-color', theme.primaryColor);
-    root.style.setProperty('--secondary-color', theme.secondaryColor);
-    root.style.setProperty('--button-color', theme.buttonColor);
-    root.style.setProperty('--background-color', theme.backgroundColor);
-    root.style.setProperty('--card-color', theme.cardColor);
-    root.style.setProperty('--text-color', theme.backgroundTextColor);
-    root.style.setProperty('--link-color', theme.linkColor);
-    root.style.setProperty('--highlight-color', theme.highlightColor);
+    setSafe('--primary-color', theme.primaryColor, '#D32F2F');
+    setSafe('--secondary-color', theme.secondaryColor, '#0A0A0A');
+    setSafe('--button-color', theme.buttonColor, theme.primaryColor || '#D32F2F');
+    setSafe('--background-color', theme.backgroundColor, '#0A0A0A');
+    setSafe('--card-color', theme.cardColor, '#161616');
+    setSafe('--text-color', theme.backgroundTextColor, '#ffffff');
+    setSafe('--link-color', theme.linkColor, theme.primaryColor || '#D32F2F');
+    setSafe('--highlight-color', theme.highlightColor, theme.primaryColor || '#D32F2F');
 
     // Contrasting text colors
-    root.style.setProperty('--primary-color-text', theme.primaryTextColor);
-    root.style.setProperty('--secondary-color-text', theme.secondaryTextColor);
-    root.style.setProperty('--button-color-text', theme.buttonTextColor);
-    root.style.setProperty('--card-color-text', theme.cardTextColor);
-    root.style.setProperty('--link-color-text', theme.linkTextColor);
-    root.style.setProperty('--highlight-color-text', theme.highlightTextColor);
+    setSafe('--primary-color-text', theme.primaryTextColor, '#ffffff');
+    setSafe('--secondary-color-text', theme.secondaryTextColor, '#ffffff');
+    setSafe('--button-color-text', theme.buttonTextColor, '#ffffff');
+    setSafe('--card-color-text', theme.cardTextColor, '#ffffff');
+    setSafe('--link-color-text', theme.linkTextColor, '#ffffff');
+    setSafe('--highlight-color-text', theme.highlightTextColor, '#ffffff');
 
     // Map to legacy index.css classes for transparent compatibility
-    root.style.setProperty('--color-primary', theme.primaryColor);
-    root.style.setProperty('--color-bg', theme.backgroundColor);
-    root.style.setProperty('--color-surface', theme.cardColor);
-    root.style.setProperty('--color-text-main', theme.backgroundTextColor);
+    setSafe('--color-primary', theme.primaryColor, '#D32F2F');
+    setSafe('--color-bg', theme.backgroundColor, '#0A0A0A');
+    setSafe('--color-surface', theme.cardColor, '#161616');
+    setSafe('--color-text-main', theme.backgroundTextColor, '#ffffff');
 
     // Compute glow shade: rgba representation
-    const rgb = hexToRgb(theme.primaryColor);
-    root.style.setProperty('--color-primary-glow', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.25)`);
+    if (theme.primaryColor) {
+      const rgb = hexToRgb(theme.primaryColor);
+      root.style.setProperty('--color-primary-glow', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.25)`);
+    } else {
+      root.style.setProperty('--color-primary-glow', `rgba(211, 47, 47, 0.25)`);
+    }
   }, []);
 
   // Fetch saved configuration on mount and schedule check on periodic loop.
   useEffect(() => {
     let completed = false;
-    const cacheKey_theme = 'cached_active_theme';
-    const cacheKey_list = 'cached_all_themes';
+    const cacheKey_theme = 'discreta_active_theme_cache';
+    const cacheKey_list = 'discreta_all_themes_cache';
+    
+    // Check old caches to migrate
+    const oldCacheTheme = 'cached_active_theme';
+    const oldCacheList = 'cached_all_themes';
     
     let cachedTheme: any = null;
     let cachedList: any = null;
@@ -87,8 +103,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     if (!isAdmin && typeof window !== 'undefined' && window.localStorage) {
       try {
-        const tStr = localStorage.getItem(cacheKey_theme);
-        const lStr = localStorage.getItem(cacheKey_list);
+        let tStr = localStorage.getItem(cacheKey_theme);
+        let lStr = localStorage.getItem(cacheKey_list);
+        if (!tStr && localStorage.getItem(oldCacheTheme)) {
+           // migrate
+           tStr = localStorage.getItem(oldCacheTheme);
+           lStr = localStorage.getItem(oldCacheList);
+           if (tStr) localStorage.setItem(cacheKey_theme, tStr);
+           if (lStr) localStorage.setItem(cacheKey_list, lStr);
+        }
         if (tStr) cachedTheme = JSON.parse(tStr);
         if (lStr) cachedList = JSON.parse(lStr);
       } catch (e) {

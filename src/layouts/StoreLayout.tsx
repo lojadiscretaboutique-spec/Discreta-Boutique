@@ -100,30 +100,42 @@ export function StoreLayout() {
     const root = document.documentElement;
     if (!root) return;
 
-    root.style.setProperty('--primary-color', currentTheme.primaryColor);
-    root.style.setProperty('--secondary-color', currentTheme.secondaryColor);
-    root.style.setProperty('--button-color', currentTheme.buttonColor);
-    root.style.setProperty('--background-color', currentTheme.backgroundColor);
-    root.style.setProperty('--card-color', currentTheme.cardColor);
-    root.style.setProperty('--text-color', currentTheme.backgroundTextColor);
-    root.style.setProperty('--link-color', currentTheme.linkColor);
-    root.style.setProperty('--highlight-color', currentTheme.highlightColor);
+    const setSafe = (prop: string, val: string | undefined, fallback: string) => {
+      if (val && String(val) !== 'undefined' && String(val) !== 'null' && String(val) !== 'NaN') {
+        root.style.setProperty(prop, val);
+      } else if (fallback) {
+        root.style.setProperty(prop, fallback);
+      }
+    };
 
-    root.style.setProperty('--primary-color-text', currentTheme.primaryTextColor);
-    root.style.setProperty('--secondary-color-text', currentTheme.secondaryTextColor);
-    root.style.setProperty('--button-color-text', currentTheme.buttonTextColor);
-    root.style.setProperty('--card-color-text', currentTheme.cardTextColor);
-    root.style.setProperty('--link-color-text', currentTheme.linkTextColor);
-    root.style.setProperty('--highlight-color-text', currentTheme.highlightTextColor);
+    setSafe('--primary-color', currentTheme.primaryColor, '#D32F2F');
+    setSafe('--secondary-color', currentTheme.secondaryColor, '#0A0A0A');
+    setSafe('--button-color', currentTheme.buttonColor, currentTheme.primaryColor || '#D32F2F');
+    setSafe('--background-color', currentTheme.backgroundColor, '#0A0A0A');
+    setSafe('--card-color', currentTheme.cardColor, '#161616');
+    setSafe('--text-color', currentTheme.backgroundTextColor, '#ffffff');
+    setSafe('--link-color', currentTheme.linkColor, currentTheme.primaryColor || '#D32F2F');
+    setSafe('--highlight-color', currentTheme.highlightColor, currentTheme.primaryColor || '#D32F2F');
+
+    setSafe('--primary-color-text', currentTheme.primaryTextColor, '#ffffff');
+    setSafe('--secondary-color-text', currentTheme.secondaryTextColor, '#ffffff');
+    setSafe('--button-color-text', currentTheme.buttonTextColor, '#ffffff');
+    setSafe('--card-color-text', currentTheme.cardTextColor, '#ffffff');
+    setSafe('--link-color-text', currentTheme.linkTextColor, '#ffffff');
+    setSafe('--highlight-color-text', currentTheme.highlightTextColor, '#ffffff');
 
     // Map to legacy index.css classes for transparent compatibility
-    root.style.setProperty('--color-primary', currentTheme.primaryColor);
-    root.style.setProperty('--color-bg', currentTheme.backgroundColor);
-    root.style.setProperty('--color-surface', currentTheme.cardColor);
-    root.style.setProperty('--color-text-main', currentTheme.backgroundTextColor);
+    setSafe('--color-primary', currentTheme.primaryColor, '#D32F2F');
+    setSafe('--color-bg', currentTheme.backgroundColor, '#0A0A0A');
+    setSafe('--color-surface', currentTheme.cardColor, '#161616');
+    setSafe('--color-text-main', currentTheme.backgroundTextColor, '#ffffff');
 
-    const rgb = hexToRgb(currentTheme.primaryColor);
-    root.style.setProperty('--color-primary-glow', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.25)`);
+    if (currentTheme.primaryColor) {
+      const rgb = hexToRgb(currentTheme.primaryColor);
+      root.style.setProperty('--color-primary-glow', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.25)`);
+    } else {
+      root.style.setProperty('--color-primary-glow', `rgba(211, 47, 47, 0.25)`);
+    }
   }, [currentTheme]);
 
   useEffect(() => {
@@ -166,20 +178,20 @@ export function StoreLayout() {
     }
   }, [location.search]);
 
-  const isDarkBackground = currentTheme.backgroundTextColor === '#ffffff';
+  const isDarkBackground = (currentTheme.backgroundTextColor || '#ffffff').toLowerCase() === '#ffffff';
   const textSecondaryColor = isDarkBackground ? '#a0a0a0' : '#4b5563';
   const borderColor = isDarkBackground ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
 
   const themeStyles = {
-    '--primary-color': currentTheme.primaryColor,
-    '--secondary-color': currentTheme.secondaryColor,
-    '--background-color': currentTheme.backgroundColor,
-    '--surface-color': currentTheme.cardColor,
-    '--card-color': currentTheme.cardColor,
-    '--button-color': currentTheme.buttonColor,
-    '--button-text-color': currentTheme.buttonTextColor,
+    '--primary-color': currentTheme.primaryColor || '#D32F2F',
+    '--secondary-color': currentTheme.secondaryColor || '#0A0A0A',
+    '--background-color': currentTheme.backgroundColor || '#0A0A0A',
+    '--surface-color': currentTheme.cardColor || '#161616',
+    '--card-color': currentTheme.cardColor || '#161616',
+    '--button-color': currentTheme.buttonColor || '#D32F2F',
+    '--button-text-color': currentTheme.buttonTextColor || '#ffffff',
     '--border-color': borderColor,
-    '--text-color': currentTheme.backgroundTextColor,
+    '--text-color': currentTheme.backgroundTextColor || '#ffffff',
     '--text-secondary-color': textSecondaryColor,
   } as React.CSSProperties;
 

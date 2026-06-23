@@ -1,4 +1,5 @@
-import { Product, Category } from '../services/productService';
+import { Product } from '../services/productService';
+import { Category } from '../services/categoryService';
 
 export const isProductInCategory = (product: Product, categoryId: string, listCats: Category[]): boolean => {
   if (product.categoryId === categoryId) return true;

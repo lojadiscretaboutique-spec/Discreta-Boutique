@@ -1,0 +1,294 @@
+src/App.tsx(331,21): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/App.tsx(346,25): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/App.tsx(359,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/App.tsx(366,25): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/components/store/StoryShopCarousel.tsx(45,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/components/store/StoryShopCarousel.tsx(79,31): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/components/store/StoryShopCarousel.tsx(130,31): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/components/store/StoryShopCarousel.tsx(267,27): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/components/store/StoryShopCarousel.tsx(285,21): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/components/store/StoryShopModal.tsx(174,43): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/store/StoryShopModal.tsx(218,42): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/store/StoryShopModal.tsx(223,42): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/ui/ProductItemCard.tsx(28,13): error TS2339: Property 'imageUrl' does not exist on type 'Product'.
+src/components/ui/ProductItemCard.tsx(50,35): error TS2339: Property 'favorites' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/components/ui/ProductItemCard.tsx(64,30): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/contexts/TypographyContext.tsx(858,179): error TS2551: Property 'reviewsSize_mobile' does not exist on type 'ProductCardsTypography'. Did you mean 'reviewsSizeMobile'?
+src/layouts/AdminLayout.tsx(264,32): error TS2339: Property 'name' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/layouts/AdminLayout.tsx(267,33): error TS2339: Property 'name' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/lib/firebase.ts(33,3): error TS2353: Object literal may only specify known properties, and 'databaseId' does not exist in type 'FirestoreSettings'.
+src/lib/ranking.ts(24,22): error TS2339: Property 'oldPrice' does not exist on type 'Product'.
+src/lib/ranking.ts(24,46): error TS2339: Property 'oldPrice' does not exist on type 'Product'.
+src/lib/ranking.ts(101,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/lib/ranking.ts(104,35): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/lib/ranking.ts(203,15): error TS2339: Property 'palavras_chave' does not exist on type 'Product'.
+src/lib/ranking.ts(211,53): error TS2339: Property 'categoryName' does not exist on type 'Product'.
+src/lib/ranking.ts(302,19): error TS2339: Property 'palavras_chave' does not exist on type 'Product'.
+src/modules/afiliados/services/affiliateService.ts(302,5): error TS2322: Type 'any[]' is not assignable to type 'Commission & { affiliateId: string; affiliateName: string; }[]'.
+  Type 'any[]' is missing the following properties from type 'Commission': orderId, orderShortId, customerName, orderTotal, and 5 more.
+src/modules/instagramMarketing/controllers/instagramController.ts(1,35): error TS7016: Could not find a declaration file for module 'express'. '/app/applet/node_modules/express/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/express` if it exists or add a new declaration (.d.ts) file containing `declare module 'express';`
+src/modules/instagramMarketing/pages/PostagemInstagram.tsx(49,13): error TS2339: Property 'storage' does not exist on type 'typeof import("/app/applet/src/lib/firebase")'.
+src/modules/instagramMarketing/routes/instagramRoutes.ts(1,24): error TS7016: Could not find a declaration file for module 'express'. '/app/applet/node_modules/express/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/express` if it exists or add a new declaration (.d.ts) file containing `declare module 'express';`
+src/modules/instagramMarketing/services/OpenAIImageService.ts(119,14): error TS18048: 'response.data' is possibly 'undefined'.
+src/modules/instagramMarketing/services/OpenAIImageService.ts(130,16): error TS18048: 'response.data' is possibly 'undefined'.
+src/pages/admin/AdminCaixa.tsx(1012,84): error TS2322: Type '"destructive"' is not assignable to type '"default" | "outline" | "ghost" | "danger" | undefined'.
+src/pages/admin/AdminCategories.tsx(167,54): error TS2345: Argument of type 'Partial<Category>' is not assignable to parameter of type 'Omit<Category, "id" | "createdAt" | "updatedAt" | "productCount">'.
+  Types of property 'name' are incompatible.
+    Type 'string | undefined' is not assignable to type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+src/pages/admin/AdminCategories.tsx(785,90): error TS2322: Type 'null' is not assignable to type '{ url: string; path: string; } | undefined'.
+src/pages/admin/AdminCategories.tsx(815,90): error TS2322: Type 'null' is not assignable to type '{ url: string; path: string; } | undefined'.
+src/pages/admin/AdminCategories.tsx(1450,71): error TS2322: Type 'null' is not assignable to type '{ url: string; path: string; } | undefined'.
+src/pages/admin/AdminCategories.tsx(1554,62): error TS2322: Type 'null' is not assignable to type '{ url: string; path: string; } | undefined'.
+src/pages/admin/AdminCombos.tsx(198,24): error TS2304: Cannot find name 'Category'.
+src/pages/admin/AdminCombos.tsx(248,76): error TS2304: Cannot find name 'Category'.
+src/pages/admin/AdminCombos.tsx(399,56): error TS2554: Expected 1 arguments, but got 2.
+src/pages/admin/AdminCombos.tsx(430,58): error TS2339: Property 'totalProfit' does not exist on type 'Combo'.
+src/pages/admin/AdminDeliveryAreas.tsx(279,37): error TS2353: Object literal may only specify known properties, and 'uf' does not exist in type 'Partial<State>'.
+src/pages/admin/AdminDeliveryAreas.tsx(282,83): error TS2353: Object literal may only specify known properties, and 'uf' does not exist in type 'State'.
+src/pages/admin/AdminDeliveryAreas.tsx(283,48): error TS2345: Argument of type 'State | undefined' is not assignable to parameter of type 'State'.
+  Type 'undefined' is not assignable to type 'State'.
+src/pages/admin/AdminDeliveryAreas.tsx(291,84): error TS18048: 'state' is possibly 'undefined'.
+src/pages/admin/AdminDeliveryAreas.tsx(297,42): error TS18048: 'state' is possibly 'undefined'.
+src/pages/admin/AdminDeliveryAreas.tsx(298,44): error TS18048: 'state' is possibly 'undefined'.
+src/pages/admin/AdminDeliveryAreas.tsx(301,85): error TS18048: 'state' is possibly 'undefined'.
+src/pages/admin/AdminDeliveryAreas.tsx(301,107): error TS18048: 'state' is possibly 'undefined'.
+src/pages/admin/AdminDeliveryAreas.tsx(323,38): error TS18048: 'state' is possibly 'undefined'.
+src/pages/admin/AdminDeliveryAreas.tsx(324,40): error TS18048: 'state' is possibly 'undefined'.
+src/pages/admin/AdminOrders.tsx(225,11): error TS2739: Type 'Query<DocumentData, DocumentData>' is missing the following properties from type 'CollectionReference<DocumentData, DocumentData>': id, path, parent
+src/pages/admin/AdminOrders.tsx(231,11): error TS2739: Type 'Query<DocumentData, DocumentData>' is missing the following properties from type 'CollectionReference<DocumentData, DocumentData>': id, path, parent
+src/pages/admin/AdminOrders.tsx(673,48): error TS2339: Property 'paymentMethodNameSnapshot' does not exist on type 'Order'.
+src/pages/admin/AdminOrders.tsx(990,32): error TS2339: Property 'paymentMethodNameSnapshot' does not exist on type 'Order'.
+src/pages/admin/AdminOrders.tsx(1255,40): error TS2339: Property 'paymentMethodNameSnapshot' does not exist on type 'Order'.
+src/pages/admin/AdminOrders.tsx(1684,37): error TS2339: Property 'paymentMethodNameSnapshot' does not exist on type 'Order'.
+src/pages/admin/AdminPDV.tsx(195,29): error TS7006: Parameter 'v' implicitly has an 'any' type.
+src/pages/admin/AdminPDV.tsx(209,21): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(221,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(332,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(371,27): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(383,27): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(401,25): error TS18048: 'match' is possibly 'undefined'.
+src/pages/admin/AdminPDV.tsx(401,49): error TS18048: 'match' is possibly 'undefined'.
+src/pages/admin/AdminPDV.tsx(407,25): error TS18048: 'match' is possibly 'undefined'.
+src/pages/admin/AdminPDV.tsx(407,49): error TS18048: 'match' is possibly 'undefined'.
+src/pages/admin/AdminPDV.tsx(859,25): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(1068,25): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(1111,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(1126,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(1136,21): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(1144,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(1200,21): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/AdminPDV.tsx(1480,19): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/admin/AdminPDV.tsx(1496,15): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/admin/AdminPDV.tsx(1521,11): error TS2353: Object literal may only specify known properties, and 'userEmail' does not exist in type 'PdvSaleCapture'.
+src/pages/admin/AdminPrinterConfig.tsx(437,19): error TS2322: Type '"link"' is not assignable to type '"default" | "outline" | "ghost" | "danger" | undefined'.
+src/pages/admin/AdminPrinterConfig.tsx(510,19): error TS2322: Type '"link"' is not assignable to type '"default" | "outline" | "ghost" | "danger" | undefined'.
+src/pages/admin/AdminProducts.tsx(351,7): error TS2322: Type '"info"' is not assignable to type '"danger" | "primary" | undefined'.
+src/pages/admin/AdminProducts.tsx(514,7): error TS2322: Type '"default" | "danger"' is not assignable to type '"danger" | "primary" | undefined'.
+  Type '"default"' is not assignable to type '"danger" | "primary" | undefined'.
+src/pages/admin/AdminProducts.tsx(905,76): error TS2322: Type 'T[][]' is not assignable to type 'T[]'.
+  Type 'T[]' is not assignable to type 'T'.
+    'T' could be instantiated with an arbitrary type which could be unrelated to 'T[]'.
+src/pages/admin/AdminProducts.tsx(1781,19): error TS2322: Type '"info"' is not assignable to type '"danger" | "primary" | undefined'.
+src/pages/admin/AdminPurchases.tsx(193,7): error TS2353: Object literal may only specify known properties, and 'icon' does not exist in type 'ConfirmOptions'.
+src/pages/admin/AdminPurchases.tsx(235,7): error TS2353: Object literal may only specify known properties, and 'icon' does not exist in type 'ConfirmOptions'.
+src/pages/admin/AdminPurchases.tsx(277,7): error TS2353: Object literal may only specify known properties, and 'icon' does not exist in type 'ConfirmOptions'.
+src/pages/admin/AdminSmartStock.tsx(152,15): error TS2322: Type '"outline" | "destructive"' is not assignable to type '"default" | "outline" | "ghost" | "danger" | undefined'.
+  Type '"destructive"' is not assignable to type '"default" | "outline" | "ghost" | "danger" | undefined'.
+src/pages/admin/AdminSmartStock.tsx(159,15): error TS2322: Type '"outline" | "secondary"' is not assignable to type '"default" | "outline" | "ghost" | "danger" | undefined'.
+  Type '"secondary"' is not assignable to type '"default" | "outline" | "ghost" | "danger" | undefined'.
+src/pages/admin/AdminThemeManager.tsx(220,34): error TS2339: Property 'email' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/admin/AdminThemeManager.tsx(972,76): error TS2339: Property 'url' does not exist on type 'number | BrandingImageItem'.
+  Property 'url' does not exist on type 'number'.
+src/pages/admin/InventoryTab.tsx(221,21): error TS7006: Parameter 'error' implicitly has an 'any' type.
+src/pages/admin/MovEstoque.tsx(590,73): error TS2345: Argument of type 'string' is not assignable to parameter of type 'SetStateAction<"compra_fornecedor">'.
+src/pages/admin/blog/AdminBlogAI.tsx(24,3): error TS2724: '"lucide-react"' has no exported member named 'AlertHorizontal'. Did you mean 'GalleryHorizontal'?
+src/pages/admin/blog/AdminBlogAI.tsx(265,9): error TS2353: Object literal may only specify known properties, and 'commentsCount' does not exist in type 'Partial<BlogPost>'.
+src/pages/admin/blog/AdminBlogAI.tsx(705,20): error TS2304: Cannot find name 'CheckSquare'.
+src/pages/admin/blog/AdminBlogClusters.tsx(117,21): error TS2345: Argument of type '"active" | "inactive"' is not assignable to parameter of type 'SetStateAction<"active" | "draft">'.
+  Type '"inactive"' is not assignable to type 'SetStateAction<"active" | "draft">'. Did you mean '"active"'?
+src/pages/admin/blog/AdminBlogClusters.tsx(256,48): error TS2322: Type '"active" | "draft"' is not assignable to type '"active" | "inactive" | undefined'.
+  Type '"draft"' is not assignable to type '"active" | "inactive" | undefined'.
+src/pages/admin/blog/AdminBlogClusters.tsx(355,9): error TS2322: Type '"active" | "draft"' is not assignable to type '"active" | "inactive" | undefined'.
+  Type '"draft"' is not assignable to type '"active" | "inactive" | undefined'.
+src/pages/admin/blog/AdminBlogComments.tsx(19,40): error TS2551: Property 'listAllComments' does not exist on type '{ listPosts(includeHidden?: boolean): Promise<BlogPost[]>; getPostBySlug(slug: string): Promise<BlogPost | null>; getPostById(id: string): Promise<...>; ... 24 more ...; deleteCluster(clusterId: string): Promise<...>; }'. Did you mean 'listComments'?
+src/pages/admin/blog/AdminBlogComments.tsx(36,25): error TS2339: Property 'updateCommentStatus' does not exist on type '{ listPosts(includeHidden?: boolean): Promise<BlogPost[]>; getPostBySlug(slug: string): Promise<BlogPost | null>; getPostById(id: string): Promise<...>; ... 24 more ...; deleteCluster(clusterId: string): Promise<...>; }'.
+src/pages/admin/blog/AdminBlogEditor.tsx(122,23): error TS2345: Argument of type '"rascunho" | "publicado" | "agendado" | "arquivado" | "trash"' is not assignable to parameter of type 'SetStateAction<"rascunho" | "publicado" | "agendado" | "arquivado">'.
+  Type '"trash"' is not assignable to type 'SetStateAction<"rascunho" | "publicado" | "agendado" | "arquivado">'.
+src/pages/admin/blog/AdminBlogEditor.tsx(509,9): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/admin/blog/AdminBlogEditor.tsx(510,9): error TS2322: Type '"pillar" | "cluster" | null' is not assignable to type '"" | "pillar" | "cluster" | undefined'.
+  Type 'null' is not assignable to type '"" | "pillar" | "cluster" | undefined'.
+src/pages/admin/blog/AdminBlogEditor.tsx(565,9): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/admin/blog/AdminBlogEditor.tsx(566,9): error TS2322: Type '"pillar" | "cluster" | null' is not assignable to type '"" | "pillar" | "cluster" | undefined'.
+  Type 'null' is not assignable to type '"" | "pillar" | "cluster" | undefined'.
+src/pages/admin/blog/AdminBlogHub.tsx(95,25): error TS2339: Property 'updatePostStatus' does not exist on type '{ listPosts(includeHidden?: boolean): Promise<BlogPost[]>; getPostBySlug(slug: string): Promise<BlogPost | null>; getPostById(id: string): Promise<...>; ... 24 more ...; deleteCluster(clusterId: string): Promise<...>; }'.
+src/pages/admin/blog/AdminBlogHub.tsx(109,25): error TS2339: Property 'deletePost' does not exist on type '{ listPosts(includeHidden?: boolean): Promise<BlogPost[]>; getPostBySlug(slug: string): Promise<BlogPost | null>; getPostById(id: string): Promise<...>; ... 24 more ...; deleteCluster(clusterId: string): Promise<...>; }'.
+src/pages/admin/blog/AdminBlogHub.tsx(133,30): error TS2367: This comparison appears to be unintentional because the types '"rascunho" | "publicado" | "agendado" | "arquivado" | "trash"' and '"lixeira"' have no overlap.
+src/pages/admin/blog/AdminBlogHub.tsx(412,41): error TS2367: This comparison appears to be unintentional because the types '"rascunho" | "publicado" | "agendado" | "arquivado" | "trash"' and '"lixeira"' have no overlap.
+src/pages/admin/blog/AdminBlogHub.tsx(511,67): error TS2339: Property 'commentsCount' does not exist on type 'BlogPost'.
+src/pages/admin/blog/AdminBlogSettings.tsx(11,5): error TS2353: Object literal may only specify known properties, and 'defaultCoverImage' does not exist in type 'BlogSettings | (() => BlogSettings)'.
+src/pages/admin/blog/AdminBlogSettings.tsx(132,31): error TS2339: Property 'defaultCoverImage' does not exist on type 'BlogSettings'.
+src/pages/admin/blog/AdminBlogSettings.tsx(133,59): error TS2353: Object literal may only specify known properties, and 'defaultCoverImage' does not exist in type 'SetStateAction<BlogSettings>'.
+src/pages/admin/blog/AdminBlogSettings.tsx(151,33): error TS2339: Property 'authorName' does not exist on type 'BlogSettings'.
+src/pages/admin/blog/AdminBlogSettings.tsx(152,61): error TS2353: Object literal may only specify known properties, and 'authorName' does not exist in type 'SetStateAction<BlogSettings>'.
+src/pages/admin/blog/AdminBlogSettings.tsx(161,33): error TS2339: Property 'authorBio' does not exist on type 'BlogSettings'.
+src/pages/admin/blog/AdminBlogSettings.tsx(162,61): error TS2353: Object literal may only specify known properties, and 'authorBio' does not exist in type 'SetStateAction<BlogSettings>'.
+src/pages/admin/blog/AdminBlogStats.tsx(31,84): error TS2339: Property 'actionType' does not exist on type 'BlogStatistic'.
+src/pages/admin/blog/AdminBlogStats.tsx(35,32): error TS2339: Property 'actionType' does not exist on type 'BlogStatistic'.
+src/pages/admin/blog/AdminBlogStats.tsx(39,32): error TS2339: Property 'actionType' does not exist on type 'BlogStatistic'.
+src/pages/admin/financial/AdminCommissions.tsx(58,11): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/admin/financial/AdminCommissions.tsx(59,11): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/admin/marketing/AdminLiveShop.tsx(120,27): error TS2552: Cannot find name 'setShowForm'. Did you mean 'showForm'?
+src/pages/admin/marketing/AdminPostagem.tsx(717,43): error TS2322: Type '"secondary"' is not assignable to type '"default" | "outline" | "ghost" | "danger" | undefined'.
+src/pages/admin/marketing/AdminPromotions.tsx(6,10): error TS2305: Module '"lucide-react"' has no exported member 'MegaMenu'.
+src/pages/admin/marketing/AdminPromotions.tsx(41,11): error TS2339: Property 'theme' does not exist on type 'StoreSettings'.
+src/pages/admin/marketing/AdminPromotions.tsx(827,31): error TS2322: Type '"xs"' is not assignable to type '"icon" | "sm" | "md" | "lg" | undefined'.
+src/pages/admin/marketing/AdminVisualHome.tsx(494,13): error TS2322: Type '(isAutogenerated?: boolean) => Promise<void>' is not assignable to type 'MouseEventHandler<HTMLButtonElement>'.
+  Types of parameters 'isAutogenerated' and 'event' are incompatible.
+    Type 'MouseEvent<HTMLButtonElement, MouseEvent>' is not assignable to type 'boolean | undefined'.
+src/pages/admin/marketing/components/MktAffiliatesPanel.tsx(146,7): error TS2353: Object literal may only specify known properties, and 'sent' does not exist in type 'Omit<MktWhatsAppShot, "id">'.
+src/pages/admin/marketing/components/MktAffiliatesPanel.tsx(159,7): error TS2353: Object literal may only specify known properties, and 'discountPct' does not exist in type 'Omit<MktPromotion, "id">'.
+src/pages/admin/marketing/components/MktCalendar.tsx(127,94): error TS2339: Property 'description' does not exist on type 'MktGiveaway'.
+src/pages/admin/marketing/components/MktCalendar.tsx(127,127): error TS2339: Property 'participantsJoined' does not exist on type 'MktGiveaway'.
+src/pages/admin/marketing/components/MktCalendar.tsx(164,67): error TS2339: Property 'targetGroup' does not exist on type 'MktWhatsAppShot'.
+src/pages/admin/marketing/components/MktCalendar.tsx(179,49): error TS2339: Property 'discountValue' does not exist on type 'MktPromotion'.
+src/pages/admin/marketing/components/MktCalendar.tsx(256,20): error TS2345: Argument of type '"cancelado" | "backlog" | "planejado" | "em-andamento" | "aguardando" | "concluido"' is not assignable to parameter of type 'SetStateAction<"backlog" | "planejado" | "em-andamento" | "aguardando" | "concluido">'.
+  Type '"cancelado"' is not assignable to type 'SetStateAction<"backlog" | "planejado" | "em-andamento" | "aguardando" | "concluido">'.
+src/pages/admin/marketing/components/StoryShopForm.tsx(519,54): error TS2345: Argument of type '{ title: string; description: string; productId: string; thumbnailUrl: string; videoUrl: string; order: number; active: boolean; featured: boolean; tags: string[]; startDate: Timestamp; ... 15 more ...; createdAt: Date | Timestamp; }' is not assignable to parameter of type 'Partial<StoryShop>'.
+  Types of property 'videoSource' are incompatible.
+    Type 'string' is not assignable to type '"url" | "firebase_storage" | undefined'.
+src/pages/admin/marketing/components/StoryShopForm.tsx(950,38): error TS2304: Cannot find name 'handleRegenerateThumb'.
+src/pages/admin/marketing/components/StoryShopForm.tsx(963,40): error TS2304: Cannot find name 'handleRegenerateThumb'.
+src/pages/admin/marketing/components/StoryShopForm.tsx(976,38): error TS2304: Cannot find name 'handleRegenerateThumb'.
+src/pages/admin/marketing/components/StoryShopForm.tsx(1071,11): error TS2322: Type 'boolean | null' is not assignable to type 'boolean | undefined'.
+  Type 'null' is not assignable to type 'boolean | undefined'.
+src/pages/store/CartPage.tsx(681,24): error TS2339: Property 'fullName' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(682,28): error TS2339: Property 'whatsapp' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(684,20): error TS2339: Property 'email' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(684,45): error TS2339: Property 'email' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(685,20): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(686,32): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(687,31): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(688,31): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(689,26): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(690,29): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(691,34): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(692,33): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(695,35): error TS2339: Property 'whatsapp' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(695,55): error TS2339: Property 'whatsapp' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(699,108): error TS2339: Property 'fullName' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(702,26): error TS2339: Property 'fullName' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(703,27): error TS2339: Property 'email' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(705,33): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(706,27): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(707,30): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(708,30): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(709,30): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(710,30): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(711,35): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(712,34): error TS2339: Property 'address' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(714,31): error TS2339: Property 'favorites' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CartPage.tsx(1311,62): error TS2339: Property 'useIntegration' does not exist on type 'MethodConfig'.
+src/pages/store/CartPage.tsx(1376,52): error TS2339: Property 'useIntegration' does not exist on type 'MethodConfig'.
+src/pages/store/CatalogPage.tsx(245,27): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/store/CatalogPage.tsx(251,27): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/store/CatalogPage.tsx(387,14): error TS2339: Property 'isCombo' does not exist on type 'Product'.
+src/pages/store/CatalogPage.tsx(615,42): error TS2339: Property 'seconds' does not exist on type 'string | Date'.
+  Property 'seconds' does not exist on type 'string'.
+src/pages/store/CatalogPage.tsx(616,42): error TS2339: Property 'seconds' does not exist on type 'string | Date'.
+  Property 'seconds' does not exist on type 'string'.
+src/pages/store/CatalogPage.tsx(646,41): error TS2339: Property 'seconds' does not exist on type 'string | Date'.
+  Property 'seconds' does not exist on type 'string'.
+src/pages/store/CatalogPage.tsx(647,41): error TS2339: Property 'seconds' does not exist on type 'string | Date'.
+  Property 'seconds' does not exist on type 'string'.
+src/pages/store/CatalogPage.tsx(700,44): error TS2339: Property 'seconds' does not exist on type 'string | Date'.
+  Property 'seconds' does not exist on type 'string'.
+src/pages/store/CatalogPage.tsx(701,44): error TS2339: Property 'seconds' does not exist on type 'string | Date'.
+  Property 'seconds' does not exist on type 'string'.
+src/pages/store/CatalogPage.tsx(1179,35): error TS2339: Property 'favorites' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/CatalogPage.tsx(1193,32): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/pages/store/CatalogPage.tsx(1254,9): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/store/CustomerAreaPage.tsx(603,19): error TS2304: Cannot find name 'sendEmailVerification'.
+src/pages/store/HomePage.tsx(50,19): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/store/HomePage.tsx(308,55): error TS7006: Parameter 'i' implicitly has an 'any' type.
+src/pages/store/HomePage.tsx(318,21): error TS2345: Argument of type '(Category | { image: { url: any; }; id: string; name: string; slug: string; shortDescription?: string | undefined; description?: string | undefined; parentId: string | null; level: number; ... 17 more ...; updatedAt: FieldValue; })[]' is not assignable to parameter of type 'SetStateAction<Category[]>'.
+  Type '(Category | { image: { url: any; }; id: string; name: string; slug: string; shortDescription?: string | undefined; description?: string | undefined; parentId: string | null; level: number; ... 17 more ...; updatedAt: FieldValue; })[]' is not assignable to type 'Category[]'.
+    Type 'Category | { image: { url: any; }; id: string; name: string; slug: string; shortDescription?: string | undefined; description?: string | undefined; parentId: string | null; level: number; ... 17 more ...; updatedAt: FieldValue; }' is not assignable to type 'Category'.
+      Type '{ image: { url: any; }; id: string; name: string; slug: string; shortDescription?: string; description?: string; parentId: string | null; level: number; icon?: string; color?: string; banner?: { url: string; path: string; }; ... 14 more ...; updatedAt: FieldValue; }' is not assignable to type 'Category'.
+        Types of property 'image' are incompatible.
+          Property 'path' is missing in type '{ url: any; }' but required in type '{ url: string; path: string; }'.
+src/pages/store/HomePage.tsx(396,25): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/store/HomePage.tsx(415,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/store/HomePage.tsx(421,21): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/store/LiveShopPage.tsx(271,9): error TS2339: Property 'productIds' does not exist on type '{ id: string; name: string; productIds: string[]; price: number; originalPrice: number; savings: number; }[]'.
+src/pages/store/LiveShopPage.tsx(271,28): error TS7006: Parameter 'pId' implicitly has an 'any' type.
+src/pages/store/LiveShopPage.tsx(275,50): error TS2339: Property 'price' does not exist on type '{ id: string; name: string; productIds: string[]; price: number; originalPrice: number; savings: number; }[]'.
+src/pages/store/LiveShopPage.tsx(275,62): error TS2339: Property 'originalPrice' does not exist on type '{ id: string; name: string; productIds: string[]; price: number; originalPrice: number; savings: number; }[]'.
+src/pages/store/LiveShopPage.tsx(277,37): error TS2339: Property 'id' does not exist on type '{ id: string; name: string; productIds: string[]; price: number; originalPrice: number; savings: number; }[]'.
+src/pages/store/LiveShopPage.tsx(278,11): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/store/LiveShopPage.tsx(279,29): error TS2339: Property 'name' does not exist on type '{ id: string; name: string; productIds: string[]; price: number; originalPrice: number; savings: number; }[]'.
+src/pages/store/LiveShopPage.tsx(292,64): error TS2339: Property 'name' does not exist on type '{ id: string; name: string; productIds: string[]; price: number; originalPrice: number; savings: number; }[]'.
+src/pages/store/LiveShopPage.tsx(600,60): error TS2345: Argument of type '{ id: string; name: string; productIds: string[]; price: number; originalPrice: number; savings: number; }' is not assignable to parameter of type '{ id: string; name: string; productIds: string[]; price: number; originalPrice: number; savings: number; }[]'.
+  Type '{ id: string; name: string; productIds: string[]; price: number; originalPrice: number; savings: number; }' is missing the following properties from type '{ id: string; name: string; productIds: string[]; price: number; originalPrice: number; savings: number; }[]': length, pop, push, concat, and 29 more.
+src/pages/store/ProductPage.tsx(71,35): error TS2339: Property 'favorites' does not exist on type '{ role: string; active: boolean; computedPermissions?: Record<string, Record<string, boolean>> | undefined; }'.
+src/pages/store/ProductPage.tsx(85,30): error TS7006: Parameter 'id' implicitly has an 'any' type.
+src/pages/store/ProductPage.tsx(346,11): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/store/ProductPage.tsx(352,11): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/store/ProductPage.tsx(374,9): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/store/ProductPage.tsx(380,9): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/store/blog/BlogArticlePage.tsx(451,34): error TS2339: Property 'versions' does not exist on type 'BlogContentBlock'.
+src/pages/store/blog/BlogArticlePage.tsx(451,103): error TS2339: Property 'versions' does not exist on type 'BlogContentBlock'.
+src/pages/store/blog/BlogArticlePage.tsx(452,34): error TS2339: Property 'versions' does not exist on type 'BlogContentBlock'.
+src/pages/store/blog/BlogArticlePage.tsx(452,104): error TS2339: Property 'versions' does not exist on type 'BlogContentBlock'.
+src/pages/store/blog/BlogArticlePage.tsx(780,90): error TS2339: Property 'slug' does not exist on type '{ title?: string | undefined; description?: string | undefined; canonical?: string | undefined; keywords?: string | undefined; ogImage?: string | undefined; twitterImage?: string | undefined; faq?: FAQItem[] | undefined; }'.
+src/pages/store/blog/BlogArticlePage.tsx(858,120): error TS2339: Property 'slug' does not exist on type '{ title?: string | undefined; description?: string | undefined; canonical?: string | undefined; keywords?: string | undefined; ogImage?: string | undefined; twitterImage?: string | undefined; faq?: FAQItem[] | undefined; }'.
+src/pages/store/blog/BlogClusterPage.tsx(23,47): error TS2339: Property 'getClusterBySlug' does not exist on type '{ listPosts(includeHidden?: boolean): Promise<BlogPost[]>; getPostBySlug(slug: string): Promise<BlogPost | null>; getPostById(id: string): Promise<...>; ... 24 more ...; deleteCluster(clusterId: string): Promise<...>; }'.
+src/pages/store/blog/BlogClusterPage.tsx(71,42): error TS2339: Property 'slug' does not exist on type '{ title?: string | undefined; description?: string | undefined; canonical?: string | undefined; keywords?: string | undefined; ogImage?: string | undefined; twitterImage?: string | undefined; faq?: FAQItem[] | undefined; }'.
+src/pages/store/blog/BlogClusterPage.tsx(80,58): error TS2339: Property 'slug' does not exist on type '{ title?: string | undefined; description?: string | undefined; canonical?: string | undefined; keywords?: string | undefined; ogImage?: string | undefined; twitterImage?: string | undefined; faq?: FAQItem[] | undefined; }'.
+src/server/controllers/aiController.ts(1,35): error TS7016: Could not find a declaration file for module 'express'. '/app/applet/node_modules/express/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/express` if it exists or add a new declaration (.d.ts) file containing `declare module 'express';`
+src/server/lib/firebaseAdmin.ts(40,30): error TS2554: Expected 0 arguments, but got 1.
+src/server/routes/aiRoutes.ts(1,24): error TS7016: Could not find a declaration file for module 'express'. '/app/applet/node_modules/express/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/express` if it exists or add a new declaration (.d.ts) file containing `declare module 'express';`
+src/server/routes/aiRoutes.ts(47,40): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/routes/aiRoutes.ts(47,45): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/services/catalogCacheService.ts(35,21): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/services/catalogCacheService.ts(107,25): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/services/catalogCacheService.ts(128,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/services/catalogCacheService.ts(138,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/services/catalogSectionsService.ts(65,38): error TS2339: Property 'seconds' does not exist on type 'string | Date'.
+  Property 'seconds' does not exist on type 'string'.
+src/services/catalogSectionsService.ts(66,38): error TS2339: Property 'seconds' does not exist on type 'string | Date'.
+  Property 'seconds' does not exist on type 'string'.
+src/services/comboService.ts(131,15): error TS2339: Property 'storage' does not exist on type 'typeof import("/app/applet/src/lib/firebase")'.
+src/services/financialService.ts(107,50): error TS2345: Argument of type '{ sessionId: string; type: any; category: string; amount: number; description: string; paymentMethod: string; userId: string; source: any; financialId: string; orderId: string | null; }' is not assignable to parameter of type 'Omit<CashTransaction, "id" | "createdAt">'.
+  Types of property 'orderId' are incompatible.
+    Type 'string | null' is not assignable to type 'string | undefined'.
+      Type 'null' is not assignable to type 'string | undefined'.
+src/services/financialService.ts(109,70): error TS2345: Argument of type '{ sessionId: string; type: any; category: string; amount: number; description: string; paymentMethod: string; userId: string; source: any; financialId: string; orderId: string | null; }' is not assignable to parameter of type 'Partial<CashTransaction>'.
+  Types of property 'orderId' are incompatible.
+    Type 'string | null' is not assignable to type 'string | undefined'.
+      Type 'null' is not assignable to type 'string | undefined'.
+src/services/homeCacheService.ts(212,136): error TS7006: Parameter 'i' implicitly has an 'any' type.
+src/services/paymentFinanceService.ts(200,123): error TS2339: Property 'enabledDelivery' does not exist on type 'MethodConfig'.
+src/services/paymentFinanceService.ts(201,120): error TS2339: Property 'enabledPickup' does not exist on type 'MethodConfig'.
+src/services/purchaseService.ts(133,9): error TS2322: Type '"revenue"' is not assignable to type 'TransactionType | undefined'.
+src/services/visualHomeService.ts(200,11): error TS2322: Type '"featured_category"' is not assignable to type '"categories" | "stock" | "auto" | "custom_products" | "brands" | "promo" | "best_seller" | "views" | "recent" | "ai_recs" | "random" | "limited_promo"'.
+src/utils/performance.ts(6,19): error TS2339: Property 'env' does not exist on type 'ImportMeta'.

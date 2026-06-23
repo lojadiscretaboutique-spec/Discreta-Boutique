@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useCartStore } from '../../store/cartStore';
 import { useCustomerAuthStore } from '../../store/customerAuthStore';
+import { useAuthStore } from '../../store/authStore';
 import { formatCurrency, cn, roundTo2, formatVariantName } from '../../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
-import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles, Search } from 'lucide-react';
+import { Minus, Plus, Trash2, ArrowRight, Calendar, Clock as ClockIcon, Sparkles, Search, LogIn, User, Lock, CheckCircle, MapPin, Home, Briefcase } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -14,7 +15,7 @@ import { abandonedCartWebhookService } from '../../services/abandonedCartWebhook
 import { couponService } from '../../services/couponService';
 import { deliveryAreaService, State, City, DeliveryArea } from '../../services/deliveryAreaService';
 import { settingsService, PaymentSettings, MercadoPagoSettings, OperatingHoursSettings } from '../../services/settingsService';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { paymentFinanceService, MethodConfig } from '../../services/paymentFinanceService';
 import { db } from '../../lib/firebase';
 
@@ -22,6 +23,13 @@ import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useTypography } from '../../contexts/TypographyContext';
 import { getComboReservedStocks } from '../../utils/comboStockHelper';
+
+const formatCEP = (value: string) => {
+  const clean = value.replace(/\D/g, '');
+  return clean
+    .slice(0, 8)
+    .replace(/(\d{5})(\d)/, '$1-$2');
+};
 
 function getContrastColor(hexColor: string): string {
   if (!hexColor) return '#ffffff';
@@ -65,6 +73,7 @@ export function CartPage() {
 
   const { items, updateQuantity, removeItem, clearCart, total, appliedCoupon, applyCoupon, removeCoupon } = useCartStore();
   const { currentCustomer, setCustomer } = useCustomerAuthStore();
+  const { user, userData, setUserData } = useAuthStore();
   const navigate = useNavigate();
   const { toast } = useFeedback();
 
@@ -141,6 +150,84 @@ export function CartPage() {
   const [numero, setNumero] = useState('');
   const [complemento, setComplemento] = useState('');
   const [referencia, setReferencia] = useState('');
+  const [cep, setCep] = useState('');
+  const [loadingCep, setLoadingCep] = useState(false);
+  const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string>('');
+
+  const savedAddresses = useMemo(() => {
+    if (!userData) return [];
+    const loadedAddresses = (userData as any).addresses || [];
+    if (loadedAddresses.length === 0 && (userData as any).address) {
+      return [{
+        id: 'legacy-default',
+        cep: (userData as any).address.cep || '',
+        street: (userData as any).address.street || '',
+        number: (userData as any).address.number || '',
+        complement: (userData as any).address.complement || '',
+        neighborhood: (userData as any).address.neighborhood || '',
+        city: (userData as any).address.city || '',
+        state: (userData as any).address.state || '',
+        reference: (userData as any).address.reference || '',
+        isDefault: true,
+        type: 'casa'
+      }];
+    }
+    return loadedAddresses;
+  }, [userData]);
+
+  const handleCepLookup = async (value: string) => {
+    const formatted = formatCEP(value);
+    setCep(formatted);
+
+    const clean = formatted.replace(/\D/g, '');
+    if (clean.length === 8) {
+      setLoadingCep(true);
+      try {
+        const response = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+        const data = await response.json();
+        if (!data.erro) {
+          setRua(data.logradouro || '');
+          setAreaName(data.bairro || '');
+          setCityName(data.localidade || '');
+          setStateName(data.uf ? data.uf.toUpperCase() : '');
+        }
+      } catch (err) {
+        console.error("ViaCEP error in CartPage:", err);
+      } finally {
+        setLoadingCep(false);
+      }
+    }
+  };
+
+  const handleSelectSavedAddress = (addr: any) => {
+    setSelectedSavedAddressId(addr.id);
+    setCep(addr.cep ? formatCEP(addr.cep) : '');
+    setRua(addr.street || '');
+    setNumero(addr.number || '');
+    setComplemento(addr.complement || '');
+    setAreaName(addr.neighborhood || '');
+    setCityName(addr.city || '');
+    setStateName(addr.state || '');
+    setReferencia(addr.reference || '');
+  };
+
+  // Pre-select default address on load
+  useEffect(() => {
+    if (savedAddresses.length > 0 && !selectedSavedAddressId) {
+      const defaultAddr = savedAddresses.find((a: any) => a.isDefault) || savedAddresses[0];
+      if (defaultAddr) {
+        setSelectedSavedAddressId(defaultAddr.id);
+        setCep(defaultAddr.cep ? formatCEP(defaultAddr.cep) : '');
+        setRua(defaultAddr.street || '');
+        setNumero(defaultAddr.number || '');
+        setComplemento(defaultAddr.complement || '');
+        setAreaName(defaultAddr.neighborhood || '');
+        setCityName(defaultAddr.city || '');
+        setStateName(defaultAddr.state || '');
+        setReferencia(defaultAddr.reference || '');
+      }
+    }
+  }, [savedAddresses, selectedSavedAddressId]);
 
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
@@ -588,30 +675,56 @@ export function CartPage() {
     }
   };
 
-  // Preload from customer storage if we have one
+  // Preload and synchronize from authenticated user / customer session
   useEffect(() => {
-    if (currentCustomer) {
-      setName(currentCustomer.nome || '');
-      setWhatsapp(currentCustomer.whatsapp || '');
+    if (user && userData) {
+      setName(userData.fullName || '');
+      setWhatsapp(userData.whatsapp || '');
       setHasLookedUp(true);
-      if (currentCustomer.email) setEmail(currentCustomer.email);
-      if (currentCustomer.enderecoObj) {
-         setStateName(currentCustomer.enderecoObj.estado || '');
-         setCityName(currentCustomer.enderecoObj.cidade || '');
-         setAreaName(currentCustomer.enderecoObj.bairro || '');
-         setRua(currentCustomer.enderecoObj.rua || '');
-         setNumero(currentCustomer.enderecoObj.numero || '');
-         setComplemento(currentCustomer.enderecoObj.complemento || '');
-         setReferencia(currentCustomer.enderecoObj.referencia || '');
+      if (userData.email) setEmail(userData.email);
+      if (userData.address) {
+         setStateName(userData.address.state || '');
+         setCityName(userData.address.city || '');
+         setAreaName(userData.address.neighborhood || '');
+         setRua(userData.address.street || '');
+         setNumero(userData.address.number || '');
+         setComplemento(userData.address.complement || '');
+         setReferencia(userData.address.reference || '');
       }
-      lastSearchedPhone.current = currentCustomer.whatsapp.replace(/\D/g, '');
       
-      // If identified, normally we go to RESUMO unless specifically navigating steps
+      const cleanPhone = userData.whatsapp ? userData.whatsapp.replace(/\D/g, '') : '';
+      lastSearchedPhone.current = cleanPhone;
+
+      // Sync into customerAuthStore so rest of client pages share same session
+      if (!currentCustomer || currentCustomer.whatsapp !== cleanPhone || currentCustomer.nome !== userData.fullName) {
+        setCustomer({
+          id: user.uid,
+          nome: userData.fullName || '',
+          email: userData.email,
+          whatsapp: cleanPhone,
+          enderecoObj: userData.address ? {
+            rua: userData.address.street || '',
+            numero: userData.address.number || '',
+            bairro: userData.address.neighborhood || '',
+            cidade: userData.address.city || '',
+            estado: userData.address.state || '',
+            complemento: userData.address.complement || '',
+            referencia: userData.address.reference || '',
+          } : undefined,
+          favorites: userData.favorites || []
+        });
+      }
+
       if (checkoutStep === 'IDENTIFICACAO') {
         setCheckoutStep('RESUMO');
       }
+    } else if (!user) {
+      // If not logged in, force identification step
+      if (checkoutStep !== 'IDENTIFICACAO') {
+        setCheckoutStep('IDENTIFICACAO');
+      }
     }
-  }, [currentCustomer]);
+  }, [user, userData, currentCustomer, checkoutStep]);
 
   // Handle auto-login/identification logic
   const handleApplyCoupon = async () => {
@@ -921,6 +1034,7 @@ export function CartPage() {
     );
   }
 
+
   const validateIdentification = () => {
     if (!whatsapp || whatsapp.replace(/\D/g, '').length < 10) {
       toast("WhatsApp inválido.", 'warning');
@@ -995,9 +1109,22 @@ export function CartPage() {
     let fullAddressString = "Retirada na Loja";
 
     if (receiveMethod === 'entrega') {
-      const normState = normalizeStr(stateName);
-      const normCity = normalizeStr(cityName);
-      const normArea = normalizeStr(areaName);
+      const selectedAddress = savedAddresses.find((a: any) => a.id === selectedSavedAddressId);
+      
+      if (!selectedAddress) {
+        toast("Selecione um endereço de entrega.", "error");
+        return;
+      }
+
+      // Populate form state to keep validation logic happy,
+      // but use selectedAddress for addressObj and fullAddressString
+      setStateName(selectedAddress.state);
+      setCityName(selectedAddress.city);
+      setAreaName(selectedAddress.neighborhood);
+
+      const normState = normalizeStr(selectedAddress.state);
+      const normCity = normalizeStr(selectedAddress.city);
+      const normArea = normalizeStr(selectedAddress.neighborhood);
 
       const validState = dbStates.find(s => normalizeStr(s.sigla) === normState || normalizeStr(s.nome) === normState);
       const validCity = dbCities.find(c => normalizeStr(c.nome) === normCity);
@@ -1013,15 +1140,16 @@ export function CartPage() {
       }
 
       addressObj = { 
-        estado: validState.sigla, 
-        cidade: validCity.nome, 
-        bairro: validArea.bairro, 
-        rua, 
-        numero, 
-        complemento, 
-        referencia 
+        estado: selectedAddress.state, 
+        cidade: selectedAddress.city, 
+        bairro: selectedAddress.neighborhood, 
+        rua: selectedAddress.street, 
+        numero: selectedAddress.number, 
+        complemento: selectedAddress.complement, 
+        referencia: selectedAddress.reference,
+        cep: selectedAddress.cep ? selectedAddress.cep.replace(/\D/g, '') : ''
       };
-      fullAddressString = `${rua}, ${numero} - ${validArea.bairro}, ${validCity.nome}/${validState.sigla}. Ref: ${referencia}`;
+      fullAddressString = `${selectedAddress.street}, ${selectedAddress.number}${selectedAddress.complement ? ` - ${selectedAddress.complement}` : ''} - ${selectedAddress.neighborhood}, ${selectedAddress.city}/${selectedAddress.state}. Ref: ${selectedAddress.reference}`;
     }
     
     setLoading(true);
@@ -1306,55 +1434,51 @@ export function CartPage() {
                    className="space-y-8"
                 >
                   <div className="rounded-[2rem] border p-6 sm:p-10 shadow-2xl text-center transition-all duration-300" style={{ backgroundColor: cardBg, borderColor: borderCardHex }}>
-                    <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner transition-colors duration-300" style={{ backgroundColor: `${currentTheme.primaryColor}20`, color: currentTheme.primaryColor }}>
-                      <Search size={28} />
+                    <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner transition-colors duration-300 animate-pulse" style={{ backgroundColor: `${currentTheme.primaryColor}15`, color: currentTheme.primaryColor }}>
+                      <Lock size={28} />
                     </div>
                     <h2 className="text-2xl sm:text-3xl font-black italic uppercase tracking-tighter mb-2 storefront-check-title" style={{ color: cardText }}>Identificação</h2>
-                    <p className="text-xs sm:text-sm font-medium mb-8 max-w-sm mx-auto storefront-check-summary" style={{ color: subTextCardColor }}>
-                      Para continuar sua compra, precisamos saber quem você é.
+                    <p className="text-zinc-400 text-xs sm:text-sm font-semibold mb-8 max-w-sm mx-auto uppercase tracking-wide leading-relaxed storefront-check-summary" style={{ color: subTextCardColor }}>
+                      Para garantir a máxima segurança de sua compra, você precisa acessar sua conta de cliente.
                     </p>
 
-                    <form onSubmit={handleIdentification} className="max-w-sm mx-auto space-y-4">
-                      <div className="space-y-3">
-                        <div className="relative">
-                          <label className="block text-[10px] font-black mb-2 uppercase tracking-[3px] text-left px-2 storefront-check-label" style={{ color: subTextCardColor }}>WhatsApp *</label>
-                          <input 
-                            required 
-                            type="tel"
-                            value={whatsapp} 
-                            onChange={e => setWhatsapp(e.target.value)}
-                            className="w-full rounded-xl px-5 py-3 transition-all font-black text-lg sm:text-xl border storefront-check-field"
-                            style={{ 
-                              backgroundColor: currentTheme.backgroundColor, 
-                              color: bgText, 
-                              borderColor: borderHex 
-                            }}
-                            placeholder="(00) 00000-0000" 
-                          />
+                    <div className="max-w-md mx-auto space-y-6">
+                      {/* Vantagens do Cadastro / Login */}
+                      <div className="grid grid-cols-1 gap-2.5 text-left bg-black/30 p-4 rounded-2xl border mb-2 border-zinc-800" style={{ borderColor: borderHex }}>
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                          <CheckCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                          <span>Acompanhe seus pedidos em tempo real</span>
                         </div>
-                        {isNewCustomer && (
-                          <motion.div 
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            className="relative"
-                          >
-                            <label className="block text-[10px] font-black mb-2 uppercase tracking-[3px] text-left px-2 storefront-check-label" style={{ color: subTextCardColor }}>Como podemos te chamar? *</label>
-                            <input 
-                              required 
-                              value={name} 
-                              onChange={e => setName(e.target.value)}
-                              className="w-full rounded-xl px-5 py-3 transition-all font-bold text-base sm:text-lg border storefront-check-field"
-                              style={{ 
-                                backgroundColor: currentTheme.backgroundColor, 
-                                color: bgText, 
-                                borderColor: borderHex 
-                              }}
-                              placeholder="Seu Nome ou Apelido" 
-                            />
-                          </motion.div>
-                        )}
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                          <CheckCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                          <span>Aplique cupons e descontos exclusivos</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                          <CheckCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                          <span>Pontos de fidelidade em todas as compras</span>
+                        </div>
                       </div>
-                    </form>
+
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <Link 
+                          to="/login?redirect=/carrinho"
+                          className="flex-1 flex items-center justify-center gap-2.5 py-4 px-6 rounded-xl text-[11px] font-black uppercase tracking-widest text-center shadow-lg transition-all active:scale-[0.98] duration-300 hover:opacity-95"
+                          style={{ backgroundColor: actionButtonBg, color: actionButtonText }}
+                        >
+                          <LogIn size={15} />
+                          Entrar na Minha Conta
+                        </Link>
+
+                        <Link 
+                          to="/cadastro?redirect=/carrinho"
+                          className="flex-1 flex items-center justify-center gap-2.5 py-4 px-6 rounded-xl text-[11px] font-black uppercase tracking-widest text-center border transition-all active:scale-[0.98] duration-300 hover:bg-white/5"
+                          style={{ color: cardText, borderColor: borderHex }}
+                        >
+                          <User size={15} />
+                          Criar Novo Cadastro
+                        </Link>
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -1761,93 +1885,99 @@ export function CartPage() {
                       <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: currentTheme.primaryColor }}></div>
                       Endereço de Entrega
                     </h3>
+
+                    {savedAddresses.length > 0 && (
+                      <div className="mb-8 space-y-4">
+                        <label className="block text-[10px] font-black uppercase tracking-widest" style={{ color: labelTextColor }}>
+                          Seus Endereços Salvos
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {savedAddresses.map((addr: any) => {
+                            const isSelected = selectedSavedAddressId === addr.id;
+                            const Icon = addr.type === 'casa' ? Home : (addr.type === 'trabalho' ? Briefcase : MapPin);
+                            
+                            return (
+                              <div
+                                key={addr.id}
+                                onClick={() => handleSelectSavedAddress(addr)}
+                                className={cn(
+                                  "flex items-start text-left gap-3 p-4 rounded-2xl border transition duration-300 relative cursor-pointer",
+                                  isSelected 
+                                    ? "border-red-500 bg-red-500/5 shadow-md scale-[1.01]" 
+                                    : "border-zinc-800 bg-black/10 hover:border-zinc-700"
+                                )}
+                                style={isSelected ? { borderColor: currentTheme.primaryColor } : {}}
+                              >
+                                <div className="mt-0.5 rounded-lg p-2 bg-zinc-805 text-zinc-400">
+                                  <Icon size={16} style={isSelected ? { color: currentTheme.primaryColor } : {}} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 justify-between">
+                                    <span className="text-xs font-black uppercase tracking-wider text-white">
+                                      {addr.type || 'Endereço'} {addr.isDefault && (
+                                        <span className="text-[9px] font-black tracking-widest uppercase bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-full ml-1">Padrão</span>
+                                      )}
+                                    </span>
+                                    {isSelected && (
+                                      <CheckCircle size={14} style={{ color: currentTheme.primaryColor }} />
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-zinc-300 truncate mt-1">
+                                    {addr.street}, {addr.number} {addr.complement && `(${addr.complement})`}
+                                  </p>
+                                  <p className="text-[11px] text-zinc-400 truncate">
+                                    {addr.neighborhood} - {addr.city}/{addr.state}
+                                  </p>
+                                  {addr.cep && (
+                                    <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                                      CEP: {formatCEP(addr.cep)}
+                                    </p>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/area-cliente/enderecos?editAddressId=${addr.id}&from=carrinho`);
+                                  }}
+                                  className="text-[10px] font-black uppercase tracking-wider text-zinc-400 hover:text-white transition duration-200 ml-2"
+                                >
+                                  Editar
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigate('/area-cliente/enderecos?add=true&from=carrinho');
+                            }}
+                            className="text-[10px] font-black uppercase tracking-wider text-zinc-400 hover:text-white transition duration-200"
+                          >
+                            + Novo endereço de entrega
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     
-                    <div className="space-y-4 sm:space-y-6">
-                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Estado *</label>
-                          <input 
-                            required 
-                            list="estados-sugestoes" 
-                            value={stateName} 
-                            className="w-full rounded-xl px-4 py-3 uppercase font-bold text-sm border storefront-check-field" 
-                            style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
-                            onChange={e => setStateName(e.target.value.toUpperCase())} 
-                            onBlur={handleStateBlur}
-                            placeholder="UF" 
-                          />
-                        </div>
-                        <div className="col-span-1 sm:col-span-2">
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Cidade *</label>
-                          <input 
-                            required 
-                            list="cidades-sugestoes" 
-                            value={cityName} 
-                            className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
-                            onChange={e => setCityName(e.target.value)} 
-                            onBlur={handleCityBlur}
-                            placeholder="Sua cidade" 
-                          />
-                        </div>
+                      <div className="space-y-4 sm:space-y-6">
+                        <Button 
+                          onClick={async () => {
+                            if (validateIdentification()) {
+                              setCheckoutStep('AGENDAMENTO');
+                            }
+                          }}
+                          size="lg" 
+                          className="w-full py-6 text-base font-black italic uppercase tracking-widest rounded-2xl"
+                        >
+                          Agendar Entrega <Calendar size={18} className="ml-2" />
+                        </Button>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Bairro *</label>
-                          <input 
-                            required 
-                            list="bairros-sugestoes" 
-                            value={areaName} 
-                            className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }}
-                            onChange={e => setAreaName(e.target.value)} 
-                            onBlur={handleAreaBlur}
-                            placeholder="Seu bairro" 
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Rua / Avenida *</label>
-                          <input required value={rua} onChange={e => setRua(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Nome da rua" />
-                        </div>
-                      </div>
 
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Número *</label>
-                          <input required value={numero} onChange={e => setNumero(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Nº" />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Ponto de Referência *</label>
-                          <input required value={referencia} onChange={e => setReferencia(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Ex: Próximo à padaria..." />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[9px] font-black mb-2 uppercase tracking-widest storefront-check-label" style={{ color: subTextCardColor }}>Complemento (Opcional)</label>
-                        <input value={complemento} onChange={e => setComplemento(e.target.value)} className="w-full rounded-xl px-4 py-3 font-bold text-sm border storefront-check-field" style={{ backgroundColor: currentTheme.backgroundColor, color: bgText, borderColor: borderHex }} placeholder="Apto, Bloco, etc" />
-                      </div>
-
-                      <Button 
-                        onClick={() => {
-                          if (validateIdentification()) {
-                            setCheckoutStep('AGENDAMENTO');
-                          }
-                        }}
-                        size="lg" 
-                        className="w-full py-6 text-base font-black italic uppercase tracking-widest rounded-2xl"
-                      >
-                        Agendar Entrega <Calendar size={18} className="ml-2" />
-                      </Button>
-                    </div>
-
-                    <datalist id="estados-sugestoes">
-                      {dbStates.map(state => <option key={state.id} value={state.sigla}>{state.nome}</option>)}
-                    </datalist>
-                    <datalist id="cidades-sugestoes">
-                      {availableCities.map(city => <option key={city.id} value={city.nome} />)}
-                    </datalist>
-                    <datalist id="bairros-sugestoes">
-                      {availableBairros.map(bairro => <option key={bairro.id} value={bairro.bairro} />)}
-                    </datalist>
                   </div>
                 </motion.div>
               )}
@@ -2091,7 +2221,7 @@ export function CartPage() {
       </div>
 
       {/* Fixed Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 w-full backdrop-blur-xl border-t p-3 sm:p-4 z-[60] lg:z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] transition-all duration-300"
+      <div className="fixed bottom-16 md:bottom-0 left-0 w-full backdrop-blur-xl border-t p-3 sm:p-4 z-[60] lg:z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] transition-all duration-300"
         style={{ backgroundColor: `${currentTheme.backgroundColor}dd`, borderColor: borderHex }}
       >
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
@@ -2103,12 +2233,12 @@ export function CartPage() {
           <div className="w-full sm:w-auto min-w-[260px] sm:min-w-[280px]">
             {checkoutStep === 'IDENTIFICACAO' && (
               <Button 
-                onClick={handleIdentification}
-                disabled={loading || !whatsapp || (isNewCustomer && !name)}
-                className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all disabled:opacity-30 storefront-cart-btn hover:opacity-90"
+                onClick={() => navigate('/login?redirect=/carrinho')}
+                className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all storefront-cart-btn hover:opacity-90 flex items-center justify-center gap-2"
                 style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
               >
-                {loading ? 'Processando...' : 'Continuar'} <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
+                <LogIn className="w-4 h-4 sm:w-5 sm:h-5" />
+                Continuar para o Login <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             )}
 

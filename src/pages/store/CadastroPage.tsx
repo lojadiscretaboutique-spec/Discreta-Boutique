@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
@@ -9,6 +9,7 @@ import {
   ArrowRight, ArrowLeft, Check, AlertCircle, Eye, EyeOff, ShieldCheck
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../contexts/ThemeContext';
 
 // Tradução de erros comuns do Firebase Auth
 const getFriendlyErrorMessage = (errorCode: string): string => {
@@ -89,6 +90,7 @@ const validateCPF = (cpf: string): boolean => {
 export const CadastroPage = () => {
     const { user } = useAuthStore();
     const navigate = useNavigate();
+    const { currentTheme } = useTheme();
 
     // Estado geral de controle de passos (wizard)
     // Passo 1: Dados Pessoais
@@ -126,12 +128,15 @@ export const CadastroPage = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+    const [searchParams] = useSearchParams();
+    const redirectTo = searchParams.get('redirect') || '/area-cliente';
+
     // Bloqueia acesso caso já esteja logado
     useEffect(() => {
         if (user) {
-            navigate('/area-cliente', { replace: true });
+            navigate(redirectTo, { replace: true });
         }
-    }, [user, navigate]);
+    }, [user, navigate, redirectTo]);
 
     const normalizeCity = (cityStr: string) => {
         return cityStr.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -424,46 +429,54 @@ export const CadastroPage = () => {
     };
 
     return (
-        <div className="relative min-h-screen w-full flex items-center justify-center p-4 bg-black text-white overflow-hidden font-sans">
+        <div className="relative min-h-screen lg:h-screen w-full flex flex-col items-center justify-center p-3 sm:p-6 bg-black text-white overflow-hidden font-sans">
             {/* Efeitos de Luz e Neon Vermelho de Fundo */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-red-900/10 blur-[130px] rounded-full pointer-events-none" />
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[400px] h-[400px] bg-red-950/10 blur-[110px] rounded-full pointer-events-none" />
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[400px] h-[400px] bg-red-900/10 blur-[100px] rounded-full pointer-events-none" />
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[250px] h-[250px] bg-red-950/10 blur-[80px] rounded-full pointer-events-none" />
 
             {/* Back to Home Link */}
-            <div className="absolute top-4 left-4 md:top-6 md:left-6 z-10 font-sans">
+            <div className="absolute top-3 left-3 md:top-6 md:left-6 z-10 font-sans">
                 <Link 
                     to="/" 
-                    className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-xs sm:text-sm font-medium"
+                    className="flex items-center gap-1.5 text-zinc-400 hover:text-white transition text-xs sm:text-sm font-medium"
                 >
                     <ArrowLeft className="h-3.5 w-3.5" /> Voltar para a Loja
                 </Link>
             </div>
 
-            <div className="w-full max-w-xl z-20 font-sans py-12">
+            <div className="w-full max-w-lg sm:max-w-xl z-20 font-sans py-4 flex flex-col items-center">
                 {/* Logo Area */}
-                <div className="mb-8 text-center flex flex-col items-center">
-                    <Link to="/" className="inline-block">
-                        <img 
-                            src="/logo.png" 
-                            alt="Discreta Boutique" 
-                            className="h-16 mx-auto hover:opacity-95 transition duration-300"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => {
-                                (e.target as HTMLElement).style.display = 'none';
-                            }}
-                        />
-                        <div className="text-white tracking-[0.25em] font-black italic text-2xl mt-3 text-center">
-                            DISCRETA <span className="text-red-500 animate-pulse">BOUTIQUE</span>
-                        </div>
+                <div className="mb-4 text-center">
+                    <Link to="/" className="inline-block max-w-[180px] sm:max-w-[240px]">
+                        {(() => {
+                            const lh = currentTheme?.branding?.logoHorizontal;
+                            const url = typeof lh === 'string' ? lh : lh?.url;
+                            if (url) {
+                                return (
+                                    <img 
+                                        src={url} 
+                                        alt={currentTheme?.branding?.appName || "Discreta Boutique"} 
+                                        className="mx-auto hover:opacity-95 transition duration-300 object-contain"
+                                        style={{ width: '130px', minWidth: '100px', maxWidth: '150px', height: 'auto' }}
+                                        referrerPolicy="no-referrer"
+                                    />
+                                );
+                            }
+                            return (
+                                <div className="text-white tracking-[0.15em] font-black italic text-base sm:text-lg text-center leading-tight">
+                                    DISCRETA <span className="text-red-500 animate-pulse">BOUTIQUE</span>
+                                </div>
+                            );
+                        })()}
                     </Link>
                 </div>
 
                 {/* Card Container */}
                 <motion.div 
-                    initial={{ opacity: 0, y: 30 }}
+                    initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
-                    className="w-full rounded-3xl bg-zinc-950/80 border border-zinc-900/60 p-5 sm:p-8 shadow-[0_0_35px_rgba(239,68,68,0.06)] backdrop-blur-md"
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                    className="w-full rounded-2xl bg-zinc-950/85 border border-zinc-900 bg-black/90 p-4 sm:p-6 shadow-[0_0_20px_rgba(239,68,68,0.03)] backdrop-blur-md max-h-[75vh] overflow-y-auto no-scrollbar"
                 >
                     {successMessage ? (
                         <div className="text-center font-sans py-4 flex flex-col items-center gap-6">
@@ -533,69 +546,69 @@ export const CadastroPage = () => {
                                 animate={{ opacity: 1, x: 0 }}
                                 exit={{ opacity: 0, x: 15 }}
                                 transition={{ duration: 0.2 }}
-                                className="space-y-4"
+                                className="space-y-3"
                             >
-                                <div className="mb-4">
-                                    <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                                <div className="mb-3">
+                                    <h2 className="text-lg md:text-xl font-bold tracking-tight text-white flex items-center gap-2">
                                         <User className="h-5 w-5 text-red-500" /> Seus Dados Pessoais
                                     </h2>
-                                    <p className="text-zinc-500 text-xs">Precisamos das suas informações essenciais para faturamento e validação sigilosa.</p>
+                                    <p className="text-zinc-500 text-[10px] md:text-xs">Precisamos das suas informações essenciais para faturamento e validação sigilosa.</p>
                                 </div>
 
-                                <div className="space-y-4">
+                                <div className="space-y-3">
                                     <div>
-                                        <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Nome Completo</label>
+                                        <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Nome Completo</label>
                                         <input 
                                             type="text" 
                                             placeholder="Ex: Maria Eduarda Silva"
                                             value={fullName}
                                             onChange={e => setFullName(e.target.value)}
-                                            className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                            className="w-full px-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                         />
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                                         <div>
-                                            <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">CPF</label>
+                                            <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">CPF</label>
                                             <div className="relative">
-                                                <CreditCard className="absolute left-3.5 top-3.5 h-5 w-5 text-zinc-500" />
+                                                <CreditCard className="absolute left-3.5 top-2.5 md:top-3 h-4 w-4 md:h-5 md:w-5 text-zinc-500" />
                                                 <input 
                                                     type="text" 
                                                     placeholder="000.000.000-00"
                                                     value={cpf}
                                                     onChange={e => setCpf(formatCPF(e.target.value))}
-                                                    className="w-full pl-11 pr-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                    className="w-full pl-11 pr-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                                 />
                                             </div>
                                         </div>
 
                                         <div>
-                                            <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Data de Nascimento</label>
+                                            <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Data de Nascimento</label>
                                             <div className="relative">
-                                                <Calendar className="absolute left-3.5 top-3.5 h-5 w-5 text-zinc-500" />
+                                                <Calendar className="absolute left-3.5 top-2.5 md:top-3 h-4 w-4 md:h-5 md:w-5 text-zinc-500" />
                                                 <input 
                                                     type="date"
                                                     value={birthDate}
                                                     onChange={e => setBirthDate(e.target.value)}
-                                                    className="w-full pl-11 pr-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                    className="w-full pl-11 pr-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                                 />
                                             </div>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">WhatsApp</label>
+                                        <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">WhatsApp</label>
                                         <div className="relative">
-                                            <Phone className="absolute left-3.5 top-3.5 h-5 w-5 text-zinc-500" />
+                                            <Phone className="absolute left-3.5 top-2.5 md:top-3 h-4 w-4 md:h-5 md:w-5 text-zinc-500" />
                                             <input 
                                                 type="text" 
                                                 placeholder="(00) 00000-0000"
                                                 value={whatsapp}
                                                 onChange={e => setWhatsapp(formatWhatsApp(e.target.value))}
-                                                className="w-full pl-11 pr-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                className="w-full pl-11 pr-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                             />
                                         </div>
-                                        <span className="text-[10px] text-zinc-600 mt-1 block">Será usado estritamente para envio de atualizações sigilosas e privadas do pedido.</span>
+                                        <span className="text-[9px] text-zinc-600 mt-1 block">Será usado estritamente para envio de atualizações sigilosas e privadas do pedido.</span>
                                     </div>
                                 </div>
 
@@ -604,9 +617,9 @@ export const CadastroPage = () => {
                                     onClick={() => {
                                         if (validateStep1()) setStep(2);
                                     }}
-                                    className="w-full mt-6 py-3.5 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer font-sans"
+                                    className="w-full mt-4 py-2 md:py-2.5 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer font-sans text-xs sm:text-sm"
                                 >
-                                    <span>Continuar</span> <ArrowRight className="h-5 w-5" />
+                                    <span>Continuar</span> <ArrowRight className="h-4 w-4" />
                                 </button>
                             </motion.div>
                         )}
@@ -618,154 +631,154 @@ export const CadastroPage = () => {
                                 animate={{ opacity: 1, x: 0 }}
                                 exit={{ opacity: 0, x: 15 }}
                                 transition={{ duration: 0.2 }}
-                                className="space-y-4"
+                                className="space-y-3"
                             >
-                                <div className="mb-4">
-                                    <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                                <div className="mb-3">
+                                    <h2 className="text-lg md:text-xl font-bold tracking-tight text-white flex items-center gap-2">
                                         <MapPin className="h-5 w-5 text-red-500" /> Endereço de Envio Sigiloso
                                     </h2>
-                                    <p className="text-zinc-500 text-xs">Entregas 100% discretas. Nenhuma menção sex-shop ou produto aparecerá na etiqueta externa.</p>
+                                    <p className="text-zinc-500 text-[10px] md:text-xs">Entregas 100% discretas. Nenhuma menção sex-shop ou produto aparecerá na etiqueta externa.</p>
                                 </div>
 
-                                <div className="mb-2">
+                                <div className="mb-1.5">
                                     <button
                                         type="button"
                                         onClick={handleGetLocation}
                                         disabled={loadingLocation}
-                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 hover:bg-zinc-850 active:scale-[0.98] border border-zinc-800 hover:border-red-500/40 rounded-xl transition-all duration-300 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50 cursor-pointer"
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-850 active:scale-[0.98] border border-zinc-800 hover:border-red-500/40 rounded-xl transition-all duration-300 text-[10px] md:text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50 cursor-pointer"
                                     >
                                         {loadingLocation ? (
                                             <>
-                                                <div className="h-4 w-4 border-2 border-red-500 border-t-white rounded-full animate-spin" />
+                                                <div className="h-3.5 w-3.5 border-2 border-red-500 border-t-white rounded-full animate-spin" />
                                                 <span>Buscando sua localização...</span>
                                             </>
                                         ) : (
                                             <>
-                                                <MapPin className="h-4 w-4 text-red-500 shrink-0" />
-                                                <span>Definir endereço pela minha localização</span>
+                                                <MapPin className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                                                <span>Definir endereço pela localização</span>
                                             </>
                                         )}
                                     </button>
                                 </div>
 
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                                         <div>
-                                            <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">CEP</label>
+                                            <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">CEP</label>
                                             <div className="relative">
                                                 <input 
                                                     type="text" 
                                                     placeholder="00000-00"
                                                     value={cep}
                                                     onChange={handleCepChange}
-                                                    className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                    className="w-full px-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                                 />
                                                 {loadingCep && (
-                                                    <div className="absolute right-3.5 top-3.5 h-5 w-5 border-2 border-red-500 border-t-zinc-600 rounded-full animate-spin" />
+                                                    <div className="absolute right-3.5 top-2.5 md:top-3 h-4 w-4 border-2 border-red-500 border-t-zinc-600 rounded-full animate-spin" />
                                                 )}
                                             </div>
                                         </div>
 
                                         <div>
-                                            <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Bairro</label>
+                                            <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Bairro</label>
                                             <input 
                                                 type="text" 
                                                 placeholder="Nome do Bairro"
                                                 value={neighborhood}
                                                 onChange={e => setNeighborhood(e.target.value)}
-                                                className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                className="w-full px-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                             />
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Rua / Logradouro</label>
+                                        <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Rua / Logradouro</label>
                                         <input 
                                             type="text" 
                                             placeholder="Ex: Avenida Copacabana"
                                             value={street}
                                             onChange={e => setStreet(e.target.value)}
-                                            className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                            className="w-full px-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                         />
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                                         <div>
-                                            <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Número</label>
+                                            <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Número</label>
                                             <input 
                                                 type="text" 
                                                 placeholder="Ex: 52"
                                                 value={number}
                                                 onChange={e => setNumber(e.target.value)}
-                                                className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                className="w-full px-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                             />
                                         </div>
 
                                         <div className="md:col-span-2">
-                                            <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Complemento (Opcional)</label>
+                                            <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Complemento (Opcional)</label>
                                             <input 
                                                 type="text" 
                                                 placeholder="Ex: Apto 302, Bloco B"
                                                 value={complement}
                                                 onChange={e => setComplement(e.target.value)}
-                                                className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                className="w-full px-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                             />
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                                         <div>
-                                            <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Cidade</label>
+                                            <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Cidade</label>
                                             <input 
                                                 type="text" 
                                                 placeholder="Ex: Rio de Janeiro"
                                                 value={city}
                                                 onChange={e => setCity(e.target.value)}
-                                                className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                className="w-full px-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                             />
                                         </div>
 
                                         <div>
-                                            <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Estado (UF)</label>
+                                            <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Estado (UF)</label>
                                             <input 
                                                 maxLength={2}
                                                 type="text" 
                                                 placeholder="Ex: RJ"
                                                 value={state}
                                                 onChange={e => setState(e.target.value)}
-                                                className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans uppercase"
+                                                className="w-full px-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans uppercase"
                                             />
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Ponto de Referência (Opcional)</label>
+                                        <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Ponto de Referência (Opcional)</label>
                                         <input 
                                             type="text" 
                                             placeholder="Ex: Ao lado do mercado, portão azul."
                                             value={reference}
                                             onChange={e => setReference(e.target.value)}
-                                            className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                            className="w-full px-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                         />
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4 mt-6">
+                                <div className="grid grid-cols-2 gap-4 mt-5">
                                     <button 
                                         type="button" 
                                         onClick={() => setStep(1)}
-                                        className="py-3.5 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl font-bold transition flex items-center justify-center gap-2 cursor-pointer font-sans"
+                                        className="py-2.5 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer font-sans"
                                     >
-                                        <ArrowLeft className="h-5 w-5" /> Voltar
+                                        <ArrowLeft className="h-4 w-4" /> Voltar
                                     </button>
                                     <button 
                                         type="button" 
                                         onClick={() => {
                                             if (validateStep2()) setStep(3);
                                         }}
-                                        className="py-3.5 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white rounded-xl font-bold transition flex items-center justify-center gap-2 cursor-pointer font-sans"
+                                        className="py-2.5 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer font-sans"
                                     >
-                                        Continuar <ArrowRight className="h-5 w-5" />
+                                        Continuar <ArrowRight className="h-4 w-4" />
                                     </button>
                                 </div>
                             </motion.div>
@@ -778,87 +791,87 @@ export const CadastroPage = () => {
                                 animate={{ opacity: 1, x: 0 }}
                                 exit={{ opacity: 0, x: 15 }}
                                 transition={{ duration: 0.2 }}
-                                className="space-y-4"
+                                className="space-y-3"
                             >
-                                <div className="mb-4">
-                                    <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                                <div className="mb-3">
+                                    <h2 className="text-lg md:text-xl font-bold tracking-tight text-white flex items-center gap-2">
                                         <ShieldCheck className="h-5 w-5 text-red-500" /> Acesso & Segurança
                                     </h2>
-                                    <p className="text-zinc-500 text-xs">Configure seus dados de acesso restrito com segurança criptografada.</p>
+                                    <p className="text-zinc-500 text-[10px] md:text-xs">Configure seus dados de acesso restrito com segurança criptografada.</p>
                                 </div>
 
-                                <form onSubmit={handleCadastroSubmit} className="space-y-4">
+                                <form onSubmit={handleCadastroSubmit} className="space-y-3">
                                     <div>
-                                        <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">E-mail</label>
+                                        <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">E-mail</label>
                                         <div className="relative">
-                                            <Mail className="absolute left-3.5 top-3.5 h-5 w-5 text-zinc-500" />
+                                            <Mail className="absolute left-3.5 top-2.5 md:top-3 h-4 w-4 md:h-5 md:w-5 text-zinc-500" />
                                             <input 
                                                 required
                                                 type="email" 
                                                 placeholder="Ex: mariadosilva@exemplo.com"
                                                 value={email}
                                                 onChange={e => setEmail(e.target.value)}
-                                                className="w-full pl-11 pr-4 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                className="w-full pl-11 pr-4 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                             />
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                                         <div>
-                                            <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Senha</label>
+                                            <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Senha</label>
                                             <div className="relative">
-                                                <Lock className="absolute left-3.5 top-3.5 h-5 w-5 text-zinc-500" />
+                                                <Lock className="absolute left-3.5 top-2.5 md:top-3 h-4 w-4 md:h-5 md:w-5 text-zinc-500" />
                                                 <input 
                                                     required
                                                     type={showPassword ? "text" : "password"}
                                                     placeholder="Mínimo de 6 dígitos"
                                                     value={password}
                                                     onChange={e => setPassword(e.target.value)}
-                                                    className="w-full pl-11 pr-11 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                    className="w-full pl-11 pr-11 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                                 />
                                                 <button 
                                                     type="button"
                                                     onClick={() => setShowPassword(!showPassword)}
-                                                    className="absolute right-3.5 top-3.5 text-zinc-500 hover:text-zinc-300 transition"
+                                                    className="absolute right-3.5 top-2.5 md:top-3 text-zinc-500 hover:text-zinc-300 transition animate-fade-in"
                                                 >
-                                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                                    {showPassword ? <EyeOff className="h-4 w-4 md:h-5 md:w-5" /> : <Eye className="h-4 w-4 md:h-5 md:w-5" />}
                                                 </button>
                                             </div>
                                         </div>
 
                                         <div>
-                                            <label className="block text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-2">Confirmar Senha</label>
+                                            <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">Confirmar Senha</label>
                                             <div className="relative">
-                                                <Lock className="absolute left-3.5 top-3.5 h-5 w-5 text-zinc-500" />
+                                                <Lock className="absolute left-3.5 top-2.5 md:top-3 h-4 w-4 md:h-5 md:w-5 text-zinc-500" />
                                                 <input 
                                                     required
                                                     type={showConfirmPassword ? "text" : "password"}
                                                     placeholder="Repita sua senha"
                                                     value={confirmPassword}
                                                     onChange={e => setConfirmPassword(e.target.value)}
-                                                    className="w-full pl-11 pr-11 py-3 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-white placeholder-zinc-600 font-sans"
+                                                    className="w-full pl-11 pr-11 py-2 md:py-2.5 bg-zinc-900/50 border border-zinc-800 focus:border-red-500/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-red-500/50 transition duration-300 text-xs sm:text-sm text-white placeholder-zinc-650 font-sans"
                                                 />
                                                 <button 
                                                     type="button"
                                                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                                    className="absolute right-3.5 top-3.5 text-zinc-500 hover:text-zinc-300 transition"
+                                                    className="absolute right-3.5 top-2.5 md:top-3 text-zinc-500 hover:text-zinc-300 transition animate-fade-in"
                                                 >
-                                                    {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                                    {showConfirmPassword ? <EyeOff className="h-4 w-4 md:h-5 md:w-5" /> : <Eye className="h-4 w-4 md:h-5 md:w-5" />}
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
 
                                     {/* Termos de Uso */}
-                                    <div className="pt-2">
+                                    <div className="pt-1 select-none">
                                         <label className="flex items-start gap-3 cursor-pointer select-none">
                                             <input 
                                                 type="checkbox"
                                                 checked={acceptedTerms}
                                                 onChange={e => setAcceptedTerms(e.target.checked)}
-                                                className="mt-1 h-4 w-4 bg-zinc-900 border-zinc-800 text-red-600 focus:ring-red-500/40 rounded border cursor-pointer"
+                                                className="mt-0.5 h-3.5 w-3.5 bg-zinc-900 border-zinc-800 text-red-600 focus:ring-red-500/40 rounded border cursor-pointer"
                                             />
-                                            <span className="text-xs text-zinc-400 font-medium leading-relaxed">
+                                            <span className="text-[10px] text-zinc-400 font-medium leading-relaxed">
                                                 Li e concordo com os{' '}
                                                 <Link to="/lgpd" className="text-red-500 hover:underline font-bold transition">
                                                     Termos de Uso
@@ -872,22 +885,22 @@ export const CadastroPage = () => {
                                         </label>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 pt-4">
+                                    <div className="grid grid-cols-2 gap-4 pt-3">
                                         <button 
                                             type="button" 
                                             onClick={() => setStep(2)}
-                                            className="py-3.5 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl font-bold transition flex items-center justify-center gap-2 cursor-pointer font-sans"
+                                            className="py-2.5 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer font-sans"
                                         >
-                                            <ArrowLeft className="h-5 w-5" /> Voltar
+                                            <ArrowLeft className="h-4 w-4" /> Voltar
                                         </button>
                                         <button 
                                             type="submit" 
                                             disabled={loading}
-                                            className="py-3.5 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white rounded-xl font-bold transition-all duration-300 shadow-[0_0_20px_rgba(239,68,68,0.25)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
+                                            className="py-2.5 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white rounded-xl font-bold text-xs sm:text-sm transition-all duration-300 shadow-[0_0_20px_rgba(239,68,68,0.25)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
                                         >
                                             {loading ? (
                                                 <div className="flex items-center gap-2">
-                                                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                    <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                                     <span>Cadastrando...</span>
                                                 </div>
                                             ) : (
@@ -906,7 +919,7 @@ export const CadastroPage = () => {
                 {/* Footer Section */}
                 <p className="mt-8 text-center text-sm text-zinc-500">
                     Já possui um cadastro ativo?{' '}
-                    <Link to="/login" className="text-red-500 font-bold hover:text-red-400 hover:underline transition">
+                    <Link to={`/login${redirectTo !== '/area-cliente' ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`} className="text-red-500 font-bold hover:text-red-400 hover:underline transition">
                         Entrar na minha conta
                     </Link>
                 </p>

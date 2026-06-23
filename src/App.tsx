@@ -9,20 +9,21 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { TypographyProvider } from './contexts/TypographyContext';
 import { cacheService } from './services/cacheService';
 import { useAuthStore } from './store/authStore';
+import HomePage from './pages/store/HomePage';
+import { CatalogPage } from './pages/store/CatalogPage';
+import { ProductPage } from './pages/store/ProductPage';
+import { CartPage } from './pages/store/CartPage';
+import { LoginPage } from './pages/store/LoginPage';
+import { CadastroPage } from './pages/store/CadastroPage';
+import { AtivacaoContaPage } from './pages/store/AtivacaoContaPage';
+import { SuccessPage } from './pages/store/SuccessPage';
+import { CustomerAreaPage } from './pages/store/CustomerAreaPage';
+import { AreaClienteLayout } from './layouts/AreaClienteLayout';
+import { LiveShopPage } from './pages/store/LiveShopPage';
 
 const AdminLayout = lazy(() => import('./layouts/AdminLayout').then(m => ({ default: m.AdminLayout })));
 
 // Store Pages
-const HomePage = lazy(() => import('./pages/store/HomePage'));
-const CatalogPage = lazy(() => import('./pages/store/CatalogPage').then(m => ({ default: m.CatalogPage })));
-const ProductPage = lazy(() => import('./pages/store/ProductPage').then(m => ({ default: m.ProductPage })));
-const CartPage = lazy(() => import('./pages/store/CartPage').then(m => ({ default: m.CartPage })));
-const LoginPage = lazy(() => import('./pages/store/LoginPage').then(m => ({ default: m.LoginPage })));
-const CadastroPage = lazy(() => import('./pages/store/CadastroPage').then(m => ({ default: m.CadastroPage })));
-const AtivacaoContaPage = lazy(() => import('./pages/store/AtivacaoContaPage').then(m => ({ default: m.AtivacaoContaPage })));
-const SuccessPage = lazy(() => import('./pages/store/SuccessPage').then(m => ({ default: m.SuccessPage })));
-const CustomerAreaPage = lazy(() => import('./pages/store/CustomerAreaPage').then(m => ({ default: m.CustomerAreaPage })));
-const AreaClienteLayout = lazy(() => import('./layouts/AreaClienteLayout').then(m => ({ default: m.AreaClienteLayout })));
 const CustomerAccountDataPage = lazy(() => import('./pages/store/area-cliente/CustomerAccountDataPage').then(m => ({ default: m.CustomerAccountDataPage })));
 const CustomerOrdersPage = lazy(() => import('./pages/store/area-cliente/CustomerOrdersPage').then(m => ({ default: m.CustomerOrdersPage })));
 const CustomerAddressesPage = lazy(() => import('./pages/store/area-cliente/CustomerAddressesPage').then(m => ({ default: m.CustomerAddressesPage })));
@@ -84,7 +85,6 @@ const AdminPrinterConfig = lazy(() => import('./pages/admin/AdminPrinterConfig')
 const AdminLiveShop = lazy(() => import('./pages/admin/marketing/AdminLiveShop').then(m => ({ default: m.AdminLiveShop })));
 const AdminStoryShopManager = lazy(() => import('./pages/admin/marketing/AdminStoryShopManager').then(m => ({ default: m.AdminStoryShopManager })));
 const AdminWifiUsers = lazy(() => import('./pages/admin/marketing/AdminWifiUsers'));
-const LiveShopPage = lazy(() => import('./pages/store/LiveShopPage').then(m => ({ default: m.LiveShopPage })));
 
 // Public Blog Pages
 const BlogPage = lazy(() => import('./pages/store/blog/BlogPage').then(m => ({ default: m.BlogPage })));

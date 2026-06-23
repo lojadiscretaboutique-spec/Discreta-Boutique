@@ -209,7 +209,7 @@ export const homeCacheService = {
       // Map to brief/essential fields for public home cache (drastically reduced payload)
       const visibleProducts = rawVisibleProducts.map(p => {
         const placeholderImg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='400' viewBox='0 0 300 400'><rect width='100%' height='100%' fill='%2309090b'/><text x='50%' y='50%' font-family='sans-serif' font-size='12' font-weight='bold' fill='%2327272a' dominant-baseline='middle' text-anchor='middle' letter-spacing='4'>DISCRETA BOUTIQUE</text></svg>";
-        const imageThumb = p.imageThumb || (p as any).thumbnailUrl || p.imageUrl || (p as any).mainImage || (p.images && p.images.find(i => i.isMain)?.url) || (p.images && p.images[0]?.url) || placeholderImg;
+        const imageThumb = p.imageThumb || (p as any).thumbnailUrl || p.imageUrl || (p as any).mainImage || (p.images && p.images.find((i: any) => i.isMain)?.url) || (p.images && p.images[0]?.url) || placeholderImg;
         return {
           id: p.id,
           name: p.name || '',

@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { useAuthStore } from '../../store/authStore';
 import { useCartStore } from '../../store/cartStore';
 import { formatCurrency, cn, formatVariantName } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
-import { ArrowLeft, Check, ShoppingBag, Package, Zap, Share2, Truck, Tag, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Check, ShoppingBag, Package, Zap, Share2, Truck, Tag, AlertCircle, Heart } from 'lucide-react';
 import { Product, ProductVariant, productService } from '../../services/productService';
 import { ProductVariationSelector } from '../../components/product/ProductVariationSelector';
 import { motion } from 'motion/react';
 import { usePromotion } from '../../contexts/PromotionContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useCustomerAuthStore } from '../../store/customerAuthStore';
+import { customerService } from '../../services/customerService';
 import { getAutoTextColor } from '../../utils/themeUtils';
 import { getComboReservedStocks, adjustProductAndVariantsWithReservations } from '../../utils/comboStockHelper';
 
@@ -61,6 +64,58 @@ export function ProductPage() {
     mensagem: string;
   } | null>(null);
   const addItem = useCartStore(s => s.addItem);
+
+  const { user, userData } = useAuthStore();
+  const { currentCustomer, toggleFavorite } = useCustomerAuthStore();
+  
+  const favoritesList = userData?.favorites || currentCustomer?.favorites || [];
+  const isFavorited = !!(product?.id && favoritesList.includes(product.id));
+
+  const handleToggleFavorite = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!product?.id) return;
+    
+    if (!user && !currentCustomer) {
+      navigate('/login');
+      return;
+    }
+
+    const newFavorites = isFavorited
+      ? favoritesList.filter(id => id !== product.id!)
+      : [...favoritesList, product.id!];
+
+    if (currentCustomer?.id) {
+      toggleFavorite(product.id!);
+      try {
+        await customerService.toggleFavorite(currentCustomer.id, product.id!, newFavorites);
+      } catch (err) {
+        console.error("Erro ao salvar favorito do cliente local:", err);
+      }
+    }
+
+    if (user?.uid) {
+      useAuthStore.setState((state) => {
+        const prevUserData = state.userData || { role: 'customer', active: true };
+        return {
+          userData: {
+            ...prevUserData,
+            favorites: newFavorites
+          }
+        };
+      });
+
+      try {
+        const userRef = doc(db, 'users', user.uid);
+        await updateDoc(userRef, {
+          favorites: newFavorites,
+          updatedAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Erro ao salvar favorito no Firestore de usuários:", err);
+      }
+    }
+  };
 
   const triggerError = (msg: string) => {
     setErrorAlert(msg);
@@ -396,6 +451,18 @@ export function ProductPage() {
                       </span>
                     </div>
                   )}
+                  
+                  {/* Floating Favorite Heart Button */}
+                  <button 
+                    onClick={handleToggleFavorite}
+                    className={cn(
+                      "absolute top-8 right-8 p-3.5 transition-all duration-300 z-20 cursor-pointer rounded-full",
+                      isFavorited ? "bg-transparent text-red-600 hover:scale-110" : "bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 hover:scale-105 shadow-xl"
+                    )}
+                    title={isFavorited ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+                  >
+                    <Heart size={20} fill={isFavorited ? "currentColor" : "none"} className="transition-transform duration-300 active:scale-125" />
+                  </button>
                 </>
               ) : (
                 <div 

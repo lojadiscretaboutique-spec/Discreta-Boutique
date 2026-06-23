@@ -189,5 +189,13 @@ export const userService = {
   async deleteUser(id: string) {
       await deleteDoc(doc(db, 'users', id));
       await auditLogService.logAction('Excluir', 'users', id, {});
+  },
+
+  async updateUserFavorites(uid: string, favorites: string[]): Promise<void> {
+    const ref = doc(db, 'users', uid);
+    await updateDoc(ref, {
+      favorites: favorites,
+      updatedAt: serverTimestamp()
+    });
   }
 };

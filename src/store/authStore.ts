@@ -15,6 +15,8 @@ interface AuthStore {
   isLoading: boolean;
   checkAuth: () => void;
   hasPermission: (module: string, action?: string) => boolean;
+  setUserData: (userData: any) => void;
+  reloadUserData: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
@@ -22,6 +24,22 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   userData: null,
   isAdmin: false,
   isLoading: true,
+  setUserData: (userData) => {
+    set({ userData });
+  },
+  reloadUserData: async () => {
+    const { user } = get();
+    if (!user) return;
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const uData = userDoc.data();
+        set({ userData: uData as any });
+      }
+    } catch (e) {
+      console.error("Error reloading user data:", e);
+    }
+  },
   checkAuth: () => {
     onAuthStateChanged(auth, async (user) => {
       if (user) {

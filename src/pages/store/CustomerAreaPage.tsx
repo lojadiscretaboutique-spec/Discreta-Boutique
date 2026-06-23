@@ -15,6 +15,9 @@ import {
   Bell, Award, CheckCircle, Clock, ShoppingBag, Send
 } from 'lucide-react';
 
+import { ProductGridCard } from './CatalogPage';
+import { productService } from '../../services/productService';
+
 // Tradução amigável de erros de senha
 const getPasswordErrorMessage = (errorCode: string): string => {
     switch (errorCode) {
@@ -114,7 +117,7 @@ interface Order {
 }
 
 export const CustomerAreaPage = () => {
-    const { user, isLoading: authLoading } = useAuthStore();
+    const { user, userData, setUserData, isLoading: authLoading } = useAuthStore();
     const navigate = useNavigate();
 
     // Estados da página
@@ -183,7 +186,7 @@ export const CustomerAreaPage = () => {
     const [addresses, setAddresses] = useState<any[]>([]);
     const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [addressType, setAddressType] = useState('casa'); // 'casa', 'trabalho', 'outro'
+    const [addressType, setAddressType] = useState('outro'); // 'casa', 'trabalho', 'outro'
     const [customAddressType, setCustomAddressType] = useState('');
 
     // Mudança de Senha
@@ -203,6 +206,25 @@ export const CustomerAreaPage = () => {
     const [reviewMessage, setReviewMessage] = useState('');
     const [reviewRating, setReviewRating] = useState(5);
     const [reviewLoading, setReviewLoading] = useState(false);
+
+    // Estado para favoritos
+    const [favProducts, setFavProducts] = useState<any[]>([]);
+    const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+    useEffect(() => {
+        if (profile?.favorites?.length) {
+            setFavoriteLoading(true);
+            productService.listProducts().then(prods => {
+                setFavProducts(prods.filter(p => profile.favorites?.includes(p.id!)));
+                setFavoriteLoading(false);
+            }).catch(err => {
+                console.error("Erro ao listar favoritos:", err);
+                setFavoriteLoading(false);
+            });
+        } else {
+            setFavProducts([]);
+        }
+    }, [profile?.favorites]);
 
     // Estado para abrir detalhes de um pedido
     const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
@@ -355,6 +377,29 @@ export const CustomerAreaPage = () => {
             fetchOrders();
         }
     }, [activeSection, profile]);
+
+    // Auto-abre formulario de cadastro de endereco caso receba parametro 'add=true' ou recomeca a lista caso acesse normalmente
+    useEffect(() => {
+        if (activeSection === 'enderecos') {
+            const searchParams = new URLSearchParams(location.search);
+            const editId = searchParams.get('editAddressId');
+            if (searchParams.get('add') === 'true') {
+                setIsFormOpen(true);
+                setEditingAddressId(null);
+                clearAddressInputs();
+                setAddressType('outro');
+            } else if (editId) {
+                const addr = addresses.find(a => a.id === editId);
+                if (addr) {
+                    handleEditAddressClick(addr);
+                }
+            } else {
+                setIsFormOpen(false);
+                setEditingAddressId(null);
+                clearAddressInputs();
+            }
+        }
+    }, [activeSection, location.search, addresses]);
 
     const fetchOrders = async () => {
         if (!profile) return;
@@ -629,7 +674,7 @@ export const CustomerAreaPage = () => {
         setLatitude(null);
         setLongitude(null);
         setIsDefault(false);
-        setAddressType('casa');
+        setAddressType('outro');
         setCustomAddressType('');
         setAddrErrors({});
     };
@@ -853,10 +898,23 @@ export const CustomerAreaPage = () => {
                 address: defaultAddress || null 
             }));
 
+            if (userData) {
+                setUserData({
+                    ...userData,
+                    addresses: updatedList,
+                    address: defaultAddress || null
+                });
+            }
+
             setSuccess(editingAddressId ? 'Endereço atualizado com sucesso!' : 'Endereço cadastrado com sucesso!');
             setIsFormOpen(false);
             setEditingAddressId(null);
             clearAddressInputs();
+
+            const searchParams = new URLSearchParams(location.search);
+            if (searchParams.get('from') === 'carrinho') {
+                navigate('/carrinho');
+            }
         } catch (err: any) {
             console.error("Erro ao salvar endereço:", err);
             setError('Não foi possível registrar o endereço.');
@@ -1780,30 +1838,45 @@ export const CustomerAreaPage = () => {
                             </div>
                         )}
 
-                        {/* Seção Favoritos */}
-                        {activeSection === 'favoritos' && (
-                            <div className="rounded-3xl bg-zinc-950/80 border border-zinc-900 p-6 sm:p-8 shadow-xl animate-fade-in">
-                                <div className="mb-6 flex items-center gap-3">
-                                    <div className="p-2 bg-red-950/30 text-red-500 rounded-xl">
-                                        <Heart className="h-5 w-5 animate-pulse" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-lg font-bold text-white">Seus Favoritos</h2>
-                                        <p className="text-zinc-500 text-xs">Lista de produtos que você selecionou como desejos secretos.</p>
-                                    </div>
-                                </div>
+                                {/* Seção Favoritos */}
+                                {activeSection === 'favoritos' && (
+                                    <div className="rounded-3xl bg-zinc-950/80 border border-zinc-900 p-6 sm:p-8 shadow-xl animate-fade-in">
+                                        <div className="mb-6 flex items-center gap-3">
+                                            <div className="p-2 bg-red-950/30 text-red-500 rounded-xl">
+                                                <Heart className="h-5 w-5 animate-pulse" />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-bold text-white">Seus Favoritos</h2>
+                                                <p className="text-zinc-500 text-xs">Lista de produtos que você selecionou como desejos secretos.</p>
+                                            </div>
+                                        </div>
 
-                                {/* Resiliência de favoritos - exibe vazia estilizada */}
-                                <div className="py-16 text-center text-zinc-500 flex flex-col items-center">
-                                    <Heart className="h-12 w-12 text-zinc-850 mb-4" />
-                                    <span className="text-sm font-bold text-zinc-400 mb-1">Nenhum produto favorito ainda</span>
-                                    <span className="text-xs text-zinc-500 max-w-xs mb-6">Navegue pelas nossas categorias luxo e clique no ícone de coração para registrar o produto.</span>
-                                    <Link to="/catalogo" className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl tracking-wider transition-all">
-                                        Explorar Boutique
-                                    </Link>
-                                </div>
-                            </div>
-                        )}
+                                        {profile?.favorites && profile.favorites.length > 0 ? (
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                                                {favoriteLoading ? (
+                                                    <div className="col-span-full py-12 flex flex-col items-center justify-center gap-3">
+                                                        <div className="h-8 w-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                                                        <span className="text-xs text-zinc-500">Carregando seus desejos secretos...</span>
+                                                    </div>
+                                                ) : (
+                                                    favProducts.map(p => (
+                                                        <ProductGridCard key={p.id} product={p} />
+                                                    ))
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="py-16 text-center text-zinc-500 flex flex-col items-center">
+                                                <Heart className="h-12 w-12 text-zinc-850 mb-4" />
+                                                <span className="text-sm font-bold text-zinc-400 mb-1">Nenhum produto favorito ainda</span>
+                                                <span className="text-xs text-zinc-500 max-w-xs mb-6">Navegue pelas nossas categorias luxo e clique no ícone de coração para registrar o produto.</span>
+                                                <Link to="/catalogo" className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl tracking-wider transition-all">
+                                                    Explorar Boutique
+                                                </Link>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
 
                         {/* Seção Fidelidade */}
                         {activeSection === 'fidelidade' && (

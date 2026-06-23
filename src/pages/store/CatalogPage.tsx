@@ -1,16 +1,19 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { useAuthStore } from '../../store/authStore';
 import { Link, useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { formatCurrency, cn } from '../../lib/utils';
-import { Search, X, Minus, Plus, Frown, Loader2, Truck } from 'lucide-react';
+import { Search, X, Minus, Plus, Frown, Loader2, Truck, Heart } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
 import { getRankingProfissional, getRankingHybrid, hasDirectTextMatch } from '../../lib/ranking';
 import { aiFrontendService } from '../../services/aiFrontendService';
 import { Category, categoryService } from '../../services/categoryService';
+import { customerService } from '../../services/customerService';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCartStore } from '../../store/cartStore';
+import { useCustomerAuthStore } from '../../store/customerAuthStore';
 import { catalogSectionsService, SECTION_METADATA, CatalogSection } from '../../services/catalogSectionsService';
 import { usePromotion } from '../../contexts/PromotionContext';
 import { visualHomeService, VisualHomeSettings } from '../../services/visualHomeService';
@@ -1166,8 +1169,62 @@ export function CatalogPage() {
   );
 }
 
-function ProductGridCard({ product, onItemClick }: { product: Product, onItemClick?: () => void }) {
+export function ProductGridCard({ product, onItemClick }: { product: Product, onItemClick?: () => void }) {
+  const navigate = useNavigate();
   const { calculateProductPrice } = usePromotion();
+  
+  const { user, userData } = useAuthStore();
+  const { currentCustomer, toggleFavorite } = useCustomerAuthStore();
+  
+  const favoritesList = userData?.favorites || currentCustomer?.favorites || [];
+  const isFavorited = !!(product?.id && favoritesList.includes(product.id));
+  
+  const handleToggleFavorite = async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!product.id) return;
+      
+      if (!user && !currentCustomer) {
+        navigate('/login');
+        return;
+      }
+      
+      const newFavorites = isFavorited 
+        ? favoritesList.filter(id => id !== product.id!)
+        : [...favoritesList, product.id!];
+      
+      if (currentCustomer?.id) {
+        toggleFavorite(product.id!);
+        try {
+          await customerService.toggleFavorite(currentCustomer.id, product.id!, newFavorites);
+        } catch (err) {
+          console.error("Erro ao salvar favorito do cliente local:", err);
+        }
+      }
+      
+      if (user?.uid) {
+        useAuthStore.setState((state) => {
+          const prevUserData = state.userData || { role: 'customer', active: true };
+          return {
+            userData: {
+              ...prevUserData,
+              favorites: newFavorites
+            }
+          };
+        });
+
+        try {
+          const userRef = doc(db, 'users', user.uid);
+          await updateDoc(userRef, {
+            favorites: newFavorites,
+            updatedAt: serverTimestamp()
+          });
+        } catch (err) {
+          console.error("Erro ao salvar favorito no Firestore de usuários:", err);
+        }
+      }
+  };
+
   const pricing = calculateProductPrice({
     id: product.id!,
     categoryId: product.categoryId,
@@ -1185,7 +1242,6 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
   const hasVariants = !!product.hasVariants;
   const [quantity, setQuantity] = useState(1);
   const addItem = useCartStore(s => s.addItem);
-  const navigate = useNavigate();
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1238,8 +1294,20 @@ function ProductGridCard({ product, onItemClick }: { product: Product, onItemCli
           <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-zinc-800 text-[10px] font-black uppercase tracking-widest text-center px-4 italic">Sem Imagem</div>
         )}
         
+        {/* Floating Favorite Heart Button */}
+        <button 
+          onClick={handleToggleFavorite}
+          className={cn(
+            "absolute top-4 right-4 p-2 transition-all duration-300 z-30 cursor-pointer rounded-full",
+            isFavorited ? "bg-transparent text-red-600 hover:scale-110" : "bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 hover:scale-105 shadow-lg"
+          )}
+          title={isFavorited ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+        >
+          <Heart size={16} fill={isFavorited ? "currentColor" : "none"} className="transition-transform duration-300 active:scale-125" />
+        </button>
+
         {/* Organic Floating Badges */}
-        <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+        <div className="absolute top-4 left-4 flex flex-col gap-2 z-10 font-sans">
           {product.newRelease && !isOut && (
             <motion.span 
               initial={{ x: -20, opacity: 0 }}

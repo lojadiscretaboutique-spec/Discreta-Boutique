@@ -18,7 +18,7 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         // Optimization: Don't cache admin pages by default if they are large
         // and only cache critical assets to keep precache size small
-        globPatterns: ['index.html', 'manifest.webmanifest', 'assets/*.css', 'assets/vendor*.js'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,webmanifest}'],
         navigateFallbackDenylist: [/^\/admin/, /^\/api/], // Don't try to handle admin/api routes as SPA for offline
         runtimeCaching: [
           {
@@ -39,7 +39,7 @@ export default defineConfig({
         short_name: 'Discreta',
         description: 'Loja virtual exclusiva e rápida da Discreta',
         theme_color: '#000000',
-        background_color: '#ffffff',
+        background_color: '#000000',
         display: 'standalone',
         start_url: '/',
         icons: [

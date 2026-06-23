@@ -20,6 +20,7 @@ export interface Customer {
   dataNascimento?: string;
   endereco: CustomerAddress;
   status: 'ativo' | 'inativo';
+  favorites?: string[];
   origin?: 'online' | 'pdv' | 'manual';
   notes?: string;
   
@@ -152,5 +153,13 @@ export const customerService = {
         await deleteDoc(doc(db, 'customers', id));
         await auditLogService.logAction('Excluir', 'clientes', id, {});
     }
+  },
+
+  async toggleFavorite(customerId: string, productId: string, favorites: string[]): Promise<void> {
+    const ref = doc(db, 'customers', customerId);
+    await setDoc(ref, {
+      favorites: favorites,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
   }
 };

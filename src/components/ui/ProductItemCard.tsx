@@ -1,12 +1,17 @@
 import { memo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Minus, Truck } from 'lucide-react';
+import { Plus, Minus, Truck, Heart } from 'lucide-react';
 import { formatCurrency, cn } from '../../lib/utils';
 import { Product, productService } from '../../services/productService';
 import { useCartStore } from '../../store/cartStore';
 import { ResponsiveImage } from './ResponsiveImage';
 import { usePromotion } from '../../contexts/PromotionContext';
+import { useCustomerAuthStore } from '../../store/customerAuthStore';
+import { customerService } from '../../services/customerService';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { useAuthStore } from '../../store/authStore';
 
 export const ProductItemCard = memo(({ product, isPriority = false }: { product: Product, isPriority?: boolean }) => {
   const { calculateProductPrice } = usePromotion();
@@ -38,6 +43,58 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
   const [quantity, setQuantity] = useState(1);
   const addItem = useCartStore(s => s.addItem);
   const navigate = useNavigate();
+
+  const { user, userData } = useAuthStore();
+  const { currentCustomer, toggleFavorite } = useCustomerAuthStore();
+  
+  const favoritesList = userData?.favorites || currentCustomer?.favorites || [];
+  const isFavorited = !!(product?.id && favoritesList.includes(product.id));
+
+  const handleToggleFavorite = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!product.id) return;
+    
+    if (!user && !currentCustomer) {
+      navigate('/login');
+      return;
+    }
+
+    const newFavorites = isFavorited
+      ? favoritesList.filter(id => id !== product.id!)
+      : [...favoritesList, product.id!];
+
+    if (currentCustomer?.id) {
+      toggleFavorite(product.id!);
+      try {
+        await customerService.toggleFavorite(currentCustomer.id, product.id!, newFavorites);
+      } catch (err) {
+        console.error("Erro ao salvar favorito do cliente local:", err);
+      }
+    }
+
+    if (user?.uid) {
+      useAuthStore.setState((state) => {
+        const prevUserData = state.userData || { role: 'customer', active: true };
+        return {
+          userData: {
+            ...prevUserData,
+            favorites: newFavorites
+          }
+        };
+      });
+
+      try {
+        const userRef = doc(db, 'users', user.uid);
+        await updateDoc(userRef, {
+          favorites: newFavorites,
+          updatedAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Erro ao salvar favorito no Firestore de usuários:", err);
+      }
+    }
+  };
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -100,6 +157,18 @@ export const ProductItemCard = memo(({ product, isPriority = false }: { product:
       )}
     >
       <div className="aspect-[3/4] relative bg-white overflow-hidden group-hover:bg-zinc-50 transition-colors duration-500">
+        {/* Floating Favorite Heart Button */}
+        <button 
+          onClick={handleToggleFavorite}
+          className={cn(
+            "absolute top-4 right-4 p-2 transition-all duration-300 z-30 cursor-pointer rounded-full",
+            isFavorited ? "bg-transparent text-red-600 hover:scale-110" : "bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 hover:scale-105 shadow-lg"
+          )}
+          title={isFavorited ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+        >
+          <Heart size={16} fill={isFavorited ? "currentColor" : "none"} className="transition-transform duration-300 active:scale-125" />
+        </button>
+
         <ResponsiveImage 
           src={mainImage} 
           alt={product.name} 
