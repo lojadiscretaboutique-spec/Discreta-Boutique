@@ -108,12 +108,12 @@ export const LoginPage = () => {
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[300px] h-[300px] bg-red-950/10 blur-[100px] rounded-full pointer-events-none" />
 
             {/* Link para voltar ao site */}
-            <div className="absolute top-6 left-6 z-10 font-sans">
+            <div className="absolute top-4 left-4 md:top-6 md:left-6 z-10 font-sans">
                 <Link 
                     to="/" 
-                    className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-sm font-medium"
+                    className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-xs sm:text-sm font-medium"
                 >
-                    <ArrowLeft className="h-4 w-4" /> Voltar para a Loja
+                    <ArrowLeft className="h-3.5 w-3.5" /> Voltar para a Loja
                 </Link>
             </div>
 
@@ -142,7 +142,7 @@ export const LoginPage = () => {
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
-                    className="w-full rounded-3xl bg-zinc-950/80 border border-zinc-800/60 p-8 shadow-[0_0_30px_rgba(239,68,68,0.05)] backdrop-blur-md"
+                    className="w-full rounded-3xl bg-zinc-950/80 border border-zinc-800/60 p-5 sm:p-8 shadow-[0_0_30px_rgba(239,68,68,0.05)] backdrop-blur-md"
                 >
                     <AnimatePresence mode="wait">
                         {mode === 'login' ? (

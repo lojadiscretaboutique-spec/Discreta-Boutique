@@ -58,6 +58,7 @@ export function StoreLayout() {
   const [appVersion, setAppVersion] = useState('1.1.0');
 
   const location = useLocation();
+  const isAuthOrClientArea = ['/cadastro', '/login', '/ativar-conta'].includes(location.pathname) || location.pathname.startsWith('/area-cliente');
   const { activePromotions } = usePromotion();
 
   const hasGlobalFreeShipping = activePromotions.some(
@@ -491,28 +492,30 @@ export function StoreLayout() {
               </div>
             </div>
           )}
-          <div 
-            className="max-w-7xl mx-auto mt-16 pt-8 border-t flex flex-col md:flex-row justify-between items-center gap-6 text-[10px] font-bold uppercase tracking-widest text-center md:text-left"
-            style={{ borderColor: borderColor }}
-          >
-             <p className="whitespace-normal break-words max-w-[300px] md:max-w-none px-4 md:px-0" style={{ color: textSecondaryColor }}>
-               © 2026 Discreta Boutique. Todos os direitos reservados. CNPJ: 37.633.308/0001-84
-             </p>
-             <div className="flex flex-wrap justify-center gap-4 px-4" style={{ color: textSecondaryColor }}>
-                <span className="whitespace-nowrap">Proibido para menores de 18 anos</span>
-                <span className="whitespace-nowrap">Sigilo garantido</span>
-                <span 
-                  className="whitespace-nowrap border py-0.5 px-2 rounded text-[8px] font-mono font-medium tracking-normal lowercase"
-                  style={{ 
-                    backgroundColor: currentTheme.backgroundColor, 
-                    borderColor: borderColor,
-                    color: textSecondaryColor 
-                  }}
-                >
-                  v{appVersion}
-                </span>
-             </div>
-          </div>
+          {!isAuthOrClientArea && (
+            <div 
+              className="max-w-7xl mx-auto mt-16 pt-8 border-t flex flex-col md:flex-row justify-between items-center gap-6 text-[10px] font-bold uppercase tracking-widest text-center md:text-left"
+              style={{ borderColor: borderColor }}
+            >
+               <p className="whitespace-normal break-words max-w-[300px] md:max-w-none px-4 md:px-0" style={{ color: textSecondaryColor }}>
+                 © 2026 Discreta Boutique. Todos os direitos reservados. CNPJ: 37.633.308/0001-84
+               </p>
+               <div className="flex flex-wrap justify-center gap-4 px-4" style={{ color: textSecondaryColor }}>
+                  <span className="whitespace-nowrap">Proibido para menores de 18 anos</span>
+                  <span className="whitespace-nowrap">Sigilo garantido</span>
+                  <span 
+                    className="whitespace-nowrap border py-0.5 px-2 rounded text-[8px] font-mono font-medium tracking-normal lowercase"
+                    style={{ 
+                      backgroundColor: currentTheme.backgroundColor, 
+                      borderColor: borderColor,
+                      color: textSecondaryColor 
+                    }}
+                  >
+                    v{appVersion}
+                  </span>
+               </div>
+            </div>
+          )}
         </footer>
       )}
     </div>

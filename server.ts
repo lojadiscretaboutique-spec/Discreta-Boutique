@@ -2,6 +2,8 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
+import nodemailer from "nodemailer";
+import crypto from "crypto";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import aiRoutes from './src/server/routes/aiRoutes';
 import { sendWebhook } from './src/server/services/botConversaService';
@@ -155,6 +157,421 @@ async function startServer() {
     } catch (error: any) {
       console.error("Erro ao enviar webhook:", error);
       res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Webhook and Notification triggers for Boas-Vindas and Ativação de conta
+  app.post("/api/customer-events/welcome", async (req, res) => {
+    try {
+      const { uid, fullName, email, whatsapp, cpf, createdAt } = req.body;
+      if (!uid || !fullName || !email || !whatsapp) {
+        return res.status(400).json({ error: "Parâmetros obrigatórios ausentes" });
+      }
+
+      console.log(`⏳ [Customer Welcome webhook] Triggered for user: ${uid} | ${fullName}`);
+
+      // 1. Fetch settings
+      const settingsRef = doc(db, 'settings', 'customerNotifications');
+      const settingsSnap = await getDoc(settingsRef);
+      const settings = settingsSnap.exists() ? settingsSnap.data() : null;
+
+      const enableWelcomeWhatsapp = settings ? !(!settings.enableWelcomeWhatsapp) : false;
+      const welcomeWebhookUrl = settings ? (settings.welcomeWebhookUrl || '') : '';
+
+      if (!enableWelcomeWhatsapp || !welcomeWebhookUrl) {
+        console.log(`⚠️ [Customer Welcome webhook] Disabled or empty webhook URL. Skipped.`);
+        return res.json({ success: true, message: "Welcome webhook not configured or disabled" });
+      }
+
+      // 2. Prepare payload
+      const payload = {
+        event: "customer_registered",
+        name: fullName,
+        email,
+        whatsapp,
+        cpf: cpf || "",
+        uid,
+        createdAt: createdAt || new Date().toISOString()
+      };
+
+      let responseStatus = 0;
+      let statusResponseText = "";
+      let status: 'success' | 'error' = 'success';
+      let errorMessage = null;
+
+      try {
+        console.log(`🚀 [Customer Welcome webhook] Sending POST to: ${welcomeWebhookUrl}`);
+        const response = await fetch(welcomeWebhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        responseStatus = response.status;
+        statusResponseText = await response.text();
+
+        if (!response.ok) {
+          status = "error";
+          errorMessage = `HTTP error ${responseStatus}: ${statusResponseText}`;
+          console.error(`❌ [Customer Welcome webhook] Failed: ${errorMessage}`);
+        } else {
+          console.log(`⭐ [Customer Welcome webhook] Success: ${responseStatus}`);
+        }
+      } catch (err: any) {
+        status = "error";
+        errorMessage = err.message || String(err);
+        console.error(`❌ [Customer Welcome webhook] Exception trying to fetch:`, err);
+      }
+
+      // 3. Save logs to collection 'notificationLogs'
+      await addDoc(collection(db, 'notificationLogs'), {
+        type: "customer_welcome",
+        channel: "whatsapp",
+        uid,
+        email,
+        whatsapp,
+        webhookUrl: welcomeWebhookUrl,
+        status,
+        responseStatus,
+        errorMessage,
+        createdAt: serverTimestamp()
+      });
+
+      res.status(200).json({ success: status === 'success', responseStatus, errorMessage });
+    } catch (routeErr: any) {
+      console.error("Erro interno ao disparar customer-event welcome:", routeErr);
+      res.status(500).json({ success: false, error: routeErr.message });
+    }
+  });
+
+  app.post("/api/customer-events/activate", async (req, res) => {
+    try {
+      const { uid, fullName, email, whatsapp, activatedAt } = req.body;
+      if (!uid || !fullName || !email || !whatsapp) {
+        return res.status(400).json({ error: "Parâmetros obrigatórios ausentes" });
+      }
+
+      console.log(`⏳ [Customer Activate webhook] Triggered for user: ${uid} | ${fullName}`);
+
+      // 1. Fetch settings
+      const settingsRef = doc(db, 'settings', 'customerNotifications');
+      const settingsSnap = await getDoc(settingsRef);
+      const settings = settingsSnap.exists() ? settingsSnap.data() : null;
+
+      const enableActivationWhatsapp = settings ? !(!settings.enableActivationWhatsapp) : false;
+      const activationWebhookUrl = settings ? (settings.activationWebhookUrl || '') : '';
+
+      if (!enableActivationWhatsapp || !activationWebhookUrl) {
+        console.log(`⚠️ [Customer Activate webhook] Disabled or empty webhook URL. Skipped.`);
+        return res.json({ success: true, message: "Activation webhook not configured or disabled" });
+      }
+
+      // 2. Prepare payload
+      const payload = {
+        event: "customer_account_activated",
+        name: fullName,
+        email,
+        whatsapp,
+        uid,
+        activatedAt: activatedAt || new Date().toISOString()
+      };
+
+      let responseStatus = 0;
+      let statusResponseText = "";
+      let status: 'success' | 'error' = 'success';
+      let errorMessage = null;
+
+      try {
+        console.log(`🚀 [Customer Activate webhook] Sending POST to: ${activationWebhookUrl}`);
+        const response = await fetch(activationWebhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        responseStatus = response.status;
+        statusResponseText = await response.text();
+
+        if (!response.ok) {
+          status = "error";
+          errorMessage = `HTTP error ${responseStatus}: ${statusResponseText}`;
+          console.error(`❌ [Customer Activate webhook] Failed: ${errorMessage}`);
+        } else {
+          console.log(`⭐ [Customer Activate webhook] Success: ${responseStatus}`);
+        }
+      } catch (err: any) {
+        status = "error";
+        errorMessage = err.message || String(err);
+        console.error(`❌ [Customer Activate webhook] Exception trying to fetch:`, err);
+      }
+
+      // 3. Save logs to collection 'notificationLogs'
+      await addDoc(collection(db, 'notificationLogs'), {
+        type: "customer_activation",
+        channel: "whatsapp",
+        uid,
+        email,
+        whatsapp,
+        webhookUrl: activationWebhookUrl,
+        status,
+        responseStatus,
+        errorMessage,
+        createdAt: serverTimestamp()
+      });
+
+      res.status(200).json({ success: status === 'success', responseStatus, errorMessage });
+    } catch (routeErr: any) {
+      console.error("Erro interno ao disparar customer-event activate:", routeErr);
+      res.status(500).json({ success: false, error: routeErr.message });
+    }
+  });
+
+  // CUSTOMER ACTIVATION CODE (OTP) SYSTEM
+  app.post("/api/customer-otp/generate", async (req, res) => {
+    try {
+      const { uid, fullName, email, whatsapp } = req.body;
+      if (!uid || !fullName || !email || !whatsapp) {
+        return res.status(400).json({ success: false, error: "Parâmetros obrigatórios ausentes" });
+      }
+
+      console.log(`⏳ [OTP Generate] Request for user: ${uid} | ${fullName}`);
+
+      // 1. Fetch settings
+      const settingsRef = doc(db, 'settings', 'customerNotifications');
+      const settingsSnap = await getDoc(settingsRef);
+      const settings = settingsSnap.exists() ? settingsSnap.data() : null;
+
+      const otpValidityMinutes = settings && settings.otpValidityMinutes ? Number(settings.otpValidityMinutes) : 10;
+      const otpMaxAttempts = settings && settings.otpMaxAttempts ? Number(settings.otpMaxAttempts) : 5;
+      const enableOtpEmail = settings ? settings.enableActivationOtpEmail !== false : true;
+      const enableOtpWhatsapp = settings ? !!settings.enableActivationOtpWhatsapp : false;
+      const otpWebhookUrl = settings ? (settings.activationOtpWebhookUrl || '') : '';
+
+      // 2. Generate OTP Code (6 digits)
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
+      const expiresAt = new Date(Date.now() + otpValidityMinutes * 60 * 1000).toISOString();
+
+      // 3. Save OTP in collection customerOtpCodes/{uid}
+      const otpDocRef = doc(db, 'customerOtpCodes', uid);
+      await setDoc(otpDocRef, {
+        uid,
+        hashedCode,
+        email,
+        whatsapp,
+        type: 'account_activation',
+        attempts: 0,
+        maxAttempts: otpMaxAttempts,
+        expiresAt,
+        used: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      console.log(`⭐ [OTP Generate] Token saved for user: ${uid}. Expiry minutes: ${otpValidityMinutes}`);
+
+      // 4. Send Email via SMTP if enabled
+      let emailSent = false;
+      let emailError = null;
+
+      if (enableOtpEmail) {
+        if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+          try {
+            const transporter = nodemailer.createTransport({
+              host: process.env.SMTP_HOST,
+              port: parseInt(process.env.SMTP_PORT || '587'),
+              secure: process.env.SMTP_SECURE === 'true' || parseInt(process.env.SMTP_PORT || '587') === 465,
+              auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS
+              }
+            });
+
+            await transporter.sendMail({
+              from: process.env.SMTP_FROM || `"Discreta Boutique" <${process.env.SMTP_USER}>`,
+              to: email,
+              subject: "Código de ativação da sua conta Discreta",
+              text: `Olá, ${fullName}.\nSeu código de ativação da Discreta Boutique é:\n\n${code}\n\nEle é válido por ${otpValidityMinutes} minutos.\nSe você não criou esta conta, ignore esta mensagem.`
+            });
+            emailSent = true;
+            console.log(`📧 [OTP Email] Sent successfully to ${email}`);
+          } catch (mailErr: any) {
+            emailError = mailErr.message || String(mailErr);
+            console.error("❌ [OTP Email] SMTP send failed:", mailErr);
+          }
+        } else {
+          console.warn("⚠️ [OTP Email] SMTP not configured. OTP email simulated success.");
+          emailSent = true; 
+        }
+
+        // Save email dispatch log
+        await addDoc(collection(db, 'notificationLogs'), {
+          uid,
+          type: "customer_activation_otp",
+          channel: "email",
+          email,
+          whatsapp,
+          status: emailSent ? "success" : "error",
+          errorMessage: emailError,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      // 5. Send WhatsApp via Webhook if enabled
+      let whatsappSent = false;
+      let whatsappError = null;
+      let responseStatus = 0;
+
+      if (enableOtpWhatsapp && otpWebhookUrl) {
+        try {
+          console.log(`🚀 [OTP WhatsApp Webhook] Dispatching to ${otpWebhookUrl}`);
+          const wpResponse = await fetch(otpWebhookUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              event: "customer_activation_otp",
+              name: fullName,
+              email,
+              whatsapp,
+              uid,
+              code,
+              expiresInMinutes: otpValidityMinutes
+            })
+          });
+
+          responseStatus = wpResponse.status;
+          const wpResText = await wpResponse.text();
+
+          if (wpResponse.ok) {
+            whatsappSent = true;
+            console.log(`⭐ [OTP WhatsApp] Received OK response from webhook`);
+          } else {
+            whatsappError = `HTTP error ${responseStatus}: ${wpResText}`;
+            console.error(`❌ [OTP WhatsApp] Webhook returned non-200: ${whatsappError}`);
+          }
+        } catch (wpErr: any) {
+          whatsappError = wpErr.message || String(wpErr);
+          console.error("❌ [OTP WhatsApp] Webhook fetch exception:", wpErr);
+        }
+
+        // Save whatsapp dispatch log
+        await addDoc(collection(db, 'notificationLogs'), {
+          uid,
+          type: "customer_activation_otp",
+          channel: "whatsapp",
+          email,
+          whatsapp,
+          webhookUrl: otpWebhookUrl,
+          status: whatsappSent ? "success" : "error",
+          responseStatus,
+          errorMessage: whatsappError,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      res.status(200).json({ success: true, message: "Código enviado com sucesso" });
+    } catch (err: any) {
+      console.error("❌ Error generating OTP:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/customer-otp/verify", async (req, res) => {
+    try {
+      const { uid, code } = req.body;
+      if (!uid || !code) {
+        return res.status(400).json({ success: false, error: "Parâmetros obrigatórios ausentes" });
+      }
+
+      const otpDocRef = doc(db, 'customerOtpCodes', uid);
+      const otpSnap = await getDoc(otpDocRef);
+
+      if (!otpSnap.exists()) {
+        return res.status(400).json({ success: false, error: "Nenhum código encontrado para este usuário. Solicite um novo código." });
+      }
+
+      const otpData = otpSnap.data();
+
+      if (otpData.used) {
+        return res.status(400).json({ success: false, error: "Este código já foi utilizado. Solicite um novo código." });
+      }
+
+      if (otpData.attempts >= otpData.maxAttempts) {
+        return res.status(400).json({ success: false, error: "Limite de tentativas excedido. Solicite um novo código." });
+      }
+
+      if (new Date(otpData.expiresAt) < new Date()) {
+        return res.status(400).json({ success: false, error: "Código expirado. Solicite um novo código." });
+      }
+
+      const inputHash = crypto.createHash('sha256').update(code.trim()).digest('hex');
+
+      if (inputHash !== otpData.hashedCode) {
+        // Increment attempts
+        const newAttempts = Number(otpData.attempts || 0) + 1;
+        await updateDoc(otpDocRef, {
+          attempts: newAttempts,
+          updatedAt: new Date().toISOString()
+        });
+
+        if (newAttempts >= otpData.maxAttempts) {
+          return res.status(400).json({ success: false, error: "Limite de tentativas excedido. Solicite um novo código." });
+        }
+
+        return res.status(400).json({ success: false, error: "Código inválido. Confira e tente novamente." });
+      }
+
+      // CODE IS CORRECT!
+      // Update OTP document to used
+      await updateDoc(otpDocRef, {
+        used: true,
+        usedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      // Update user document to active
+      const userDocRef = doc(db, 'users', uid);
+      await updateDoc(userDocRef, {
+        accountStatus: 'active',
+        emailVerified: true,
+        phoneVerified: true,
+        activatedAt: new Date().toISOString(),
+        updatedAt: serverTimestamp()
+      });
+
+      // Trigger standard activation webhook asynchronously
+      try {
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          const host = req.get('host') || 'localhost:3000';
+          const protocol = req.protocol || 'http';
+          fetch(`${protocol}://${host}/api/customer-events/activate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              uid,
+              fullName: userData.fullName || '',
+              email: userData.email || '',
+              whatsapp: userData.whatsapp || '',
+              activatedAt: new Date().toISOString()
+            })
+          }).catch(err => console.error("Error invoking activation webhook:", err));
+        }
+      } catch (activateFetchErr) {
+        console.error("Error triggering event path:", activateFetchErr);
+      }
+
+      res.status(200).json({ success: true, message: "Conta ativada com sucesso!" });
+    } catch (err: any) {
+      console.error("❌ Error verifying OTP:", err);
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 

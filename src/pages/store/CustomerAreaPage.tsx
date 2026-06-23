@@ -179,6 +179,13 @@ export const CustomerAreaPage = () => {
     const [addrErrors, setAddrErrors] = useState<Record<string, string>>({});
     const [loadingLocation, setLoadingLocation] = useState(false);
 
+    // Múltiplos Endereços
+    const [addresses, setAddresses] = useState<any[]>([]);
+    const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [addressType, setAddressType] = useState('casa'); // 'casa', 'trabalho', 'outro'
+    const [customAddressType, setCustomAddressType] = useState('');
+
     // Mudança de Senha
     const [oldPassword, setOldPassword] = useState(''); // useful hint for requiredRecentLogin
     const [newPassword, setNewPassword] = useState('');
@@ -199,6 +206,7 @@ export const CustomerAreaPage = () => {
 
     // Estado para abrir detalhes de um pedido
     const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+    const [sendingVerif, setSendingVerif] = useState(false);
 
     // Segurança: Redireciona se não estiver logado
     useEffect(() => {
@@ -214,11 +222,53 @@ export const CustomerAreaPage = () => {
         const syncProfile = async () => {
             setLoading(true);
             try {
+                // Sincronizar o estado de emailVerified com o Authentication
+                try {
+                    await user.reload();
+                } catch (reloadErr) {
+                    console.warn("Nao foi possivel recarregar dados do Firebase Auth:", reloadErr);
+                }
+
                 const userRef = doc(db, 'users', user.uid);
                 const docSnap = await getDoc(userRef);
 
                 if (docSnap.exists()) {
                     const data = docSnap.data();
+                    
+                    if (data.accountStatus === 'pending_otp') {
+                        navigate('/ativar-conta', { replace: true });
+                        return;
+                    }
+                    
+                    // Se o auth tiver verificado mas o Firestore nao, atualizar e disparar webhook de ativacao
+                    const isAuthVerified = user.emailVerified;
+                    const isFsVerified = data.emailVerified === true;
+
+                    if (isAuthVerified && !isFsVerified) {
+                        await updateDoc(userRef, {
+                            emailVerified: true,
+                            accountStatus: 'active',
+                            updatedAt: serverTimestamp()
+                        });
+                        data.emailVerified = true;
+                        data.accountStatus = 'active';
+
+                        // Disparar Webhook de Ativacao de Conta (Assincrono / Nao-bloqueante)
+                        fetch('/api/customer-events/activate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                uid: user.uid,
+                                fullName: data.fullName || '',
+                                email: data.email || user.email || '',
+                                whatsapp: data.whatsapp || '',
+                                activatedAt: new Date().toISOString()
+                            })
+                        }).catch(webhookErr => {
+                            console.error("Erro ao chamar webhook de ativacao:", webhookErr);
+                        });
+                    }
+
                     setProfile(data);
                     
                     // Fill inputs
@@ -227,18 +277,53 @@ export const CustomerAreaPage = () => {
                     setBirthDate(data.birthDate || '');
                     setWhatsapp(data.whatsapp ? formatWhatsApp(data.whatsapp) : '');
 
-                    if (data.address) {
-                        setCep(data.address.cep ? formatCEP(data.address.cep) : '');
-                        setStreet(data.address.street || '');
-                        setNumber(data.address.number || '');
-                        setComplement(data.address.complement || '');
-                        setNeighborhood(data.address.neighborhood || '');
-                        setCity(data.address.city || '');
-                        setState(data.address.state || '');
-                        setReference(data.address.reference || '');
-                        setLatitude(data.address.latitude !== undefined ? data.address.latitude : null);
-                        setLongitude(data.address.longitude !== undefined ? data.address.longitude : null);
-                        setIsDefault(data.address.isDefault !== undefined ? data.address.isDefault : true);
+                    // Carregar múltiplos endereços com suporte a migração legada
+                    let loadedAddresses = data.addresses || [];
+                    if (loadedAddresses.length === 0 && data.address) {
+                        const initialAddr = {
+                            id: 'legacy-default',
+                            cep: data.address.cep ? formatCEP(data.address.cep) : '',
+                            street: data.address.street || '',
+                            number: data.address.number || '',
+                            complement: data.address.complement || '',
+                            neighborhood: data.address.neighborhood || '',
+                            city: data.address.city || '',
+                            state: data.address.state || '',
+                            reference: data.address.reference || '',
+                            latitude: data.address.latitude !== undefined ? data.address.latitude : null,
+                            longitude: data.address.longitude !== undefined ? data.address.longitude : null,
+                            isDefault: true,
+                            type: 'casa',
+                            createdAt: data.address.createdAt || new Date().toISOString(),
+                            updatedAt: data.address.updatedAt || new Date().toISOString()
+                        };
+                        loadedAddresses = [initialAddr];
+                    }
+                    setAddresses(loadedAddresses);
+                    
+                    // Encontrar o endereço principal atual para os inputs (se houver)
+                    const defaultAddr = loadedAddresses.find((a: any) => a.isDefault) || loadedAddresses[0];
+                    if (defaultAddr) {
+                        setCep(defaultAddr.cep ? formatCEP(defaultAddr.cep) : '');
+                        setStreet(defaultAddr.street || '');
+                        setNumber(defaultAddr.number || '');
+                        setComplement(defaultAddr.complement || '');
+                        setNeighborhood(defaultAddr.neighborhood || '');
+                        setCity(defaultAddr.city || '');
+                        setState(defaultAddr.state || '');
+                        setReference(defaultAddr.reference || '');
+                        setLatitude(defaultAddr.latitude !== undefined ? defaultAddr.latitude : null);
+                        setLongitude(defaultAddr.longitude !== undefined ? defaultAddr.longitude : null);
+                        setIsDefault(defaultAddr.isDefault !== undefined ? defaultAddr.isDefault : true);
+                        
+                        const currentType = defaultAddr.type || 'casa';
+                        if (['casa', 'trabalho'].includes(currentType.toLowerCase())) {
+                            setAddressType(currentType.toLowerCase());
+                            setCustomAddressType('');
+                        } else {
+                            setAddressType('outro');
+                            setCustomAddressType(currentType);
+                        }
                     }
                 } else {
                     // Create minimal structure
@@ -469,6 +554,23 @@ export const CustomerAreaPage = () => {
         }
     };
 
+    // Reenviar e-mail de ativação
+    const handleResendVerification = async () => {
+        if (!user) return;
+        setSendingVerif(true);
+        setError(null);
+        setSuccess(null);
+        try {
+            await sendEmailVerification(user);
+            setSuccess("E-mail de ativação reenviado com sucesso! Verifique sua caixa de entrada ou spam.");
+        } catch (err: any) {
+            console.error("Erro ao reenviar e-mail:", err);
+            setError("Não foi possível reenviar o e-mail de ativação. Tente novamente mais tarde.");
+        } finally {
+            setSendingVerif(false);
+        }
+    };
+
     // Salvar Dados Cadastrais
     const handleSaveCadastro = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -514,7 +616,129 @@ export const CustomerAreaPage = () => {
         }
     };
 
-    // Salvar Endereço
+    // Limpar campos de endereço
+    const clearAddressInputs = () => {
+        setCep('');
+        setStreet('');
+        setNumber('');
+        setComplement('');
+        setNeighborhood('');
+        setCity('');
+        setState('');
+        setReference('');
+        setLatitude(null);
+        setLongitude(null);
+        setIsDefault(false);
+        setAddressType('casa');
+        setCustomAddressType('');
+        setAddrErrors({});
+    };
+
+    // Clique em editar endereço
+    const handleEditAddressClick = (addr: any) => {
+        setError(null);
+        setSuccess(null);
+        setEditingAddressId(addr.id);
+        setCep(addr.cep ? formatCEP(addr.cep) : '');
+        setStreet(addr.street || '');
+        setNumber(addr.number || '');
+        setComplement(addr.complement || '');
+        setNeighborhood(addr.neighborhood || '');
+        setCity(addr.city || '');
+        setState(addr.state || '');
+        setReference(addr.reference || '');
+        setLatitude(addr.latitude !== undefined ? addr.latitude : null);
+        setLongitude(addr.longitude !== undefined ? addr.longitude : null);
+        setIsDefault(addr.isDefault || false);
+        
+        const currentType = addr.type || 'casa';
+        if (['casa', 'trabalho'].includes(currentType.toLowerCase())) {
+            setAddressType(currentType.toLowerCase());
+            setCustomAddressType('');
+        } else {
+            setAddressType('outro');
+            setCustomAddressType(currentType);
+        }
+        setAddrErrors({});
+        setIsFormOpen(true);
+    };
+
+    // Definir endereço principal
+    const handleSetDefaultAddress = async (addressId: string) => {
+        setError(null);
+        setSuccess(null);
+        try {
+            const userRef = doc(db, 'users', user!.uid);
+            const updatedList = addresses.map(addr => ({
+                ...addr,
+                isDefault: addr.id === addressId
+            }));
+
+            const defaultAddress = updatedList.find(addr => addr.isDefault) || updatedList[0];
+
+            await updateDoc(userRef, {
+                addresses: updatedList,
+                address: defaultAddress || null,
+                updatedAt: serverTimestamp()
+            });
+
+            setAddresses(updatedList);
+            setProfile((prev: any) => ({
+                ...prev,
+                addresses: updatedList,
+                address: defaultAddress || null
+            }));
+            
+            setSuccess('Endreço principal definido com sucesso!');
+        } catch (err: any) {
+            console.error("Erro ao definir endereço padrão:", err);
+            setError('Não foi possível alterar seu endereço principal.');
+        }
+    };
+
+    // Excluir endereço
+    const handleDeleteAddress = async (addressId: string) => {
+        setError(null);
+        setSuccess(null);
+        
+        const target = addresses.find(addr => addr.id === addressId);
+        if (target?.isDefault && addresses.length > 1) {
+            setError('Defina outro endereço como principal antes de excluir este.');
+            return;
+        }
+
+        try {
+            const userRef = doc(db, 'users', user!.uid);
+            let updatedList = addresses.filter(addr => addr.id !== addressId);
+
+            // Regra: se sobrar algum endereço e nenhum for default, o primeiro vira default
+            if (updatedList.length > 0 && !updatedList.some(addr => addr.isDefault)) {
+                updatedList[0].isDefault = true;
+            }
+
+            const defaultAddress = updatedList.find(addr => addr.isDefault) || null;
+
+            await updateDoc(userRef, {
+                addresses: updatedList,
+                address: defaultAddress,
+                updatedAt: serverTimestamp()
+            });
+
+            setAddresses(updatedList);
+            setProfile((prev: any) => ({
+                ...prev,
+                addresses: updatedList,
+                address: defaultAddress
+            }));
+
+            setSuccess('Endereço removido com sucesso!');
+        } catch (err: any) {
+            console.error("Erro ao deletar endereço:", err);
+            setError('Não foi possível excluir o endereço.');
+        }
+    };
+
+    // Salvar Endereço (Modificado para Múltiplos)
     const handleSaveAddress = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
@@ -556,6 +780,10 @@ export const CustomerAreaPage = () => {
             errors.reference = 'Campo Ponto de Referência é obrigatório.';
         }
 
+        if (addressType === 'outro' && !customAddressType.trim()) {
+            errors.customType = 'Por favor, defina o tipo personalizado.';
+        }
+
         if (Object.keys(errors).length > 0) {
             setAddrErrors(errors);
             setError('Complete os campos que faltam.');
@@ -565,7 +793,13 @@ export const CustomerAreaPage = () => {
         setAddressLoading(true);
         try {
             const userRef = doc(db, 'users', user!.uid);
+
+            const typeLabel = addressType === 'outro' ? customAddressType.trim() : addressType;
+            const targetId = editingAddressId || ('addr_' + Math.random().toString(36).substring(2, 11));
+            const existingAddr = addresses.find(a => a.id === targetId);
+
             const addressObj = {
+                id: targetId,
                 cep: cep.replace(/\D/g, ''),
                 street: street.trim(),
                 number: number.trim(),
@@ -576,19 +810,56 @@ export const CustomerAreaPage = () => {
                 reference: reference.trim(),
                 latitude: latitude !== undefined ? latitude : null,
                 longitude: longitude !== undefined ? longitude : null,
-                isDefault: isDefault !== undefined ? isDefault : true,
-                createdAt: profile?.address?.createdAt || new Date().toISOString(),
+                isDefault: addresses.length === 0 ? true : isDefault,
+                type: typeLabel.toLowerCase(),
+                createdAt: existingAddr?.createdAt || new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
+
+            let updatedList = [];
+            if (editingAddressId) {
+                updatedList = addresses.map(addr => addr.id === editingAddressId ? addressObj : addr);
+            } else {
+                updatedList = [...addresses, addressObj];
+            }
+
+            // Regra do principal
+            if (addressObj.isDefault) {
+                updatedList = updatedList.map(addr => {
+                    if (addr.id !== targetId) {
+                        return { ...addr, isDefault: false };
+                    }
+                    return addr;
+                });
+            } else {
+                const hasDefault = updatedList.some(addr => addr.isDefault);
+                if (!hasDefault && updatedList.length > 0) {
+                    updatedList[0].isDefault = true;
+                }
+            }
+
+            const defaultAddress = updatedList.find(addr => addr.isDefault) || updatedList[0];
+
             await updateDoc(userRef, {
-                address: addressObj,
+                addresses: updatedList,
+                address: defaultAddress || null,
                 updatedAt: serverTimestamp()
             });
-            setProfile((prev: any) => ({ ...prev, address: addressObj }));
-            setSuccess('Dados de entrega atualizados com absoluto sigilo!');
+
+            setAddresses(updatedList);
+            setProfile((prev: any) => ({ 
+                ...prev, 
+                addresses: updatedList,
+                address: defaultAddress || null 
+            }));
+
+            setSuccess(editingAddressId ? 'Endereço atualizado com sucesso!' : 'Endereço cadastrado com sucesso!');
+            setIsFormOpen(false);
+            setEditingAddressId(null);
+            clearAddressInputs();
         } catch (err: any) {
             console.error("Erro ao salvar endereço:", err);
-            setError('Não foi possível registrar as alterações de endereço.');
+            setError('Não foi possível registrar o endereço.');
         } finally {
             setAddressLoading(false);
         }
@@ -762,6 +1033,34 @@ export const CustomerAreaPage = () => {
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-red-950/10 blur-[130px] rounded-full pointer-events-none" />
 
             <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-10">
+
+                {/* Alerta de Verificação do E-mail */}
+                {user && !user.emailVerified && (
+                    <div className="mb-6 p-5 rounded-3xl bg-zinc-950/90 border border-amber-500/20 shadow-[0_0_25px_rgba(245,158,11,0.04)] flex flex-col md:flex-row items-center justify-between gap-4 font-sans text-sm backdrop-blur-md">
+                        <div className="flex items-center gap-3.5">
+                            <div className="h-11 w-11 rounded-full bg-amber-950/50 border border-amber-500/35 flex items-center justify-center text-amber-500 shrink-0 shadow-[0_0_12px_rgba(245,158,11,0.15)]">
+                                <AlertCircle className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <span className="font-extrabold text-white block text-sm">E-mail não verificado</span>
+                                <span className="text-xs text-zinc-400">Confirme seu e-mail para ativar todos os recursos da sua conta.</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
+                            {sendingVerif ? (
+                                <span className="text-zinc-500 text-xs font-bold py-2 px-4">Enviando link...</span>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={handleResendVerification}
+                                    className="bg-amber-600 hover:bg-amber-700 active:scale-[0.98] text-white font-bold px-5 py-2.5 rounded-2xl text-xs transition duration-300 shadow-[0_4px_12px_rgba(245,158,11,0.2)] cursor-pointer whitespace-nowrap font-sans"
+                                >
+                                    Reenviar e-mail de ativação
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
                 
                 {/* Visual Header do Perfil */}
                 <div className="mb-8 p-6 rounded-3xl bg-gradient-to-br from-zinc-950 to-zinc-900 border border-zinc-800/60 shadow-[0_4px_30px_rgba(220,38,38,0.03)] flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -1105,29 +1404,26 @@ export const CustomerAreaPage = () => {
                                         </div>
                                         <div>
                                             <h2 className="text-lg font-bold text-white">Meus Endereços</h2>
-                                            <p className="text-zinc-500 text-xs">Configure seu destino de despacho predileto com total descrição.</p>
+                                            <p className="text-zinc-500 text-xs font-medium">Configure seus locais de despacho discretos com total conveniência.</p>
                                         </div>
                                     </div>
+                                    
+                                    {!isFormOpen && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                clearAddressInputs();
+                                                setEditingAddressId(null);
+                                                setIsFormOpen(true);
+                                                setError(null);
+                                                setSuccess(null);
+                                            }}
+                                            className="px-4 py-2.5 bg-red-600 hover:bg-red-700 active:scale-[0.98] font-bold text-xs uppercase tracking-wider text-white rounded-xl transition flex items-center gap-2 cursor-pointer"
+                                        >
+                                            <span>+ Novo Endereço</span>
+                                        </button>
+                                    )}
                                 </div>
-
-                                <div className="mb-6">
-                                    <button
-                                        type="button"
-                                        onClick={handleGetLocation}
-                                        disabled={loadingLocation || loadingCep || addressLoading}
-                                        className="w-full flex items-center justify-center gap-2 py-3.5 px-4 bg-zinc-900 hover:bg-zinc-850 text-white border border-zinc-800 hover:border-zinc-750 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 disabled:opacity-55 disabled:cursor-not-allowed active:scale-[0.98]"
-                                    >
-                                        <MapPin className={`h-4 w-4 text-red-500 ${loadingLocation ? 'animate-bounce' : ''}`} />
-                                        {loadingLocation ? 'Buscando Localização...' : 'Preencher pela minha localização'}
-                                    </button>
-                                </div>
-
-                                {(loadingCep || loadingLocation) && (
-                                    <div className="mb-6 flex items-center gap-3 p-3.5 bg-red-950/20 border border-red-900/30 rounded-xl text-red-400 text-xs font-bold animate-pulse">
-                                        <div className="h-4 w-4 border-2 border-red-650 border-t-transparent rounded-full animate-spin" />
-                                        <span>Buscando seu endereço...</span>
-                                    </div>
-                                )}
 
                                 {error && (
                                     <div className="mb-6 flex items-start gap-3 p-3.5 bg-red-950/40 border border-red-900/50 rounded-xl text-red-400 text-xs font-semibold">
@@ -1142,157 +1438,345 @@ export const CustomerAreaPage = () => {
                                     </div>
                                 )}
 
-                                <form onSubmit={handleSaveAddress} className="space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">CEP</label>
-                                            <div className="relative">
-                                                <input 
-                                                    type="text" 
-                                                    value={cep}
-                                                    onChange={handleCepLookup}
-                                                    placeholder="00000-00"
-                                                    className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.cep ? 'border-red-650 focus:border-red-500 focus:ring-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
-                                                />
-                                                {loadingCep && (
-                                                    <div className="absolute right-3.5 top-3.5 h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                                {/* Lista de Endereços Salvos */}
+                                {!isFormOpen && (
+                                    <div className="space-y-4">
+                                        {addresses.length === 0 ? (
+                                            <div className="py-16 border border-dashed border-zinc-800 rounded-2xl text-center text-zinc-500 flex flex-col items-center justify-center">
+                                                <MapPin className="h-10 w-10 text-zinc-800 mb-3" />
+                                                <p className="text-sm font-semibold text-zinc-400">Nenhum endereço cadastrado ainda.</p>
+                                                <p className="text-xs text-zinc-600 mt-1 max-w-xs leading-relaxed">Você pode cadastrar quantos endereços quiser (ex: Casa, Trabalho, Praia) e escolher o principal.</p>
+                                                <button
+                                                    onClick={() => {
+                                                        clearAddressInputs();
+                                                        setEditingAddressId(null);
+                                                        setIsFormOpen(true);
+                                                    }}
+                                                    className="mt-4 px-4 py-2 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                                                >
+                                                    Cadastrar meu primeiro endereço
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {addresses.map((addr) => (
+                                                    <div key={addr.id} className="relative rounded-2xl border border-zinc-900 bg-zinc-900/10 p-5 flex flex-col justify-between hover:border-zinc-800 transition duration-300">
+                                                        <div>
+                                                            <div className="flex items-center gap-2 mb-3 flex-wrap">
+                                                                {/* Badge Tipo do Endereço */}
+                                                                <span className="px-2.5 py-1 bg-zinc-900 border border-zinc-850 text-[10px] font-black uppercase rounded-full tracking-wider text-zinc-300">
+                                                                    {addr.type === 'casa' ? '🏠 Casa' : addr.type === 'trabalho' ? '💼 Trabalho' : `📍 ${addr.type}`}
+                                                                </span>
+
+                                                                {/* Badge Principal */}
+                                                                {addr.isDefault && (
+                                                                    <span className="px-2.5 py-1 bg-red-950/40 border border-red-900/40 text-[10px] font-bold uppercase rounded-full tracking-wider text-red-500">
+                                                                        ★ Principal
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            <p className="text-sm text-zinc-150 font-semibold leading-relaxed">
+                                                                {addr.street}, {addr.number}
+                                                                {addr.complement && ` - ${addr.complement}`}
+                                                            </p>
+                                                            <p className="text-xs text-zinc-500 mt-1">
+                                                                {addr.neighborhood} | {addr.city} - {addr.state}
+                              </p>
+                                                            <p className="text-xs text-zinc-600 mt-0.5 font-mono">
+                                                                CEP: {formatCEP(addr.cep)}
+                                                            </p>
+
+                                                            {addr.reference && (
+                                                                <p className="text-[11px] text-zinc-550 italic mt-3 border-t border-zinc-900/60 pt-2 leading-relaxed">
+                                                                    Ref: {addr.reference}
+                                                                </p>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="mt-5 pt-3 border-t border-zinc-900/60 flex items-center justify-between gap-3 flex-wrap">
+                                                            <div className="flex items-center gap-2">
+                                                                <button
+                                                                    onClick={() => handleEditAddressClick(addr)}
+                                                                    className="px-3 py-1.5 bg-zinc-900/40 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-800 text-[10px] font-bold uppercase text-zinc-300 rounded-lg tracking-wider transition cursor-pointer"
+                                                                >
+                                                                    Editar
+                                                                </button>
+                                                                {!addr.isDefault && (
+                                                                    <button
+                                                                        onClick={() => handleDeleteAddress(addr.id)}
+                                                                        className="px-3 py-1.5 bg-zinc-900/40 hover:bg-red-950/20 border border-zinc-850 hover:border-red-900/30 text-[10px] font-bold uppercase text-zinc-500 hover:text-red-500 rounded-lg tracking-wider transition cursor-pointer"
+                                                                    >
+                                                                        Excluir
+                                                                    </button>
+                                                                )}
+                                                            </div>
+
+                                                            {!addr.isDefault && (
+                                                                <button
+                                                                    onClick={() => handleSetDefaultAddress(addr.id)}
+                                                                    className="text-[10px] font-bold text-red-500 hover:text-red-400 uppercase tracking-wider transition cursor-pointer"
+                                                                >
+                                                                    Definir Principal
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Formulário de Endereço (Adicionar / Editar) */}
+                                {isFormOpen && (
+                                    <div className="bg-zinc-950/40 border border-zinc-900/50 rounded-2xl p-5 sm:p-6 space-y-4 animate-fade-in animate-duration-300">
+                                        <div className="flex items-center justify-between gap-2 border-b border-zinc-900/60 pb-3">
+                                            <h3 className="text-xs font-black uppercase tracking-widest text-zinc-300">
+                                                {editingAddressId ? 'Editar Endereço' : 'Cadastrar Novo Endereço'}
+                                            </h3>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsFormOpen(false);
+                                                    setEditingAddressId(null);
+                                                    clearAddressInputs();
+                                                }}
+                                                className="text-[10px] text-zinc-500 hover:text-zinc-300 uppercase font-bold tracking-wider transition cursor-pointer"
+                                            >
+                                                Cancelar
+                                            </button>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-4">
+                                            <button
+                                                type="button"
+                                                onClick={handleGetLocation}
+                                                disabled={loadingLocation || loadingCep || addressLoading}
+                                                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-zinc-900 hover:bg-zinc-850 text-white border border-zinc-850 hover:border-zinc-800 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 disabled:opacity-55 disabled:cursor-not-allowed active:scale-[0.98] cursor-pointer"
+                                            >
+                                                <MapPin className={`h-4 w-4 text-red-500 ${loadingLocation ? 'animate-bounce' : ''}`} />
+                                                {loadingLocation ? 'Buscando Localização...' : 'Preencher pela minha localização'}
+                                            </button>
+                                        </div>
+
+                                        {(loadingCep || loadingLocation) && (
+                                            <div className="flex items-center gap-3 p-3 bg-red-950/20 border border-red-900/30 rounded-xl text-red-400 text-xs font-bold animate-pulse">
+                                                <div className="h-4 w-4 border-2 border-red-650 border-t-transparent rounded-full animate-spin" />
+                                                <span>Buscando endereço...</span>
+                                            </div>
+                                        )}
+
+                                        <form onSubmit={handleSaveAddress} className="space-y-4">
+                                            
+                                            {/* Seletor Tipo de Endereço */}
+                                            <div className="space-y-2">
+                                                <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider">Tipo de Endereço</label>
+                                                <div className="flex items-center gap-2">
+                                                    {['casa', 'trabalho', 'outro'].map((t) => (
+                                                        <button
+                                                            key={t}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setAddressType(t);
+                                                                setAddrErrors(prev => ({ ...prev, customType: '' }));
+                                                            }}
+                                                            className={`flex-1 py-2.5 rounded-xl text-xs font-bold capitalize border transition-all duration-300 cursor-pointer ${
+                                                                addressType === t 
+                                                                    ? 'bg-red-600/10 border-red-500 text-red-500' 
+                                                                    : 'bg-zinc-900/50 border-zinc-900 text-zinc-400 hover:bg-zinc-900 hover:border-zinc-850'
+                                                            }`}
+                                                        >
+                                                            {t === 'casa' ? '🏠 Casa' : t === 'trabalho' ? '💼 Trabalho' : '📍 Outro'}
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                {addressType === 'outro' && (
+                                                    <div className="animate-fade-in pt-1.5">
+                                                        <label className="block text-zinc-500 text-[10px] font-black uppercase tracking-wider mb-2">Qual o tipo? (ex: Sítio, Praia, Apartamento da Mãe)</label>
+                                                        <input
+                                                            type="text"
+                                                            value={customAddressType}
+                                                            placeholder="ex: Praia"
+                                                            onChange={(e) => {
+                                                                setCustomAddressType(e.target.value);
+                                                                setAddrErrors(prev => ({ ...prev, customType: '' }));
+                                                            }}
+                                                            className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.customType ? 'border-red-650' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition`}
+                                                        />
+                                                        {addrErrors.customType && (
+                                                            <span className="text-red-500 text-[10px] mt-1.5 block font-semibold animate-fade-in">{addrErrors.customType}</span>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
-                                            {addrErrors.cep && (
-                                                <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.cep}</span>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Bairro</label>
-                                            <input 
-                                                type="text" 
-                                                value={neighborhood}
-                                                placeholder="ex: Centro"
-                                                onChange={e => {
-                                                    setNeighborhood(e.target.value);
-                                                    setAddrErrors(prev => ({ ...prev, neighborhood: '' }));
-                                                }}
-                                                className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.neighborhood ? 'border-red-650 focus:border-red-500 focus:ring-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
-                                            />
-                                            {addrErrors.neighborhood && (
-                                                <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.neighborhood}</span>
-                                            )}
-                                        </div>
-                                    </div>
 
-                                    <div>
-                                        <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Rua / Logradouro</label>
-                                        <input 
-                                            type="text" 
-                                            value={street}
-                                            placeholder="ex: Avenida Paulista"
-                                            onChange={e => {
-                                                setStreet(e.target.value);
-                                                setAddrErrors(prev => ({ ...prev, street: '' }));
-                                            }}
-                                            className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.street ? 'border-red-650 focus:border-red-500 focus:ring-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
-                                        />
-                                        {addrErrors.street && (
-                                            <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.street}</span>
-                                        )}
-                                    </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">CEP</label>
+                                                    <div className="relative">
+                                                        <input 
+                                                            type="text" 
+                                                            value={cep}
+                                                            onChange={handleCepLookup}
+                                                            placeholder="00000-00"
+                                                            className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.cep ? 'border-red-650 focus:border-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
+                                                        />
+                                                        {loadingCep && (
+                                                            <div className="absolute right-3.5 top-3.5 h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                                                        )}
+                                                    </div>
+                                                    {addrErrors.cep && (
+                                                        <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.cep}</span>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Bairro</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={neighborhood}
+                                                        placeholder="ex: Centro"
+                                                        onChange={e => {
+                                                            setNeighborhood(e.target.value);
+                                                            setAddrErrors(prev => ({ ...prev, neighborhood: '' }));
+                                                        }}
+                                                        className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.neighborhood ? 'border-red-650 focus:border-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
+                                                    />
+                                                    {addrErrors.neighborhood && (
+                                                        <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.neighborhood}</span>
+                                                    )}
+                                                </div>
+                                            </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                        <div>
-                                            <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Número</label>
-                                            <input 
-                                                type="text" 
-                                                value={number}
-                                                placeholder="ex: 123"
-                                                onChange={e => {
-                                                    setNumber(e.target.value);
-                                                    setAddrErrors(prev => ({ ...prev, number: '' }));
-                                                }}
-                                                className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.number ? 'border-red-650 focus:border-red-500 focus:ring-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
-                                            />
-                                            {addrErrors.number && (
-                                                <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.number}</span>
-                                            )}
-                                        </div>
-                                        <div className="sm:col-span-2">
-                                            <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Complemento</label>
-                                            <input 
-                                                type="text" 
-                                                value={complement}
-                                                placeholder="ex: Apto 42, Bloco B"
-                                                onChange={e => {
-                                                    setComplement(e.target.value);
-                                                    setAddrErrors(prev => ({ ...prev, complement: '' }));
-                                                }}
-                                                className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.complement ? 'border-red-650 focus:border-red-500 focus:ring-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
-                                            />
-                                            {addrErrors.complement && (
-                                                <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.complement}</span>
-                                            )}
-                                        </div>
-                                    </div>
+                                            <div>
+                                                <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Rua / Logradouro</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={street}
+                                                    placeholder="ex: Avenida Paulista"
+                                                    onChange={e => {
+                                                        setStreet(e.target.value);
+                                                        setAddrErrors(prev => ({ ...prev, street: '' }));
+                                                    }}
+                                                    className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.street ? 'border-red-650 focus:border-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
+                                                />
+                                                {addrErrors.street && (
+                                                    <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.street}</span>
+                                                )}
+                                            </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Cidade</label>
-                                            <input 
-                                                type="text" 
-                                                value={city}
-                                                placeholder="ex: São Paulo"
-                                                onChange={e => {
-                                                    setCity(e.target.value);
-                                                    setAddrErrors(prev => ({ ...prev, city: '' }));
-                                                }}
-                                                className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.city ? 'border-red-650 focus:border-red-500 focus:ring-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
-                                            />
-                                            {addrErrors.city && (
-                                                <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.city}</span>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Estado (UF)</label>
-                                            <input 
-                                                type="text" 
-                                                maxLength={2}
-                                                value={state}
-                                                placeholder="ex: SP"
-                                                onChange={e => {
-                                                    setState(e.target.value);
-                                                    setAddrErrors(prev => ({ ...prev, state: '' }));
-                                                }}
-                                                className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.state ? 'border-red-650 focus:border-red-500 focus:ring-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300 uppercase`}
-                                            />
-                                            {addrErrors.state && (
-                                                <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.state}</span>
-                                            )}
-                                        </div>
-                                    </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                                <div>
+                                                    <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Número</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={number}
+                                                        placeholder="ex: 123"
+                                                        onChange={e => {
+                                                            setNumber(e.target.value);
+                                                            setAddrErrors(prev => ({ ...prev, number: '' }));
+                                                        }}
+                                                        className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.number ? 'border-red-650 focus:border-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
+                                                    />
+                                                    {addrErrors.number && (
+                                                        <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.number}</span>
+                                                    )}
+                                                </div>
+                                                <div className="sm:col-span-2">
+                                                    <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Complemento</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={complement}
+                                                        placeholder="ex: Apto 42, Bloco B"
+                                                        onChange={e => {
+                                                            setComplement(e.target.value);
+                                                            setAddrErrors(prev => ({ ...prev, complement: '' }));
+                                                        }}
+                                                        className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.complement ? 'border-red-650 focus:border-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
+                                                    />
+                                                    {addrErrors.complement && (
+                                                        <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.complement}</span>
+                                                    )}
+                                                </div>
+                                            </div>
 
-                                    <div>
-                                        <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Ponto de Referência</label>
-                                        <input 
-                                            type="text" 
-                                            value={reference}
-                                            placeholder="ex: Próximo ao supermercado, portão marrom"
-                                            onChange={e => {
-                                                setReference(e.target.value);
-                                                setAddrErrors(prev => ({ ...prev, reference: '' }));
-                                            }}
-                                            className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.reference ? 'border-red-650 focus:border-red-500 focus:ring-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
-                                        />
-                                        {addrErrors.reference && (
-                                            <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.reference}</span>
-                                        )}
-                                    </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Cidade</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={city}
+                                                        placeholder="ex: São Paulo"
+                                                        onChange={e => {
+                                                            setCity(e.target.value);
+                                                            setAddrErrors(prev => ({ ...prev, city: '' }));
+                                                        }}
+                                                        className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.city ? 'border-red-650 focus:border-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
+                                                    />
+                                                    {addrErrors.city && (
+                                                        <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.city}</span>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Estado (UF)</label>
+                                                    <input 
+                                                        type="text" 
+                                                        maxLength={2}
+                                                        value={state}
+                                                        placeholder="ex: SP"
+                                                        onChange={e => {
+                                                            setState(e.target.value);
+                                                            setAddrErrors(prev => ({ ...prev, state: '' }));
+                                                        }}
+                                                        className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.state ? 'border-red-650 focus:border-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300 uppercase`}
+                                                    />
+                                                    {addrErrors.state && (
+                                                        <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.state}</span>
+                                                    )}
+                                                </div>
+                                            </div>
 
-                                    <button 
-                                        type="submit" 
-                                        disabled={addressLoading || loadingLocation || loadingCep}
-                                        className="w-full mt-6 py-3.5 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                                    >
-                                        {addressLoading ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Salvar Endereço'}
-                                    </button>
-                                </form>
+                                            <div>
+                                                <label className="block text-zinc-400 text-xs font-bold uppercase tracking-wider mb-2">Ponto de Referência</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={reference}
+                                                    placeholder="ex: Próximo ao supermercado, portão marrom"
+                                                    onChange={e => {
+                                                        setReference(e.target.value);
+                                                        setAddrErrors(prev => ({ ...prev, reference: '' }));
+                                                    }}
+                                                    className={`w-full px-4 py-3 bg-zinc-900/50 border ${addrErrors.reference ? 'border-red-650 focus:border-red-500' : 'border-zinc-800 focus:border-red-500 focus:ring-red-500'} rounded-xl text-sm text-white focus:outline-none focus:ring-1 transition duration-300`}
+                                                />
+                                                {addrErrors.reference && (
+                                                    <span className="text-red-500 text-[11px] mt-1.5 block font-semibold tracking-wide animate-fade-in">{addrErrors.reference}</span>
+                                                )}
+                                            </div>
+
+                                            {/* Checkbox Principal */}
+                                            {addresses.length > 0 && (
+                                                <label className="flex items-center gap-2.5 cursor-pointer select-none py-1">
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={isDefault}
+                                                        onChange={(e) => setIsDefault(e.target.checked)}
+                                                        className="rounded bg-zinc-90 w-4 h-4 border-zinc-850 text-red-600 focus:ring-red-500"
+                                                    />
+                                                    <span className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Definir este endereço como Principal</span>
+                                                </label>
+                                            )}
+
+                                            <button 
+                                                type="submit" 
+                                                disabled={addressLoading || loadingLocation || loadingCep}
+                                                className="w-full mt-6 py-3.5 bg-red-600 hover:bg-red-700 hover:scale-[1.005] active:scale-[0.985] text-white rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                                            >
+                                                {addressLoading ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Salvar Endereço'}
+                                            </button>
+                                        </form>
+                                    </div>
+                                )}
                             </div>
                         )}
 

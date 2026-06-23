@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
@@ -97,7 +97,9 @@ export const CadastroPage = () => {
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [loadingCep, setLoadingCep] = useState(false);
+    const [loadingLocation, setLoadingLocation] = useState(false);
 
     // Campos adicionais
     const [fullName, setFullName] = useState('');
@@ -130,6 +132,99 @@ export const CadastroPage = () => {
             navigate('/area-cliente', { replace: true });
         }
     }, [user, navigate]);
+
+    const normalizeCity = (cityStr: string) => {
+        return cityStr.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    };
+
+    const normalizeState = (stateStr: string) => {
+        return stateStr.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+    };
+
+    const handleGetLocation = () => {
+        if (!navigator.geolocation) {
+            setError("Seu navegador não suporta geolocalização.");
+            return;
+        }
+
+        setLoadingLocation(true);
+        setError(null);
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+
+                try {
+                    const apiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY || "";
+                    if (!apiKey) {
+                        setError("Google Maps API Key não configurada. Configure GOOGLE_MAPS_PLATFORM_KEY.");
+                        setLoadingLocation(false);
+                        return;
+                    }
+
+                    const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`);
+                    const data = await response.json();
+
+                    if (data.status === "OK" && data.results && data.results.length > 0) {
+                        const result = data.results[0];
+                        const components = result.address_components;
+
+                        let foundCep = '';
+                        let foundStreet = '';
+                        let foundNumber = '';
+                        let foundNeighborhood = '';
+                        let foundCity = '';
+                        let foundState = '';
+
+                        for (const comp of components) {
+                            if (comp.types.includes('postal_code')) {
+                                foundCep = comp.long_name;
+                            }
+                            if (comp.types.includes('route')) {
+                                foundStreet = comp.long_name;
+                            }
+                            if (comp.types.includes('street_number')) {
+                                foundNumber = comp.long_name;
+                            }
+                            if (comp.types.includes('sublocality_level_1') || comp.types.includes('sublocality')) {
+                                foundNeighborhood = comp.long_name;
+                            }
+                            if (comp.types.includes('administrative_area_level_2')) {
+                                foundCity = comp.long_name;
+                            }
+                            if (comp.types.includes('administrative_area_level_1')) {
+                                foundState = comp.short_name;
+                            }
+                        }
+
+                        if (foundCep) setCep(formatCEP(foundCep));
+                        if (foundStreet) setStreet(foundStreet);
+                        if (foundNumber) setNumber(foundNumber);
+                        if (foundNeighborhood) setNeighborhood(foundNeighborhood);
+                        if (foundCity) setCity(normalizeCity(foundCity));
+                        if (foundState) setState(normalizeState(foundState));
+                    } else {
+                        setError("Não conseguimos encontrar seu endereço automaticamente.");
+                    }
+                } catch (err) {
+                    console.error("Erro no geocoding do Google:", err);
+                    setError("Não conseguimos encontrar seu endereço automaticamente.");
+                } finally {
+                    setLoadingLocation(false);
+                }
+            },
+            (err) => {
+                console.error("Erro ao obter geolocalização:", err);
+                if (err.code === err.PERMISSION_DENIED) {
+                    setError("Permissão de localização negada. Ative a localização no seu navegador.");
+                } else {
+                    setError("Erro ao obter localização atual.");
+                }
+                setLoadingLocation(false);
+            }
+        );
+    };
 
     // Buscar CEP por ViaCEP
     const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -241,7 +336,24 @@ export const CadastroPage = () => {
             const userCredentials = await createUserWithEmailAndPassword(auth, email.trim(), password);
             const uid = userCredentials.user.uid;
 
-            // Criar cadastro detalhado no Firestore
+            // Criar endereço inicial default
+            const firstAddress = {
+                id: 'legacy-default',
+                cep: cep.replace(/\D/g, ''),
+                street: street.trim(),
+                number: number.trim(),
+                complement: complement.trim(),
+                neighborhood: neighborhood.trim(),
+                city: city.trim(),
+                state: state.toUpperCase().trim(),
+                reference: reference.trim(),
+                isDefault: true,
+                type: 'casa',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            // Criar cadastro detalhado no Firestore com accountStatus: 'pending_otp'
             await setDoc(doc(db, 'users', uid), {
                 uid,
                 role: 'customer',
@@ -261,13 +373,48 @@ export const CadastroPage = () => {
                     state: state.toUpperCase().trim(),
                     reference: reference.trim()
                 },
+                addresses: [firstAddress],
                 acceptedTerms: true,
+                emailVerified: false,
+                accountStatus: 'pending_otp',
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp()
             });
 
-            // Redireciona com replace
-            navigate('/area-cliente', { replace: true });
+            // Disparar Webhook de Boas-Vindas em background (seguro e não-bloqueante)
+            fetch('/api/customer-events/welcome', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    uid,
+                    fullName: fullName.trim(),
+                    email: email.trim().toLowerCase(),
+                    whatsapp: whatsapp.replace(/\D/g, ''),
+                    cpf: cpf.replace(/\D/g, ''),
+                    createdAt: new Date().toISOString()
+                })
+            }).catch(fetchErr => {
+                console.error("Erro interno ao chamar webhook de boas-vindas:", fetchErr);
+            });
+
+            // Disparar geração e envio do código OTP
+            await fetch('/api/customer-otp/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    uid,
+                    fullName: fullName.trim(),
+                    email: email.trim().toLowerCase(),
+                    whatsapp: whatsapp.replace(/\D/g, '')
+                })
+            });
+
+            // Mostrar mensagem de sucesso e aguardar clique antes de redirecionar
+            setSuccessMessage("Cadastro criado com sucesso! Enviamos um código de ativação por e-mail/WhatsApp para ativar sua conta.");
         } catch (err: any) {
             console.error('Erro ao efetuar cadastro:', err);
             setError(getFriendlyErrorMessage(err.code || err.message));
@@ -283,12 +430,12 @@ export const CadastroPage = () => {
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[400px] h-[400px] bg-red-950/10 blur-[110px] rounded-full pointer-events-none" />
 
             {/* Back to Home Link */}
-            <div className="absolute top-6 left-6 z-10 font-sans">
+            <div className="absolute top-4 left-4 md:top-6 md:left-6 z-10 font-sans">
                 <Link 
                     to="/" 
-                    className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-sm font-medium"
+                    className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-xs sm:text-sm font-medium"
                 >
-                    <ArrowLeft className="h-4 w-4" /> Voltar para a Loja
+                    <ArrowLeft className="h-3.5 w-3.5" /> Voltar para a Loja
                 </Link>
             </div>
 
@@ -316,9 +463,30 @@ export const CadastroPage = () => {
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
-                    className="w-full rounded-3xl bg-zinc-950/80 border border-zinc-900/60 p-8 shadow-[0_0_35px_rgba(239,68,68,0.06)] backdrop-blur-md"
+                    className="w-full rounded-3xl bg-zinc-950/80 border border-zinc-900/60 p-5 sm:p-8 shadow-[0_0_35px_rgba(239,68,68,0.06)] backdrop-blur-md"
                 >
-                    {/* Linha indicativa de passos */}
+                    {successMessage ? (
+                        <div className="text-center font-sans py-4 flex flex-col items-center gap-6">
+                            <div className="w-16 h-16 rounded-full bg-emerald-950/80 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                                <Check className="h-8 w-8" />
+                            </div>
+                            <div className="space-y-2">
+                                <h2 className="text-2xl font-black text-white">Cadastro Realizado!</h2>
+                                <p className="text-sm text-zinc-400 leading-relaxed max-w-sm mx-auto">
+                                    {successMessage}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => navigate('/ativar-conta', { replace: true })}
+                                className="w-full max-w-xs mt-4 py-3 px-6 bg-red-650 hover:bg-red-750 text-white font-bold rounded-2xl shadow-[0_0_15px_rgba(220,38,38,0.3)] transition-all flex items-center justify-center gap-2 group cursor-pointer"
+                            >
+                                Ativar Minha Conta <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Linha indicativa de passos */}
                     <div className="mb-8 select-none">
                         <div className="flex justify-between items-center relative">
                             {/* Linhas de conexão */}
@@ -457,6 +625,27 @@ export const CadastroPage = () => {
                                         <MapPin className="h-5 w-5 text-red-500" /> Endereço de Envio Sigiloso
                                     </h2>
                                     <p className="text-zinc-500 text-xs">Entregas 100% discretas. Nenhuma menção sex-shop ou produto aparecerá na etiqueta externa.</p>
+                                </div>
+
+                                <div className="mb-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleGetLocation}
+                                        disabled={loadingLocation}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 hover:bg-zinc-850 active:scale-[0.98] border border-zinc-800 hover:border-red-500/40 rounded-xl transition-all duration-300 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50 cursor-pointer"
+                                    >
+                                        {loadingLocation ? (
+                                            <>
+                                                <div className="h-4 w-4 border-2 border-red-500 border-t-white rounded-full animate-spin" />
+                                                <span>Buscando sua localização...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <MapPin className="h-4 w-4 text-red-500 shrink-0" />
+                                                <span>Definir endereço pela minha localização</span>
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
 
                                 <div className="space-y-4">
@@ -710,6 +899,8 @@ export const CadastroPage = () => {
                             </motion.div>
                         )}
                     </AnimatePresence>
+                        </>
+                    )}
                 </motion.div>
 
                 {/* Footer Section */}

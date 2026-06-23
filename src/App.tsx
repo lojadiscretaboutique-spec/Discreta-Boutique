@@ -19,6 +19,7 @@ const ProductPage = lazy(() => import('./pages/store/ProductPage').then(m => ({ 
 const CartPage = lazy(() => import('./pages/store/CartPage').then(m => ({ default: m.CartPage })));
 const LoginPage = lazy(() => import('./pages/store/LoginPage').then(m => ({ default: m.LoginPage })));
 const CadastroPage = lazy(() => import('./pages/store/CadastroPage').then(m => ({ default: m.CadastroPage })));
+const AtivacaoContaPage = lazy(() => import('./pages/store/AtivacaoContaPage').then(m => ({ default: m.AtivacaoContaPage })));
 const SuccessPage = lazy(() => import('./pages/store/SuccessPage').then(m => ({ default: m.SuccessPage })));
 const CustomerAreaPage = lazy(() => import('./pages/store/CustomerAreaPage').then(m => ({ default: m.CustomerAreaPage })));
 const AreaClienteLayout = lazy(() => import('./layouts/AreaClienteLayout').then(m => ({ default: m.AreaClienteLayout })));
@@ -60,6 +61,7 @@ const AdminUsers = lazy(() => import('./pages/admin/AdminUsers').then(m => ({ de
 const AdminRoles = lazy(() => import('./pages/admin/AdminRoles').then(m => ({ default: m.AdminRoles })));
 const AdminLogs = lazy(() => import('./pages/admin/AdminLogs').then(m => ({ default: m.AdminLogs })));
 const AdminConfig = lazy(() => import('./pages/admin/AdminConfig').then(m => ({ default: m.AdminConfig })));
+const AdminCustomerNotifications = lazy(() => import('./pages/admin/AdminCustomerNotifications').then(m => ({ default: m.AdminCustomerNotifications })));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const AdminAIInsights = lazy(() => import('./pages/admin/AdminAIInsights'));
 const AdminDeliveryAreas = lazy(() => import('./pages/admin/AdminDeliveryAreas').then(m => ({ default: m.AdminDeliveryAreas })));
@@ -215,6 +217,7 @@ function AppContent() {
 
             <Route path="/login" element={<LoginPage />} />
             <Route path="/cadastro" element={<CadastroPage />} />
+            <Route path="/ativar-conta" element={<AtivacaoContaPage />} />
             <Route path="/politica-de-privacidade" element={<PrivacyPolicyPage />} />
             <Route path="/quem-somos" element={<AboutUsPage />} />
             <Route path="/politica-de-troca" element={<ExchangePolicyPage />} />
@@ -291,6 +294,7 @@ function AppContent() {
             <Route path="config/theme-manager" element={<AdminThemeManager />} />
             <Route path="config/typography" element={<AdminTypography />} />
             <Route path="config/impressao" element={<AdminPrinterConfig />} />
+            <Route path="config/notificacoes" element={<AdminCustomerNotifications />} />
 
             {/* Admin Blog Routes */}
             <Route path="blog" element={<AdminBlogHub />} />

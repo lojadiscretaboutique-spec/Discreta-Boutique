@@ -64,6 +64,7 @@ export function AdminLayout() {
         { name: 'Gerenciar Temas 🎨', path: '/admin/config/theme-manager', permission: 'settings' },
         { name: 'Tipografia da Loja 🔤', path: '/admin/config/typography', permission: 'settings' },
         { name: 'Impressão Automática', path: '/admin/config/impressao', permission: 'settings' },
+        { name: 'Notificações de Clientes 🔔', path: '/admin/config/notificacoes', permission: 'settings' },
         { name: 'Áreas de Entrega', path: '/admin/areas-entrega', permission: 'areasEntrega' },
         { name: 'Horários da Loja', path: '/admin/horarios', permission: 'settings' },
     ]},
