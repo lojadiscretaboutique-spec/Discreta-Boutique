@@ -16,20 +16,20 @@ export const AtivacaoContaPage = () => {
     const [resending, setResending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    const [userData, setUserData] = useState<any>(null);
 
     // Settings
     const [resendCooldown, setResendCooldown] = useState(60);
     const [otpValidity, setOtpValidity] = useState(10);
     const [cooldownRemaining, setCooldownRemaining] = useState(0);
 
-    // Load settings from Firestore
+    // Load settings from Firestore via safe public API proxy
     useEffect(() => {
         const loadSettings = async () => {
             try {
-                const settingsRef = doc(db, 'settings', 'customerNotifications');
-                const settingsSnap = await getDoc(settingsRef);
-                if (settingsSnap.exists()) {
-                    const data = settingsSnap.data();
+                const res = await fetch('/api/customer-otp/config');
+                const data = await res.json();
+                if (data.success) {
                     if (data.otpResendSeconds) {
                         setResendCooldown(Number(data.otpResendSeconds));
                     }
@@ -59,6 +59,7 @@ export const AtivacaoContaPage = () => {
                 const userSnap = await getDoc(userRef);
                 if (userSnap.exists()) {
                     const data = userSnap.data();
+                    setUserData(data);
                     const status = data.accountStatus;
                     // Se accountStatus for 'active' ou estiver vazio/indefinido (cliente antigo), redireciona por padrão
                     if (status === 'active' || !status) {
@@ -138,18 +139,6 @@ export const AtivacaoContaPage = () => {
         setSuccess(null);
 
         try {
-            // Sincronizar informações do usuário com o banco primeiro
-            const userRef = doc(db, 'users', user.uid);
-            const userSnap = await getDoc(userRef);
-            
-            if (!userSnap.exists()) {
-                setError("Usuário não encontrado.");
-                setResending(false);
-                return;
-            }
-
-            const userData = userSnap.data();
-
             const res = await fetch('/api/customer-otp/generate', {
                 method: 'POST',
                 headers: {
@@ -157,9 +146,9 @@ export const AtivacaoContaPage = () => {
                 },
                 body: JSON.stringify({
                     uid: user.uid,
-                    fullName: userData.fullName || '',
-                    email: userData.email || user.email || '',
-                    whatsapp: userData.whatsapp || ''
+                    fullName: userData?.fullName || '',
+                    email: userData?.email || user.email || '',
+                    whatsapp: userData?.whatsapp || ''
                 })
             });
 

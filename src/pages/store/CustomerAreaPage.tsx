@@ -605,8 +605,27 @@ export const CustomerAreaPage = () => {
         setError(null);
         setSuccess(null);
         try {
-            await sendEmailVerification(user);
-            setSuccess("E-mail de ativação reenviado com sucesso! Verifique sua caixa de entrada ou spam.");
+            const res = await fetch('/api/customer-otp/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    uid: user.uid,
+                    fullName: fullName || '',
+                    email: user.email || '',
+                    whatsapp: whatsapp || ''
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setSuccess("Código de ativação enviado com sucesso! Redirecionando...");
+                setTimeout(() => {
+                    navigate('/ativar-conta');
+                }, 1500);
+            } else {
+                setError(data.error || "Não foi possível enviar o código de ativação.");
+            }
         } catch (err: any) {
             console.error("Erro ao reenviar e-mail:", err);
             setError("Não foi possível reenviar o e-mail de ativação. Tente novamente mais tarde.");

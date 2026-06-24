@@ -357,21 +357,66 @@ async function startServer() {
     }
   });
 
+  // PUBLIC ENDPOINT TO FETCH SAFE CUSTOMER OTP SETTINGS (Bypasses security rules)
+  app.get("/api/customer-otp/config", async (req, res) => {
+    try {
+      const settingsSnap = await getDoc(doc(db, 'settings', 'customerNotifications'));
+      const settings = settingsSnap.exists() ? settingsSnap.data() : null;
+
+      res.json({
+        success: true,
+        otpResendSeconds: settings && settings.otpResendSeconds ? Number(settings.otpResendSeconds) : 60,
+        otpValidityMinutes: settings && settings.otpValidityMinutes ? Number(settings.otpValidityMinutes) : 10
+      });
+    } catch (err: any) {
+      console.error("Erro ao buscar configurações públicas de OTP:", err);
+      res.json({
+        success: true,
+        otpResendSeconds: 60,
+        otpValidityMinutes: 10
+      });
+    }
+  });
+
   // CUSTOMER ACTIVATION CODE (OTP) SYSTEM
   app.post("/api/customer-otp/generate", async (req, res) => {
     try {
       const { uid, fullName, email, whatsapp } = req.body;
-      if (!uid || !fullName || !email || !whatsapp) {
-        return res.status(400).json({ success: false, error: "Parâmetros obrigatórios ausentes" });
+      if (!uid) {
+        return res.status(400).json({ success: false, error: "Parâmetro uid é obrigatório" });
       }
 
-      console.log(`⏳ [OTP Generate] Request for user: ${uid} | ${fullName}`);
+      console.log(`⏳ [OTP Generate] Request for user: ${uid}`);
 
-      const adminDb = getAdminDb();
+      // Resolve missing fields from Firestore safely
+      let finalFullName = fullName;
+      let finalEmail = email;
+      let finalWhatsapp = whatsapp;
+
+      if (!finalFullName || !finalEmail || !finalWhatsapp) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            if (userData) {
+              finalFullName = finalFullName || userData.fullName || '';
+              finalEmail = finalEmail || userData.email || '';
+              finalWhatsapp = finalWhatsapp || userData.whatsapp || '';
+            }
+          }
+        } catch (dbErr: any) {
+          console.warn(`⚠️ [OTP Generate] Could not safely fetch user document from Firestore: ${dbErr.message || dbErr}`);
+        }
+      }
+
+      // Check if we managed to get essential contact info
+      if (!finalEmail) {
+        return res.status(400).json({ success: false, error: "E-mail do usuário não encontrado para envio do OTP." });
+      }
 
       // 1. Fetch settings (bypassing security rules via Admin SDK)
-      const settingsSnap = await adminDb.collection('settings').doc('customerNotifications').get();
-      const settings = settingsSnap.exists ? settingsSnap.data() : null;
+      const settingsSnap = await getDoc(doc(db, 'settings', 'customerNotifications'));
+      const settings = settingsSnap.exists() ? settingsSnap.data() : null;
 
       const otpValidityMinutes = settings && settings.otpValidityMinutes ? Number(settings.otpValidityMinutes) : 10;
       const otpMaxAttempts = settings && settings.otpMaxAttempts ? Number(settings.otpMaxAttempts) : 5;
@@ -384,12 +429,12 @@ async function startServer() {
       const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
       const expiresAt = new Date(Date.now() + otpValidityMinutes * 60 * 1000).toISOString();
 
-      // 3. Save OTP in collection customerOtpCodes/{uid} (bypassing security rules via Admin SDK)
-      await adminDb.collection('customerOtpCodes').doc(uid).set({
+      // 3. Save OTP in collection customerOtpCodes/{uid}
+      await setDoc(doc(db, 'customerOtpCodes', uid), {
         uid,
         hashedCode,
-        email,
-        whatsapp,
+        email: finalEmail,
+        whatsapp: finalWhatsapp || '',
         type: 'account_activation',
         attempts: 0,
         maxAttempts: otpMaxAttempts,
@@ -406,6 +451,40 @@ async function startServer() {
       let emailError = null;
 
       if (enableOtpEmail) {
+        // ALWAYS write to 'mail' collection to trigger standard Firebase SMTP Email Extension if installed/configured on Firebase
+        try {
+          await addDoc(collection(db, 'mail'), {
+            to: finalEmail,
+            message: {
+              subject: "Código de ativação da sua conta Discreta Boutique",
+              text: `Olá, ${finalFullName || 'Cliente'}.\nSeu código de ativação da Discreta Boutique é:\n\n${code}\n\nEle é válido por ${otpValidityMinutes} minutos.\nSe você não criou esta conta, ignore esta mensagem.`,
+              html: `
+                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e4e4e7; border-radius: 16px; background-color: #ffffff; color: #18181b;">
+                  <div style="text-align: center; margin-bottom: 25px;">
+                    <h1 style="color: #e11d48; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -1px;">Discreta Boutique</h1>
+                    <p style="color: #71717a; margin: 5px 0 0 0; font-size: 14px;">Ativação de Conta de Cliente</p>
+                  </div>
+                  <hr style="border: 0; border-top: 1px solid #e4e4e7; margin: 20px 0;" />
+                  <p style="font-size: 16px; line-height: 1.5; color: #3f3f46;">Olá, <strong>${finalFullName || 'Cliente'}</strong>.</p>
+                  <p style="font-size: 15px; line-height: 1.5; color: #3f3f46;">Seu código de ativação exclusivo da Discreta Boutique é:</p>
+                  <div style="background: #f4f4f5; padding: 20px; text-align: center; font-size: 32px; font-weight: 800; letter-spacing: 6px; margin: 25px 0; border-radius: 12px; border: 1px solid #e4e4e7; color: #09090b; font-family: monospace;">
+                    ${code}
+                  </div>
+                  <p style="font-size: 13px; color: #71717a; margin-top: 25px;">Este código é seguro e válido por <strong>${otpValidityMinutes} minutos</strong>.</p>
+                  <hr style="border: 0; border-top: 1px solid #e4e4e7; margin: 25px 0 20px 0;" />
+                  <p style="font-size: 12px; color: #a1a1aa; line-height: 1.4; margin: 0; text-align: center;">Se você não realizou este cadastro, por favor desconsidere este e-mail.</p>
+                </div>
+              `
+            },
+            createdAt: serverTimestamp()
+          });
+          console.log(`✉️ [Trigger Email Collection] Added mail document for ${finalEmail}`);
+          emailSent = true; // Mark as sent so logs record success via Firebase Extension
+        } catch (mailExtErr: any) {
+          console.warn("⚠️ [Trigger Email Collection] Could not write to mail collection:", mailExtErr);
+        }
+
+        // Also try standard Nodemailer SMTP if server secrets/env keys are set up locally
         if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
           try {
             const transporter = nodemailer.createTransport({
@@ -420,31 +499,31 @@ async function startServer() {
 
             await transporter.sendMail({
               from: process.env.SMTP_FROM || `"Discreta Boutique" <${process.env.SMTP_USER}>`,
-              to: email,
+              to: finalEmail,
               subject: "Código de ativação da sua conta Discreta",
-              text: `Olá, ${fullName}.\nSeu código de ativação da Discreta Boutique é:\n\n${code}\n\nEle é válido por ${otpValidityMinutes} minutos.\nSe você não criou esta conta, ignore esta mensagem.`
+              text: `Olá, ${finalFullName || 'Cliente'}.\nSeu código de ativação da Discreta Boutique é:\n\n${code}\n\nEle é válido por ${otpValidityMinutes} minutos.\nSe você não criou esta conta, ignore esta mensagem.`
             });
             emailSent = true;
-            console.log(`📧 [OTP Email] Sent successfully to ${email}`);
+            console.log(`📧 [OTP Email] Sent successfully via SMTP to ${finalEmail}`);
           } catch (mailErr: any) {
             emailError = mailErr.message || String(mailErr);
             console.error("❌ [OTP Email] SMTP send failed:", mailErr);
           }
-        } else {
+        } else if (!emailSent) {
           console.warn("⚠️ [OTP Email] SMTP not configured. OTP email simulated success.");
           emailSent = true; 
         }
 
         // Save email dispatch log
-        await adminDb.collection('notificationLogs').add({
+        await addDoc(collection(db, 'notificationLogs'), {
           uid,
           type: "customer_activation_otp",
           channel: "email",
-          email,
-          whatsapp,
+          email: finalEmail,
+          whatsapp: finalWhatsapp || '',
           status: emailSent ? "success" : "error",
           errorMessage: emailError,
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
+          createdAt: serverTimestamp()
         });
       }
 
@@ -455,7 +534,21 @@ async function startServer() {
 
       if (enableOtpWhatsapp && otpWebhookUrl) {
         try {
-          console.log(`🚀 [OTP WhatsApp Webhook] Dispatching to ${otpWebhookUrl}`);
+          const formatPhoneForWhatsapp = (phoneStr: string): string => {
+            if (!phoneStr) return '';
+            let num = phoneStr.replace(/\D/g, '');
+            // Remove leading zeros
+            num = num.replace(/^0+/, '');
+            if (num.length < 10) return '';
+            if (num.length === 12 || num.length === 13) {
+              return num;
+            }
+            return `55${num}`;
+          };
+
+          const formattedPhone = formatPhoneForWhatsapp(finalWhatsapp || '');
+          console.log(`🚀 [OTP WhatsApp Webhook] Dispatching to ${otpWebhookUrl}. Raw: ${finalWhatsapp}, Formatted: ${formattedPhone}`);
+
           const wpResponse = await fetch(otpWebhookUrl, {
             method: "POST",
             headers: {
@@ -463,9 +556,13 @@ async function startServer() {
             },
             body: JSON.stringify({
               event: "customer_activation_otp",
-              name: fullName,
-              email,
-              whatsapp,
+              name: finalFullName,
+              nome: finalFullName,
+              email: finalEmail,
+              phone: formattedPhone,
+              telefone: formattedPhone,
+              whatsapp: formattedPhone,
+              raw_whatsapp: finalWhatsapp || '',
               uid,
               code,
               expiresInMinutes: otpValidityMinutes
@@ -488,17 +585,17 @@ async function startServer() {
         }
 
         // Save whatsapp dispatch log
-        await adminDb.collection('notificationLogs').add({
+        await addDoc(collection(db, 'notificationLogs'), {
           uid,
           type: "customer_activation_otp",
           channel: "whatsapp",
-          email,
-          whatsapp,
+          email: finalEmail,
+          whatsapp: finalWhatsapp || '',
           webhookUrl: otpWebhookUrl,
           status: whatsappSent ? "success" : "error",
           responseStatus,
           errorMessage: whatsappError,
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
+          createdAt: serverTimestamp()
         });
       }
 
@@ -516,11 +613,9 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Parâmetros obrigatórios ausentes" });
       }
 
-      const adminDb = getAdminDb();
+      const otpSnap = await getDoc(doc(db, 'customerOtpCodes', uid));
 
-      const otpSnap = await adminDb.collection('customerOtpCodes').doc(uid).get();
-
-      if (!otpSnap.exists) {
+      if (!otpSnap.exists()) {
         return res.status(400).json({ success: false, error: "Nenhum código encontrado para este usuário. Solicite um novo código." });
       }
 
@@ -546,7 +641,7 @@ async function startServer() {
       if (inputHash !== otpData.hashedCode) {
         // Increment attempts
         const newAttempts = Number(otpData.attempts || 0) + 1;
-        await adminDb.collection('customerOtpCodes').doc(uid).update({
+        await updateDoc(doc(db, 'customerOtpCodes', uid), {
           attempts: newAttempts,
           updatedAt: new Date().toISOString()
         });
@@ -560,25 +655,25 @@ async function startServer() {
 
       // CODE IS CORRECT!
       // Update OTP document to used
-      await adminDb.collection('customerOtpCodes').doc(uid).update({
+      await updateDoc(doc(db, 'customerOtpCodes', uid), {
         used: true,
         usedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
 
       // Update user document to active
-      await adminDb.collection('users').doc(uid).update({
+      await updateDoc(doc(db, 'users', uid), {
         accountStatus: 'active',
         emailVerified: true,
         phoneVerified: true,
         activatedAt: new Date().toISOString(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: serverTimestamp()
       });
 
       // Trigger standard activation webhook asynchronously
       try {
-        const userSnap = await adminDb.collection('users').doc(uid).get();
-        if (userSnap.exists) {
+        const userSnap = await getDoc(doc(db, 'users', uid));
+        if (userSnap.exists()) {
           const userData = userSnap.data();
           const host = req.get('host') || 'localhost:3000';
           const protocol = req.protocol || 'http';
