@@ -101,50 +101,10 @@ export const CadastroPage = () => {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [loadingCep, setLoadingCep] = useState(false);
+
     const [loadingLocation, setLoadingLocation] = useState(false);
 
-    // Campos adicionais
-    const [fullName, setFullName] = useState('');
-    const [cpf, setCpf] = useState('');
-    const [birthDate, setBirthDate] = useState('');
-    const [whatsapp, setWhatsapp] = useState('');
-
-    // Endereço
-    const [cep, setCep] = useState('');
-    const [street, setStreet] = useState('');
-    const [number, setNumber] = useState('');
-    const [complement, setComplement] = useState('');
-    const [neighborhood, setNeighborhood] = useState('');
-    const [city, setCity] = useState('');
-    const [state, setState] = useState('');
-    const [reference, setReference] = useState('');
-
-    // Acesso
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [acceptedTerms, setAcceptedTerms] = useState(false);
-    
-    const [showPassword, setShowPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-    const [searchParams] = useSearchParams();
-    const redirectTo = searchParams.get('redirect') || '/area-cliente';
-
-    // Bloqueia acesso caso já esteja logado
-    useEffect(() => {
-        if (user) {
-            navigate(redirectTo, { replace: true });
-        }
-    }, [user, navigate, redirectTo]);
-
-    const normalizeCity = (cityStr: string) => {
-        return cityStr.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    };
-
-    const normalizeState = (stateStr: string) => {
-        return stateStr.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-    };
+    // ... (rest of the file)
 
     const handleGetLocation = () => {
         if (!navigator.geolocation) {
@@ -229,6 +189,50 @@ export const CadastroPage = () => {
             }
         );
     };
+
+    // ... (rest of the file)
+    const [cpf, setCpf] = useState('');
+    const [birthDate, setBirthDate] = useState('');
+    const [whatsapp, setWhatsapp] = useState('');
+
+    // Endereço
+    const [cep, setCep] = useState('');
+    const [street, setStreet] = useState('');
+    const [number, setNumber] = useState('');
+    const [complement, setComplement] = useState('');
+    const [neighborhood, setNeighborhood] = useState('');
+    const [city, setCity] = useState('');
+    const [state, setState] = useState('');
+    const [reference, setReference] = useState('');
+
+    // Acesso
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [acceptedTerms, setAcceptedTerms] = useState(false);
+    
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+    const [searchParams] = useSearchParams();
+    const redirectTo = searchParams.get('redirect') || '/area-cliente';
+
+    // Bloqueia acesso caso já esteja logado
+    useEffect(() => {
+        if (user) {
+            navigate(redirectTo, { replace: true });
+        }
+    }, [user, navigate, redirectTo]);
+
+    const normalizeCity = (cityStr: string) => {
+        return cityStr.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    };
+
+    const normalizeState = (stateStr: string) => {
+        return stateStr.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+    };
+
+
 
     // Buscar CEP por ViaCEP
     const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -661,6 +665,7 @@ export const CadastroPage = () => {
                                 </div>
 
                                 <div className="space-y-3">
+
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                                         <div>
                                             <label className="block text-zinc-400 text-[10px] md:text-xs font-semibold uppercase tracking-wider mb-1.5">CEP</label>

@@ -226,6 +226,12 @@ export function AdminLayout() {
   const permissions = (userData as any)?.computedPermissions || {};
   const hasAnyPermission = isAdmin || Object.keys(permissions).some(k => hasPermission(k, 'visualizar'));
   
+  useEffect(() => {
+      if (!isLoading && user && !hasAnyPermission) {
+          navigate('/');
+      }
+  }, [isLoading, user, hasAnyPermission, navigate]);
+
   if (!hasAnyPermission) return null;
 
   return (

@@ -54,7 +54,7 @@ export function StoreLayout() {
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
   
   const [categories, setCategories] = useState<Category[]>([]);
-  const { user } = useAuthStore();
+  const { user, isAdmin } = useAuthStore();
   const [appVersion, setAppVersion] = useState('1.1.0');
 
   const location = useLocation();
@@ -401,7 +401,7 @@ export function StoreLayout() {
       )}
 
       {/* Floating Admin Button */}
-      {user && (
+      {user && isAdmin && (
         <Link 
           to="/admin" 
           className="fixed bottom-6 right-6 z-50 bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-full font-black uppercase tracking-widest text-xs flex items-center gap-2 shadow-[0_0_20px_rgba(220,38,38,0.4)] transition-all hover:scale-105"

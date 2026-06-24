@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { signOut, updatePassword } from 'firebase/auth';
+import { signOut, updatePassword, sendEmailVerification } from 'firebase/auth';
 import { 
   collection, doc, getDoc, getDocs, updateDoc, setDoc, 
   query, where, serverTimestamp, addDoc 
@@ -634,6 +634,23 @@ export const CustomerAreaPage = () => {
         }
     };
 
+    // Novo: Enviar E-mail de Verificação (Firebase Auth)
+    const handleSendEmailVerification = async () => {
+        if (!auth.currentUser) return;
+        setSendingVerif(true);
+        setError(null);
+        setSuccess(null);
+        try {
+            await sendEmailVerification(auth.currentUser);
+            setSuccess("E-mail de verificação enviado! Verifique sua caixa de entrada.");
+        } catch (err: any) {
+            console.error("Erro ao enviar e-mail de verificação:", err);
+            setError("Não foi possível enviar o e-mail de verificação. Tente novamente mais tarde.");
+        } finally {
+            setSendingVerif(false);
+        }
+    };
+
     // Salvar Dados Cadastrais
     const handleSaveCadastro = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -1122,17 +1139,26 @@ export const CustomerAreaPage = () => {
                                 <span className="text-xs text-zinc-400">Confirme seu e-mail para ativar todos os recursos da sua conta.</span>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
+                        <div className="flex flex-col gap-2 w-full md:w-auto shrink-0">
                             {sendingVerif ? (
-                                <span className="text-zinc-500 text-xs font-bold py-2 px-4">Enviando link...</span>
+                                <span className="text-zinc-500 text-xs font-bold py-2 px-4">Processando...</span>
                             ) : (
-                                <button
-                                    type="button"
-                                    onClick={handleResendVerification}
-                                    className="bg-amber-600 hover:bg-amber-700 active:scale-[0.98] text-white font-bold px-5 py-2.5 rounded-2xl text-xs transition duration-300 shadow-[0_4px_12px_rgba(245,158,11,0.2)] cursor-pointer whitespace-nowrap font-sans"
-                                >
-                                    Reenviar e-mail de ativação
-                                </button>
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={handleSendEmailVerification}
+                                        className="bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white font-bold px-5 py-2.5 rounded-2xl text-xs transition duration-300 shadow-[0_4px_12px_rgba(220,38,38,0.2)] cursor-pointer whitespace-nowrap font-sans"
+                                    >
+                                        Verificar E-mail
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleResendVerification}
+                                        className="bg-zinc-800 hover:bg-zinc-700 active:scale-[0.98] text-zinc-300 font-bold px-5 py-2.5 rounded-2xl text-xs transition duration-300 cursor-pointer whitespace-nowrap font-sans"
+                                    >
+                                        Reenviar código de ativação
+                                    </button>
+                                </>
                             )}
                         </div>
                     </div>

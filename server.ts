@@ -215,7 +215,7 @@ async function startServer() {
         event: "customer_registered",
         name: fullName,
         email,
-        whatsapp,
+        whatsapp: whatsapp.replace(/\D/g, ''),
         cpf: cpf || "",
         uid,
         createdAt: createdAt || new Date().toISOString()
@@ -1430,6 +1430,8 @@ async function startServer() {
       const paymentId = String(event.data?.id || event.id || '');
       const type = event.type || event.topic || '';
       
+      const isTestEvent = paymentId === '123456' || event.live_mode === false;
+
       const logId = await addWebhookLog({
         provider: 'mercado_pago',
         eventId: eventId,
@@ -1438,27 +1440,38 @@ async function startServer() {
         receivedAt: new Date().toISOString(),
         processedAt: new Date().toISOString(),
         success: false,
+        testEvent: isTestEvent,
         payload: event
       });
+
+      if (isTestEvent) {
+        if (logId) await updateWebhookLog(logId, {
+          success: true,
+          ignored: true,
+          message: "Evento de teste recebido com sucesso"
+        });
+        return res.json({ ok: true, received: true, testEvent: true });
+      }
 
       if (!paymentId || (type !== 'payment' && type !== 'payment.created' && type !== 'payment.updated')) {
         if (logId) await updateWebhookLog(logId, {
           success: true,
-          notes: "Evento ignorado (não-pagamento)"
+          ignored: true,
+          message: "Evento ignorado (não-pagamento)"
         });
         return res.json({ status: "ignored" });
       }
 
       const configDoc = await getMercadoPagoConfigDoc();
       if (!configDoc.exists()) {
-        if (logId) await updateWebhookLog(logId, { error: "Sem configuração cadastrada" });
-        return res.status(400).json({ error: "Integração inativa" });
+        if (logId) await updateWebhookLog(logId, { success: false, ignored: true, error: "Sem configuração cadastrada" });
+        return res.json({ status: "ignored", error: "Integração inativa" });
       }
       
       const { accessToken } = configDoc.data();
       if (!accessToken) {
-        if (logId) await updateWebhookLog(logId, { error: "Access token ausente" });
-        return res.status(400).json({ error: "Token ausente" });
+        if (logId) await updateWebhookLog(logId, { success: false, ignored: true, error: "Access token ausente" });
+        return res.json({ status: "ignored", error: "Token ausente" });
       }
 
       const { default: axios } = await import('axios');
@@ -1474,8 +1487,8 @@ async function startServer() {
         const orderId = paymentData.external_reference;
 
         if (!orderId) {
-          if (logId) await updateWebhookLog(logId, { error: "external_reference ausente" });
-          return res.json({ status: "success", notes: "Sem orderId" });
+          if (logId) await updateWebhookLog(logId, { success: false, ignored: true, error: "external_reference ausente" });
+          return res.json({ status: "ignored", notes: "Sem orderId" });
         }
 
         await updatePaymentStatus(orderId, paymentData);
@@ -1490,12 +1503,12 @@ async function startServer() {
         res.json({ status: "processed" });
       } catch (err: any) {
         console.error("Webhook processing error resolving payment:", err.response?.data || err.message);
-        if (logId) await updateWebhookLog(logId, { error: err.message });
-        res.json({ status: "failed_api", error: err.message });
+        if (logId) await updateWebhookLog(logId, { success: false, ignored: true, error: err.message });
+        res.json({ status: "ignored", error: err.message });
       }
     } catch (error: any) {
       console.error("General Webhook Crash:", error);
-      res.status(500).json({ error: error.message });
+      res.status(200).json({ status: "failed", error: error.message });
     }
   });
 
