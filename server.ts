@@ -10,6 +10,7 @@ import { sendWebhook } from './src/server/services/botConversaService';
 import { productCategorizationService } from './src/services/productCategorizationService';
 import { db } from './src/lib/firebase';
 import { getAdminDb } from './src/server/lib/firebaseAdmin';
+import admin from 'firebase-admin';
 import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { blogAiService } from "./src/server/services/blogAiService";
 
@@ -116,6 +117,32 @@ async function startServer() {
       res.status(200).json({ success: true });
     } catch (error: any) {
       console.error("Erro ao salvar lead de Wi-Fi:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Google Maps Geocoding Proxy Route to avoid client-side CORS issues and secure the API Key
+  app.get("/api/geocode", async (req, res) => {
+    try {
+      const { lat, lng } = req.query;
+      if (!lat || !lng) {
+        return res.status(400).json({ success: false, error: "Parâmetros lat e lng são obrigatórios." });
+      }
+
+      const apiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY || process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          success: false,
+          error: "Google Maps API Key não configurada no servidor. Por favor, configure a chave em GOOGLE_MAPS_PLATFORM_KEY, GOOGLE_MAPS_API_KEY ou GOOGLE_API_KEY nas variáveis secretas do AI Studio."
+        });
+      }
+
+      console.log(`[Geocode Proxy] Fetching address for lat: ${lat}, lng: ${lng}`);
+      const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`);
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("Erro no geocoding do Google proxy:", error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
@@ -340,10 +367,11 @@ async function startServer() {
 
       console.log(`⏳ [OTP Generate] Request for user: ${uid} | ${fullName}`);
 
-      // 1. Fetch settings
-      const settingsRef = doc(db, 'settings', 'customerNotifications');
-      const settingsSnap = await getDoc(settingsRef);
-      const settings = settingsSnap.exists() ? settingsSnap.data() : null;
+      const adminDb = getAdminDb();
+
+      // 1. Fetch settings (bypassing security rules via Admin SDK)
+      const settingsSnap = await adminDb.collection('settings').doc('customerNotifications').get();
+      const settings = settingsSnap.exists ? settingsSnap.data() : null;
 
       const otpValidityMinutes = settings && settings.otpValidityMinutes ? Number(settings.otpValidityMinutes) : 10;
       const otpMaxAttempts = settings && settings.otpMaxAttempts ? Number(settings.otpMaxAttempts) : 5;
@@ -356,9 +384,8 @@ async function startServer() {
       const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
       const expiresAt = new Date(Date.now() + otpValidityMinutes * 60 * 1000).toISOString();
 
-      // 3. Save OTP in collection customerOtpCodes/{uid}
-      const otpDocRef = doc(db, 'customerOtpCodes', uid);
-      await setDoc(otpDocRef, {
+      // 3. Save OTP in collection customerOtpCodes/{uid} (bypassing security rules via Admin SDK)
+      await adminDb.collection('customerOtpCodes').doc(uid).set({
         uid,
         hashedCode,
         email,
@@ -409,7 +436,7 @@ async function startServer() {
         }
 
         // Save email dispatch log
-        await addDoc(collection(db, 'notificationLogs'), {
+        await adminDb.collection('notificationLogs').add({
           uid,
           type: "customer_activation_otp",
           channel: "email",
@@ -417,7 +444,7 @@ async function startServer() {
           whatsapp,
           status: emailSent ? "success" : "error",
           errorMessage: emailError,
-          createdAt: serverTimestamp()
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
       }
 
@@ -461,7 +488,7 @@ async function startServer() {
         }
 
         // Save whatsapp dispatch log
-        await addDoc(collection(db, 'notificationLogs'), {
+        await adminDb.collection('notificationLogs').add({
           uid,
           type: "customer_activation_otp",
           channel: "whatsapp",
@@ -471,7 +498,7 @@ async function startServer() {
           status: whatsappSent ? "success" : "error",
           responseStatus,
           errorMessage: whatsappError,
-          createdAt: serverTimestamp()
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
       }
 
@@ -489,14 +516,18 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Parâmetros obrigatórios ausentes" });
       }
 
-      const otpDocRef = doc(db, 'customerOtpCodes', uid);
-      const otpSnap = await getDoc(otpDocRef);
+      const adminDb = getAdminDb();
 
-      if (!otpSnap.exists()) {
+      const otpSnap = await adminDb.collection('customerOtpCodes').doc(uid).get();
+
+      if (!otpSnap.exists) {
         return res.status(400).json({ success: false, error: "Nenhum código encontrado para este usuário. Solicite um novo código." });
       }
 
       const otpData = otpSnap.data();
+      if (!otpData) {
+        return res.status(400).json({ success: false, error: "Erro ao ler os dados do código." });
+      }
 
       if (otpData.used) {
         return res.status(400).json({ success: false, error: "Este código já foi utilizado. Solicite um novo código." });
@@ -515,7 +546,7 @@ async function startServer() {
       if (inputHash !== otpData.hashedCode) {
         // Increment attempts
         const newAttempts = Number(otpData.attempts || 0) + 1;
-        await updateDoc(otpDocRef, {
+        await adminDb.collection('customerOtpCodes').doc(uid).update({
           attempts: newAttempts,
           updatedAt: new Date().toISOString()
         });
@@ -529,26 +560,25 @@ async function startServer() {
 
       // CODE IS CORRECT!
       // Update OTP document to used
-      await updateDoc(otpDocRef, {
+      await adminDb.collection('customerOtpCodes').doc(uid).update({
         used: true,
         usedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
 
       // Update user document to active
-      const userDocRef = doc(db, 'users', uid);
-      await updateDoc(userDocRef, {
+      await adminDb.collection('users').doc(uid).update({
         accountStatus: 'active',
         emailVerified: true,
         phoneVerified: true,
         activatedAt: new Date().toISOString(),
-        updatedAt: serverTimestamp()
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
       // Trigger standard activation webhook asynchronously
       try {
-        const userSnap = await getDoc(userDocRef);
-        if (userSnap.exists()) {
+        const userSnap = await adminDb.collection('users').doc(uid).get();
+        if (userSnap.exists) {
           const userData = userSnap.data();
           const host = req.get('host') || 'localhost:3000';
           const protocol = req.protocol || 'http';
@@ -557,9 +587,9 @@ async function startServer() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               uid,
-              fullName: userData.fullName || '',
-              email: userData.email || '',
-              whatsapp: userData.whatsapp || '',
+              fullName: userData ? userData.fullName || '' : '',
+              email: userData ? userData.email || '' : '',
+              whatsapp: userData ? userData.whatsapp || '' : '',
               activatedAt: new Date().toISOString()
             })
           }).catch(err => console.error("Error invoking activation webhook:", err));

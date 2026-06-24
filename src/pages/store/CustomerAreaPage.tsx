@@ -473,15 +473,14 @@ export const CustomerAreaPage = () => {
                 setLongitude(lng);
 
                 try {
-                    const apiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY || "";
-                    if (!apiKey) {
-                        setError("Google Maps API Key não configurada. Configure GOOGLE_MAPS_PLATFORM_KEY.");
+                    const response = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
+                    const data = await response.json();
+
+                    if (data.success === false) {
+                        setError(data.error || "Google Maps API Key não configurada. Configure GOOGLE_MAPS_PLATFORM_KEY.");
                         setLoadingLocation(false);
                         return;
                     }
-
-                    const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`);
-                    const data = await response.json();
 
                     if (data.status === "OK" && data.results && data.results.length > 0) {
                         const result = data.results[0];
