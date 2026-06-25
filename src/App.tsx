@@ -17,6 +17,7 @@ import { LoginPage } from './pages/store/LoginPage';
 import { CadastroPage } from './pages/store/CadastroPage';
 import { AtivacaoContaPage } from './pages/store/AtivacaoContaPage';
 import { SuccessPage } from './pages/store/SuccessPage';
+import { CheckoutPixPage } from './pages/store/CheckoutPixPage';
 import { CustomerAreaPage } from './pages/store/CustomerAreaPage';
 import { AreaClienteLayout } from './layouts/AreaClienteLayout';
 import { LiveShopPage } from './pages/store/LiveShopPage';
@@ -228,6 +229,7 @@ function AppContent() {
             <Route path="/carrinho" element={<CartPage />} />
             <Route path="/produto/:slug" element={<ProductPage />} />
             <Route path="/sucesso" element={<SuccessPage />} />
+            <Route path="/checkout-pix" element={<CheckoutPixPage />} />
             <Route path="/afiliados" element={<AffiliateLandingPage />} />
             <Route path="/live" element={<LiveShopPage />} />
             <Route path="/blog" element={<BlogPage />} />

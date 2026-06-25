@@ -73,7 +73,7 @@ service cloud.firestore {
       allow update: if can('produtos', 'editar') || can('orders', 'criar') || can('orders', 'editar') || can('orders', 'excluir') || 
         (
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['stock', 'updatedAt'])
+            .hasOnly(['stock', 'updatedAt', 'cliques', 'score', 'homeClicks', 'homeScore', 'conversoes', 'visualizacoes'])
         );
       allow delete: if can('produtos', 'excluir');
     }
@@ -84,7 +84,7 @@ service cloud.firestore {
       allow update: if can('produtos', 'editar') || can('orders', 'criar') || can('orders', 'editar') || can('orders', 'excluir') || 
         (
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['stock', 'updatedAt'])
+            .hasOnly(['stock', 'updatedAt', 'cliques', 'score', 'homeClicks', 'homeScore', 'conversoes', 'visualizacoes'])
         );
       allow delete: if can('produtos', 'excluir');
     }
@@ -187,6 +187,14 @@ service cloud.firestore {
       allow read: if true;
       allow update: if true;
       allow delete: if can('orders', 'excluir');
+    }
+
+    match /payment_intents/{doc} {
+      allow read, write: if true;
+    }
+
+    match /customer_whatsapp_verifications/{doc} {
+      allow read, write: if true;
     }
 
     match /customers/{doc} {

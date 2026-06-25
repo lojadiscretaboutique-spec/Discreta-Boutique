@@ -825,9 +825,47 @@ export default {
         metadata: { type: "object" },
         createdAt: { type: "string" }
       }
+    },
+    PaymentIntent: {
+      title: "Payment Intent",
+      description: "Gateway payment intent records",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        orderId: { type: "string" },
+        customerId: { type: "string" },
+        provider: { type: "string" },
+        paymentMethodId: { type: "string" },
+        paymentMethodType: { type: "string" },
+        amount: { type: "number" },
+        status: { type: "string" },
+        idempotencyKey: { type: "string" },
+        createdAt: { type: "string" },
+        updatedAt: { type: "string" }
+      }
+    },
+    CustomerWhatsappVerification: {
+      title: "Customer Whatsapp Verification",
+      description: "OTP verification codes for Whatsapp authentication",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        phone: { type: "string" },
+        code: { type: "string" },
+        createdAt: { type: "string" },
+        expiresAt: { type: "string" }
+      }
     }
   },
   firestore: {
+    "payment_intents": {
+      schema: { $ref: "#/entities/PaymentIntent" },
+      description: "Payment intent attempts"
+    },
+    "customer_whatsapp_verifications": {
+      schema: { $ref: "#/entities/CustomerWhatsappVerification" },
+      description: "Whatsapp OTP verification records"
+    },
     "lives": {
       schema: { $ref: "#/entities/Live" },
       description: "Live commerce transmission blocks"

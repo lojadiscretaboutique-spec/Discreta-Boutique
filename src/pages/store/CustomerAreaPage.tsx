@@ -12,7 +12,7 @@ import {
   User, Mail, Phone, Calendar, CreditCard, MapPin, 
   ArrowLeft, Check, AlertCircle, Eye, EyeOff, ShieldCheck,
   Package, Heart, Star, Headphones, Lock, LogOut, ChevronRight,
-  Bell, Award, CheckCircle, Clock, ShoppingBag, Send
+  Bell, Award, CheckCircle, Clock, ShoppingBag, Send, QrCode
 } from 'lucide-react';
 
 import { ProductGridCard } from './CatalogPage';
@@ -688,6 +688,13 @@ export const CustomerAreaPage = () => {
             await updateDoc(userRef, updatePayload);
             setProfile((prev: any) => ({ ...prev, ...updatePayload }));
             setSuccess('Dados cadastrais atualizados com sucesso!');
+            const searchParams = new URLSearchParams(window.location.search);
+            const returnTo = searchParams.get('returnTo');
+            if (returnTo) {
+                setTimeout(() => {
+                    navigate(returnTo);
+                }, 1000);
+            }
         } catch (err: any) {
             console.error("Erro ao salvar cadastro:", err);
             setError('Não foi possível salvar os novos dados de perfil.');
@@ -947,7 +954,10 @@ export const CustomerAreaPage = () => {
             clearAddressInputs();
 
             const searchParams = new URLSearchParams(location.search);
-            if (searchParams.get('from') === 'carrinho') {
+            const returnTo = searchParams.get('returnTo');
+            if (returnTo) {
+                navigate(returnTo);
+            } else if (searchParams.get('from') === 'carrinho') {
                 navigate('/carrinho');
             }
         } catch (err: any) {
@@ -1075,6 +1085,10 @@ export const CustomerAreaPage = () => {
             case 'shipped':
             case 'saiu para entrega':
                 return { label: 'Enviado', bg: 'bg-blue-950/50 text-blue-400 border border-blue-900/50' };
+            case 'aguardando_pagamento':
+            case 'aguardando pagamento':
+            case 'pending':
+                return { label: 'Aguardando Pagamento', bg: 'bg-amber-950/50 text-amber-500 border border-amber-900/50' };
             default:
                 return { label: 'Recebido / Pendente', bg: 'bg-zinc-900 text-zinc-400 border border-zinc-800' };
         }
@@ -1307,6 +1321,12 @@ export const CustomerAreaPage = () => {
                                     </div>
                                 </div>
 
+                                {window.location.search.includes('returnTo') && (
+                                    <div className="mb-6 p-4 bg-red-950/40 border border-red-900/50 rounded-xl text-red-400 text-xs font-semibold">
+                                        Complete estes dados para continuar seu pagamento online.
+                                    </div>
+                                )}
+
                                 {error && (
                                     <div className="mb-6 flex items-start gap-3 p-3.5 bg-red-950/40 border border-red-900/50 rounded-xl text-red-400 text-xs font-semibold">
                                         <AlertCircle className="h-5 w-5 shrink-0" />
@@ -1484,6 +1504,46 @@ export const CustomerAreaPage = () => {
                                                                             </div>
                                                                         </div>
                                                                     </div>
+
+                                                                    {(() => {
+                                                                        const status = order.status?.toLowerCase() || '';
+                                                                        const isOrderPending = status === 'aguardando_pagamento' || status === 'novo';
+                                                                        const isOrderPix = order.paymentMethod?.toLowerCase().includes('pix') || 
+                                                                                           (order as any).paymentMethodType === 'pix' || 
+                                                                                           (order as any).paymentProvider === 'mercado_pago' || 
+                                                                                           (order as any).gatewayProvider === 'mercado_pago';
+                                                                        
+                                                                        // Check if order is expired (older than 30 min)
+                                                                        let isExpired = false;
+                                                                        if (isOrderPending) {
+                                                                            const orderCreatedAt = order.createdAt?.toDate ? order.createdAt.toDate() : (order.createdAt ? new Date(order.createdAt) : null);
+                                                                            if (orderCreatedAt) {
+                                                                                isExpired = (Date.now() - orderCreatedAt.getTime()) > 30 * 60 * 1000;
+                                                                            }
+                                                                        }
+                                                                        
+                                                                        if (isOrderPending && isExpired) {
+                                                                             return (
+                                                                                 <div className="pt-4 border-t border-zinc-900 flex justify-end">
+                                                                                     <span className="text-red-500 font-bold text-xs uppercase tracking-wider">
+                                                                                         Cancelado por expiração do tempo de pagamento
+                                                                                     </span>
+                                                                                 </div>
+                                                                             );
+                                                                        }
+                                                                        
+                                                                        return isOrderPending && isOrderPix ? (
+                                                                            <div className="pt-4 border-t border-zinc-900 flex justify-end">
+                                                                                <Link 
+                                                                                    to={`/checkout-pix?orderId=${order.id}`}
+                                                                                    className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all"
+                                                                                >
+                                                                                    <QrCode className="h-4 w-4" />
+                                                                                    <span>Pagar com Pix (QR Code / Copia e Cola)</span>
+                                                                                </Link>
+                                                                            </div>
+                                                                        ) : null;
+                                                                    })()}
                                                                 </div>
                                                             </motion.div>
                                                         )}
@@ -1526,6 +1586,12 @@ export const CustomerAreaPage = () => {
                                         </button>
                                     )}
                                 </div>
+
+                                {window.location.search.includes('returnTo') && (
+                                    <div className="mb-6 p-4 bg-red-950/40 border border-red-900/50 rounded-xl text-red-400 text-xs font-semibold">
+                                        Complete o endereço para continuar sua compra.
+                                    </div>
+                                )}
 
                                 {error && (
                                     <div className="mb-6 flex items-start gap-3 p-3.5 bg-red-950/40 border border-red-900/50 rounded-xl text-red-400 text-xs font-semibold">

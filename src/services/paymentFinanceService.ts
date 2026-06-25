@@ -181,7 +181,19 @@ export const paymentFinanceService = {
 
   // Payment Methods
   async getPaymentMethods(): Promise<MethodConfig[]> {
-    return this.getCollection<MethodConfig>('financial_payment_methods');
+    const raw = await this.getCollection<MethodConfig>('financial_payment_methods');
+    return raw.map(m => {
+      const gatewayProvider = m.gatewayProvider || (m.useIntegration ? 'mercado_pago' : 'manual');
+      const useIntegration = m.useIntegration !== undefined ? m.useIntegration : (gatewayProvider !== 'manual');
+      return {
+        ...m,
+        gatewayProvider,
+        useIntegration,
+        label: m.label || m.name,
+        enabledDelivery: m.enabledDelivery !== undefined ? m.enabledDelivery : (m.availableForDelivery ?? true),
+        enabledPickup: m.enabledPickup !== undefined ? m.enabledPickup : (m.availableForPickup ?? true)
+      };
+    });
   },
 
   async listActivePaymentMethods(): Promise<MethodConfig[]> {

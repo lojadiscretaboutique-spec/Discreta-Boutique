@@ -197,6 +197,16 @@ export function AdminLayout() {
     setIsMenuOpen(false);
   }, [location.pathname]);
 
+  // Basic check: if not admin, must have at least one permission to see admin layout
+  const permissions = (userData as any)?.computedPermissions || {};
+  const hasAnyPermission = isAdmin || Object.keys(permissions).some(k => hasPermission(k, 'visualizar'));
+
+  useEffect(() => {
+      if (!isLoading && user && !hasAnyPermission) {
+          navigate('/');
+      }
+  }, [isLoading, user, hasAnyPermission, navigate]);
+
   // Let's also close it on ESC key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -221,16 +231,6 @@ export function AdminLayout() {
     );
   }
   if (!user) return null;
-  
-  // Basic check: if not admin, must have at least one permission to see admin layout
-  const permissions = (userData as any)?.computedPermissions || {};
-  const hasAnyPermission = isAdmin || Object.keys(permissions).some(k => hasPermission(k, 'visualizar'));
-  
-  useEffect(() => {
-      if (!isLoading && user && !hasAnyPermission) {
-          navigate('/');
-      }
-  }, [isLoading, user, hasAnyPermission, navigate]);
 
   if (!hasAnyPermission) return null;
 

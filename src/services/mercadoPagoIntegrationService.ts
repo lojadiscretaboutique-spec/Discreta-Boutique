@@ -33,11 +33,11 @@ export const mercadoPagoIntegrationService = {
     }
   },
 
-  async testConnection(accessToken?: string, publicKey?: string, environment?: 'sandbox' | 'production'): Promise<any> {
+  async testConnection(publicKey?: string, environment?: 'sandbox' | 'production'): Promise<any> {
     const res = await fetch('/api/admin/mercadopago/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accessToken, publicKey, environment })
+      body: JSON.stringify({ publicKey, environment })
     });
     if (!res.ok) {
       const err = await res.json();

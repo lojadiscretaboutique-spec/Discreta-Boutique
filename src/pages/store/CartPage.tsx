@@ -31,6 +31,33 @@ const formatCEP = (value: string) => {
     .replace(/(\d{5})(\d)/, '$1-$2');
 };
 
+const isValidCPF = (cpf: string): boolean => {
+  if (!cpf) return false;
+  const clean = cpf.replace(/\D/g, '');
+  if (clean.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(clean)) return false;
+
+  let sum = 0;
+  let remainder;
+
+  for (let i = 1; i <= 9; i++) {
+    sum += parseInt(clean.substring(i - 1, i)) * (11 - i);
+  }
+  remainder = (sum * 10) % 11;
+  if (remainder === 10 || remainder === 11) remainder = 0;
+  if (remainder !== parseInt(clean.substring(9, 10))) return false;
+
+  sum = 0;
+  for (let i = 1; i <= 10; i++) {
+    sum += parseInt(clean.substring(i - 1, i)) * (12 - i);
+  }
+  remainder = (sum * 10) % 11;
+  if (remainder === 10 || remainder === 11) remainder = 0;
+  if (remainder !== parseInt(clean.substring(10, 11))) return false;
+
+  return true;
+};
+
 function getContrastColor(hexColor: string): string {
   if (!hexColor) return '#ffffff';
   let hex = hexColor.replace('#', '');
@@ -1162,7 +1189,12 @@ export function CartPage() {
           status: 'ativo'
       });
 
-      const selectedMethodConfig = allPaymentMethods.find(m => m.id === paymentMethod);
+      const rawSelectedMethodConfig = allPaymentMethods.find(m => m.id === paymentMethod);
+      const selectedMethodConfig = rawSelectedMethodConfig ? {
+        ...rawSelectedMethodConfig,
+        gatewayProvider: rawSelectedMethodConfig.gatewayProvider || (rawSelectedMethodConfig.useIntegration ? 'mercado_pago' : 'manual'),
+        useIntegration: rawSelectedMethodConfig.useIntegration !== undefined ? rawSelectedMethodConfig.useIntegration : (rawSelectedMethodConfig.gatewayProvider === 'mercado_pago'),
+      } : undefined;
       const isCash = selectedMethodConfig?.name?.toLowerCase().includes('dinheiro') || 
                      selectedMethodConfig?.label?.toLowerCase().includes('dinheiro') || 
                      selectedMethodConfig?.id === 'cash' || 
@@ -1177,8 +1209,20 @@ export function CartPage() {
         customerId,
         customerName: name,
         customerWhatsapp: whatsapp,
+        customerEmail: email,
+        customerCpf: (userData as any)?.cpf || '',
         customerAddress: fullAddressString,
         fullAddress: addressObj,
+        shippingMethod: receiveMethod,
+        shippingAddress: receiveMethod === 'entrega' && addressObj ? {
+          zipCode: addressObj.cep || '',
+          street: addressObj.rua || '',
+          number: addressObj.numero || '',
+          neighborhood: addressObj.bairro || '',
+          city: addressObj.cidade || '',
+          state: addressObj.estado || '',
+          complement: addressObj.complemento || ''
+        } : null,
         receiveMethod: receiveMethod,
         scheduledDate: selectedDate,
         scheduledTime: selectedSlot,
@@ -1259,14 +1303,89 @@ export function CartPage() {
       }
 
       // CHECK FOR ONLINE INTEGRATION
-      const isOnlineMethod = selectedMethodConfig?.useIntegration;
-      const useIntegration = mpSettings?.active && isOnlineMethod;
+      const isPix = 
+        selectedMethodConfig?.type === 'pix' || 
+        selectedMethodConfig?.id === 'pix' || 
+        selectedMethodConfig?.name?.toLowerCase().includes('pix') || 
+        selectedMethodConfig?.label?.toLowerCase().includes('pix');
 
-      if (useIntegration && mpSettings?.publicKey) {
-         setCreatedOrderId(docRef.id);
-         setShowMpBrick(true);
-         setLoading(false);
-         return; // Pause here to show native Brick
+      const isOnlineMethod = 
+        selectedMethodConfig?.useIntegration === true || 
+        selectedMethodConfig?.gatewayProvider === "mercado_pago";
+
+      const isPixOnlineMP = 
+        mpSettings?.active === true && 
+        isOnlineMethod && 
+        isPix;
+
+      const isCardOnlineMP = 
+        mpSettings?.active === true && 
+        isOnlineMethod && 
+        !isPix && 
+        !!mpSettings?.publicKey;
+
+      // Log details for DEV verification
+      console.log("[DEV LOG] Payment details verification:", {
+        selectedMethodConfig_id: selectedMethodConfig?.id,
+        selectedMethodConfig_type: selectedMethodConfig?.type,
+        selectedMethodConfig_gatewayProvider: selectedMethodConfig?.gatewayProvider,
+        selectedMethodConfig_useIntegration: selectedMethodConfig?.useIntegration,
+        mpSettings_active: mpSettings?.active,
+        isPix,
+        isOnlineMethod,
+        isPixOnlineMP,
+        isCardOnlineMP
+      });
+
+      // Show DEV error if Pix Mercado Pago selected but condition is false
+      if (isPix && selectedMethodConfig?.gatewayProvider === 'mercado_pago') {
+        if (!isPixOnlineMP) {
+          console.error("[DEV ERROR] Pix Mercado Pago selected, but isPixOnlineMP condition is false! Details:", {
+            mpSettingsActive: mpSettings?.active,
+            useIntegration: selectedMethodConfig?.useIntegration
+          });
+        }
+      }
+
+      if (isPixOnlineMP || isCardOnlineMP) {
+        if (isPix) {
+          // Call create-pix endpoint directly after order is created
+          try {
+            console.log("[DEV LOG] Calling POST /api/payments/mercadopago/create-pix...");
+            const pixRes = await fetch('/api/payments/mercadopago/create-pix', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderId: docRef.id,
+                paymentMethodId: paymentMethod
+              })
+            });
+            const pixData = await pixRes.json();
+            console.log("[DEV LOG] POST /api/payments/mercadopago/create-pix response:", pixData);
+            
+            if (pixData.success) {
+              clearCart();
+              navigate(`/checkout-pix?orderId=${docRef.id}`, {
+                state: { orderId: docRef.id, whatsapp: whatsapp }
+              });
+              return;
+            } else {
+              toast(pixData.error || "Não foi possível gerar o Pix Mercado Pago. Tente novamente ou escolha outra forma de pagamento.", "error");
+              setLoading(false);
+              return;
+            }
+          } catch (pixErr) {
+            console.error("Error generating Pix:", pixErr);
+            toast("Não foi possível gerar o Pix Mercado Pago. Tente novamente ou escolha outra forma de pagamento.", "error");
+            setLoading(false);
+            return;
+          }
+        } else {
+          setCreatedOrderId(docRef.id);
+          setShowMpBrick(true);
+          setLoading(false);
+          return; // Pause here to show native Brick
+        }
       }
 
       clearCart();
@@ -1335,8 +1454,7 @@ export function CartPage() {
                 }} 
                 customization={{ 
                   paymentMethods: { 
-                    creditCard: 'all',
-                    bankTransfer: 'all'
+                    creditCard: 'all'
                   } 
                 }} 
                 onSubmit={handleMpSubmit} 
@@ -2299,7 +2417,50 @@ export function CartPage() {
             {checkoutStep === 'PAGAMENTO' && (
               <Button 
                 disabled={loading || !paymentMethod}
-                onClick={handleCheckout}
+                onClick={async () => {
+                      const method = activePaymentMethods.find(m => m.id === paymentMethod);
+                      if (!method) return;
+                      
+                        // Validate customer data for online payments
+                      if (method.gatewayProvider === 'mercado_pago') {
+                        const missingFields: string[] = [];
+                        
+                        // User Data
+                        if (!userData?.fullName) missingFields.push("nome completo");
+                        if (!userData?.cpf || !isValidCPF(userData.cpf)) missingFields.push("CPF");
+                        if (!userData?.email || !userData.email.includes('@')) missingFields.push("e-mail");
+                        if (!userData?.whatsapp || userData.whatsapp.replace(/\D/g, '').length < 10) missingFields.push("WhatsApp");
+                        
+                        // Address Data (if Delivery)
+                        if (receiveMethod === 'entrega') {
+                          const selectedAddress = savedAddresses.find((a: any) => a.id === selectedSavedAddressId);
+                          if (!selectedAddress) {
+                            missingFields.push("endereço");
+                          } else {
+                            if (!selectedAddress.street) missingFields.push("rua");
+                            if (!selectedAddress.number) missingFields.push("número");
+                            if (!selectedAddress.neighborhood) missingFields.push("bairro");
+                            if (!selectedAddress.city) missingFields.push("cidade");
+                            if (!selectedAddress.state) missingFields.push("estado");
+                          }
+                        }
+
+                        if (missingFields.length > 0) {
+                          const msg = `Complete seus dados para pagar online: ${missingFields.join(', ')}.`;
+                          toast(msg, "error");
+                          
+                          // Redirect
+                          if (missingFields.some(f => ["nome completo", "CPF", "e-mail", "WhatsApp"].includes(f))) {
+                            navigate('/area-cliente/dados?returnTo=/carrinho');
+                          } else {
+                            navigate('/area-cliente/enderecos?returnTo=/carrinho');
+                          }
+                          return;
+                        }
+                      }
+
+                      handleCheckout();
+                    }}
                 className="w-full h-12 sm:h-14 px-8 sm:px-12 font-black rounded-full text-xs sm:text-sm uppercase tracking-[2px] shadow-xl transition-all storefront-cart-btn hover:opacity-90"
                 style={{ backgroundColor: currentTheme.primaryColor, color: primaryColorText }}
               >

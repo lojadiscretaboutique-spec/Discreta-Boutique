@@ -1149,11 +1149,15 @@ async function startServer() {
         }
       }
       
+      const maskedToken = finalAccessToken ? (finalAccessToken.length > 8 ? finalAccessToken.substring(0, 11) + '****' + finalAccessToken.slice(-4) : '****') : '';
+
       const payload = {
         enabled: incoming.enabled || false,
+        active: incoming.enabled || false,
         environment: incoming.environment || 'sandbox',
         publicKey: incoming.publicKey || '',
         accessToken: finalAccessToken,
+        accessTokenMasked: maskedToken,
         pixEnabled: incoming.pixEnabled !== undefined ? incoming.pixEnabled : true,
         creditCardEnabled: incoming.creditCardEnabled !== undefined ? incoming.creditCardEnabled : true,
         debitEnabled: incoming.debitEnabled !== undefined ? incoming.debitEnabled : false,
@@ -1211,13 +1215,10 @@ async function startServer() {
   // Admin connection tester
   app.post("/api/admin/mercadopago/test-connection", async (req, res) => {
     try {
-      const { accessToken, publicKey, environment } = req.body;
+      const { publicKey, environment } = req.body;
       const existingDoc = await getMercadoPagoConfigDoc();
       
-      let tokenToUse = accessToken || '';
-      if (tokenToUse.includes('****') || tokenToUse === '****') {
-        tokenToUse = existingDoc.exists() ? (existingDoc.data().accessToken || '') : '';
-      }
+      const tokenToUse = existingDoc.exists() ? (existingDoc.data().accessToken || '') : '';
       
       if (!tokenToUse) {
         return res.status(400).json({ error: "Access token é necessário para testar a conexão" });
@@ -1229,7 +1230,7 @@ async function startServer() {
           headers: {
             Authorization: `Bearer ${tokenToUse}`
           },
-          timeout: 5000
+          timeout: 30000
         });
         
         const accountData = response.data;
@@ -1280,77 +1281,480 @@ async function startServer() {
     }
   });
 
+  function isValidCPF(cpf: string): boolean {
+    if (!cpf) return false;
+    const clean = cpf.replace(/\D/g, '');
+    if (clean.length !== 11) return false;
+    if (/^(\d)\1{10}$/.test(clean)) return false;
+
+    let sum = 0;
+    let remainder;
+
+    for (let i = 1; i <= 9; i++) {
+      sum += parseInt(clean.substring(i - 1, i)) * (11 - i);
+    }
+    remainder = (sum * 10) % 11;
+    if (remainder === 10 || remainder === 11) remainder = 0;
+    if (remainder !== parseInt(clean.substring(9, 10))) return false;
+
+    sum = 0;
+    for (let i = 1; i <= 10; i++) {
+      sum += parseInt(clean.substring(i - 1, i)) * (12 - i);
+    }
+    remainder = (sum * 10) % 11;
+    if (remainder === 10 || remainder === 11) remainder = 0;
+    if (remainder !== parseInt(clean.substring(10, 11))) return false;
+
+    return true;
+  }
+
+  // Mercado Pago Pix payment status check endpoint
+  app.get("/api/payments/mercadopago/check-status/:orderId", async (req, res) => {
+    try {
+      const { orderId } = req.params;
+      
+      const orderDoc = await getDoc(doc(db, 'orders', orderId));
+      if (!orderDoc.exists()) {
+          return res.status(404).json({ error: "Pedido não encontrado." });
+      }
+      
+      const orderData = orderDoc.data();
+      const orderCreatedAt = orderData.createdAt?.toDate ? orderData.createdAt.toDate() : (orderData.createdAt ? new Date(orderData.createdAt) : null);
+      const isExpired = orderCreatedAt ? (Date.now() - orderCreatedAt.getTime() > 30 * 60 * 1000) : false;
+
+      if (isExpired && (!orderData.status || orderData.status === 'AGUARDANDO_PAGAMENTO' || orderData.status === 'NOVO')) {
+          await updateDoc(doc(db, 'orders', orderId), {
+              status: 'CANCELADO',
+              paymentStatus: 'cancelled',
+              updatedAt: new Date().toISOString()
+          });
+          return res.json({ status: 'cancelled' });
+      }
+
+      const q = query(
+        collection(db, 'payment_intents'),
+        where('orderId', '==', orderId),
+        where('provider', '==', 'mercado_pago'),
+        where('paymentMethodType', '==', 'pix')
+      );
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        return res.status(404).json({ error: "Nenhum Pix gerado para este pedido." });
+      }
+      
+      const sortedIntents = querySnapshot.docs
+        .map(d => ({ id: d.id, ...d.data() as any }))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      const latestIntent = sortedIntents[0];
+      
+      if (latestIntent.status === 'approved') {
+        return res.json({ status: 'approved' });
+      }
+      
+      if ((latestIntent.status === 'pending' || latestIntent.status === 'in_process') && latestIntent.mercadoPagoPaymentId) {
+        const mpConfigDoc = await getMercadoPagoConfigDoc();
+        const { accessToken } = mpConfigDoc.exists() ? mpConfigDoc.data() : { accessToken: null };
+        
+        if (accessToken) {
+          const { default: axios } = await import('axios');
+          try {
+            const mpRes = await axios.get(`https://api.mercadopago.com/v1/payments/${latestIntent.mercadoPagoPaymentId}`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              timeout: 30000
+            });
+            
+            const paymentData = mpRes.data;
+            const currentStatus = paymentData.status;
+            
+            if (currentStatus !== latestIntent.status) {
+              await updatePaymentStatus(orderId, paymentData);
+              await updateDoc(doc(db, 'payment_intents', latestIntent.id), {
+                status: currentStatus,
+                updatedAt: new Date().toISOString()
+              });
+              return res.json({ status: currentStatus });
+            }
+          } catch (err: any) {
+            console.error("Error fetching payment status from MP:", err.message);
+          }
+        }
+      }
+      
+      res.json({ status: latestIntent.status });
+    } catch (error: any) {
+      console.error("Check status error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Mercado Pago Pix payment generation (Secure billing: reads amount from DB)
   app.post("/api/payments/mercadopago/create-pix", async (req, res) => {
     try {
-      const { orderId, email, firstName, lastName, cpfNumber } = req.body;
+      const { orderId, paymentMethodId } = req.body;
       if (!orderId) {
         return res.status(400).json({ error: "ID do pedido é obrigatório" });
       }
 
-      // Fetch config
-      const mpConfigDoc = await getMercadoPagoConfigDoc();
-      if (!mpConfigDoc.exists() || !mpConfigDoc.data().enabled) {
-        return res.status(400).json({ error: "Integração do Mercado Pago inativa ou não configurada" });
-      }
-      const { accessToken } = mpConfigDoc.data();
-      if (!accessToken) {
-        return res.status(400).json({ error: "Access Token ausente no servidor" });
-      }
-
-      // Fetch order details – NEVER trust price parameter from the frontend!
+      // Fetch order details
       const orderDoc = await getDoc(doc(db, 'orders', orderId));
       if (!orderDoc.exists()) {
         return res.status(404).json({ error: "Pedido não encontrado" });
       }
       const orderData = orderDoc.data();
+      
+      const orderCreatedAt = orderData.createdAt?.toDate ? orderData.createdAt.toDate() : (orderData.createdAt ? new Date(orderData.createdAt) : null);
+      const isExpired = orderCreatedAt ? (Date.now() - orderCreatedAt.getTime() > 30 * 60 * 1000) : false;
+
+      if (isExpired && (!orderData.status || orderData.status === 'AGUARDANDO_PAGAMENTO' || orderData.status === 'NOVO')) {
+          await updateDoc(doc(db, 'orders', orderId), {
+              status: 'CANCELADO',
+              paymentStatus: 'cancelled',
+              updatedAt: new Date().toISOString()
+          });
+          return res.status(400).json({ error: "O tempo limite de 30 minutos para pagamento foi excedido. O pedido foi cancelado." });
+      }
+      
       const amount = Number(orderData.total);
 
-      const client = new MercadoPagoConfig({ accessToken, options: { timeout: 5000 } });
-      const { Payment } = await import('mercadopago');
-      const payment = new Payment(client);
+      // Fetch user data first to assist validation fallbacks
+      const userDoc = await getDoc(doc(db, 'users', orderData.customerId || ''));
+      const userData = userDoc.exists() ? userDoc.data() : {};
 
-      const cleanCpf = cpfNumber ? cpfNumber.replace(/\D/g, '') : '';
+      const fullName = orderData.customerName || userData.fullName || '';
+      const email = orderData.customerEmail || orderData.email || userData.email || '';
+      const cpf = orderData.customerCpf || orderData.cpf || userData.cpf || '';
+      const whatsapp = orderData.customerWhatsapp || orderData.whatsapp || userData.whatsapp || '';
 
-      const mpResponse = await payment.create({
-        body: {
+      const isDelivery = orderData.shippingMethod === 'entrega' || orderData.receiveMethod === 'entrega';
+      
+      const rawAddress = orderData.shippingAddress || orderData.fullAddress || userData.address || {};
+      const address = {
+        zipCode: rawAddress.zipCode || rawAddress.cep || '',
+        street: rawAddress.street || rawAddress.rua || '',
+        number: rawAddress.number || rawAddress.numero || '',
+        neighborhood: rawAddress.neighborhood || rawAddress.bairro || '',
+        city: rawAddress.city || rawAddress.cidade || '',
+        state: rawAddress.state || rawAddress.estado || '',
+        complement: rawAddress.complement || rawAddress.complemento || ''
+      };
+
+      // Validate customer fields & address data before calling Mercado Pago
+      const missingFields: string[] = [];
+      if (!fullName.trim() || fullName.trim().split(/\s+/).length < 2) {
+        missingFields.push("nome completo");
+      }
+      
+      if (!email || !email.includes('@')) {
+        missingFields.push("e-mail válido");
+      }
+      
+      if (!isValidCPF(cpf)) {
+        missingFields.push("CPF válido");
+      }
+      
+      if (!whatsapp || whatsapp.replace(/\D/g, '').length < 10) {
+        missingFields.push("WhatsApp válido");
+      }
+      
+      if (isDelivery) {
+        if (!address.zipCode) missingFields.push("CEP");
+        if (!address.street) missingFields.push("rua");
+        if (!address.number) missingFields.push("número");
+        if (!address.neighborhood) missingFields.push("bairro");
+        if (!address.city) missingFields.push("cidade");
+        if (!address.state) missingFields.push("estado");
+      }
+      
+      if (missingFields.length > 0) {
+        return res.status(400).json({ error: `Complete seus dados para pagar online: ${missingFields.join(', ')}.` });
+      }
+
+      // Check for an existing, non-expired payment intent for this order
+      const q = query(
+        collection(db, 'payment_intents'),
+        where('orderId', '==', orderId),
+        where('provider', '==', 'mercado_pago'),
+        where('paymentMethodType', '==', 'pix'),
+        where('status', 'in', ['pending', 'in_process'])
+      );
+      const querySnapshot = await getDocs(q);
+      
+      const nowStr = new Date().toISOString();
+      let existingIntent: any = null;
+      
+      for (const d of querySnapshot.docs) {
+        const data = d.data();
+        if (data.expiresAt) {
+          const expDate = new Date(data.expiresAt);
+          if (expDate > new Date() && data.pixQrCode) {
+            existingIntent = { id: d.id, ...data };
+            break;
+          }
+        }
+      }
+
+      if (existingIntent) {
+        console.log(`[Reusing existing Pix intent] for order ${orderId}`);
+        // Ensure order has these values too
+        await updateDoc(doc(db, 'orders', orderId), {
+          paymentProvider: "mercado_pago",
+          gatewayProvider: "mercado_pago",
+          mercadoPagoPaymentId: existingIntent.mercadoPagoPaymentId,
+          mercadopagoPaymentId: existingIntent.mercadoPagoPaymentId,
+          paymentId: existingIntent.mercadoPagoPaymentId,
+          paymentStatus: existingIntent.status || "pending",
+          paymentQrCode: existingIntent.pixQrCode,
+          paymentQrCodeBase64: existingIntent.pixQrCodeBase64,
+          paymentCopyPaste: existingIntent.pixQrCode,
+          paymentMethodId: paymentMethodId || 'online_payment',
+          paymentMethodType: "pix",
+          paymentExpiresAt: existingIntent.expiresAt,
+          updatedAt: serverTimestamp()
+        });
+
+        return res.json({
+          success: true,
+          paymentId: existingIntent.mercadoPagoPaymentId,
+          qrCode: existingIntent.pixQrCode,
+          qrCodeBase64: existingIntent.pixQrCodeBase64,
+          copyPaste: existingIntent.pixQrCode,
+          // backwards compatibility just in case
+          id: existingIntent.mercadoPagoPaymentId,
+          status: existingIntent.status,
+          qr_code: existingIntent.pixQrCode,
+          qr_code_base64: existingIntent.pixQrCodeBase64,
+          expiresAt: existingIntent.expiresAt
+        });
+      }
+
+      // Fetch config
+      const mpConfigDoc = await getMercadoPagoConfigDoc();
+      const mpConfigExists = mpConfigDoc.exists();
+      const mpConfigData = mpConfigExists ? mpConfigDoc.data() : null;
+      
+      const configEnabled = mpConfigData?.enabled === true;
+      const configActive = mpConfigData?.active === true;
+      const configPixEnabled = mpConfigData?.pixEnabled !== false; // defaults to true if not explicitly false
+      const hasAccessToken = !!mpConfigData?.accessToken;
+      const hasPublicKey = !!mpConfigData?.publicKey;
+      const environment = mpConfigData?.environment || '';
+
+      const isConfigValid = (configEnabled || configActive) && configPixEnabled && hasAccessToken && !!environment;
+
+      console.log("[DEV LOG] /api/payments/mercadopago/create-pix - Fetching MP config:", {
+        exists: mpConfigExists,
+        enabled: configEnabled,
+        active: configActive,
+        pixEnabled: configPixEnabled,
+        hasAccessToken,
+        environment
+      });
+
+      if (!isConfigValid) {
+        return res.status(400).json({
+          success: false,
+          error: "Integração do Mercado Pago inativa ou não configurada",
+          debug: {
+            configPath: "financial_integrations/mercado_pago",
+            configExists: mpConfigExists,
+            active: configActive,
+            enabled: configEnabled,
+            pixEnabled: configPixEnabled,
+            hasAccessToken: hasAccessToken,
+            hasPublicKey: hasPublicKey,
+            environment: environment
+          }
+        });
+      }
+
+      const accessToken = mpConfigData.accessToken;
+      
+      // Fetch user data (kept for subsequent logic references, though fetched above)
+      const cleanCpf = cpf.replace(/\D/g, '');
+      const cleanPhone = whatsapp.replace(/\D/g, '');
+      const areaCode = cleanPhone.substring(0, 2);
+      const phoneNumber = cleanPhone.substring(2);
+
+      const items = (orderData.items || []).map((item: any) => ({
+        id: item.id || 'N/A',
+        title: item.title || 'Produto',
+        quantity: Number(item.quantity) || 1,
+        unit_price: Number(item.price) || 0
+      }));
+
+      const payerAddress = isDelivery ? {
+        zip_code: address.zipCode.replace(/\D/g, '') || '',
+        street_name: address.street,
+        street_number: address.number || 'S/N'
+      } : undefined;
+
+      // Generate unique attempt metadata
+      const attemptId = doc(collection(db, 'payment_intents')).id;
+      const paymentIntentRef = doc(db, 'payment_intents', attemptId);
+      const idempotencyKey = crypto.randomUUID();
+
+      // Create Payment Intent BEFORE calling Mercado Pago
+      await setDoc(paymentIntentRef, {
+        id: attemptId,
+        orderId,
+        customerId: orderData.customerId,
+        provider: 'mercado_pago',
+        paymentMethodId: paymentMethodId || 'online_payment',
+        paymentMethodType: 'pix',
+        amount,
+        status: 'creating',
+        idempotencyKey,
+        createdAt: nowStr,
+        updatedAt: nowStr
+      });
+
+      let mpResponse: any;
+      const expirationMinutes = 30;
+      const expirationDate = new Date(Date.now() + expirationMinutes * 60 * 1000);
+      const dateOfExpiration = expirationDate.toISOString();
+
+      try {
+        const mpPayload: any = {
           transaction_amount: amount,
           description: `Pedido ${orderId} na Discreta Boutique`,
           payment_method_id: 'pix',
+          date_of_expiration: dateOfExpiration,
           payer: {
-            email: email || orderData.customerEmail || 'cliente@discretaboutique.com.br',
-            first_name: firstName || orderData.customerName?.split(' ')[0] || 'Cliente',
-            last_name: lastName || orderData.customerName?.split(' ').slice(1).join(' ') || 'Boutique',
-            identification: cleanCpf ? {
+            email: email,
+            first_name: fullName.split(' ')[0],
+            last_name: fullName.split(' ').slice(1).join(' ') || 'Boutique',
+            identification: {
               type: 'CPF',
               number: cleanCpf
-            } : undefined
+            }
           },
           external_reference: orderId,
+          metadata: {
+            order_id: String(orderId),
+            customer_id: String(orderData.customerId || 'unknown'),
+            source: "discreta_boutique"
+          }
+        };
+
+        if (areaCode && phoneNumber) {
+          mpPayload.payer.phone = {
+            area_code: areaCode,
+            number: phoneNumber
+          };
         }
+
+        if (isDelivery && payerAddress?.zip_code) {
+          mpPayload.payer.address = payerAddress;
+        }
+
+        const { default: axios } = await import('axios');
+        const rawResponse = await axios.post('https://api.mercadopago.com/v1/payments', mpPayload, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'X-Idempotency-Key': idempotencyKey,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        });
+        mpResponse = rawResponse.data;
+      } catch (mpError: any) {
+        console.error("Mercado Pago API Call Failed:", mpError.response?.data || mpError.message);
+        // Mark payment intent as failed
+        await updateDoc(paymentIntentRef, {
+          status: 'failed',
+          errorMessage: mpError.message || "Erro retornado pela API do Mercado Pago",
+          updatedAt: new Date().toISOString()
+        });
+        return res.status(500).json({ error: "Não foi possível gerar o Pix. Confira seus dados ou tente novamente." });
+      }
+
+      const pId = String(mpResponse.id || mpResponse.body?.id || '');
+      let qrc = mpResponse.point_of_interaction?.transaction_data?.qr_code || '';
+      let qrcb64 = mpResponse.point_of_interaction?.transaction_data?.qr_code_base64 || '';
+
+      if (!qrc && mpResponse.body) {
+        qrc = mpResponse.body.point_of_interaction?.transaction_data?.qr_code || '';
+      }
+      if (!qrcb64 && mpResponse.body) {
+        qrcb64 = mpResponse.body.point_of_interaction?.transaction_data?.qr_code_base64 || '';
+      }
+
+      const status = mpResponse.status || mpResponse.body?.status || 'pending';
+
+      console.log("[DEV LOG] Raw Mercado Pago response fields extracted:", {
+        paymentId: pId,
+        qrc_length: qrc?.length || 0,
+        qrcb64_length: qrcb64?.length || 0,
+        status: status
       });
 
-      // Update order state
-      const pId = String(mpResponse.id);
-      const qrc = mpResponse.point_of_interaction?.transaction_data?.qr_code || '';
-      const qrcb64 = mpResponse.point_of_interaction?.transaction_data?.qr_code_base64 || '';
-      const status = mpResponse.status || 'pending';
+      // If qr_code or qr_code_base64 is empty, return clear error and do not succeed
+      if (!qrc || !qrcb64) {
+        console.error("[DEV ERROR] Mercado Pago response missing QR Code or base64. Response content:", JSON.stringify(mpResponse));
+        await updateDoc(paymentIntentRef, {
+          status: 'failed',
+          errorMessage: 'Mercado Pago não retornou os dados de QR Code para este Pix.',
+          updatedAt: new Date().toISOString()
+        });
+        return res.status(400).json({ 
+          error: "O Mercado Pago não retornou os dados de QR Code para este Pix. Verifique as credenciais da conta ou tente novamente." 
+        });
+      }
 
+      // Update Payment Intent with success details
+      await updateDoc(paymentIntentRef, {
+        status: status,
+        mercadoPagoPaymentId: pId,
+        pixQrCode: qrc,
+        pixQrCodeBase64: qrcb64,
+        pixCopyPaste: qrc,
+        expiresAt: dateOfExpiration,
+        payerSnapshot: { name: orderData.customerName, email: orderData.customerEmail, cpf: cleanCpf },
+        shippingSnapshot: orderData.shippingAddress || null,
+        itemsSnapshot: items,
+        orderSnapshot: orderData,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Update order state with both main fields and all aliases
       await updateDoc(doc(db, 'orders', orderId), {
+        paymentProvider: "mercado_pago",
+        gatewayProvider: "mercado_pago",
+        mercadoPagoPaymentId: pId,
         mercadopagoPaymentId: pId,
         paymentId: pId,
         paymentStatus: status,
         paymentQrCode: qrc,
         paymentQrCodeBase64: qrcb64,
+        paymentCopyPaste: qrc,
+        
+        // Aliases
+        pixQrCode: qrc,
+        pixQrCodeBase64: qrcb64,
+        pixCopyPaste: qrc,
+        pixExpiresAt: dateOfExpiration,
+        expiresAt: dateOfExpiration,
+
+        paymentMethodId: paymentMethodId || 'online_payment',
+        paymentMethodType: "pix",
+        paymentExpiresAt: dateOfExpiration,
         updatedAt: serverTimestamp()
       });
 
       res.json({
         success: true,
+        paymentId: pId,
+        qrCode: qrc,
+        qrCodeBase64: qrcb64,
+        copyPaste: qrc,
+        // backwards compatibility just in case
         id: pId,
         status: status,
         qr_code: qrc,
-        qr_code_base64: qrcb64
+        qr_code_base64: qrcb64,
+        expiresAt: dateOfExpiration
       });
     } catch (error: any) {
       console.error("MP Create Pix Error:", error);
@@ -1367,10 +1771,12 @@ async function startServer() {
       }
 
       const mpConfigDoc = await getMercadoPagoConfigDoc();
-      if (!mpConfigDoc.exists() || !mpConfigDoc.data().enabled) {
+      const mpConfigData = mpConfigDoc.exists() ? mpConfigDoc.data() : null;
+      const isConfigEnabled = mpConfigData?.enabled === true || mpConfigData?.active === true;
+      if (!mpConfigDoc.exists() || !isConfigEnabled) {
         return res.status(400).json({ error: "Integração do Mercado Pago inativa" });
       }
-      const { accessToken } = mpConfigDoc.data();
+      const accessToken = mpConfigData?.accessToken;
       if (!accessToken) {
         return res.status(400).json({ error: "Access Token ausente no servidor" });
       }
@@ -1381,14 +1787,30 @@ async function startServer() {
         return res.status(404).json({ error: "Pedido não encontrado" });
       }
       const orderData = orderDoc.data();
+      
+      const orderCreatedAt = orderData.createdAt?.toDate ? orderData.createdAt.toDate() : (orderData.createdAt ? new Date(orderData.createdAt) : null);
+      const isExpired = orderCreatedAt ? (Date.now() - orderCreatedAt.getTime() > 30 * 60 * 1000) : false;
+
+      if (isExpired && (!orderData.status || orderData.status === 'AGUARDANDO_PAGAMENTO' || orderData.status === 'NOVO')) {
+          await updateDoc(doc(db, 'orders', orderId), {
+              status: 'CANCELADO',
+              paymentStatus: 'cancelled',
+              updatedAt: new Date().toISOString()
+          });
+          return res.status(400).json({ error: "O tempo limite de 30 minutos para pagamento foi excedido. O pedido foi cancelado." });
+      }
+
       const amount = Number(orderData.total);
+      
+      // Basic customer validation check
+      if (!orderData.customerName || !orderData.customerCpf || !orderData.customerEmail || !orderData.customerWhatsapp) {
+        return res.status(400).json({ error: "Para pagar online, complete seus dados cadastrais." });
+      }
 
-      const client = new MercadoPagoConfig({ accessToken, options: { timeout: 5000 } });
-      const { Payment } = await import('mercadopago');
-      const payment = new Payment(client);
-
-      const mpResponse = await payment.create({
-        body: {
+      let mpResponse: any;
+      try {
+        const { default: axios } = await import('axios');
+        const rawResponse = await axios.post('https://api.mercadopago.com/v1/payments', {
           transaction_amount: amount,
           token: token,
           description: `Pedido ${orderId} na Discreta Boutique`,
@@ -1396,15 +1818,49 @@ async function startServer() {
           payment_method_id: payment_method_id,
           issuer_id: issuer_id,
           payer: {
-            email: payer.email,
-            identification: payer.identification
+            email: orderData.customerEmail,
+            identification: {
+                type: 'CPF',
+                number: orderData.customerCpf.replace(/\D/g, '')
+            }
           },
           external_reference: orderId,
-        }
-      });
+        }, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        });
+        mpResponse = rawResponse.data;
+      } catch (mpError: any) {
+        console.error("Mercado Pago API Call Failed:", mpError.response?.data || mpError.message);
+        return res.status(500).json({ error: "Erro ao processar o pagamento com cartão." });
+      }
 
-      const pId = String(mpResponse.id);
-      const status = mpResponse.status || 'pending';
+      const pId = String(mpResponse.id || mpResponse.body?.id || '');
+      const status = mpResponse.status || mpResponse.body?.status || 'pending';
+
+      // Save Payment Intent
+      const { paymentIntentService } = await import('./src/services/paymentIntentService');
+      await paymentIntentService.create({
+          id: pId,
+          orderId,
+          customerId: orderData.customerId,
+          paymentMethodId,
+          paymentMethodNameSnapshot: payment_method_id === 'credit_card' ? 'Cartão de Crédito' : 'Cartão de Débito',
+          paymentMethodType: payment_method_id === 'credit_card' ? 'credit_card' : 'debit_card',
+          gatewayProvider: 'mercado_pago',
+          provider: 'mercado_pago',
+          amount,
+          currency: 'BRL',
+          status: status as any,
+          mercadopagoPaymentId: pId,
+          installments: Number(installments),
+          payer: { email: orderData.customerEmail },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+      });
 
       await updatePaymentStatus(orderId, mpResponse);
 
@@ -1420,6 +1876,29 @@ async function startServer() {
     }
   });
 
+  // Mercado Pago Status Check
+  app.get("/api/payments/mercadopago/status/:paymentId", async (req, res) => {
+    try {
+        const { paymentId } = req.params;
+        const mpConfigDoc = await getMercadoPagoConfigDoc();
+        if (!mpConfigDoc.exists()) {
+            return res.status(400).json({ error: "Integração inativa" });
+        }
+        const { accessToken } = mpConfigDoc.data();
+        const { default: axios } = await import('axios');
+        const pResponse = await axios.get(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            },
+            timeout: 30000
+        });
+        res.json({ status: pResponse.data.status });
+    } catch (error: any) {
+        console.error("MP Status Check Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+  });
+
   // Mercado Pago Webhook Hook (Validated directly against API)
   app.post("/api/webhooks/mercadopago", async (req, res) => {
     try {
@@ -1430,6 +1909,8 @@ async function startServer() {
       const paymentId = String(event.data?.id || event.id || '');
       const type = event.type || event.topic || '';
       
+      const isTestEvent = paymentId === '123456' || event.live_mode === false;
+
       const logId = await addWebhookLog({
         provider: 'mercado_pago',
         eventId: eventId,
@@ -1438,27 +1919,38 @@ async function startServer() {
         receivedAt: new Date().toISOString(),
         processedAt: new Date().toISOString(),
         success: false,
+        testEvent: isTestEvent,
         payload: event
       });
+
+      if (isTestEvent) {
+        if (logId) await updateWebhookLog(logId, {
+          success: true,
+          ignored: true,
+          message: "Evento de teste recebido com sucesso"
+        });
+        return res.json({ ok: true, received: true, testEvent: true });
+      }
 
       if (!paymentId || (type !== 'payment' && type !== 'payment.created' && type !== 'payment.updated')) {
         if (logId) await updateWebhookLog(logId, {
           success: true,
-          notes: "Evento ignorado (não-pagamento)"
+          ignored: true,
+          message: "Evento ignorado (não-pagamento)"
         });
         return res.json({ status: "ignored" });
       }
 
       const configDoc = await getMercadoPagoConfigDoc();
       if (!configDoc.exists()) {
-        if (logId) await updateWebhookLog(logId, { error: "Sem configuração cadastrada" });
-        return res.status(400).json({ error: "Integração inativa" });
+        if (logId) await updateWebhookLog(logId, { success: false, ignored: true, error: "Sem configuração cadastrada" });
+        return res.json({ status: "ignored", error: "Integração inativa" });
       }
       
       const { accessToken } = configDoc.data();
       if (!accessToken) {
-        if (logId) await updateWebhookLog(logId, { error: "Access token ausente" });
-        return res.status(400).json({ error: "Token ausente" });
+        if (logId) await updateWebhookLog(logId, { success: false, ignored: true, error: "Access token ausente" });
+        return res.json({ status: "ignored", error: "Token ausente" });
       }
 
       const { default: axios } = await import('axios');
@@ -1467,15 +1959,15 @@ async function startServer() {
           headers: {
             Authorization: `Bearer ${accessToken}`
           },
-          timeout: 5000
+          timeout: 30000
         });
 
         const paymentData = pResponse.data;
         const orderId = paymentData.external_reference;
 
         if (!orderId) {
-          if (logId) await updateWebhookLog(logId, { error: "external_reference ausente" });
-          return res.json({ status: "success", notes: "Sem orderId" });
+          if (logId) await updateWebhookLog(logId, { success: false, ignored: true, error: "external_reference ausente" });
+          return res.json({ status: "ignored", notes: "Sem orderId" });
         }
 
         await updatePaymentStatus(orderId, paymentData);
@@ -1490,12 +1982,12 @@ async function startServer() {
         res.json({ status: "processed" });
       } catch (err: any) {
         console.error("Webhook processing error resolving payment:", err.response?.data || err.message);
-        if (logId) await updateWebhookLog(logId, { error: err.message });
-        res.json({ status: "failed_api", error: err.message });
+        if (logId) await updateWebhookLog(logId, { success: false, ignored: true, error: err.message });
+        res.json({ status: "ignored", error: err.message });
       }
     } catch (error: any) {
       console.error("General Webhook Crash:", error);
-      res.status(500).json({ error: error.message });
+      res.status(200).json({ status: "failed", error: error.message });
     }
   });
 
@@ -1513,12 +2005,29 @@ async function startServer() {
       if (!accessToken) {
         return res.status(400).json({ error: "Access token é necessário para criar a preferência" });
       }
+      
+      if (orderId) {
+          const orderDoc = await getDoc(doc(db, 'orders', orderId));
+          if (orderDoc.exists()) {
+              const orderData = orderDoc.data();
+              const orderCreatedAt = orderData.createdAt?.toDate ? orderData.createdAt.toDate() : (orderData.createdAt ? new Date(orderData.createdAt) : null);
+              const isExpired = orderCreatedAt ? (Date.now() - orderCreatedAt.getTime() > 30 * 60 * 1000) : false;
 
-      const client = new MercadoPagoConfig({ accessToken, options: { timeout: 5000 } });
-      const preference = new Preference(client);
+              if (isExpired && (!orderData.status || orderData.status === 'AGUARDANDO_PAGAMENTO' || orderData.status === 'NOVO')) {
+                  await updateDoc(doc(db, 'orders', orderId), {
+                      status: 'CANCELADO',
+                      paymentStatus: 'cancelled',
+                      updatedAt: new Date().toISOString()
+                  });
+                  return res.status(400).json({ error: "O tempo limite de 30 minutos para pagamento foi excedido. O pedido foi cancelado." });
+              }
+          }
+      }
 
-      const response = await preference.create({
-        body: {
+      let mpResponse: any;
+      try {
+        const { default: axios } = await import('axios');
+        const rawResponse = await axios.post('https://api.mercadopago.com/checkout/preferences', {
           items: items.map((item: { productId: string; name: string; quantity: number; price: number }) => ({
             id: item.productId,
             title: item.name,
@@ -1533,10 +2042,20 @@ async function startServer() {
           },
           auto_return: 'approved',
           external_reference: orderId,
-        }
-      });
+        }, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        });
+        mpResponse = rawResponse.data;
+      } catch (mpError: any) {
+        console.error("Mercado Pago API Call Failed:", mpError.response?.data || mpError.message);
+        return res.status(500).json({ error: "Erro ao criar a preferência." });
+      }
 
-      res.json({ id: response.id, init_point: response.init_point, sandbox_init_point: response.sandbox_init_point });
+      res.json({ id: mpResponse.id, init_point: mpResponse.init_point, sandbox_init_point: mpResponse.sandbox_init_point });
     } catch (error: unknown) {
       console.error("MP Preference Error:", error);
       const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
@@ -1858,12 +2377,10 @@ async function startServer() {
       const orderData = orderDoc.data();
       const amount = Number(orderData.total);
 
-      const client = new MercadoPagoConfig({ accessToken, options: { timeout: 5000 } });
-      const { Payment } = await import('mercadopago');
-      const payment = new Payment(client);
-
-      const response = await payment.create({
-        body: {
+      let mpResponse: any;
+      try {
+        const { default: axios } = await import('axios');
+        const rawResponse = await axios.post('https://api.mercadopago.com/v1/payments', {
           transaction_amount: amount,
           token: formData.token,
           description: formData.description || `Pedido ${orderId}`,
@@ -1875,13 +2392,23 @@ async function startServer() {
             identification: formData.payer.identification
           },
           external_reference: orderId,
-        }
-      });
+        }, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        });
+        mpResponse = rawResponse.data;
+      } catch (mpError: any) {
+        console.error("Mercado Pago API Call Failed:", mpError.response?.data || mpError.message);
+        return res.status(500).json({ error: "Erro ao processar o pagamento geral." });
+      }
 
       // Synchronize the order status and receivables securely
-      await updatePaymentStatus(orderId, response);
+      await updatePaymentStatus(orderId, mpResponse);
 
-      res.json({ success: true, status: response.status, detail: response.status_detail, id: response.id });
+      res.json({ success: true, status: mpResponse.status, detail: mpResponse.status_detail, id: mpResponse.id });
     } catch (error: unknown) {
       console.error("MP Payment Error:", error);
       const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
@@ -1946,6 +2473,56 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
       }
 
       res.json({ success: true, updated: batchCount, logs });
+    } catch(e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/admin/check-expired-payments', async (req, res) => {
+    try {
+      const ordersRef = collection(db, "orders");
+      const q = query(ordersRef, where("status", "in", ["AGUARDANDO_PAGAMENTO", "NOVO"]));
+      const querySnapshot = await getDocs(q);
+      
+      let cancelledCount = 0;
+      const now = Date.now();
+      const thirtyMinutes = 30 * 60 * 1000;
+      
+      const batch = writeBatch(db);
+      let batchSize = 0;
+      
+      querySnapshot.forEach((docSnap) => {
+        const orderData = docSnap.data();
+        const createdAt = orderData.createdAt?.toDate ? orderData.createdAt.toDate() : (orderData.createdAt ? new Date(orderData.createdAt) : null);
+        
+        if (createdAt && (now - createdAt.getTime() > thirtyMinutes)) {
+            // Check if payment was already approved
+            if (orderData.paymentApprovedAt || orderData.paymentStatus === 'paid') {
+                console.log(`[CheckExpired] Skipping order ${docSnap.id} - already approved/paid. paymentApprovedAt: ${orderData.paymentApprovedAt}, paymentStatus: ${orderData.paymentStatus}`);
+                return;
+            }
+
+            const isIntegrated = orderData.paymentMethod?.toLowerCase().includes("pix") || 
+                                 orderData.paymentProvider === "mercado_pago" || 
+                                 orderData.paymentMethod === "online_payment";
+            
+            if (isIntegrated) {
+                batch.update(docSnap.ref, {
+                    status: 'CANCELADO',
+                    paymentStatus: 'cancelled',
+                    updatedAt: new Date().toISOString()
+                });
+                cancelledCount++;
+                batchSize++;
+            }
+        }
+      });
+      
+      if (batchSize > 0) {
+        await batch.commit();
+      }
+      
+      res.json({ success: true, cancelledCount });
     } catch(e: any) {
       res.status(500).json({ error: e.message });
     }

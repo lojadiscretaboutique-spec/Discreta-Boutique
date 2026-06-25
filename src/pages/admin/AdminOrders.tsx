@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { orderReversalService } from "../../services/orderReversalService";
 import { canReverseOrder } from "../../utils/orderReversalValidation";
+import { MERCADO_PAGO_LOGO_BASE64 } from "../../constants/images";
 
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -97,6 +98,24 @@ export function AdminOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [checkingExpired, setCheckingExpired] = useState(false);
+
+  const handleCheckExpired = async () => {
+    setCheckingExpired(true);
+    try {
+        const res = await fetch('/api/admin/check-expired-payments', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            toast(`Verificação concluída: ${data.cancelledCount} pedidos cancelados.`, "success");
+        } else {
+            toast("Erro ao verificar pedidos.", "error");
+        }
+    } catch (e) {
+        toast("Erro ao verificar pedidos.", "error");
+    } finally {
+        setCheckingExpired(false);
+    }
+  }
 
   const [activeTab, setActiveTab] = useState<"hoje" | "abertos" | "geral">(
     "hoje",
@@ -352,6 +371,15 @@ export function AdminOrders() {
       return;
     }
 
+    const isMercadoPago = order.paymentMethod?.toLowerCase().includes("pix") || 
+                          (order as any).paymentProvider === "mercado_pago" || 
+                          order.paymentMethod === "online_payment";
+
+    if (isMercadoPago) {
+      toast("Pedidos com integração Mercado Pago não podem ser apagados, apenas cancelados.", "error");
+      return;
+    }
+
     const confirmed = await confirm({
       title: "APAGAR PEDIDO",
       message:
@@ -524,8 +552,12 @@ export function AdminOrders() {
     }
 
     try {
-      if (newStatus === "ENTREGUE" && order.type === "online") {
-        toast("Pedidos online só podem ser finalizados pelo PDV.", "warning");
+      const isMercadoPago = order.paymentMethod?.toLowerCase().includes("pix") || 
+                            (order as any).paymentProvider === "mercado_pago" || 
+                            order.paymentMethod === "online_payment";
+
+      if (newStatus === "ENTREGUE" && order.type === "online" && !isMercadoPago) {
+        toast("Pedidos online sem integração só podem ser finalizados pelo PDV.", "warning");
         return;
       }
 
@@ -536,6 +568,31 @@ export function AdminOrders() {
 
       if (newStatus === "ENTREGUE") {
         await stockMovementService.realizeMovementsByOrderId(id);
+
+        if (order.type === "online" && isMercadoPago) {
+          const financialQ = query(
+            collection(db, "financial_transactions"),
+            where("orderId", "==", id)
+          );
+          const financialSnap = await getDocs(financialQ);
+          if (financialSnap.empty) {
+            const todayISO = new Date().toISOString().split('T')[0];
+            await financialService.saveTransaction({
+              type: "income",
+              description: `Venda Online (Integração) #${order.id.slice(-6).toUpperCase()} | ${order.customerName}`,
+              amount: order.total,
+              originalSaleAmount: order.total,
+              additionalAmount: 0,
+              dueDate: todayISO,
+              paymentDate: todayISO,
+              status: "paid",
+              category: "Vendas",
+              orderId: order.id,
+              paymentMethod: order.paymentMethodNameSnapshot || order.paymentMethod || 'Online',
+              notes: `Pedido entregue. Valor: R$ ${order.total.toFixed(2)}.`,
+            });
+          }
+        }
       }
 
       // Send manual webhook notification
@@ -789,9 +846,18 @@ export function AdminOrders() {
             Acompanhe e finalize as vendas da loja.
           </p>
         </div>
-        <div className="flex items-center gap-3 bg-slate-900 px-4 py-2 border rounded-full shadow-sm text-[10px] font-black uppercase tracking-widest text-green-600 border-green-100 italic">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-          Tempo Real Ativado
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={handleCheckExpired} 
+            disabled={checkingExpired}
+            className="bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest rounded-full h-10 px-4"
+          >
+            {checkingExpired ? "Verificando..." : "Verificar Pedidos Expirados"}
+          </Button>
+          <div className="flex items-center gap-3 bg-slate-900 px-4 py-2 border rounded-full shadow-sm text-[10px] font-black uppercase tracking-widest text-green-600 border-green-100 italic">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            Tempo Real Ativado
+          </div>
         </div>
       </header>
 
@@ -986,7 +1052,10 @@ export function AdminOrders() {
                       <div className="text-sm font-black text-white">
                         {formatCurrency(order.total)}
                       </div>
-                      <div className="text-[9px] text-red-600 tracking-widest block max-w-[120px] truncate-tight">
+                      <div className="text-[9px] text-red-600 tracking-widest block max-w-[120px] truncate-tight flex items-center gap-1">
+                        {((order as any).paymentProvider === "mercado_pago" || order.paymentMethod?.toLowerCase().includes("pix") || order.paymentMethod === "online_payment") && (
+                           <img src={MERCADO_PAGO_LOGO_BASE64} alt="Mercado Pago" className="w-3 h-3" referrerPolicy="no-referrer" />
+                        )}
                         {order.paymentMethodNameSnapshot || order.paymentMethod || "A DEFINIR"}
                       </div>
                     </td>
@@ -1034,7 +1103,8 @@ export function AdminOrders() {
                               order.status === "ENTREGUE" ||
                               order.status === "entregue" ||
                               order.status === "CANCELADO" ||
-                              order.status === "cancelado"
+                              order.status === "cancelado" ||
+                              (order.status === "AGUARDANDO_PAGAMENTO" && (order.paymentMethod?.toLowerCase().includes("pix") || (order as any).paymentProvider === "mercado_pago" || order.paymentMethod === "online_payment"))
                             }
                             onClick={() =>
                               navigate(`/admin/pdv?orderId=${order.id}`)
@@ -1053,7 +1123,8 @@ export function AdminOrders() {
                             disabled={
                               order.status === "ENTREGUE" ||
                               order.status === "CANCELADO" ||
-                              order.status === "entregue"
+                              order.status === "entregue" ||
+                              (order.status === "AGUARDANDO_PAGAMENTO" && (order.paymentMethod?.toLowerCase().includes("pix") || (order as any).paymentProvider === "mercado_pago" || order.paymentMethod === "online_payment"))
                             }
                             onChange={(e) =>
                               updateStatus(order.id, e.target.value)
@@ -1066,9 +1137,9 @@ export function AdminOrders() {
                             <option value="SAIU PARA ENTREGA">
                               Saiu p/ Entrega
                             </option>
-                            {canApprove && order.type !== "online" && (
+                            {(canApprove && order.type !== "online") || (order.type === "online" && (order.paymentMethod?.toLowerCase().includes("pix") || (order as any).paymentProvider === "mercado_pago" || order.paymentMethod === "online_payment")) ? (
                               <option value="ENTREGUE">Entregue</option>
-                            )}
+                            ) : null}
                             {canCancel && (
                               <option value="CANCELADO">Cancelar</option>
                             )}

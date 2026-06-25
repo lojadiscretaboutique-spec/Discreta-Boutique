@@ -90,15 +90,10 @@ export function AdminIntegracao() {
       toast("Insira a Public Key antes de testar.", 'warning');
       return;
     }
-    if (!config.accessToken) {
-      toast("Insira o Access Token antes de testar.", 'warning');
-      return;
-    }
 
     setTesting(true);
     try {
       const response = await mercadoPagoIntegrationService.testConnection(
-        config.accessToken,
         config.publicKey,
         config.environment
       );

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getCountFromServer } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { 
   Package, Users, TrendingUp, AlertCircle, 
@@ -84,22 +84,25 @@ export function AdminDashboard() {
       setLoading(false);
     });
 
-    const unsubscribeProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const qProducts = query(
+      collection(db, 'products'),
+      where('stock', '<=', 5)
+    );
+    const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
       setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (error) => {
       console.error("Error listening to dashboard products:", error);
     });
 
-    const unsubscribeCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
-      setCustomersCount(snapshot.size);
-    }, (error) => {
-      console.error("Error listening to dashboard customers:", error);
+    getCountFromServer(collection(db, 'customers')).then((snapshot) => {
+      setCustomersCount(snapshot.data().count);
+    }).catch((error) => {
+      console.error("Error getting customers count:", error);
     });
 
     return () => {
       unsubscribeOrders();
       unsubscribeProducts();
-      unsubscribeCustomers();
     };
   }, [period]);
 
