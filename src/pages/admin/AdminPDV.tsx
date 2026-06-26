@@ -2895,48 +2895,48 @@ export function AdminPDV() {
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
             className="fixed inset-0 z-[110] bg-slate-950 flex flex-col md:p-4 lg:p-8"
           >
-            <div className="w-full h-full max-w-7xl mx-auto flex flex-col bg-slate-900 md:rounded-[2rem] border-0 md:border border-white/10 overflow-y-auto lg:overflow-hidden shadow-2xl relative">
+            <div className="w-full h-full max-w-7xl mx-auto flex flex-col bg-slate-900 md:rounded-[2rem] border-0 md:border border-white/10 overflow-y-auto sm:overflow-hidden shadow-2xl relative">
               {/* HEADER */}
-              <div className="h-16 shrink-0 border-b border-white/10 flex items-center justify-between px-6 lg:px-8 bg-slate-950/50">
-                <h2 className="text-xl md:text-2xl font-black italic uppercase tracking-tighter flex items-center gap-3 text-white">
+              <div className="h-14 md:h-16 shrink-0 border-b border-white/10 flex items-center justify-between px-4 xs:px-6 lg:px-8 bg-slate-950/50">
+                <h2 className="text-lg xs:text-xl md:text-2xl font-black italic uppercase tracking-tighter flex items-center gap-2 xs:gap-3 text-white">
                   <Banknote className="text-red-500" /> FINALIZAR VENDA
                 </h2>
                 <button
                   onClick={() => setStep("cart")}
-                  className="w-10 h-10 flex items-center justify-center bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-full transition-all"
+                  className="w-8 h-8 xs:w-10 xs:h-10 flex items-center justify-center bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-full transition-all"
                 >
-                  <X size={24} />
+                  <X size={20} />
                 </button>
               </div>
 
               {/* CONTENT WRAPPER */}
-              <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden relative">
+              <div className="flex-1 flex flex-col sm:flex-row overflow-y-auto sm:overflow-hidden relative">
                 {/* LEFT: PAYMENT INPUT & METHODS */}
-                <div className="flex-1 flex flex-col p-4 md:p-8 lg:overflow-y-auto no-scrollbar lg:border-r border-white/10 bg-slate-900/50">
+                <div className="flex-1 flex flex-col p-3 xs:p-4 md:p-6 lg:p-8 overflow-y-auto no-scrollbar bg-slate-900/50">
                   
                   {/* RESUMO FIXO / TOTAL A PAGAR */}
-                  <div className="bg-black/40 border border-red-500/30 rounded-3xl p-6 md:p-8 mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 relative overflow-hidden group shrink-0">
-                     <div className="absolute right-0 top-1/2 -translate-y-1/2 opacity-5 pointer-events-none group-hover:scale-110 transition-transform duration-1000 ease-out">
-                        <Banknote size={180} className="-mr-10" />
+                  <div className="bg-black/40 border border-red-500/30 rounded-2xl md:rounded-3xl p-3 xs:p-4 md:p-6 lg:p-8 mb-3 xs:mb-4 md:mb-6 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 relative overflow-hidden group shrink-0">
+                     <div className="absolute right-0 top-1/2 -translate-y-1/2 opacity-5 pointer-events-none group-hover:scale-110 transition-transform duration-1000 ease-out hidden xs:block">
+                        <Banknote size={140} className="md:size-[180] -mr-10" />
                      </div>
-                     <div className="relative z-10 w-full sm:w-auto">
-                       <span className="text-[10px] md:text-xs font-black uppercase text-red-500 tracking-widest block mb-2">
+                     <div className="relative z-10 w-full md:w-auto">
+                       <span className="text-[8px] xs:text-[10px] md:text-xs font-black uppercase text-red-500 tracking-widest block mb-0.5 xs:mb-1">
                          Total da Venda
                        </span>
-                       <h3 className="text-5xl md:text-7xl font-black text-white tracking-tighter leading-none shadow-red-500/20 drop-shadow-xl">
+                       <h3 className="text-3xl xs:text-4xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-7xl font-black text-white tracking-tighter leading-none shadow-red-500/20 drop-shadow-xl">
                          {formatCurrency(total)}
                        </h3>
-                       <div className="mt-3 text-[10px] md:text-xs text-slate-400 font-bold uppercase tracking-wider flex justify-start items-center gap-2">
-                         <span className="bg-white/10 px-2 py-1 rounded text-white">{cart.length} itens</span> no carrinho
+                       <div className="mt-1 xs:mt-2 text-[8px] xs:text-[10px] md:text-xs text-slate-400 font-bold uppercase tracking-wider flex justify-start items-center gap-1.5">
+                         <span className="bg-white/10 px-1.5 py-0.5 rounded text-white">{cart.length} itens</span> no carrinho
                        </div>
                      </div>
                      
-                     <div className="relative z-10 w-full sm:w-auto bg-slate-900/60 p-4 rounded-2xl border border-white/5 sm:text-right flex flex-row sm:flex-col justify-between sm:justify-center items-center sm:items-end">
-                       <span className="text-[10px] sm:text-xs font-black uppercase text-slate-400 tracking-widest sm:mb-1">
+                     <div className="relative z-10 w-full md:w-auto bg-slate-900/60 p-2.5 xs:p-3 sm:p-4 rounded-xl md:rounded-2xl border border-white/5 md:text-right flex flex-row md:flex-col justify-between md:justify-center items-center md:items-end">
+                       <span className="text-[8px] xs:text-[10px] md:text-xs font-black uppercase text-slate-400 tracking-widest sm:mb-1">
                          Resta Pagar
                        </span>
                        <div className={cn(
-                         "text-2xl sm:text-3xl font-black tracking-tighter",
+                         "text-xl xs:text-2xl sm:text-xl md:text-2xl lg:text-3xl font-black tracking-tighter",
                          (total - roundTo2(payments.reduce((acc, p) => acc + p.amount, 0))) > 0 ? "text-orange-500" : "text-green-500"
                        )}>
                          {formatCurrency(Math.max(0, roundTo2(total - payments.reduce((acc, p) => acc + p.amount, 0))))}
@@ -2945,26 +2945,26 @@ export function AdminPDV() {
                   </div>
 
                   {/* Lançar Valor */}
-                  <div className="mb-8 shrink-0">
-                    <label className="block text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-400 mb-3 ml-2">
+                  <div className="mb-3 xs:mb-4 md:mb-6 shrink-0">
+                    <label className="block text-[8px] xs:text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-400 mb-1.5 xs:mb-2 md:mb-3 ml-2">
                       Valor a Lançar
                     </label>
-                    <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="flex gap-2 xs:gap-3 md:gap-4">
                       <div className="relative flex-1">
-                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 font-black text-2xl md:text-3xl italic">R$</span>
+                        <span className="absolute left-3 xs:left-4 md:left-6 top-1/2 -translate-y-1/2 text-slate-500 font-black text-base xs:text-xl sm:text-lg md:text-2xl lg:text-3xl italic">R$</span>
                         <input
                           type="number"
                           step="0.01"
                           value={partialAmount}
                           onChange={(e) => setPartialAmount(e.target.value)}
                           onBlur={(e) => setPartialAmount(roundTo2(parseFloat(e.target.value)).toString())}
-                          className="w-full h-16 md:h-20 bg-slate-950 border-2 border-white/5 rounded-2xl pl-20 md:pl-24 pr-8 text-3xl md:text-4xl font-black text-white outline-none focus:border-red-600 focus:bg-black transition-all shadow-inner"
+                          className="w-full h-11 xs:h-12 sm:h-14 md:h-16 lg:h-20 bg-slate-950 border-2 border-white/5 rounded-xl xs:rounded-2xl pl-10 xs:pl-12 sm:pl-16 md:pl-20 lg:pl-24 pr-4 text-lg xs:text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-white outline-none focus:border-red-600 focus:bg-black transition-all shadow-inner"
                           placeholder="0,00"
                         />
                       </div>
                       <Button
                         variant="outline"
-                        className="h-16 md:h-20 sm:w-40 rounded-2xl bg-slate-800/50 border-2 border-white/5 hover:border-white/20 text-slate-300 font-black uppercase text-[10px] md:text-xs tracking-widest"
+                        className="h-11 xs:h-12 sm:h-14 md:h-16 lg:h-20 w-24 xs:w-28 sm:w-32 md:w-36 lg:w-40 shrink-0 rounded-xl xs:rounded-2xl bg-slate-800/50 border-2 border-white/5 hover:border-white/20 text-slate-300 font-black uppercase text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs tracking-widest leading-tight"
                         onClick={() => {
                           const rem = total - payments.reduce((acc, p) => acc + p.amount, 0);
                           setPartialAmount(rem > 0 ? rem.toFixed(2) : "0.00");
@@ -2976,11 +2976,11 @@ export function AdminPDV() {
                   </div>
 
                   {/* Formas de Pagamento */}
-                  <div className="mb-8 shrink-0">
-                    <label className="block text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-400 mb-3 ml-2">
+                  <div className="mb-3 xs:mb-4 md:mb-6 shrink-0">
+                    <label className="block text-[8px] xs:text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-400 mb-1.5 xs:mb-2 md:mb-3 ml-2">
                       Forma de Pagamento
                     </label>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                    <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 xs:gap-3 lg:gap-4">
                       {pdvPaymentMethods.length === 0 ? (
                         <div className="col-span-full p-4 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-xl text-xs font-semibold">
                           Nenhuma forma de pagamento disponível para o PDV. Configure em Financeiro &gt; Formas de Pagamento.
@@ -3023,23 +3023,23 @@ export function AdminPDV() {
                   </div>
 
                   {pdvPaymentMethods.find(m => m.id === paymentMethod)?.type === 'dinheiro' && (
-                    <div className="p-6 bg-slate-950 rounded-2xl border-2 border-white/5 animate-in fade-in slide-in-from-top-4 shrink-0">
-                      <label className="block text-[10px] md:text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-4">
+                    <div className="p-3 xs:p-4 md:p-6 bg-slate-950 rounded-xl xs:rounded-2xl border-2 border-white/5 animate-in fade-in slide-in-from-top-4 shrink-0 mb-3 xs:mb-4 md:mb-6">
+                      <label className="block text-[8px] xs:text-[10px] md:text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-2 xs:mb-3">
                          Assistente de Troco (Opcional)
                       </label>
-                      <div className="flex flex-col sm:flex-row gap-4 items-center">
+                      <div className="flex gap-2.5 xs:gap-4 items-center">
                         <div className="flex-1 w-full">
-                          <span className="text-[10px] font-bold text-slate-500 block mb-2 uppercase tracking-widest">
+                          <span className="text-[8px] xs:text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-widest">
                             Valor entregue pelo cliente:
                           </span>
                           <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-black text-xl italic">R$</span>
+                            <span className="absolute left-3 xs:left-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-black text-xs xs:text-sm sm:text-base md:text-lg lg:text-xl italic">R$</span>
                             <input
                               type="number"
                               value={receivedAmount}
                               onChange={(e) => setReceivedAmount(e.target.value)}
                               onBlur={(e) => setReceivedAmount(roundTo2(parseFloat(e.target.value)).toString())}
-                              className="bg-slate-900 border-2 border-white/10 rounded-xl h-16 w-full pl-12 pr-4 text-2xl font-black text-white outline-none focus:border-red-600 transition-colors"
+                              className="bg-slate-900 border-2 border-white/10 rounded-lg xs:rounded-xl h-10 xs:h-12 sm:h-14 w-full pl-8 xs:pl-10 pr-3 text-sm xs:text-base sm:text-lg md:text-2xl font-black text-white outline-none focus:border-red-600 transition-colors"
                               placeholder="0,00"
                             />
                           </div>
@@ -3066,7 +3066,7 @@ export function AdminPDV() {
                               setPaymentMethod("");
                               toast(`Lançado: ${formatCurrency(val)} em ${selectedMethod?.name || "Dinheiro"}`, "success");
                             }}
-                            className="w-full sm:w-auto h-16 rounded-xl bg-green-600 hover:bg-green-500 border-b-4 border-green-800 text-white font-black uppercase tracking-widest px-8 mt-4 sm:mt-0 transition-transform active:translate-y-1 active:border-b-0"
+                            className="w-20 xs:w-24 sm:w-auto h-10 xs:h-12 sm:h-14 rounded-lg xs:rounded-xl bg-green-600 hover:bg-green-500 border-b-2 xs:border-b-4 border-green-800 text-white font-black uppercase text-[8px] xs:text-[10px] sm:text-xs tracking-widest shrink-0 transition-transform active:translate-y-0.5 active:border-b-0"
                           >
                             Aplicar
                           </Button>
@@ -3077,24 +3077,24 @@ export function AdminPDV() {
                 </div>
 
                 {/* RIGHT: PAYMENTS RECORDED & FINISH ACTION */}
-                <div className="w-full lg:w-[480px] bg-slate-950 flex flex-col relative z-20 shadow-[-20px_0_40px_rgba(0,0,0,0.5)] lg:overflow-y-auto">
-                   <div className="flex-1 p-6 md:p-8 flex flex-col lg:overflow-y-auto no-scrollbar">
-                     <h4 className="text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center justify-between">
+                <div className="w-full sm:w-[280px] md:w-[340px] lg:w-[420px] xl:w-[480px] shrink-0 bg-slate-950 flex flex-col relative z-20 shadow-[-10px_0_20px_rgba(0,0,0,0.3)] sm:border-l border-white/10 overflow-y-auto no-scrollbar">
+                   <div className="flex-1 p-4 xs:p-6 md:p-8 flex flex-col lg:overflow-y-auto no-scrollbar">
+                     <h4 className="text-[8px] xs:text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-400 mb-3 xs:mb-4 md:mb-6 flex items-center justify-between">
                         Pagamentos Confirmados
-                        <span className="bg-red-600/20 text-red-500 px-3 py-1 rounded relative">
+                        <span className="bg-red-600/20 text-red-500 px-2.5 py-0.5 xs:py-1 rounded relative">
                           <span className="absolute inset-0 border border-red-500/50 rounded animate-ping hidden lg:block"></span>
                           {payments.length}
                         </span>
                      </h4>
 
-                     <div className="flex-1 space-y-4 min-h-[160px]">
+                     <div className="flex-1 space-y-2.5 xs:space-y-4 min-h-[120px] xs:min-h-[160px]">
                        {payments.length === 0 ? (
-                          <div className="h-full flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-3xl p-8 bg-slate-900/20">
-                            <Wallet size={64} className="mb-6 opacity-30" />
-                            <p className="text-[10px] md:text-xs font-black uppercase text-center tracking-widest leading-relaxed">Nenhum valor<br/>registrado ainda</p>
+                          <div className="h-full flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-2xl xs:rounded-3xl p-6 xs:p-8 bg-slate-900/20">
+                            <Wallet size={40} className="xs:size-16 mb-4 xs:mb-6 opacity-30" />
+                            <p className="text-[8px] xs:text-[10px] md:text-xs font-black uppercase text-center tracking-widest leading-relaxed">Nenhum valor<br/>registrado ainda</p>
                           </div>
                        ) : (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
+                          <div className="grid grid-cols-1 gap-2 xs:gap-3">
                             {payments.map((p, i) => {
                               const methodLower = p.method.toLowerCase();
                               const isPix = methodLower.includes('pix');
@@ -3104,31 +3104,31 @@ export function AdminPDV() {
                               const indicatorBg = isPix ? 'bg-sky-500' : isDinheiro ? 'bg-emerald-500' : 'bg-purple-500';
 
                               return (
-                                <div key={i} className={`flex items-center gap-3 border ${borderAccent} p-3.5 rounded-2xl relative overflow-hidden hover:opacity-90 transition-opacity shadow-md`}>
-                                   <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${indicatorBg}`}></div>
-                                   <div className="w-10 h-10 bg-slate-950 border border-white/10 rounded-xl flex items-center justify-center text-slate-300 shrink-0 shadow-inner">
-                                     {isPix ? <QrCode size={18} className="text-sky-400" /> : isDinheiro ? <Banknote size={18} className="text-emerald-400" /> : <CreditCard size={18} className="text-purple-400" />}
+                                <div key={i} className={`flex items-center gap-2 xs:gap-3 border ${borderAccent} p-2 xs:p-3 rounded-xl xs:rounded-2xl relative overflow-hidden hover:opacity-90 transition-opacity shadow-md`}>
+                                   <div className={`absolute left-0 top-0 bottom-0 w-1 ${indicatorBg}`}></div>
+                                   <div className="w-8 h-8 xs:w-10 xs:h-10 bg-slate-950 border border-white/10 rounded-lg xs:rounded-xl flex items-center justify-center text-slate-300 shrink-0 shadow-inner">
+                                     {isPix ? <QrCode size={14} className="text-sky-400" /> : isDinheiro ? <Banknote size={14} className="text-emerald-400" /> : <CreditCard size={14} className="text-purple-400" />}
                                    </div>
-                                   <div className="flex-1 min-w-0 pr-6">
-                                     <p className="text-xs md:text-sm font-black text-white uppercase tracking-wider truncate">{p.method}</p>
-                                     <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-white/5 ${textAccent} mt-1`}>
+                                   <div className="flex-1 min-w-0 pr-4 xs:pr-6">
+                                     <p className="text-[10px] xs:text-xs md:text-sm font-black text-white uppercase tracking-wider truncate leading-tight">{p.method}</p>
+                                     <span className={`inline-flex items-center gap-1 text-[7px] xs:text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded bg-white/5 ${textAccent} mt-0.5 xs:mt-1`}>
                                        Recebido
                                      </span>
                                    </div>
-                                   <div className="text-right shrink-0 pr-6 lg:pr-8">
-                                     <p className="text-base md:text-lg font-black text-white leading-none">{formatCurrency(p.amount)}</p>
-                                     <p className="text-[9px] uppercase font-bold text-slate-500 mt-1">
+                                   <div className="text-right shrink-0 pr-4 xs:pr-6 md:pr-8">
+                                     <p className="text-sm xs:text-base md:text-lg font-black text-white leading-none">{formatCurrency(p.amount)}</p>
+                                     <p className="text-[8px] uppercase font-bold text-slate-500 mt-0.5 xs:mt-1">
                                        {new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
                                      </p>
                                    </div>
                                    <button
                                      onClick={() => setPayments(payments.filter((_, idx) => idx !== i))}
-                                     className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-red-650 hover:bg-red-600 bg-red-500 text-white rounded-xl flex items-center justify-center transition-all shadow-md shrink-0"
+                                     className="absolute right-1.5 xs:right-2 top-1/2 -translate-y-1/2 w-6 h-6 xs:w-8 xs:h-8 bg-red-500 text-white rounded-lg xs:rounded-xl flex items-center justify-center transition-all shadow-md shrink-0 hover:bg-red-600"
                                      title="Remover pagamento"
                                    >
-                                     <Trash2 size={14} />
+                                     <Trash2 size={12} />
                                    </button>
-                                </div>
+                                 </div>
                               );
                             })}
                           </div>
@@ -3136,33 +3136,33 @@ export function AdminPDV() {
                      </div>
 
                      {/* ENTREGA / DELIVERY */}
-                      <div className="mt-6 pt-6 border-t border-slate-800">
-                        <label className="flex items-center gap-3 cursor-pointer select-none mb-3">
+                      <div className="mt-4 pt-4 xs:mt-6 xs:pt-6 border-t border-slate-800">
+                        <label className="flex items-center gap-2 xs:gap-3 cursor-pointer select-none mb-2">
                           <input
                             type="checkbox"
                             checked={isDelivery}
                             onChange={(e) => setIsDelivery(e.target.checked)}
-                            className="h-5 w-5 rounded border-slate-700 bg-slate-900 text-red-600 focus:ring-red-500 focus:ring-offset-slate-900 transition-colors cursor-pointer"
+                            className="h-4 w-4 xs:h-5 xs:w-5 rounded border-slate-700 bg-slate-900 text-red-600 focus:ring-red-500 focus:ring-offset-slate-900 transition-colors cursor-pointer"
                           />
                           <div>
-                            <span className="text-xs font-black uppercase tracking-wider text-slate-100 flex items-center gap-1.5% mb-0">
+                            <span className="text-[10px] xs:text-xs font-black uppercase tracking-wider text-slate-100 flex items-center gap-1.5 mb-0">
                               🚚 Pedido para Entrega (Delivery)
                             </span>
                           </div>
                         </label>
                         {isDelivery && (
-                          <div className="mt-3 space-y-2 mb-4">
-                            <label className="text-[10px] block font-black uppercase text-slate-500 tracking-widest">
+                          <div className="mt-2.5 space-y-1.5 mb-3">
+                            <label className="text-[8px] xs:text-[10px] block font-black uppercase text-slate-500 tracking-widest">
                               Confirmar Endereço de Entrega
                             </label>
                             <textarea
                               placeholder="Digite o endereço completo para entrega..."
                               value={deliveryAddress}
                               onChange={(e) => setDeliveryAddress(e.target.value)}
-                              className="w-full h-20 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs md:text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-red-600 resize-none transition-colors shadow-inner"
+                              className="w-full h-14 xs:h-20 bg-slate-900 border border-slate-800 rounded-xl xs:rounded-2xl p-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-red-600 resize-none transition-colors shadow-inner"
                             />
                             {!selectedCustomer && (
-                              <p className="text-[10px] text-orange-400 font-semibold leading-relaxed">
+                              <p className="text-[8px] xs:text-[10px] text-orange-400 font-semibold leading-relaxed">
                                 ⚠️ Atenção: Nenhum cliente selecionado. Digite o endereço e telefone nas observações se necessário para controle do entregador.
                               </p>
                             )}
@@ -3171,49 +3171,49 @@ export function AdminPDV() {
                       </div>
 
                      {/* OBSERVAÇOES */}
-                     <div className="mt-8 pt-8 border-t border-slate-800">
-                        <label className="text-[10px] flex items-center gap-2 font-black uppercase text-slate-500 tracking-widest mb-3">
-                           <FileText size={14} /> Observações (Opcional)
+                     <div className="mt-4 pt-4 xs:mt-6 xs:pt-6 border-t border-slate-800">
+                        <label className="text-[8px] xs:text-[10px] flex items-center gap-1.5 font-black uppercase text-slate-500 tracking-widest mb-2">
+                           <FileText size={12} /> Observações (Opcional)
                         </label>
                         <textarea
                           placeholder="Ex: Pegar depois..."
                           value={notes}
                           onChange={(e) => setNotes(e.target.value)}
-                          className="w-full h-20 md:h-24 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs md:text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-red-600 resize-none transition-colors shadow-inner"
+                          className="w-full h-14 xs:h-20 bg-slate-900 border border-slate-800 rounded-xl xs:rounded-2xl p-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-red-600 resize-none transition-colors shadow-inner"
                         />
                      </div>
                    </div>
 
                    {/* BOTTOM SHEET / STICKY FOOTER */}
                   {/* OPÇÃO DE SALVAR COMO NOVO PEDIDO TRATADO INTELIGENTEMENTE */}
-                  <div className="mb-4 px-6">
-                    <label className="flex items-center gap-2.5 cursor-pointer select-none py-2 px-1">
+                  <div className="mb-2 xs:mb-4 px-4 xs:px-6">
+                    <label className="flex items-center gap-2 cursor-pointer select-none py-1.5 px-0.5">
                       <input
                         type="checkbox"
                         checked={saveAsNewOrder}
                         onChange={(e) => setSaveAsNewOrder(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-red-600 focus:ring-red-500 focus:ring-offset-slate-900 transition-colors cursor-pointer"
+                        className="h-3.5 w-3.5 rounded border-slate-700 bg-slate-900 text-red-600 focus:ring-red-500 focus:ring-offset-slate-900 transition-colors cursor-pointer"
                       />
-                      <span className="text-[10px] sm:text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-wider">
+                      <span className="text-[8px] xs:text-[10px] md:text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-wider">
                         Salvar como "Novo" Pedido (WhatsApp / Rascunho)
                       </span>
                     </label>
                   </div>
-                   <div className="bg-slate-900 border-t border-slate-800 p-6 md:p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.5)] z-30">
-                     <div className="flex justify-between items-end mb-6">
+                   <div className="bg-slate-900 border-t border-slate-800 p-4 xs:p-6 md:p-8 shadow-[0_-15px_30px_rgba(0,0,0,0.4)] z-30 shrink-0">
+                     <div className="flex justify-between items-end mb-4 xs:mb-6">
                        <div>
-                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Total Confirmado</span>
-                         <span className="text-3xl font-black text-white leading-none">{formatCurrency(totalPaid)}</span>
+                         <span className="text-[8px] xs:text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Total Confirmado</span>
+                         <span className="text-xl xs:text-2xl sm:text-3xl font-black text-white leading-none">{formatCurrency(totalPaid)}</span>
                        </div>
                        {additionalAmount > 0 ? (
                          <div className="text-right">
-                           <span className="text-[10px] font-black uppercase tracking-widest text-green-500 block mb-1">Troco / Acréscimo</span>
-                           <span className="text-2xl font-black text-green-500 leading-none">+{formatCurrency(additionalAmount)}</span>
+                           <span className="text-[8px] xs:text-[10px] font-black uppercase tracking-widest text-green-500 block mb-0.5">Troco / Acréscimo</span>
+                           <span className="text-lg xs:text-xl sm:text-2xl font-black text-green-500 leading-none">+{formatCurrency(additionalAmount)}</span>
                          </div>
                        ) : (
                           <div className="text-right">
-                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Falta Pagar</span>
-                             <span className="text-2xl font-black text-red-500 leading-none">
+                             <span className="text-[8px] xs:text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Falta Pagar</span>
+                             <span className="text-lg xs:text-xl sm:text-2xl font-black text-red-500 leading-none">
                                {formatCurrency(Math.max(0, roundTo2(total - totalPaid)))}
                              </span>
                           </div>
@@ -3223,14 +3223,14 @@ export function AdminPDV() {
                      <Button
                        onClick={handleFinishOrder}
                        disabled={isFinishing || (!saveAsNewOrder && totalPaid < total - 0.01)}
-                       className="w-full h-20 md:h-24 bg-green-600 hover:bg-green-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:opacity-100 disabled:border-b-0 border-b-8 border-green-800 text-white rounded-[1.5rem] text-lg md:text-xl font-black uppercase tracking-[0.1em] flex items-center justify-center gap-4 transition-all relative overflow-hidden group active:border-b-0 active:translate-y-2"
+                       className="w-full h-12 xs:h-16 sm:h-20 md:h-24 bg-green-600 hover:bg-green-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:opacity-100 disabled:border-b-0 border-b-4 xs:border-b-8 border-green-800 text-white rounded-xl xs:rounded-[1.5rem] text-sm xs:text-base sm:text-lg md:text-xl font-black uppercase tracking-[0.1em] flex items-center justify-center gap-2 xs:gap-4 transition-all relative overflow-hidden group active:border-b-0 active:translate-y-1"
                      >
                        {isFinishing ? (
-                         <Loader2 className="animate-spin text-white" size={32} />
+                         <Loader2 className="animate-spin text-white" size={24} />
                        ) : (
                          <>
                            FINALIZAR VENDA
-                           <CheckCircle2 size={32} className="group-hover:scale-125 group-disabled:scale-100 transition-transform" />
+                           <CheckCircle2 size={24} className="md:size-8 group-hover:scale-125 group-disabled:scale-100 transition-transform" />
                            <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] pointer-events-none hidden md:block"></div>
                          </>
                        )}
@@ -3412,31 +3412,33 @@ function PaymentBtn({
     <button
       onClick={onClick}
       className={cn(
-        "h-24 rounded-2xl flex flex-col items-center justify-center gap-2 border-2 transition-all duration-300 transform relative",
+        "h-11 xs:h-12 sm:h-14 md:h-16 lg:h-20 xl:h-24 rounded-xl xl:rounded-2xl flex flex-row sm:flex-col items-center justify-center gap-1.5 sm:gap-2 border-2 transition-all duration-300 transform relative px-2 cursor-pointer w-full select-none",
         active
-          ? "bg-red-600 border-red-600 text-white shadow-[0_10px_20px_rgba(220,38,38,0.4)] scale-[1.02] z-10"
+          ? "bg-red-600 border-red-600 text-white shadow-[0_4px_12px_rgba(220,38,38,0.25)] scale-[1.02] z-10"
           : "bg-slate-900/5 border-white/10 text-slate-400 hover:bg-slate-900/10 hover:border-white/20 hover:scale-[1.01]",
       )}
     >
       <div
         className={cn(
-          "transition-all duration-500",
+          "transition-all duration-500 shrink-0",
           active ? "scale-110" : "scale-100",
         )}
       >
-        {icon}
+        <div className="*:w-4 *:h-4 xs:*:w-5 xs:*:h-5 sm:*:w-5 sm:*:h-5 md:*:w-6 md:*:h-6">
+          {icon}
+        </div>
       </div>
-      <span className="text-[10px] font-black uppercase tracking-widest">
+      <span className="text-[8px] xs:text-[9px] md:text-[10px] font-black uppercase tracking-wider md:tracking-widest truncate max-w-full">
         {label}
       </span>
       {active && (
         <motion.div
           layoutId="activePayment"
-          className="absolute -top-1 -right-1 bg-slate-900 text-red-600 p-1 rounded-full shadow-lg"
+          className="absolute -top-1 -right-1 bg-slate-900 text-red-600 p-0.5 rounded-full shadow-lg"
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
         >
-          <CheckCircle2 size={12} />
+          <CheckCircle2 size={10} />
         </motion.div>
       )}
     </button>

@@ -31,6 +31,15 @@ import { blogAiService } from "./src/server/services/blogAiService";
 
 console.log(`Server environment ready`);
 
+function appendVersion(url: string | undefined, version: string | number | undefined): string {
+  if (!url) return '';
+  if (!version) return url;
+  const versionStr = String(version);
+  if (url.includes(`v=${versionStr}`)) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}v=${versionStr}`;
+}
+
 async function startServer() {
   const app = express();
   app.set('trust proxy', 1);
@@ -2805,10 +2814,9 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
         }
       }
 
-      let pwaVersionQuery = '';
+      const v = activeThemeBranding?.pwaVersion || '';
       if (activeThemeBranding) {
-        if (activeThemeBranding.pwaVersion) pwaVersionQuery = `?v=${activeThemeBranding.pwaVersion}`;
-        if (activeThemeBranding.socialPreviewImage) image = `${activeThemeBranding.socialPreviewImage}${pwaVersionQuery}`;
+        if (activeThemeBranding.socialPreviewImage) image = appendVersion(activeThemeBranding.socialPreviewImage, v);
         if (activeThemeBranding.appName) storeName = activeThemeBranding.appName;
       }
 
@@ -2827,13 +2835,13 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
         start_url: '/',
         icons: [
           { 
-            src: activeThemeBranding?.icon192 ? `${activeThemeBranding.icon192}${pwaVersionQuery}` : (activeThemeBranding?.logo || image), 
+            src: activeThemeBranding?.icon192 ? appendVersion(activeThemeBranding.icon192, v) : (activeThemeBranding?.logo ? appendVersion(activeThemeBranding.logo, v) : image), 
             sizes: '192x192', 
             purpose: activeThemeBranding?.maskableIcon ? 'any' : 'any maskable',
             type: 'image/png'
           },
           { 
-            src: activeThemeBranding?.icon512 ? `${activeThemeBranding.icon512}${pwaVersionQuery}` : (activeThemeBranding?.logo || image), 
+            src: activeThemeBranding?.icon512 ? appendVersion(activeThemeBranding.icon512, v) : (activeThemeBranding?.logo ? appendVersion(activeThemeBranding.logo, v) : image), 
             sizes: '512x512', 
             purpose: activeThemeBranding?.maskableIcon ? 'any' : 'any maskable',
             type: 'image/png'
@@ -2843,7 +2851,7 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
 
       if (activeThemeBranding?.maskableIcon) {
         manifest.icons.push({
-          src: `${activeThemeBranding.maskableIcon}${pwaVersionQuery}`,
+          src: appendVersion(activeThemeBranding.maskableIcon, v),
           sizes: '512x512',
           purpose: 'maskable',
           type: 'image/png'
@@ -3029,10 +3037,8 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
       }
 
       // Apply branding overrides to defaults where applicable
-      let pwaVersionQuery = '';
       if (activeThemeBranding) {
-        if (activeThemeBranding.pwaVersion) pwaVersionQuery = `?v=${activeThemeBranding.pwaVersion}`;
-        if (activeThemeBranding.socialPreviewImage) image = `${activeThemeBranding.socialPreviewImage}${pwaVersionQuery}`;
+        if (activeThemeBranding.socialPreviewImage) image = appendVersion(activeThemeBranding.socialPreviewImage, activeThemeBranding.pwaVersion);
         if (activeThemeBranding.appName) storeName = activeThemeBranding.appName;
       }
 
@@ -3694,9 +3700,9 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
       </script>`;
     }
 
-    const versionStr = activeThemeBranding?.pwaVersion ? `?v=${activeThemeBranding.pwaVersion}` : '';
-    const faviconUrl = activeThemeBranding?.favicon ? `${activeThemeBranding.favicon}${versionStr}` : image;
-    const appleTouchIconUrl = activeThemeBranding?.appleTouchIcon ? `${activeThemeBranding.appleTouchIcon}${versionStr}` : image;
+    const v = activeThemeBranding?.pwaVersion || '';
+    const faviconUrl = activeThemeBranding?.favicon ? appendVersion(activeThemeBranding.favicon, v) : image;
+    const appleTouchIconUrl = activeThemeBranding?.appleTouchIcon ? appendVersion(activeThemeBranding.appleTouchIcon, v) : image;
     const themeColorMeta = activeThemeBranding?.themeColor ? `<meta name="theme-color" content="${activeThemeBranding.themeColor}" />\n` : '';
 
     const ogTags = `
