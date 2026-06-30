@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { aiService } from '../services/aiService.js';
 import { productService } from '../../services/productService.js';
+import { candidateService } from '../../services/candidateService.js';
 import { z } from 'zod';
 import { db } from '../../lib/firebase.js';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, updateDoc, increment, orderBy } from 'firebase/firestore';
@@ -582,6 +583,127 @@ export const marketingRewrite = async (req: Request, res: Response) => {
   }
 };
 
+export const analyzeCandidate = async (req: Request, res: Response) => {
+  try {
+    const { candidateData, customPrompt } = req.body;
+    if (!candidateData) {
+      return res.status(400).json({ error: 'candidateData é obrigatório' });
+    }
+    // Backend busca o prompt administrativo salvo em recruitmentSettings/main
+    const settings = await candidateService.getSettings();
+    const promptToUse = settings?.promptAnalise || customPrompt;
+
+    const result = await aiService.analyzeCandidate(candidateData, promptToUse);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Erro ao analisar candidato por IA:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const recruitmentChat = async (req: Request, res: Response) => {
+  try {
+    const { messages, interviewId } = req.body;
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: 'Lista de mensagens inválida.' });
+    }
+    const settings = await candidateService.getSettings();
+    if (!settings.isActive) {
+      return res.status(400).json({ error: 'O formulário de candidaturas está temporariamente desativado pela gerência.' });
+    }
+
+    // Generate/retrieve a session ID for tracking this specific interview state
+    const sessionKey = interviewId || req.ip || 'anonymous_interview';
+
+    // Last user message
+    const lastUserMsg = messages[messages.length - 1]?.text || '';
+
+    // Import Interview Engine dynamically or require it
+    const { interviewEngine } = await import('../services/interviewEngine.js');
+
+    const result = await interviewEngine.processChatMessage(
+      sessionKey,
+      messages,
+      lastUserMsg,
+      settings
+    );
+
+    res.json({ responseText: result.responseText });
+  } catch (error: any) {
+    console.error('Erro no recruitmentChat:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const recruitmentExtract = async (req: Request, res: Response) => {
+  try {
+    const { messages, interviewId } = req.body;
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: 'Lista de mensagens inválida.' });
+    }
+
+    let structuredData: any = {};
+
+    // 1. Try to retrieve incrementally extracted state
+    if (interviewId) {
+      try {
+        const { interviewEngine } = await import('../services/interviewEngine.js');
+        const state = await interviewEngine.getInterviewState(interviewId);
+        if (state && state.structuredData && Object.keys(state.structuredData).length > 0) {
+          structuredData = { ...state.structuredData };
+        }
+      } catch (err) {
+        console.warn('[RECRUITMENT_EXTRACT] Failed to fetch pre-extracted state:', err);
+      }
+    }
+
+    // 2. Perform a final extraction pass using the complete conversation to ensure all 26 fields are populated correctly and any blanks are filled
+    const finalExtracted = await aiService.recruitmentExtract(messages);
+    
+    // Merge them together, prioritizing newly extracted values if they are more complete
+    const mergedData = {
+      ...finalExtracted,
+      ...structuredData
+    };
+
+    // Ensure all fields have a value (fall back to "Não informado" instead of empty/null)
+    const allFields = [
+      'nomeCompleto', 'idade', 'cidade', 'bairro', 'whatsapp', 'email',
+      'disponibilidadeHorario', 'disponibilidadeSabados', 'disponibilidadeEventos', 'quandoComecar', 'tipoInteresse',
+      'experienciaAtendimento', 'experienciaVendas', 'experienciaLoja', 'experienciaWhatsComercial', 'ultimaExperiencia', 'motivoSaida',
+      'confortoProdutosIntimos', 'entendimentoDiscricao', 'comoLidariaClienteIndeciso', 'comoLidariaPerguntasIntimas', 'facilidadeInstagram',
+      'pontoForte', 'pontoMelhorar', 'expectativaSalarial', 'mensagemFinal'
+    ];
+
+    for (const key of allFields) {
+      if (!mergedData[key] || mergedData[key].toString().trim() === '') {
+        mergedData[key] = finalExtracted[key] || 'Não informado';
+      }
+    }
+
+    res.json(mergedData);
+  } catch (error: any) {
+    console.error('Erro no recruitmentExtract:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getRecruitmentSettings = async (req: Request, res: Response) => {
+  try {
+    const settings = await candidateService.getSettings();
+    res.json({
+      isActive: settings.isActive,
+      recruiterName: settings.recruiterName,
+      initialMessage: settings.initialMessage,
+      finalMessage: settings.finalMessage,
+      lgpdText: settings.lgpdText
+    });
+  } catch (error: any) {
+    console.error('Erro no getRecruitmentSettings:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const aiController = {
   generateProduct,
   generateCategory,
@@ -600,5 +722,9 @@ export const aiController = {
   generatePostsCalendar,
   generateMarketingCopywriting,
   generateMarketingImage,
-  marketingRewrite
+  marketingRewrite,
+  analyzeCandidate,
+  recruitmentChat,
+  recruitmentExtract,
+  getRecruitmentSettings
 };

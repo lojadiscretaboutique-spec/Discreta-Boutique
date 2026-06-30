@@ -41,6 +41,9 @@ const ExchangePolicyPage = lazy(() => import('./pages/store/ExchangePolicyPage')
 const LGPDPage = lazy(() => import('./pages/store/LGPDPage'));
 const DiscreetDeliveryPage = lazy(() => import('./pages/store/DiscreetDeliveryPage'));
 const ContactPage = lazy(() => import('./pages/store/ContactPage'));
+const TrabalheConoscoPage = lazy(() => import('./pages/store/TrabalheConoscoPage'));
+const AdminTrabalheConosco = lazy(() => import('./pages/admin/AdminTrabalheConosco'));
+const AdminTrabalheConoscoSettings = lazy(() => import('./pages/admin/AdminTrabalheConoscoSettings'));
 const AffiliateLandingPage = lazy(() => import('./modules/afiliados/pages/AffiliateLandingPage').then(m => ({ default: m.AffiliateLandingPage })));
 const AdminAffiliates = lazy(() => import('./modules/afiliados/pages/AdminAffiliates').then(m => ({ default: m.AdminAffiliates })));
 
@@ -226,6 +229,7 @@ function AppContent() {
             <Route path="/entrega-discreta" element={<DiscreetDeliveryPage />} />
             <Route path="/contato" element={<ContactPage />} />
             <Route path="/lgpd" element={<LGPDPage />} />
+            <Route path="/trabalhe-conosco" element={<TrabalheConoscoPage />} />
             <Route path="/carrinho" element={<CartPage />} />
             <Route path="/produto/:slug" element={<ProductPage />} />
             <Route path="/sucesso" element={<SuccessPage />} />
@@ -258,6 +262,8 @@ function AppContent() {
             <Route path="usuarios" element={<AdminUsers />} />
             <Route path="perfis" element={<AdminRoles />} />
             <Route path="logs" element={<AdminLogs />} />
+            <Route path="trabalhe-conosco" element={<AdminTrabalheConosco />} />
+            <Route path="trabalhe-conosco/configuracoes" element={<AdminTrabalheConoscoSettings />} />
             <Route path="marketing/visual-home" element={<AdminVisualHome />} />
             <Route path="marketing/live-shop" element={<AdminLiveShop />} />
             <Route path="marketing/story-shop" element={<AdminStoryShopManager />} />

@@ -71,6 +71,7 @@ export function AdminLayout() {
     { name: 'Contas / Equipe', path: '/admin/usuarios', icon: Shield, permission: 'users', submenu: [
         { name: 'Usuários', path: '/admin/usuarios', permission: 'users' },
         { name: 'Perfis de Acesso', path: '/admin/perfis', permission: 'roles' },
+        { name: 'Trabalhe Conosco', path: '/admin/trabalhe-conosco', permission: 'users' },
         { name: 'Logs / Auditoria', path: '/admin/logs', permission: 'logs' },
         { name: 'Estoque Inteligente', path: '/admin/estoque-inteligente', permission: 'products' },
     ]},
@@ -340,7 +341,7 @@ export function AdminLayout() {
                     const isAnalyticsSub = item.name === 'Analytics';
                     
                     const isSubActive = isUsersSub 
-                        ? (location.pathname.startsWith('/admin/usuarios') || location.pathname.startsWith('/admin/perfis') || location.pathname.startsWith('/admin/logs'))
+                        ? (location.pathname.startsWith('/admin/usuarios') || location.pathname.startsWith('/admin/perfis') || location.pathname.startsWith('/admin/logs') || location.pathname.startsWith('/admin/trabalhe-conosco'))
                         : isFinanceSub 
                             ? location.pathname.startsWith('/admin/financeiro')
                             : isConfigSub

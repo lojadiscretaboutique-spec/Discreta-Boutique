@@ -53,5 +53,11 @@ router.all('/cron/update-home', async (req, res) => {
 router.post('/analisar-catalogo', adminAiLimiter, aiController.analyzeCatalog);
 router.post('/enriquecer-produto', adminAiLimiter, aiController.enrichProduct);
 router.post('/gerar-embedding', adminAiLimiter, aiController.generateEmbedding);
+router.post('/analisar-candidato', adminAiLimiter, aiController.analyzeCandidate);
+
+// Recruitment Module Routes
+router.post('/recruitment-chat', storeAiLimiter, aiController.recruitmentChat);
+router.post('/recruitment-extract', storeAiLimiter, aiController.recruitmentExtract);
+router.get('/recruitment-settings', aiController.getRecruitmentSettings);
 
 export default router;

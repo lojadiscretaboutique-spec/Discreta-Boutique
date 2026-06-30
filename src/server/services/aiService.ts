@@ -1110,6 +1110,138 @@ Mantenha o tom sofisticado, as formatações limpas, emojis adequados e hashtags
     }
   }
 
+  async recruitmentChat(messages: any[], systemPrompt: string): Promise<string> {
+    try {
+      const client = this.getClient();
+      const openAiMessages = [
+        { role: 'system', content: systemPrompt },
+        ...messages.map((m: any) => ({
+          role: m.sender === 'bot' ? 'assistant' : 'user',
+          content: m.text
+        }))
+      ];
+
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: openAiMessages as any,
+        temperature: 0.7
+      });
+
+      return response.choices[0].message.content || '';
+    } catch (err: any) {
+      console.error('[AI] Recruitment chat failed:', err.message);
+      throw new Error(`Erro de conexão com o chat de recrutamento por IA: ${err.message}`);
+    }
+  }
+
+  async recruitmentExtract(messages: any[]): Promise<any> {
+    const formattedChat = messages.map((m: any) => `[${m.sender === 'bot' ? 'IA' : 'Candidato'}]: ${m.text}`).join('\n');
+    const extractPrompt = `Você é o Analista de Dados da Discreta Boutique.
+Sua missão é ler toda a conversa de entrevista a seguir e extrair as informações do candidato com precisão matemática.
+Retorne obrigatoriamente um objeto JSON com todos os 26 campos descritos abaixo.
+
+CAMPOS A SEREM EXTRAÍDOS:
+- nomeCompleto: Nome completo do candidato.
+- idade: Idade.
+- cidade: Cidade.
+- bairro: Bairro.
+- whatsapp: WhatsApp (telefone).
+- email: E-mail.
+- disponibilidadeHorario: Disponibilidade de horários.
+- disponibilidadeSabados: Resposta sobre trabalhar aos sábados.
+- disponibilidadeEventos: Resposta sobre trabalhar em eventos, promoções e lives.
+- quandoComecar: Quando pode iniciar.
+- tipoInteresse: Tipo de interesse ('fixo', 'temporário', 'freelancer' ou similar).
+- experienciaAtendimento: Experiência profissional com atendimento ao cliente.
+- experienciaVendas: Experiência com vendas ou metas comerciais.
+- experienciaLoja: Experiência com loja física, caixa, estoque, PDV.
+- experienciaWhatsComercial: Experiência em atendimento via WhatsApp comercial.
+- ultimaExperiencia: Descrição da última experiência profissional.
+- motivoSaida: Motivo de saída do último emprego.
+- confortoProdutosIntimos: Nível de conforto com produtos íntimos e eróticos de luxo.
+- entendimentoDiscricao: Significado e prática de discrição profissional no atendimento.
+- comoLidariaClienteIndeciso: Como agiria com cliente indeciso na boutique.
+- comoLidariaPerguntasIntimas: Como lidaria com perguntas de cunho pessoal/íntimo de clientes.
+- facilidadeInstagram: Habilidade com redes sociais, criação de stories, vídeos, live shop.
+- pontoForte: Ponto forte profissional citado.
+- pontoMelhorar: Ponto a aprimorar ou desenvolver citado.
+- expectativaSalarial: Expectativa de remuneração.
+- mensagemFinal: Mensagem final de consideração enviada à empresa.
+
+REGRAS IMPORTANTES:
+- Se alguma informação específica NÃO foi citada ou o candidato ignorou a pergunta, preencha o valor do campo correspondente como "Não informado".
+- Retorne apenas e estritamente o objeto JSON solicitado, sem blocos de texto adicionais explicativos ou marcações fora do JSON.
+
+CONVERSA COMPLETA:
+${formattedChat}`;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é um assistente de dados focado em estruturar informações em JSON.' },
+          { role: 'user', content: extractPrompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.2
+      });
+      return JSON.parse(response.choices[0].message.content || '{}');
+    } catch (err: any) {
+      console.error('[AI] Extraction failed:', err.message);
+      throw new Error(`Falha ao estruturar dados do candidato por IA: ${err.message}`);
+    }
+  }
+
+  async analyzeCandidate(candidateData: any, customPrompt?: string): Promise<any> {
+    const defaultPrompt = `Você é o Diretor de Recrutamento e Seleção da Discreta Boutique.
+Sua missão é analisar de forma altamente estratégica a ficha cadastral estruturada e a conversa de entrevista a seguir.
+Utilize as seguintes diretrizes para avaliar o candidato de forma objetiva, devolvendo um JSON perfeitamente estruturado.
+
+DIRETRIZES DE AVALIAÇÃO:
+1. Resuma profissionalmente o candidato.
+2. Identifique os pontos fortes que se alinham ao atendimento humanizado, empático, refinado e com discrição absoluta exigido pela boutique.
+3. Avalie os pontos de atenção críticos (fugas de respostas, incoerências ou limitações).
+4. Defina o nível de aderência cultural e profissional (alto, medio ou baixo) e dê uma justificativa concisa e objetiva.
+5. Elabore perguntas direcionadas e recomendadas para uma eventual entrevista presencial baseando-se nas fraquezas ou pontos a confirmar da conversa.
+6. Identifique quais campos essenciais ficaram incompletos ou superficiais na conversa.
+7. Escreva uma observação final consultiva do perfil.
+
+IMPORTANTE: O retorno DEVE ser obrigatoriamente um objeto JSON com os seguintes campos exatos:
+{
+  "resumoProfissional": "Resumo objetivo e profissional",
+  "pontosFortes": ["ponto forte 1", "ponto forte 2", ...],
+  "pontosAtencao": ["ponto de atenção 1", "ponto de atenção 2", ...],
+  "nivelAderencia": "alto" | "medio" | "baixo",
+  "justificativaObjetiva": "Justificativa direta da aderência",
+  "perguntasRecomendadas": ["pergunta recomendada para entrevista 1", ...],
+  "camposIncompletos": ["campo 1", "campo 2", ...],
+  "observacaoFinal": "Comentários finais e direcionamentos"
+}
+
+DADOS COMPLETOS DO CANDIDATO E CONVERSA:
+${JSON.stringify(candidateData, null, 2)}`;
+
+    const promptText = customPrompt ? `${customPrompt}\n\nCONVERSA E DADOS DO CANDIDATO:\n${JSON.stringify(candidateData, null, 2)}` : defaultPrompt;
+
+    try {
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é a Inteligência Analítica de Seleção da Discreta Boutique. Retorne apenas um JSON estruturado.' },
+          { role: 'user', content: promptText }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.7
+      });
+      return JSON.parse(response.choices[0].message.content || '{}');
+    } catch (err: any) {
+      console.error('[AI] Candidate analysis failed:', err.message);
+      throw new Error(`Erro ao analisar candidato com IA: ${err.message}`);
+    }
+  }
+
 }
 
 export const aiService = new AIService();

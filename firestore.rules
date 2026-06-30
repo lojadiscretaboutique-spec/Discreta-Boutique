@@ -591,6 +591,20 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /recruitmentApplications/{doc} {
+      allow create: if true;
+      allow read, update, delete: if isMasterAdmin() || can('users', 'visualizar');
+    }
+
+    match /recruitmentSettings/{doc} {
+      allow read: if true;
+      allow write: if isMasterAdmin() || can('users', 'editar');
+    }
+
+    match /interviewStates/{doc} {
+      allow read, write: if true;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

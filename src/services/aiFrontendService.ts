@@ -129,5 +129,23 @@ export const aiFrontendService = {
     const response = await fetch(`/api/ia/search-suggestions?q=${encodeURIComponent(q)}`);
     if (!response.ok) return { suggestions: [], products: [] };
     return await response.json();
+  },
+
+  /**
+   * Evaluates a candidate using OpenAI based on standard or configurable prompt
+   */
+  async analyzeCandidate(candidateData: any, customPrompt?: string): Promise<any> {
+    const response = await fetch('/api/ia/analisar-candidato', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidateData, customPrompt })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Falha ao analisar candidato com IA');
+    }
+
+    return await response.json();
   }
 };

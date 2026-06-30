@@ -491,6 +491,7 @@ export function StoreLayout() {
                   <Link to="/contato" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Contato</Link>
                   <Link to="/lgpd" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>LGPD</Link>
                   <Link to="/afiliados" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Afiliados</Link>
+                  <Link to="/trabalhe-conosco" className="text-sm transition-colors hover:opacity-80" style={{ color: textSecondaryColor }}>Trabalhe Conosco</Link>
                   <h3 
                     className="text-xs font-bold uppercase tracking-[3px] mb-2 mt-4"
                     style={{ color: currentTheme.primaryColor }}
