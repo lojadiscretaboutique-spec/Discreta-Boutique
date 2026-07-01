@@ -22,6 +22,7 @@ interface Product {
   promoPrice?: number;
   imageUrl?: string;
   sku?: string;
+  gtin?: string;
   hasVariations?: boolean;
   variants?: any[];
 }
@@ -56,7 +57,12 @@ export function AdminPromotions() {
     allowedPaymentMethods: [],
     tiers: [],
     stackable: true,
-    applyMode: 'automatic'
+    applyMode: 'automatic',
+    startDate: '',
+    endDate: '',
+    minPurchaseAmount: 0,
+    allowWithCoupons: false,
+    allowWithOtherPromotions: false
   });
 
   const [isGiftSelectorOpen, setIsGiftSelectorOpen] = useState(false);
@@ -82,20 +88,32 @@ export function AdminPromotions() {
       console.error("Error listening to promotion categories:", error);
     });
 
-    const unsubscribeProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => {
+    const unsubscribeProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), async (snapshot) => {
+      const productList = await Promise.all(snapshot.docs.map(async (doc) => {
         const d = doc.data();
+        const id = doc.id;
+        let variants = d.variants || [];
+        if (d.hasVariations) {
+          try {
+            const vSnap = await getDocs(collection(db, `products/${id}/variants`));
+            variants = vSnap.docs.map(vd => ({ id: vd.id, ...vd.data() }));
+          } catch (e) {
+            console.error("Error loading variants for product", id, e);
+          }
+        }
         return { 
-          id: doc.id, 
+          id, 
           name: d.name,
           price: d.price || 0,
           promoPrice: d.promoPrice,
-          imageUrl: d.imageUrl || d.images?.[0],
+          imageUrl: d.imageUrl || (d.images && Array.isArray(d.images) && d.images.length > 0 ? (typeof d.images[0] === 'string' ? d.images[0] : d.images[0]?.url) : '') || '',
           sku: d.sku,
+          gtin: d.gtin,
           hasVariations: d.hasVariations,
-          variants: d.variants
+          variants
         };
       }));
+      setProducts(productList);
     }, (error) => {
       console.error("Error listening to promotion products:", error);
     });
@@ -143,11 +161,11 @@ export function AdminPromotions() {
         };
       });
 
-      const promotionPayload = {
+      const promotionPayload = JSON.parse(JSON.stringify({
         ...editPromotion,
         allowedPaymentMethodIds: allowedIds,
         allowedPaymentMethodSnapshots: snapshots
-      };
+      }));
 
       if (promotionPayload.id) {
         await promotionService.update(promotionPayload.id, promotionPayload);
@@ -178,8 +196,15 @@ export function AdminPromotions() {
     p.name.toLowerCase().includes(searchProduct.toLowerCase())
   );
 
+  const searchLower = searchGift.toLowerCase();
   const filteredGifts = products.filter(p => 
-    p.name.toLowerCase().includes(searchGift.toLowerCase())
+    p.name.toLowerCase().includes(searchLower) ||
+    p.sku?.toLowerCase().includes(searchLower) ||
+    p.gtin?.toLowerCase().includes(searchLower) ||
+    (Array.isArray(p.variants) && p.variants.some(v => 
+      v.name?.toLowerCase().includes(searchLower) ||
+      v.sku?.toLowerCase().includes(searchLower)
+    ))
   );
 
   const toggleTarget = (id: string) => {
@@ -221,7 +246,7 @@ export function AdminPromotions() {
           productId: product.id,
           productName: variant ? `${product.name} - ${variant.name}` : product.name,
           productSku: variant?.sku || product.sku,
-          productImage: product.imageUrl,
+          productImage: variant?.imageUrl || product.imageUrl,
           quantity: 1,
           giftPrice: 0,
           originalPrice: variant?.price || product.price,
@@ -280,14 +305,22 @@ export function AdminPromotions() {
           </Button>
           <Button onClick={() => {
             setEditPromotion({ 
-              name: '', 
-              active: true, 
-              type: 'percentage', 
-              value: 0, 
-              scope: 'all', 
-              targetIds: [], 
+              name: '',
+              active: true,
+              type: 'percentage',
+              value: 0,
+              scope: 'all',
+              targetIds: [],
               priority: 0,
-              allowedPaymentMethods: []
+              allowedPaymentMethods: [],
+              tiers: [],
+              stackable: true,
+              applyMode: 'automatic',
+              startDate: '',
+              endDate: '',
+              minPurchaseAmount: 0,
+              allowWithCoupons: false,
+              allowWithOtherPromotions: false
             });
             setIsModalOpen(true);
           }} className="bg-red-600 hover:bg-red-700 text-white font-black italic rounded-xl px-6">
@@ -310,7 +343,27 @@ export function AdminPromotions() {
             }`}>
               <div className="absolute top-2 right-2 sm:top-4 sm:right-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex gap-1.5 z-10">
                 <button 
-                  onClick={() => { setEditPromotion({ ...promo, allowedPaymentMethods: promo.allowedPaymentMethods || [], tiers: promo.tiers || [] }); setIsModalOpen(true); }} 
+                  onClick={() => { setEditPromotion({ 
+                    name: '',
+                    active: true,
+                    type: 'percentage',
+                    value: 0,
+                    scope: 'all',
+                    targetIds: [],
+                    priority: 0,
+                    allowedPaymentMethods: [],
+                    tiers: [],
+                    stackable: true,
+                    applyMode: 'automatic',
+                    startDate: '',
+                    endDate: '',
+                    minPurchaseAmount: 0,
+                    allowWithCoupons: false,
+                    allowWithOtherPromotions: false,
+                    ...promo, 
+                    allowedPaymentMethods: promo.allowedPaymentMethods || [], 
+                    tiers: promo.tiers || [] 
+                  }); setIsModalOpen(true); }} 
                   className="p-2 sm:p-2.5 bg-slate-800 rounded-xl text-white hover:bg-slate-700 shadow-md transition-colors"
                   title="Editar"
                 >
@@ -431,7 +484,7 @@ export function AdminPromotions() {
                 <div className="sm:col-span-2">
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Nome da Promoção (Interno)</label>
                   <Input 
-                    value={editPromotion.name} 
+                    value={editPromotion.name ?? ''} 
                     onChange={e => setEditPromotion({...editPromotion, name: e.target.value})} 
                     placeholder="Ex: Mimos de Natal"
                     className="h-11 sm:h-12 rounded-xl font-bold uppercase text-xs sm:text-sm border-white/10 bg-black/20"
@@ -441,7 +494,7 @@ export function AdminPromotions() {
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Tipo de Benefício</label>
                   <select 
-                    value={editPromotion.type} 
+                    value={editPromotion.type ?? 'percentage'} 
                     onChange={e => setEditPromotion({...editPromotion, type: e.target.value as any, tiers: e.target.value === 'gift_with_purchase' ? [{ id: 'default', minSubtotal: 0, giftProducts: [] }] : []})}
                     className="w-full h-11 sm:h-12 rounded-xl font-bold uppercase text-xs sm:text-sm border border-white/10 bg-black/20 px-4 focus:ring-2 ring-red-600 outline-none"
                   >
@@ -455,13 +508,13 @@ export function AdminPromotions() {
                 {editPromotion.type !== 'free_shipping' && editPromotion.type !== 'gift_with_purchase' && (
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Valor do Desconto</label>
-                    <Input 
-                      type="number" 
-                      value={editPromotion.value || ''} 
-                      onChange={e => setEditPromotion({...editPromotion, value: parseFloat(e.target.value)})} 
-                      placeholder={editPromotion.type === 'percentage' ? "Ex: 15" : "Ex: 50.00"}
-                      className="h-11 sm:h-12 rounded-xl font-bold uppercase text-xs sm:text-sm border-white/10 bg-black/20"
-                    />
+                      <Input 
+                        type="number" 
+                        value={editPromotion.value ?? ''} 
+                        onChange={e => setEditPromotion({...editPromotion, value: parseFloat(e.target.value) || 0})} 
+                        placeholder={editPromotion.type === 'percentage' ? "Ex: 15" : "Ex: 50.00"}
+                        className="h-11 sm:h-12 rounded-xl font-bold uppercase text-xs sm:text-sm border-white/10 bg-black/20"
+                      />
                   </div>
                 )}
 
@@ -469,7 +522,7 @@ export function AdminPromotions() {
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Abrangência (Escopo)</label>
                     <select 
-                      value={editPromotion.scope} 
+                      value={editPromotion.scope ?? 'all'} 
                       onChange={e => setEditPromotion({...editPromotion, scope: e.target.value as any, targetIds: []})}
                       className="w-full h-11 sm:h-12 rounded-xl font-bold uppercase text-xs sm:text-sm border border-white/10 bg-black/20 px-4 focus:ring-2 ring-red-600 outline-none"
                     >
@@ -484,8 +537,8 @@ export function AdminPromotions() {
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Prioridade (0-999)</label>
                   <Input 
                     type="number" 
-                    value={editPromotion.priority || 0} 
-                    onChange={e => setEditPromotion({...editPromotion, priority: parseInt(e.target.value)})} 
+                    value={editPromotion.priority ?? ''} 
+                    onChange={e => setEditPromotion({...editPromotion, priority: parseInt(e.target.value) || 0})} 
                     placeholder="0"
                     className="h-11 sm:h-12 rounded-xl font-bold uppercase text-xs sm:text-sm border-white/10 bg-black/20"
                   />
@@ -527,8 +580,8 @@ export function AdminPromotions() {
                             <label className="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">Valor Mínimo (R$)</label>
                             <Input 
                               type="number"
-                              value={tier.minSubtotal || ''}
-                              onChange={e => updateTier(tier.id, { minSubtotal: parseFloat(e.target.value) })}
+                              value={tier.minSubtotal ?? ''}
+                              onChange={e => updateTier(tier.id, { minSubtotal: parseFloat(e.target.value) || 0 })}
                               className="h-9 rounded-lg font-bold text-xs border-white/5 bg-zinc-900"
                               placeholder="99.00"
                             />
@@ -539,7 +592,12 @@ export function AdminPromotions() {
                             <div className="flex flex-wrap gap-2">
                               {tier.giftProducts?.map((gift, gidx) => (
                                 <div key={gidx} className="flex items-center gap-2 p-1.5 pr-2 rounded-lg bg-zinc-800 border border-white/5 group/gift">
-                                  {gift.productImage && <img src={gift.productImage} className="w-6 h-6 rounded object-cover" />}
+                                  {gift.productImage && (
+                                    <img 
+                                      src={typeof gift.productImage === 'string' ? gift.productImage : (gift.productImage as any)?.url || ''} 
+                                      className="w-6 h-6 rounded object-cover" 
+                                    />
+                                  )}
                                   <div className="min-w-0">
                                     <p className="text-[10px] font-bold text-white truncate max-w-[120px]">{gift.productName}</p>
                                     <p className="text-[8px] font-bold text-purple-500 uppercase">{gift.giftPrice === 0 ? 'Grátis' : formatCurrency(gift.giftPrice)}</p>
@@ -569,7 +627,7 @@ export function AdminPromotions() {
                     <div>
                       <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Modo de Aplicação</label>
                       <select 
-                        value={editPromotion.applyMode}
+                        value={editPromotion.applyMode || 'automatic'}
                         onChange={e => setEditPromotion({...editPromotion, applyMode: e.target.value as any})}
                         className="w-full h-10 rounded-xl font-bold uppercase text-xs border border-white/10 bg-black/20 px-4 ring-purple-600 outline-none"
                       >
@@ -687,8 +745,8 @@ export function AdminPromotions() {
                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Valor Mínimo para Ativar (R$)</label>
                     <Input 
                       type="number" step="0.01"
-                      value={editPromotion.minPurchaseAmount || ''} 
-                      onChange={e => setEditPromotion({...editPromotion, minPurchaseAmount: parseFloat(e.target.value)})} 
+                      value={editPromotion.minPurchaseAmount ?? ''} 
+                      onChange={e => setEditPromotion({...editPromotion, minPurchaseAmount: parseFloat(e.target.value) || 0})} 
                       placeholder="Ex: 100.00"
                       className="h-11 sm:h-12 rounded-xl font-bold uppercase text-xs sm:text-sm border-white/10 bg-black/20"
                     />
@@ -816,11 +874,23 @@ export function AdminPromotions() {
 
                     {prod.hasVariations && prod.variants && prod.variants.length > 0 && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                        {prod.variants.filter(v => v.stock > 0).map(v => (
+                        {prod.variants.filter(v => 
+                          v.stock > 0 && (
+                            !searchGift || 
+                            v.name?.toLowerCase().includes(searchGift.toLowerCase()) || 
+                            v.sku?.toLowerCase().includes(searchGift.toLowerCase()) ||
+                            prod.name.toLowerCase().includes(searchGift.toLowerCase())
+                          )
+                        ).map(v => (
                           <div key={v.id} className="flex justify-between items-center p-2 rounded-xl bg-zinc-800/50 border border-white/5">
-                            <div className="min-w-0">
-                              <p className="text-[10px] font-black text-white truncate">{v.name}</p>
-                              <p className="text-[8px] font-bold text-slate-500">{v.sku || 'Sem SKU'}</p>
+                            <div className="flex items-center min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-zinc-700 overflow-hidden shrink-0 mr-2">
+                                {(v.imageUrl || prod.imageUrl) && <img src={v.imageUrl || prod.imageUrl} className="w-full h-full object-cover" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-black text-white truncate">{v.name}</p>
+                                <p className="text-[8px] font-bold text-slate-500">{v.sku || 'Sem SKU'}</p>
+                              </div>
                             </div>
                             <Button 
                               onClick={() => addGiftToTier(selectingForTierId!, prod, v)}

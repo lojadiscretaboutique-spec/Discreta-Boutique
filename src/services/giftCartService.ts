@@ -55,13 +55,20 @@ export const giftCartService = {
   mapGiftToCartItem(gift: GiftProduct, promo: Promotion, tierId: string): CartItem {
     const id = gift.variantId ? `${gift.productId}-${gift.variantId}-gift` : `${gift.productId}-gift`;
     
+    let resolvedImageUrl = '';
+    if (typeof gift.productImage === 'string') {
+      resolvedImageUrl = gift.productImage;
+    } else if (gift.productImage && typeof gift.productImage === 'object') {
+      resolvedImageUrl = (gift.productImage as any).url || '';
+    }
+
     return {
       id,
       productId: gift.productId,
       name: gift.productName,
       price: gift.giftPrice,
       quantity: gift.quantity,
-      imageUrl: gift.productImage,
+      imageUrl: resolvedImageUrl,
       sku: gift.productSku || gift.variantSku,
       variantId: gift.variantId,
       variantName: gift.variantName,
