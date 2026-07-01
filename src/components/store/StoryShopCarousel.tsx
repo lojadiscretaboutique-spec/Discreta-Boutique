@@ -206,6 +206,7 @@ export function StoryCard({ story, isActive, sectionVisible, canRenderVideo, onA
 
 export function StoryShopCarousel() {
   const [stories, setStories] = useState<StoryShop[]>([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState<number>(0);
   
@@ -275,6 +276,8 @@ export function StoryShopCarousel() {
         }
       } catch (err) {
         console.error('[STORY_SHOP] Error loading stories public cache', err);
+      } finally {
+        setHasLoaded(true);
       }
     }
     fetchCarousel();
@@ -334,6 +337,10 @@ export function StoryShopCarousel() {
       if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
     };
   }, []);
+
+  if (hasLoaded && stories.length === 0) {
+    return null;
+  }
 
   if (stories.length === 0) {
     return (

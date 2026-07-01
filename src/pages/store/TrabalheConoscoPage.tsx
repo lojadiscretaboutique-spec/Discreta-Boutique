@@ -234,7 +234,7 @@ export default function TrabalheConoscoPage() {
   };
 
   return (
-    <div className="fixed inset-x-0 top-0 bottom-16 md:bottom-0 z-40 bg-neutral-950 flex flex-col h-[calc(100dvh-64px)] md:h-[100dvh] overflow-hidden text-neutral-200">
+    <div className="fixed inset-x-0 top-0 bottom-16 md:bottom-0 z-40 bg-neutral-950 flex flex-col overflow-hidden text-neutral-200">
       {/* Background Decorative Neon Accents */}
       <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-red-950/10 rounded-full blur-[110px] pointer-events-none z-0" />
       <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-neutral-900/40 rounded-full blur-[130px] pointer-events-none z-0" />
@@ -249,11 +249,11 @@ export default function TrabalheConoscoPage() {
 
       {/* STEP 100: DEACTIVATED FROM PUBLIC ACCESS */}
       {currentStep === 100 && (
-        <div className="flex-1 flex items-center justify-center p-4 z-10 overflow-y-auto">
+        <div className="flex-1 flex flex-col items-center justify-start md:justify-center p-4 z-10 overflow-y-auto">
           <motion.div
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 sm:p-8 max-w-md w-full text-center shadow-[0_0_30px_rgba(220,38,38,0.05)] relative overflow-hidden"
+            className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 sm:p-8 max-w-md w-full text-center shadow-[0_0_30px_rgba(220,38,38,0.05)] relative overflow-hidden my-auto"
           >
             <div className="absolute top-0 inset-x-0 h-1 bg-red-600" />
             <div className="w-16 h-16 rounded-full bg-red-950/30 border border-red-900/50 flex items-center justify-center text-red-500 mx-auto mb-4">
@@ -278,11 +278,11 @@ export default function TrabalheConoscoPage() {
 
       {/* STEP -1: LGPD Consent Notice */}
       {currentStep === -1 && settings && (
-        <div className="flex-1 flex flex-col items-center justify-center p-4 z-10 overflow-y-auto">
+        <div className="flex-1 flex flex-col items-center justify-start md:justify-center p-4 z-10 overflow-y-auto">
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 sm:p-8 max-w-lg w-full shadow-[0_0_40px_rgba(220,38,38,0.1)] relative overflow-hidden"
+            className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 sm:p-8 max-w-lg w-full shadow-[0_0_40px_rgba(220,38,38,0.1)] relative overflow-hidden my-auto"
           >
             <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-red-800 to-amber-700" />
             <div className="flex items-center gap-3 mb-6">
@@ -299,7 +299,7 @@ export default function TrabalheConoscoPage() {
               <p>
                 Seja bem-vinda ao nosso processo seletivo! Para conhecermos melhor você e suas habilidades, utilizamos uma entrevista interativa com nossa recrutadora virtual.
               </p>
-              <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800 text-neutral-400 text-xs space-y-2 max-h-[180px] overflow-y-auto scrollbar-thin">
+              <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800 text-neutral-400 text-xs space-y-2 max-h-[120px] sm:max-h-[180px] overflow-y-auto scrollbar-thin">
                 <p className="font-semibold text-neutral-300">Aviso sobre Proteção de Dados (LGPD):</p>
                 <p className="whitespace-pre-line leading-relaxed">{settings.lgpdText}</p>
               </div>
