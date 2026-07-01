@@ -55,9 +55,26 @@ export default function TrabalheConoscoPage() {
         setSettings(data);
         if (!data.isActive) {
           setCurrentStep(100);
-        } else {
-          setCurrentStep(-1);
+          return;
         }
+
+        // Try to load existing interview state to handle reload/resume
+        try {
+          const stateRes = await fetch(`/api/ia/recruitment-state?interviewId=${interviewId}`);
+          if (stateRes.ok) {
+            const stateData = await stateRes.json();
+            if (stateData.chatMessages && stateData.chatMessages.length > 0) {
+              setMessages(stateData.chatMessages);
+              setLgpdAccepted(true);
+              setCurrentStep(0); // Bypass LGPD directly to chat
+              return;
+            }
+          }
+        } catch (stateErr) {
+          console.warn('[STATE_RESUME_ERROR]', stateErr);
+        }
+
+        setCurrentStep(-1);
       } catch (err) {
         console.error('[SETTINGS_LOAD_ERROR]', err);
         // Fallback fallback to local settings if server fails to provide
@@ -72,7 +89,7 @@ export default function TrabalheConoscoPage() {
       }
     };
     fetchSettings();
-  }, []);
+  }, [interviewId]);
 
   // Handle LGPD Consent
   const handleLgpdAccept = () => {
@@ -130,11 +147,11 @@ export default function TrabalheConoscoPage() {
 
       setIsTyping(false);
 
-      // Check if conversation has completed
-      const isConcluded = aiText.includes('[ENTREVISTA_CONCLUIDA]');
+      // Check if conversation has completed based on backend isComplete flag
+      const isConcluded = data.isComplete === true;
       
       // Clean up the secret tag from display text
-      if (isConcluded) {
+      if (aiText.includes('[ENTREVISTA_CONCLUIDA]')) {
         aiText = aiText.replace('[ENTREVISTA_CONCLUIDA]', '').trim();
       }
 

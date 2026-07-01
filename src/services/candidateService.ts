@@ -25,6 +25,77 @@ const COLLECTION_NAME = 'recruitmentApplications';
 const SETTINGS_COLLECTION = 'recruitmentSettings';
 const SETTINGS_DOC_ID = 'main';
 
+export function isValidRequiredValue(key: string, value: any): boolean {
+  if (value === null || value === undefined) return false;
+  const str = value.toString().trim();
+  if (str === '') return false;
+
+  const lower = str.toLowerCase();
+  if (
+    lower === 'não informado' || 
+    lower === 'nao informado' || 
+    lower === 'n/a' || 
+    lower === 'não sei' || 
+    lower === 'nao sei' || 
+    lower === 'não quero responder' || 
+    lower === 'nao quero responder' ||
+    lower === 'pendente'
+  ) {
+    return false;
+  }
+
+  if (key === 'whatsapp') {
+    const digits = str.replace(/\D/g, '');
+    if (digits.length !== 10 && digits.length !== 11) {
+      return false;
+    }
+  }
+
+  if (key === 'email') {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(str)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export const DEFAULT_REQUIRED_QUESTIONS_TEXT = `nomeCompleto | Para começarmos, qual é o seu nome completo?
+idade | Qual é a sua idade?
+cidade | Em qual cidade você mora?
+bairro | Qual é o seu bairro?
+whatsapp | Qual é o seu WhatsApp com DDD?
+email | Qual é o seu e-mail?
+disponibilidadeHorarios | Quais horários você tem disponibilidade para trabalhar?
+disponibilidadeSabados | Você tem disponibilidade para trabalhar aos sábados?
+disponibilidadeDatasEspeciais | Você tem disponibilidade para trabalhar em datas especiais?
+disponibilidadePromocoes | Você tem disponibilidade para participar de períodos de promoções?
+disponibilidadeLiveShop | Você tem disponibilidade para apoiar ou participar de Live Shop?
+dataInicio | Quando você poderia começar?
+tipoInteresse | Seu interesse é em vaga fixa, temporária ou freelancer?
+experienciaProfissional | Você já teve alguma experiência profissional? Conte um pouco.
+experienciaAtendimento | Você já trabalhou com atendimento ao cliente?
+experienciaVendas | Você já trabalhou com vendas?
+experienciaLojaCaixaEstoquePdv | Você tem experiência com loja, caixa, estoque, organização ou PDV?
+experienciaWhatsappComercial | Você já trabalhou com atendimento comercial pelo WhatsApp?
+ultimaExperiencia | Qual foi sua última experiência profissional?
+cargoUltimaExperiencia | Qual cargo ou função você exercia?
+tempoPermanencia | Quanto tempo permaneceu nessa experiência?
+motivoSaida | Qual foi o motivo de saída?
+facilidadeAprender | Você tem facilidade para aprender novos processos?
+organizacao | Como você avalia sua organização no trabalho?
+trabalhoEquipe | Como você costuma trabalhar em equipe?
+confortoProdutosIntimos | Você se sente confortável em atuar profissionalmente em uma loja que trabalha com lingerie, produtos íntimos, bem-estar e autoestima, mantendo sempre postura discreta e respeitosa?
+entendimentoDiscricao | O que você entende por discrição no atendimento ao cliente?
+clienteIndeciso | Como você lidaria com um cliente indeciso?
+perguntasIntimas | Como você lidaria com perguntas íntimas feitas por clientes, mantendo postura profissional?
+facilidadeRedesSociais | Você tem facilidade com Instagram, stories, vídeos ou Live Shop?
+pontoForte | Qual é o seu principal ponto forte?
+pontoDesenvolver | Qual ponto você acredita que precisa desenvolver?
+expectativaSalarial | Qual sua expectativa salarial?
+mensagemFinal | Para finalizar, deixe uma mensagem para a Discreta Boutique.`;
+
 export const DEFAULT_RECRUITMENT_SETTINGS: RecruitmentSettings = {
   promptPrincipal: `Você é Aurora, a recrutadora virtual da Discreta Boutique. Lingerie e produtos íntimos.
 Conduza uma entrevista profissional de forma extremamente educada, acolhedora, objetiva e discreta.
@@ -68,7 +139,8 @@ Retorne um JSON válido contendo exatamente a estrutura abaixo:
   finalMessage: "Muito obrigada pelas suas respostas! Seu processo de inscrição foi concluído com sucesso. Nossa equipe de recursos humanos e gerência revisará sua ficha e, se houver compatibilidade com nossas vagas, entraremos em contato direto.",
   isActive: true,
   lgpdText: "Em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/18), informamos que os dados cadastrados nesta conversa (como nome, contato, informações profissionais e percepções de mercado) serão tratados exclusivamente para análise de aptidão ao nosso time e contatos de recrutamento. Seus dados serão mantidos em sigilo absoluto em nossa infraestrutura de segurança e nunca serão compartilhados com terceiros. Você pode solicitar a remoção permanente de sua ficha a qualquer momento pelo nosso canal oficial de atendimento.",
-  availableJobsText: ""
+  availableJobsText: "",
+  requiredQuestionsText: DEFAULT_REQUIRED_QUESTIONS_TEXT
 };
 
 export const candidateService = {
@@ -100,7 +172,7 @@ export const candidateService = {
 
     const isComplete = requiredKeys.every(key => {
       const val = candidate.structuredData && (candidate.structuredData as any)[key];
-      return val && val.toString().trim() !== '';
+      return isValidRequiredValue(key, val);
     });
 
     let finalStatus = isComplete ? 'NOVO' : 'INCOMPLETA';
@@ -256,7 +328,8 @@ export const candidateService = {
           finalMessage: data.finalMessage || DEFAULT_RECRUITMENT_SETTINGS.finalMessage,
           isActive: data.isActive !== undefined ? data.isActive : DEFAULT_RECRUITMENT_SETTINGS.isActive,
           lgpdText: data.lgpdText || DEFAULT_RECRUITMENT_SETTINGS.lgpdText,
-          availableJobsText: data.availableJobsText || DEFAULT_RECRUITMENT_SETTINGS.availableJobsText
+          availableJobsText: data.availableJobsText || DEFAULT_RECRUITMENT_SETTINGS.availableJobsText,
+          requiredQuestionsText: data.requiredQuestionsText || DEFAULT_RECRUITMENT_SETTINGS.requiredQuestionsText
         };
       }
       return DEFAULT_RECRUITMENT_SETTINGS;

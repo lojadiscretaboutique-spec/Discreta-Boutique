@@ -85,4 +85,5 @@ export interface RecruitmentSettings {
   isActive: boolean;
   lgpdText: string;
   availableJobsText?: string;
+  requiredQuestionsText?: string;
 }

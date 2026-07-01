@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { db } from '../../lib/firebase.js';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { isValidRequiredValue, DEFAULT_REQUIRED_QUESTIONS_TEXT } from '../../services/candidateService.js';
 
 export interface StageConfig {
   id: string; // IDENTIFICACAO, DISPONIBILIDADE, EXPERIENCIA, PERFIL, FINAL, COMPLETED
@@ -26,6 +27,7 @@ export interface InterviewState {
   structuredData: Record<string, string>;
   createdAt: string;
   updatedAt: string;
+  chatMessages?: any[];
 }
 
 const REQUIRED_KEYS_MAP: Record<string, string> = {
@@ -74,15 +76,56 @@ const REQUIRED_KEYS_MAP: Record<string, string> = {
   mensagemFinal: 'sua mensagem final para a empresa ou considerações adicionais'
 };
 
-export function canCompleteInterview(structuredData: Record<string, string>): boolean {
-  return getMissingRequiredFields(structuredData).length === 0;
+export function parseRequiredQuestions(questionsText: string): { key: string; question: string }[] {
+  if (!questionsText) return [];
+  const lines = questionsText.split('\n');
+  const result: { key: string; question: string }[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const parts = trimmed.split('|');
+    if (parts.length >= 2) {
+      const key = parts[0].trim();
+      const question = parts.slice(1).join('|').trim();
+      if (key && question) {
+        result.push({ key, question });
+      }
+    }
+  }
+  return result;
 }
 
-export function getMissingRequiredFields(structuredData: Record<string, string>): string[] {
-  return Object.keys(REQUIRED_KEYS_MAP).filter(key => {
-    const val = structuredData[key];
-    return !val || val.toString().trim() === '';
-  });
+export function getRequiredQuestionsList(recruiterSettings?: any): { key: string; question: string; label: string }[] {
+  const text = recruiterSettings?.requiredQuestionsText || '';
+  const parsed = parseRequiredQuestions(text);
+  if (parsed.length > 0) {
+    return parsed.map(p => ({
+      key: p.key,
+      question: p.question,
+      label: REQUIRED_KEYS_MAP[p.key] || p.key
+    }));
+  }
+  // Fallback to DEFAULT_REQUIRED_QUESTIONS_TEXT
+  const defaultParsed = parseRequiredQuestions(DEFAULT_REQUIRED_QUESTIONS_TEXT);
+  return defaultParsed.map(p => ({
+    key: p.key,
+    question: p.question,
+    label: REQUIRED_KEYS_MAP[p.key] || p.key
+  }));
+}
+
+export function canCompleteInterview(structuredData: Record<string, string>, recruiterSettings?: any): boolean {
+  return getMissingRequiredFields(structuredData, recruiterSettings).length === 0;
+}
+
+export function getMissingRequiredFields(structuredData: Record<string, string>, recruiterSettings?: any): string[] {
+  const reqQuestions = getRequiredQuestionsList(recruiterSettings);
+  return reqQuestions
+    .map(q => q.key)
+    .filter(key => {
+      const val = structuredData[key];
+      return !isValidRequiredValue(key, val);
+    });
 }
 
 export function getNextRequiredQuestion(missingFields: string[]): string {
@@ -205,6 +248,7 @@ class InterviewEngineClass {
           completedStages: data.completedStages || [],
           pendingFields: data.pendingFields || [],
           structuredData: data.structuredData || {},
+          chatMessages: data.chatMessages || [],
           createdAt: data.createdAt || new Date().toISOString(),
           updatedAt: data.updatedAt || new Date().toISOString()
         };
@@ -221,17 +265,18 @@ class InterviewEngineClass {
       completedStages: [],
       pendingFields: initialFields,
       structuredData: {},
+      chatMessages: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
   }
 
   // Saves the InterviewState back to Firestore
-  async saveInterviewState(interviewId: string, state: InterviewState): Promise<void> {
+  async saveInterviewState(interviewId: string, state: InterviewState, recruiterSettings?: any): Promise<void> {
     const docRef = doc(db, 'interviewStates', interviewId);
     try {
-      const isComp = canCompleteInterview(state.structuredData);
-      const missing = getMissingRequiredFields(state.structuredData);
+      const isComp = canCompleteInterview(state.structuredData, recruiterSettings);
+      const missing = getMissingRequiredFields(state.structuredData, recruiterSettings);
       await setDoc(docRef, {
         ...state,
         camposPendentes: missing,
@@ -244,13 +289,13 @@ class InterviewEngineClass {
   }
 
   // Saves Candidate application state as INCOMPLETA / NOVO in Firestore
-  async saveCandidateProgress(interviewId: string, state: InterviewState, messages: any[]): Promise<void> {
+  async saveCandidateProgress(interviewId: string, state: InterviewState, messages: any[], recruiterSettings?: any): Promise<void> {
     const docRef = doc(db, 'recruitmentApplications', interviewId);
     try {
       const snap = await getDoc(docRef);
       const existingData = snap.exists() ? snap.data() : null;
 
-      const isComplete = canCompleteInterview(state.structuredData);
+      const isComplete = canCompleteInterview(state.structuredData, recruiterSettings);
 
       // Rule 8: Only create or save inside recruitmentApplications if it's complete,
       // OR if a partial/existing document already exists (to update its status/messages/etc.)
@@ -304,10 +349,14 @@ class InterviewEngineClass {
     messages: any[],
     userMessage: string,
     recruiterSettings: any
-  ): Promise<{ responseText: string; state: InterviewState }> {
+  ): Promise<{ responseText: string; isComplete: boolean; missingFields: string[]; state: InterviewState }> {
     const state = await this.getInterviewState(interviewId);
     const template = this.getTemplate();
     const openai = this.getOpenAI();
+
+    // Store previous pending fields to calculate currentField log
+    const previousPendingFields = [...(state.pendingFields || [])];
+    const currentField = previousPendingFields[0] || 'Nenhum (Iniciando)';
 
     // 1. PRE-POPULATE EXPERIENCES PROGRAMMATICALLY IF NO EXPERIENCE SPECIFIED
     const userMsgLower = userMessage.toLowerCase();
@@ -323,24 +372,19 @@ class InterviewEngineClass {
       state.structuredData['motivoSaida'] = 'não se aplica';
     }
 
-    // Find current stage config
-    let currentStageIndex = template.stages.findIndex(s => s.id === state.currentStage);
-    if (currentStageIndex === -1) {
-      currentStageIndex = 0;
-      state.currentStage = template.stages[0].id;
-    }
-    let currentStageConfig = template.stages[currentStageIndex];
+    // Get ordered required questions from settings
+    const requiredQuestions = getRequiredQuestionsList(recruiterSettings);
 
-    // 2. UPDATE STRUCTURED FIELDS INCREMENTALLY
+    // 2. UPDATE STRUCTURED FIELDS INCREMENTALLY (ALL FIELDS AT ONCE - Rule 7)
     try {
-      const fieldDescriptions = currentStageConfig.fields
-        .map(f => `- ${f.key}: ${f.label} (${f.description})`)
+      const fieldDescriptions = requiredQuestions
+        .map(f => `- ${f.key}: ${f.label}`)
         .join('\n');
 
       const extractionPrompt = `Você é o extrator de dados de recrutamento da Discreta Boutique.
 Sua missão é analisar a última mensagem enviada pelo candidato e atualizar de forma precisa o JSON de dados coletados.
 
-CAMPOS DA ETAPA ATUAL (${state.currentStage}):
+CAMPOS DA ENTREVISTA:
 ${fieldDescriptions}
 
 DADOS ESTRUTURADOS ATUAIS (JSON):
@@ -349,13 +393,21 @@ ${JSON.stringify(state.structuredData, null, 2)}
 ÚLTIMAS MENSAGENS:
 Candidato: "${userMessage}"
 
-INSTRUÇÕES CRÍTICAS DE EXTRAÇÃO:
-- Extraia qualquer dado da resposta do candidato que corresponda aos campos listados acima.
-- SE o candidato disser que não possui experiência ou que uma pergunta não se aplica (ex: "nunca trabalhei", "não tenho experiência com isso"), preencha o campo correspondente com "Não possui", "N/A" ou equivalente curto.
-- Se o candidato disser que nunca trabalhou ou que não tem experiência profissional, você DEVE preencher "experienciaProfissional" como "não possui experiência formal", "ultimaExperiencia" como "não se aplica" e "motivoSaida" como "não se aplica".
-- Nunca apague ou modifique informações já existentes, a menos que o candidato as tenha corrigido nesta última mensagem.
-- Se o candidato mencionar informações de outras etapas, você pode extrair e preencher opcionalmente.
-- Retorne obrigatoriamente um objeto JSON com o formato exato abaixo:
+INSTRUÇÕES CRÍTICAS DE EXTRAÇÃO DE DISPONIBILIDADE E CAMPOS:
+1. SÓ preencha um campo se o candidato tiver mencionado explicitamente ou respondido de forma inequívoca sobre ele na mensagem.
+2. NUNCA faça deduções ou adivinhe valores ("Sim" ou "Não") para campos de disponibilidade que não foram ditos.
+   Por exemplo:
+   - Se o candidato disser "Tenho disponibilidade de segunda a sexta, das 8h às 18h", você DEVE preencher "disponibilidadeHorarios" com essa resposta, mas NÃO preencha "disponibilidadeSabados", "disponibilidadeDatasEspeciais", "disponibilidadePromocoes" ou "disponibilidadeLiveShop". Deixe esses campos intocados para que a recrutadora pergunte-os depois.
+   - Se o candidato disser "Tenho disponibilidade total todos os dias", preencha "disponibilidadeHorarios" com "total", mas NÃO preencha os demais campos de disponibilidade individual (sábados, datas especiais, promoções, liveshop) a menos que ele mencione-os de forma expressa.
+3. EXTRAÇÃO DE RESPOSTAS COMPOSTAS (Se o candidato responder a múltiplas perguntas de uma vez, extraia todas com precisão):
+   - Se o candidato disser "Trabalho aos sábados e datas especiais sem problemas", você DEVE extrair "disponibilidadeSabados" = "Sim" e "disponibilidadeDatasEspeciais" = "Sim".
+   - Se o candidato disser "Não posso trabalhar aos sábados, mas tenho disponibilidade para promoções e live shop", você DEVE extrair "disponibilidadeSabados" = "Não", "disponibilidadePromocoes" = "Sim" and "disponibilidadeLiveShop" = "Sim".
+   - Certifique-se de marcar corretamente cada um desses campos com base nas palavras explícitas do candidato.
+4. SE o candidato disser que não possui experiência ou que uma pergunta não se aplica (ex: "nunca trabalhei", "não tenho experiência com isso"), preencha o campo correspondente com "Não possui", "N/A" ou equivalente curto.
+5. Se o candidato dizer que nunca trabalhou ou que não tem experiência profissional, você DEVE preencher "experienciaProfissional" como "não possui experiência formal", "ultimaExperiencia" como "não se aplica" e "motivoSaida" como "não se aplica".
+6. Nunca apague ou modifique informações já existentes, a menos que o candidato as tenha corrigido nesta última mensagem.
+
+Retorne obrigatoriamente um objeto JSON com o formato exato abaixo:
 {
   "structuredData": { ... }
 }`;
@@ -400,47 +452,55 @@ INSTRUÇÕES CRÍTICAS DE EXTRAÇÃO:
     }
 
     // 4. CONTROL STAGE PROGRESSION AND PENDING FIELDS PROGRAMMATICALLY
-    const missing = getMissingRequiredFields(state.structuredData);
+    let missing = getMissingRequiredFields(state.structuredData, recruiterSettings);
     
+    // Fallback: Se a engine falhar no cálculo simples de perguntas pendentes, usa a lista ordenada de chaves do requiredQuestions que não estão preenchidas
+    if (missing.length === 0 && requiredQuestions.length > 0) {
+      const allFilled = requiredQuestions.every(q => {
+        const val = state.structuredData[q.key];
+        return val !== undefined && val !== null && val.toString().trim() !== '';
+      });
+      if (!allFilled) {
+        missing = requiredQuestions
+          .map(q => q.key)
+          .filter(key => {
+            const val = state.structuredData[key];
+            return val === undefined || val === null || val.toString().trim() === '';
+          });
+      }
+    }
+
     if (missing.length > 0) {
-      // Find which stage contains the first missing field
-      let foundStage = false;
+      state.pendingFields = missing;
+      // Find which stage in DEFAULT_TEMPLATE contains the first missing field
+      let foundStage = 'IDENTIFICACAO';
       for (const stage of template.stages) {
-        const stageMissing = stage.fields
-          .filter(f => !state.structuredData[f.key] || state.structuredData[f.key].toString().trim() === '')
-          .map(f => f.key);
-        
-        if (stageMissing.length > 0) {
-          state.currentStage = stage.id;
-          state.pendingFields = stageMissing;
-          foundStage = true;
+        if (stage.fields.some(f => f.key === missing[0])) {
+          foundStage = stage.id;
           break;
         }
       }
-      if (!foundStage) {
-        state.currentStage = template.stages[0].id;
-        state.pendingFields = template.stages[0].fields.map(f => f.key);
-      }
+      state.currentStage = foundStage;
     } else {
       state.currentStage = 'COMPLETED';
       state.pendingFields = [];
     }
 
     // Identify current stage config again after potential update
-    currentStageIndex = template.stages.findIndex(s => s.id === state.currentStage);
+    let currentStageIndex = template.stages.findIndex(s => s.id === state.currentStage);
     if (currentStageIndex === -1) {
       currentStageIndex = 0;
       state.currentStage = template.stages[0].id;
     }
-    currentStageConfig = template.stages[currentStageIndex];
+    let currentStageConfig = template.stages[currentStageIndex];
 
     // Get objective
     const currentObjective = state.currentStage === 'COMPLETED' 
       ? 'Agradecer e finalizar o processo com o candidato.'
       : currentStageConfig.objective;
 
-    // Only send the last 3 messages from actual history to save tokens
-    const lastThreeMessages = messages.slice(-3).map(m => ({
+    // Only send the last 5 messages (from 3 to 5) from actual history to save tokens
+    const lastThreeMessages = messages.slice(-5).map(m => ({
       role: m.sender === 'bot' || m.sender === 'assistant' ? 'assistant' : 'user',
       content: m.text
     }));
@@ -454,11 +514,21 @@ INSTRUÇÕES CRÍTICAS DE EXTRAÇÃO:
     const hasJobs = availableJobsText.trim() !== '';
 
     const nextFieldKey = state.pendingFields[0];
-    const proximoCampoObrigatorio = nextFieldKey 
-      ? `${nextFieldKey} (${REQUIRED_KEYS_MAP[nextFieldKey] || nextFieldKey})` 
-      : 'Nenhum (Entrevista completa)';
+    const nextMissingQuestion = requiredQuestions.find(q => q.key === nextFieldKey);
     
-    const camposPendentesDaEtapa = state.pendingFields.map(key => `${key} (${REQUIRED_KEYS_MAP[key] || key})`);
+    const proximoCampoObrigatorio = nextFieldKey || 'Nenhum (Entrevista completa)';
+    const perguntaObrigatoriaExata = nextMissingQuestion ? nextMissingQuestion.question : '';
+
+    // Format answered and pending fields for explicit system prompt context
+    const perguntasRespondidas = requiredQuestions
+      .filter(q => isValidRequiredValue(q.key, state.structuredData[q.key]))
+      .map(q => `- ${q.label} (campo: ${q.key}): "${state.structuredData[q.key]}"`)
+      .join('\n') || 'Nenhuma pergunta respondida ainda.';
+
+    const camposPendentesPrompt = requiredQuestions
+      .filter(q => !isValidRequiredValue(q.key, state.structuredData[q.key]))
+      .map(q => `- ${q.label} (campo: ${q.key})`)
+      .join('\n') || 'Nenhum campo pendente.';
 
     let instrucaoFormulaConforto = '';
     if (nextFieldKey === 'confortoProdutosIntimos') {
@@ -466,7 +536,7 @@ INSTRUÇÕES CRÍTICAS DE EXTRAÇÃO:
   “Você se sente confortável em atuar profissionalmente em uma loja que trabalha com lingerie, produtos íntimos, bem-estar e autoestima, mantendo sempre postura discreta e respeitosa?”`;
     }
 
-    // 5. CONSTRUCT SYSTEM PROMPT
+    // 5. CONSTRUCT SYSTEM PROMPT WITH REDUCED BUT COMPLETELY ACCURATE CONTEXT
     const systemPrompt = `Você é a ${recruiterSettings.recruiterName || 'Aurora'}, recrutadora virtual oficial e amigável da Discreta Boutique.
 O candidato está conversando com você para uma vaga de emprego, e ele NÃO deve perceber em hipótese alguma que existe um sistema dividido em etapas ou preenchimento de formulário por trás. A conversa deve fluir como se fosse com uma humana, de forma empática, profissional, acolhedora e discreta.
 
@@ -480,23 +550,32 @@ ${availableJobsText}
 ---
 ` : `[NÃO HÁ VAGAS CADASTRADAS NO MOMENTO]`}
 
-REGRAS CRÍTICAS DE CONTRATAÇÃO E INFORMAÇÕES DE VAGAS:
-1. Você só poderá falar sobre as vagas de emprego descritas acima.
-2. Se o candidato perguntar "qual vaga?", "tem quais vagas?", "quero mais opções", "quais as vagas disponíveis" ou qualquer pergunta similar sobre vagas abertas, você DEVE responder estritamente baseando-se no conteúdo das "Vagas disponíveis" acima.
-3. Se não houver vagas cadastradas (ou seja, se estiver marcado como [NÃO HÁ VAGAS CADASTRADAS NO MOMENTO]), você DEVE responder obrigatoriamente e exatamente com a seguinte frase:
-   “No momento, não possuo vagas cadastradas para apresentar. Posso continuar sua candidatura para análise futura pela equipe da Discreta Boutique.”
-4. Você JAMAIS deve inventar ou criar cargos, quantidades, salários, benefícios, horários ou requisitos que não estejam explicitamente escritos nas "Vagas disponíveis" acima. Se o candidato perguntar sobre detalhes não listados (ex: salário de uma vaga cujo salário diz "Não informado nesta etapa"), responda que não está informado ou que será tratado nas próximas etapas do processo presencial.
+ROTEIRO DE PERGUNTAS OBRIGATÓRIAS (requiredQuestionsText):
+${recruiterSettings.requiredQuestionsText || 'Nenhum roteiro cadastrado.'}
 
-CONTEXTO E VARIÁVEIS EXPLICITAS DA ENTREVISTA:
+CONTEXTO E VARIÁVEIS EXPLICITAS DA ENTREVISTA (FONTES DA VERDADE):
 - etapaAtual: ${state.currentStage}
 - objetivoDaEtapa: ${currentObjective}
-- proximoCampoObrigatorio: ${proximoCampoObrigatorio}
-- camposPendentesDaEtapa: ${JSON.stringify(camposPendentesDaEtapa)}
-- Dados já coletados (use-os para demonstrar empatia, contexto e evitar repetições):
+- próxima pergunta obrigatória (campo chave): ${proximoCampoObrigatorio}
+- próxima pergunta obrigatória (pergunta exata): ${perguntaObrigatoriaExata}
+
+DADOS ESTRUTURADOS ATUAIS (structuredData):
 ${JSON.stringify(state.structuredData, null, 2)}
 
-INSTRUÇÃO DE CONDUÇÃO CRÍTICA:
-- “Faça pergunta somente sobre proximoCampoObrigatorio.” Não mude de assunto, não pule etapas e não faça perguntas sobre outros campos que não sejam o proximoCampoObrigatorio!
+PERGUNTAS RESPONDIDAS ATÉ O MOMENTO (FONTES DA VERDADE):
+${perguntasRespondidas}
+
+CAMPOS PENDENTES RESTANTES (CAMPOS_PENDENTES):
+${camposPendentesPrompt}
+
+DIRETRIZ CRÍTICA DE PERGUNTAS SOBRE VAGAS OU SALÁRIOS (REQUISITO 8):
+- Se o candidato perguntar de alguma forma sobre vagas disponíveis, cargos abertos, salários, benefícios, horários ou remuneração da boutique (ou fizer qualquer pergunta sobre vagas/salários), você DEVE responder de forma clara, simpática e objetiva apresentando as informações reais contidas na seção "VAGAS DISPONÍVEIS" acima.
+- Logo em seguida, na mesma mensagem, faça uma transição natural e amigável para retomar o fluxo da entrevista e faça a pergunta correspondente ao próximo campo pendente de forma humana e acolhedora: "${perguntaObrigatoriaExata}".
+
+INSTRUÇÃO DE CONDUÇÃO CRÍTICA (REQUISITOS OBRIGATÓRIOS DO ROTEIRO - REQUISITO 9):
+- O roteiro de perguntas obrigatórias do campo "requiredQuestionsText" manda 100% no fluxo da entrevista. Você não deve inventar perguntas ou tentar decidir sozinha qual assunto abordar de forma livre. Você é estritamente obrigada a seguir o roteiro estático estabelecido na ordem.
+- Você deve fazer uma pergunta simpática para obter EXATAMENTE a informação do proximoCampoObrigatorio: "${proximoCampoObrigatorio}". Use como base a pergunta definida como: "${perguntaObrigatoriaExata}". Você pode adaptar levemente o tom para que soe natural, mas não mude o objetivo da pergunta em hipótese alguma!
+- NÃO pergunte sobre nenhum outro campo que já foi preenchido ou que esteja à frente no roteiro. Foque estritamente em obter o campo atual.
 ${instrucaoFormulaConforto}
 
 REGRAS DE CONDUTA PROFISSIONAL DA AURORA (REQUISITOS OBRIGATÓRIOS DO SEGMENTO ÍNTIMO):
@@ -543,6 +622,31 @@ ${recruiterSettings.finalMessage}`;
       // Log missing required fields (Rule 10)
       console.log(`[INTERVIEW_ENGINE] [CAMPOS_FALTANTES] Candidato: ${state.structuredData.nomeCompleto || 'Sem Nome'} | Campos pendentes (${missing.length}):`, missing);
 
+      // Programmatic filter: Check if OpenAI is trying to ask a prefilled question
+      let askedAlreadyAnswered = false;
+      const answeredQuestions = requiredQuestions.filter(q => !missing.includes(q.key));
+      const responseTextLower = responseText.toLowerCase();
+
+      for (const q of answeredQuestions) {
+        if (
+          (q.key === 'nomeCompleto' && (responseTextLower.includes('nome completo') || responseTextLower.includes('seu nome') || responseTextLower.includes('como se chama') || responseTextLower.includes('como posso te chamar'))) ||
+          (q.key === 'idade' && (responseTextLower.includes('idade') || responseTextLower.includes('quantos anos') || responseTextLower.includes('sua idade'))) ||
+          (q.key === 'whatsapp' && (responseTextLower.includes('whatsapp') || responseTextLower.includes('seu número') || responseTextLower.includes('seu numero') || responseTextLower.includes('celular') || responseTextLower.includes('telefone') || responseTextLower.includes('seu contato'))) ||
+          (q.key === 'email' && (responseTextLower.includes('email') || responseTextLower.includes('e-mail') || responseTextLower.includes('seu endereço de email') || responseTextLower.includes('seu endereco de email'))) ||
+          (q.key === 'cidade' && (responseTextLower.includes('cidade') || responseTextLower.includes('qual cidade') || responseTextLower.includes('onde você mora') || responseTextLower.includes('onde voce mora'))) ||
+          (q.key === 'bairro' && (responseTextLower.includes('bairro') || responseTextLower.includes('qual bairro'))) ||
+          (q.key === 'expectativaSalarial' && (responseTextLower.includes('expectativa salarial') || responseTextLower.includes('quanto quer ganhar') || responseTextLower.includes('pretensão salarial')))
+        ) {
+          askedAlreadyAnswered = true;
+          break;
+        }
+      }
+
+      if (askedAlreadyAnswered) {
+        console.warn(`[INTERVIEW_ENGINE] [CAMPOS_JA_PREENCHIDOS] Aurora tentou perguntar um campo já preenchido. Substituindo pela próxima pergunta pendente.`);
+        responseText = `Perfeito, compreendido! Dando continuidade à nossa conversa, você poderia me dizer: ${perguntaObrigatoriaExata}`;
+      }
+
       // Remove any concluding tags if sent prematurely (Rule 5)
       if (responseText.includes('[ENTREVISTA_CONCLUIDA]')) {
         // Log blocked attempted completion (Rule 10)
@@ -556,31 +660,14 @@ ${recruiterSettings.finalMessage}`;
 
       if (isGoodbye) {
         // Log blocked attempted completion (Rule 10)
-        console.warn(`[INTERVIEW_ENGINE] [CONCLUSAO_BLOQUEADA] Aurora tentou encerrar sem fazer pergunta amigável. Forçando pergunta sobre o próximo campo.`);
+        console.warn(`[INTERVIEW_ENGINE] [CONCLUSAO_BLOQUEADA] Aurora tentou encerrar sem fazer pergunta amigável. Forçando pergunta sobre o próximo campo de forma estática (Requisito 2).`);
         const nextField = missing[0];
         const nextFieldLabel = REQUIRED_KEYS_MAP[nextField] || nextField;
-        const fallbackPrompt = `Você é a recrutadora virtual Aurora da Discreta Boutique.
-O candidato está conversando com você, mas a entrevista ainda não pode ser finalizada pois faltam dados importantes de contratação.
-O próximo dado pendente obrigatório que você precisa perguntar é: "${nextFieldLabel}".
-Por favor, escreva uma única mensagem acolhedora, amigável e direta perguntando especificamente sobre "${nextFieldLabel}". Não mencione termos técnicos, apenas pergunte de forma humana e natural.`;
-
-        try {
-          const fallbackResponse = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: fallbackPrompt },
-              ...lastThreeMessages as any
-            ],
-            temperature: 0.7
-          });
-          responseText = fallbackResponse.choices[0].message.content || '';
-        } catch (e) {
-          responseText = `Perfeito! Agora, para darmos prosseguimento ao seu cadastro, você poderia me informar o seguinte detalhe: ${nextFieldLabel}?`;
-        }
+        responseText = `Entendi perfeitamente! Muito obrigada. Agora, para darmos seguimento ao seu cadastro, você poderia me informar o seguinte detalhe: ${perguntaObrigatoriaExata ? perguntaObrigatoriaExata : nextFieldLabel}?`;
       }
     } else {
-      // All 32 fields are present! (Rule 10)
-      console.log(`[INTERVIEW_ENGINE] [CONCLUSAO_PERMITIDA] Conclusão permitida somente quando todos os campos estiverem válidos. Todos os 32 campos estão preenchidos!`);
+      // All fields are present! (Rule 10)
+      console.log(`[INTERVIEW_ENGINE] [CONCLUSAO_PERMITIDA] Conclusão permitida somente quando todos os campos estiverem válidos. Todos os campos estão preenchidos!`);
       if (!state.completedStages.includes(state.currentStage)) {
         state.completedStages.push(state.currentStage);
       }
@@ -593,14 +680,30 @@ Por favor, escreva uma única mensagem acolhedora, amigável e direta perguntand
       }
     }
 
+    // Calculate logs asked in Rule 10
+    const requiredQuestionsCount = requiredQuestions.length;
+    const currentQuestionIndex = requiredQuestions.findIndex(q => q.key === nextFieldKey);
+
+    // Rule 10 MANDATORY Logs
+    console.log(`[INTERVIEW_ENGINE] Logs do Chat:`, {
+      currentField,
+      nextField: nextFieldKey || 'Nenhum (Entrevista completa)',
+      pendingFields: missing,
+      smartSearchDisabled: true,
+      requiredQuestionsCount,
+      currentQuestionIndex: currentQuestionIndex !== -1 ? currentQuestionIndex : requiredQuestionsCount
+    });
+
     // Save interview state
-    await this.saveInterviewState(interviewId, state);
+    await this.saveInterviewState(interviewId, state, recruiterSettings);
 
     // Save candidate progress to Firestore collection 'recruitmentApplications'
-    await this.saveCandidateProgress(interviewId, state, messages);
+    await this.saveCandidateProgress(interviewId, state, messages, recruiterSettings);
 
     return {
       responseText,
+      isComplete,
+      missingFields: missing,
       state
     };
   }

@@ -628,7 +628,11 @@ export const recruitmentChat = async (req: Request, res: Response) => {
       settings
     );
 
-    res.json({ responseText: result.responseText });
+    res.json({ 
+      responseText: result.responseText,
+      isComplete: result.isComplete,
+      missingFields: result.missingFields
+    });
   } catch (error: any) {
     console.error('Erro no recruitmentChat:', error);
     res.status(500).json({ error: error.message });
@@ -666,18 +670,18 @@ export const recruitmentExtract = async (req: Request, res: Response) => {
       ...structuredData
     };
 
-    // Ensure all fields have a value (fall back to "Não informado" instead of empty/null)
+    // Ensure all fields have a value, keeping them empty if not collected
     const allFields = [
       'nomeCompleto', 'idade', 'cidade', 'bairro', 'whatsapp', 'email',
-      'disponibilidadeHorario', 'disponibilidadeSabados', 'disponibilidadeEventos', 'quandoComecar', 'tipoInteresse',
-      'experienciaProfissional', 'experienciaAtendimento', 'experienciaVendas', 'experienciaLoja', 'experienciaWhatsComercial', 'ultimaExperiencia', 'motivoSaida',
-      'confortoProdutosIntimos', 'entendimentoDiscricao', 'comoLidariaClienteIndeciso', 'comoLidariaPerguntasIntimas', 'facilidadeInstagram',
-      'pontoForte', 'pontoMelhorar', 'expectativaSalarial', 'mensagemFinal'
+      'disponibilidadeHorarios', 'disponibilidadeSabados', 'disponibilidadeDatasEspeciais', 'disponibilidadePromocoes', 'disponibilidadeLiveShop', 'dataInicio', 'tipoInteresse',
+      'experienciaProfissional', 'experienciaAtendimento', 'experienciaVendas', 'experienciaLojaCaixaEstoquePdv', 'experienciaWhatsappComercial', 'ultimaExperiencia', 'cargoUltimaExperiencia', 'tempoPermanencia', 'motivoSaida',
+      'facilidadeAprender', 'organizacao', 'trabalhoEquipe', 'confortoProdutosIntimos', 'entendimentoDiscricao', 'clienteIndeciso', 'perguntasIntimas', 'facilidadeRedesSociais',
+      'pontoForte', 'pontoDesenvolver', 'expectativaSalarial', 'mensagemFinal'
     ];
 
     for (const key of allFields) {
-      if (!mergedData[key] || mergedData[key].toString().trim() === '') {
-        mergedData[key] = finalExtracted[key] || 'Não informado';
+      if (mergedData[key] === undefined || mergedData[key] === null) {
+        mergedData[key] = '';
       }
     }
 
@@ -704,6 +708,24 @@ export const getRecruitmentSettings = async (req: Request, res: Response) => {
   }
 };
 
+export const getRecruitmentState = async (req: Request, res: Response) => {
+  try {
+    const { interviewId } = req.query;
+    if (!interviewId || typeof interviewId !== 'string') {
+      return res.status(400).json({ error: 'Parâmetro interviewId é obrigatório.' });
+    }
+    const { interviewEngine } = await import('../services/interviewEngine.js');
+    const state = await interviewEngine.getInterviewState(interviewId);
+    res.json({
+      state,
+      chatMessages: state.chatMessages || []
+    });
+  } catch (error: any) {
+    console.error('Erro no getRecruitmentState:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const aiController = {
   generateProduct,
   generateCategory,
@@ -726,5 +748,6 @@ export const aiController = {
   analyzeCandidate,
   recruitmentChat,
   recruitmentExtract,
-  getRecruitmentSettings
+  getRecruitmentSettings,
+  getRecruitmentState
 };

@@ -14,12 +14,25 @@ const adminAiLimiter = rateLimit({
   validate: { trustProxy: false }
 });
 
-// Rate limit para Loja (Busca Inteligente) - Mais restrito para evitar abusos
+// Rate limit para Loja (Busca Inteligente) - Ampliado para evitar erros de limite
 const storeAiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 20,
+  max: 15000,
   message: { 
     error: 'Limite de busca inteligente atingido.',
+    fallback: true 
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false }
+});
+
+// Rate limit específico para Recrutamento - maior tolerância para permitir a entrevista completa
+const recruitmentAiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 150, // Permite até 150 interações por período
+  message: { 
+    error: 'Limite de mensagens da entrevista atingido para este período.',
     fallback: true 
   },
   standardHeaders: true,
@@ -56,8 +69,9 @@ router.post('/gerar-embedding', adminAiLimiter, aiController.generateEmbedding);
 router.post('/analisar-candidato', adminAiLimiter, aiController.analyzeCandidate);
 
 // Recruitment Module Routes
-router.post('/recruitment-chat', storeAiLimiter, aiController.recruitmentChat);
-router.post('/recruitment-extract', storeAiLimiter, aiController.recruitmentExtract);
+router.post('/recruitment-chat', recruitmentAiLimiter, aiController.recruitmentChat);
+router.post('/recruitment-extract', recruitmentAiLimiter, aiController.recruitmentExtract);
 router.get('/recruitment-settings', aiController.getRecruitmentSettings);
+router.get('/recruitment-state', aiController.getRecruitmentState);
 
 export default router;

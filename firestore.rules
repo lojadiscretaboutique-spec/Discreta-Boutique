@@ -592,8 +592,8 @@ service cloud.firestore {
     }
 
     match /recruitmentApplications/{doc} {
-      allow create: if true;
-      allow read, update, delete: if isMasterAdmin() || can('users', 'visualizar');
+      allow get, create, update: if true;
+      allow list, delete: if isMasterAdmin() || can('users', 'visualizar');
     }
 
     match /recruitmentSettings/{doc} {

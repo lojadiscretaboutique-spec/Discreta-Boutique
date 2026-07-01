@@ -238,6 +238,23 @@ export default function AdminTrabalheConoscoSettings() {
         {/* Right Column: AI & OpenAI Prompts (col-span-7) */}
         <div className="md:col-span-7 space-y-6">
           
+          {/* Roteiro e Ordem das Perguntas da Entrevista */}
+          <div className="bg-slate-900/50 border border-slate-900/60 rounded-xl p-5 space-y-3">
+            <h3 className="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2.5 flex items-center gap-2">
+              <Sliders className="text-red-500" size={16} />
+              Roteiro de Perguntas Obrigatórias (Ordem de Condução)
+            </h3>
+            <p className="text-[10px] text-slate-400 leading-relaxed">
+              Defina a ordem e o texto exato das perguntas obrigatórias que a Aurora deve seguir. Cada linha representa um campo e deve seguir estritamente o formato: <code className="text-red-400 font-mono">campoInterno | Pergunta da Aurora</code>. A ordem das linhas define a sequência da entrevista.
+            </p>
+            <textarea
+              value={settings.requiredQuestionsText || ''}
+              onChange={(e) => handleChange('requiredQuestionsText', e.target.value)}
+              placeholder="Ex: nomeCompleto | Qual seu nome completo?"
+              className="w-full h-[280px] bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-300 font-mono focus:outline-none focus:ring-1 focus:ring-red-600 resize-y leading-relaxed"
+            />
+          </div>
+
           {/* Main Interview Prompt (Aurora System instructions) */}
           <div className="bg-slate-900/50 border border-slate-900/60 rounded-xl p-5 space-y-3">
             <h3 className="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2.5 flex items-center gap-2">
