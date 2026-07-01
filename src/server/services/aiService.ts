@@ -1138,7 +1138,7 @@ Mantenha o tom sofisticado, as formatações limpas, emojis adequados e hashtags
     const formattedChat = messages.map((m: any) => `[${m.sender === 'bot' ? 'IA' : 'Candidato'}]: ${m.text}`).join('\n');
     const extractPrompt = `Você é o Analista de Dados da Discreta Boutique.
 Sua missão é ler toda a conversa de entrevista a seguir e extrair as informações do candidato com precisão matemática.
-Retorne obrigatoriamente um objeto JSON com todos os 26 campos descritos abaixo.
+Retorne obrigatoriamente um objeto JSON com todos os 34 campos descritos abaixo.
 
 CAMPOS A SEREM EXTRAÍDOS:
 - nomeCompleto: Nome completo do candidato.
@@ -1147,24 +1147,32 @@ CAMPOS A SEREM EXTRAÍDOS:
 - bairro: Bairro.
 - whatsapp: WhatsApp (telefone).
 - email: E-mail.
-- disponibilidadeHorario: Disponibilidade de horários.
+- disponibilidadeHorarios: Disponibilidade de horários.
 - disponibilidadeSabados: Resposta sobre trabalhar aos sábados.
-- disponibilidadeEventos: Resposta sobre trabalhar em eventos, promoções e lives.
-- quandoComecar: Quando pode iniciar.
+- disponibilidadeDatasEspeciais: Resposta sobre trabalhar em eventos e datas especiais de vendas.
+- disponibilidadePromocoes: Resposta sobre trabalhar em períodos de promoções.
+- disponibilidadeLiveShop: Resposta sobre disponibilidade para participar de lives ou Live Shop.
+- dataInicio: Quando pode iniciar.
 - tipoInteresse: Tipo de interesse ('fixo', 'temporário', 'freelancer' ou similar).
+- experienciaProfissional: Resumo da experiência profissional geral do candidato.
 - experienciaAtendimento: Experiência profissional com atendimento ao cliente.
 - experienciaVendas: Experiência com vendas ou metas comerciais.
-- experienciaLoja: Experiência com loja física, caixa, estoque, PDV.
-- experienciaWhatsComercial: Experiência em atendimento via WhatsApp comercial.
-- ultimaExperiencia: Descrição da última experiência profissional.
-- motivoSaida: Motivo de saída do último emprego.
+- experienciaLojaCaixaEstoquePdv: Experiência com loja física, caixa, estoque, PDV.
+- experienciaWhatsappComercial: Experiência em atendimento via WhatsApp comercial.
+- ultimaExperiencia: Descrição da última empresa/experiência profissional.
+- cargoUltimaExperiencia: Cargo ocupado na última experiência profissional.
+- tempoPermanencia: Tempo de permanência na última empresa/vaga.
+- motivoSaida: Motivo de saída do último emprego ou não se aplica.
+- facilidadeAprender: Se tem facilidade em aprender novas tarefas.
+- organizacao: Nível de organização pessoal e cuidado com estoque.
+- trabalhoEquipe: Facilidade ou gosto em trabalhar em equipe.
 - confortoProdutosIntimos: Nível de conforto com produtos íntimos e eróticos de luxo.
 - entendimentoDiscricao: Significado e prática de discrição profissional no atendimento.
-- comoLidariaClienteIndeciso: Como agiria com cliente indeciso na boutique.
-- comoLidariaPerguntasIntimas: Como lidaria com perguntas de cunho pessoal/íntimo de clientes.
-- facilidadeInstagram: Habilidade com redes sociais, criação de stories, vídeos, live shop.
+- clienteIndeciso: Como agiria com cliente indeciso na boutique.
+- perguntasIntimas: Como lidaria com perguntas de cunho pessoal/íntimo de clientes.
+- facilidadeRedesSociais: Habilidade com redes sociais, criação de stories, vídeos, live shop.
 - pontoForte: Ponto forte profissional citado.
-- pontoMelhorar: Ponto a aprimorar ou desenvolver citado.
+- pontoDesenvolver: Ponto a aprimorar ou desenvolver citado.
 - expectativaSalarial: Expectativa de remuneração.
 - mensagemFinal: Mensagem final de consideração enviada à empresa.
 

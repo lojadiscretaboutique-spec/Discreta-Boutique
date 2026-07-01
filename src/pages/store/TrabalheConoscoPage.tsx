@@ -181,7 +181,7 @@ export default function TrabalheConoscoPage() {
       setStructuredResult(structuredData);
 
       // Step B: Save candidate to Firestore via candidateService
-      const finalCandidate: Omit<Candidate, 'id' | 'createdAt' | 'updatedAt'> = {
+      const finalCandidate: Omit<Candidate, 'id' | 'createdAt' | 'updatedAt'> & { interviewId?: string } = {
         candidateName: structuredData.nomeCompleto || 'Candidato Sem Nome',
         phone: structuredData.whatsapp || '',
         email: structuredData.email || '',
@@ -193,7 +193,8 @@ export default function TrabalheConoscoPage() {
         structuredData: structuredData,
         chatMessages: finalMessages,
         ipAddress: 'Disponível no servidor', // safe representation
-        userAgent: navigator.userAgent
+        userAgent: navigator.userAgent,
+        interviewId: interviewId || undefined
       };
 
       await candidateService.createCandidate(finalCandidate);

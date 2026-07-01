@@ -12,24 +12,32 @@ export interface CandidateStructuredData {
   bairro: string;
   whatsapp: string;
   email: string;
-  disponibilidadeHorario: string;
+  disponibilidadeHorarios: string;
   disponibilidadeSabados: string;
-  disponibilidadeEventos: string;
-  quandoComecar: string;
+  disponibilidadeDatasEspeciais: string;
+  disponibilidadePromocoes: string;
+  disponibilidadeLiveShop: string;
+  dataInicio: string;
   tipoInteresse: 'fixo' | 'temporário' | 'freelancer' | string;
+  experienciaProfissional: string;
   experienciaAtendimento: string;
   experienciaVendas: string;
-  experienciaLoja: string;
-  experienciaWhatsComercial: string;
+  experienciaLojaCaixaEstoquePdv: string;
+  experienciaWhatsappComercial: string;
   ultimaExperiencia: string;
+  cargoUltimaExperiencia: string;
+  tempoPermanencia: string;
   motivoSaida: string;
+  facilidadeAprender: string;
+  organizacao: string;
+  trabalhoEquipe: string;
   confortoProdutosIntimos: string;
   entendimentoDiscricao: string;
-  comoLidariaClienteIndeciso: string;
-  comoLidariaPerguntasIntimas: string;
-  facilidadeInstagram: string;
+  clienteIndeciso: string;
+  perguntasIntimas: string;
+  facilidadeRedesSociais: string;
   pontoForte: string;
-  pontoMelhorar: string;
+  pontoDesenvolver: string;
   expectativaSalarial: string;
   mensagemFinal: string;
 }
@@ -53,7 +61,7 @@ export interface Candidate {
   email: string;
   city: string;
   neighborhood: string;
-  status: 'NOVO' | 'EM_ANALISE' | 'CHAMAR_ENTREVISTA' | 'APROVADO' | 'REPROVADO' | 'ARQUIVADO';
+  status: 'NOVO' | 'EM_ANALISE' | 'CHAMAR_ENTREVISTA' | 'APROVADO' | 'REPROVADO' | 'ARQUIVADO' | 'INCOMPLETA';
   lgpdAccepted: boolean;
   lgpdAcceptedAt: any;
   createdAt: any;
@@ -65,6 +73,7 @@ export interface Candidate {
   interviewQuestions?: string;
   ipAddress?: string;
   userAgent?: string;
+  interviewId?: string;
 }
 
 export interface RecruitmentSettings {

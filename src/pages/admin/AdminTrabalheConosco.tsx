@@ -209,6 +209,8 @@ export default function AdminTrabalheConosco() {
         return 'bg-red-500/10 text-red-400 border-red-500/20';
       case 'ARQUIVADO': 
         return 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20';
+      case 'INCOMPLETA':
+        return 'bg-pink-500/10 text-pink-400 border-pink-500/20';
       default: 
         return 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20';
     }
@@ -286,6 +288,7 @@ export default function AdminTrabalheConosco() {
                     <option value="APROVADO">Aprovado</option>
                     <option value="REPROVADO">Reprovado</option>
                     <option value="ARQUIVADO">Arquivado</option>
+                    <option value="INCOMPLETA">Incompleta</option>
                   </select>
                 </div>
 
@@ -405,6 +408,7 @@ export default function AdminTrabalheConosco() {
                         <option value="APROVADO">Aprovado</option>
                         <option value="REPROVADO">Reprovado</option>
                         <option value="ARQUIVADO">Arquivado</option>
+                        <option value="INCOMPLETA">Incompleta</option>
                       </select>
                     </div>
 
@@ -516,7 +520,7 @@ export default function AdminTrabalheConosco() {
                             <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900">
                               <span className="text-[10px] uppercase font-bold text-slate-500">Disponibilidade</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
-                                {selectedCandidate.structuredData.disponibilidadeHorario || 'N/A'}
+                                {selectedCandidate.structuredData.disponibilidadeHorarios || (selectedCandidate.structuredData as any).disponibilidadeHorario || 'N/A'}
                               </p>
                             </div>
 
@@ -530,14 +534,14 @@ export default function AdminTrabalheConosco() {
                             <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900">
                               <span className="text-[10px] uppercase font-bold text-slate-500">Disponibilidade para Eventos / Lives</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
-                                {selectedCandidate.structuredData.disponibilidadeEventos || 'N/A'}
+                                {selectedCandidate.structuredData.disponibilidadeDatasEspeciais || (selectedCandidate.structuredData as any).disponibilidadeEventos || 'N/A'}
                               </p>
                             </div>
 
                             <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900">
                               <span className="text-[10px] uppercase font-bold text-slate-500">Quando pode começar</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
-                                {selectedCandidate.structuredData.quandoComecar || 'N/A'}
+                                {selectedCandidate.structuredData.dataInicio || (selectedCandidate.structuredData as any).quandoComecar || 'N/A'}
                               </p>
                             </div>
 
@@ -545,6 +549,13 @@ export default function AdminTrabalheConosco() {
                               <span className="text-[10px] uppercase font-bold text-slate-500">Tipo de Interesse profissional</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
                                 {selectedCandidate.structuredData.tipoInteresse || 'N/A'}
+                              </p>
+                            </div>
+
+                            <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900 md:col-span-2">
+                              <span className="text-[10px] uppercase font-bold text-slate-500">Resumo da Experiência Profissional</span>
+                              <p className="text-xs text-slate-200 leading-relaxed">
+                                {selectedCandidate.structuredData.experienciaProfissional || 'N/A'}
                               </p>
                             </div>
 
@@ -563,24 +574,35 @@ export default function AdminTrabalheConosco() {
                             </div>
 
                             <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900 md:col-span-2">
-                              <span className="text-[10px] uppercase font-bold text-slate-500">Experiência com Estoque / Caixa</span>
+                              <span className="text-[10px] uppercase font-bold text-slate-500">Experiência com Estoque / Caixa / PDV</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
-                                {selectedCandidate.structuredData.experienciaLoja || 'N/A'}
+                                {selectedCandidate.structuredData.experienciaLojaCaixaEstoquePdv || (selectedCandidate.structuredData as any).experienciaLoja || 'N/A'}
                               </p>
                             </div>
 
                             <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900 md:col-span-2">
                               <span className="text-[10px] uppercase font-bold text-slate-500">WhatsApp Comercial</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
-                                {selectedCandidate.structuredData.experienciaWhatsComercial || 'N/A'}
+                                {selectedCandidate.structuredData.experienciaWhatsappComercial || (selectedCandidate.structuredData as any).experienciaWhatsComercial || 'N/A'}
                               </p>
                             </div>
 
                             <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900 md:col-span-2">
-                              <span className="text-[10px] uppercase font-bold text-slate-500">Última Experiência e Motivo de Saída</span>
+                              <span className="text-[10px] uppercase font-bold text-slate-500">Última Experiência Detalhada</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
                                 <strong>Trajetória:</strong> {selectedCandidate.structuredData.ultimaExperiencia || 'N/A'}<br />
+                                <strong>Cargo:</strong> {selectedCandidate.structuredData.cargoUltimaExperiencia || 'N/A'}<br />
+                                <strong>Tempo de Permanência:</strong> {selectedCandidate.structuredData.tempoPermanencia || 'N/A'}<br />
                                 <strong>Motivo de Saída:</strong> {selectedCandidate.structuredData.motivoSaida || 'N/A'}
+                              </p>
+                            </div>
+
+                            <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900 md:col-span-2">
+                              <span className="text-[10px] uppercase font-bold text-slate-500">Soft Skills (Aprendizado, Organização e Equipe)</span>
+                              <p className="text-xs text-slate-200 leading-relaxed">
+                                <strong>Facilidade em Aprender:</strong> {selectedCandidate.structuredData.facilidadeAprender || 'N/A'}<br />
+                                <strong>Organização Pessoal:</strong> {selectedCandidate.structuredData.organizacao || 'N/A'}<br />
+                                <strong>Trabalho em Equipe:</strong> {selectedCandidate.structuredData.trabalhoEquipe || 'N/A'}
                               </p>
                             </div>
 
@@ -601,21 +623,21 @@ export default function AdminTrabalheConosco() {
                             <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900">
                               <span className="text-[10px] uppercase font-bold text-slate-500">Lidar com cliente indeciso</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
-                                {selectedCandidate.structuredData.comoLidariaClienteIndeciso || 'N/A'}
+                                {selectedCandidate.structuredData.clienteIndeciso || (selectedCandidate.structuredData as any).comoLidariaClienteIndeciso || 'N/A'}
                               </p>
                             </div>
 
                             <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900">
                               <span className="text-[10px] uppercase font-bold text-slate-500">Lidar com perguntas íntimas</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
-                                {selectedCandidate.structuredData.comoLidariaPerguntasIntimas || 'N/A'}
+                                {selectedCandidate.structuredData.perguntasIntimas || (selectedCandidate.structuredData as any).comoLidariaPerguntasIntimas || 'N/A'}
                               </p>
                             </div>
 
                             <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900 md:col-span-2">
                               <span className="text-[10px] uppercase font-bold text-slate-500">Uso de Instagram / Redes Sociais</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
-                                {selectedCandidate.structuredData.facilidadeInstagram || 'N/A'}
+                                {selectedCandidate.structuredData.facilidadeRedesSociais || (selectedCandidate.structuredData as any).facilidadeInstagram || 'N/A'}
                               </p>
                             </div>
 
@@ -627,9 +649,9 @@ export default function AdminTrabalheConosco() {
                             </div>
 
                             <div className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-900">
-                              <span className="text-[10px] uppercase font-bold text-slate-500">Ponto a Melhorar</span>
+                              <span className="text-[10px] uppercase font-bold text-slate-500">Ponto a Desenvolver</span>
                               <p className="text-xs text-slate-200 leading-relaxed">
-                                {selectedCandidate.structuredData.pontoMelhorar || 'N/A'}
+                                {selectedCandidate.structuredData.pontoDesenvolver || (selectedCandidate.structuredData as any).pontoMelhorar || 'N/A'}
                               </p>
                             </div>
 

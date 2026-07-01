@@ -670,7 +670,7 @@ export const recruitmentExtract = async (req: Request, res: Response) => {
     const allFields = [
       'nomeCompleto', 'idade', 'cidade', 'bairro', 'whatsapp', 'email',
       'disponibilidadeHorario', 'disponibilidadeSabados', 'disponibilidadeEventos', 'quandoComecar', 'tipoInteresse',
-      'experienciaAtendimento', 'experienciaVendas', 'experienciaLoja', 'experienciaWhatsComercial', 'ultimaExperiencia', 'motivoSaida',
+      'experienciaProfissional', 'experienciaAtendimento', 'experienciaVendas', 'experienciaLoja', 'experienciaWhatsComercial', 'ultimaExperiencia', 'motivoSaida',
       'confortoProdutosIntimos', 'entendimentoDiscricao', 'comoLidariaClienteIndeciso', 'comoLidariaPerguntasIntimas', 'facilidadeInstagram',
       'pontoForte', 'pontoMelhorar', 'expectativaSalarial', 'mensagemFinal'
     ];

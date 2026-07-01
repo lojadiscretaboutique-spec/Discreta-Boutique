@@ -75,22 +75,55 @@ export const candidateService = {
   /**
    * Saves a new candidate application in Firestore.
    */
-  async createCandidate(candidate: Omit<Candidate, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    const docRef = doc(collection(db, COLLECTION_NAME));
-    const newId = docRef.id;
+  async createCandidate(candidate: Omit<Candidate, 'id' | 'createdAt' | 'updatedAt'> & { interviewId?: string }): Promise<string> {
+    const targetId = candidate.interviewId || doc(collection(db, COLLECTION_NAME)).id;
+    const docRef = doc(db, COLLECTION_NAME, targetId);
+
+    let existingData: any = null;
+    try {
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        existingData = snap.data();
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    // Validate completeness of all 34 required fields
+    const requiredKeys = [
+      'nomeCompleto', 'idade', 'cidade', 'bairro', 'whatsapp', 'email',
+      'disponibilidadeHorarios', 'disponibilidadeSabados', 'disponibilidadeDatasEspeciais', 'disponibilidadePromocoes', 'disponibilidadeLiveShop', 'dataInicio', 'tipoInteresse',
+      'experienciaProfissional', 'experienciaAtendimento', 'experienciaVendas', 'experienciaLojaCaixaEstoquePdv', 'experienciaWhatsappComercial', 'ultimaExperiencia', 'cargoUltimaExperiencia', 'tempoPermanencia', 'motivoSaida',
+      'facilidadeAprender', 'organizacao', 'trabalhoEquipe', 'confortoProdutosIntimos', 'entendimentoDiscricao', 'clienteIndeciso', 'perguntasIntimas', 'facilidadeRedesSociais',
+      'pontoForte', 'pontoDesenvolver', 'expectativaSalarial', 'mensagemFinal'
+    ];
+
+    const isComplete = requiredKeys.every(key => {
+      const val = candidate.structuredData && (candidate.structuredData as any)[key];
+      return val && val.toString().trim() !== '';
+    });
+
+    let finalStatus = isComplete ? 'NOVO' : 'INCOMPLETA';
+
+    if (existingData && existingData.status) {
+      if (existingData.status !== 'INCOMPLETA' && existingData.status !== 'NOVO') {
+        finalStatus = existingData.status;
+      }
+    }
 
     const payload = {
       ...candidate,
-      id: newId,
-      createdAt: serverTimestamp(),
+      id: targetId,
+      status: finalStatus,
+      createdAt: existingData?.createdAt || serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
     try {
-      await setDoc(docRef, payload);
-      return newId;
+      await setDoc(docRef, payload, { merge: true });
+      return targetId;
     } catch (error) {
-      return handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${newId}`);
+      return handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${targetId}`);
     }
   },
 
