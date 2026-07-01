@@ -24,10 +24,14 @@ export interface InterviewState {
   currentStage: string;
   completedStages: string[];
   pendingFields: string[];
-  structuredData: Record<string, string>;
+  structuredData: Record<string, any>;
+  answeredFields?: Record<string, boolean>;
+  requiredQuestions?: { key: string; question: string }[];
+  isComplete?: boolean;
   createdAt: string;
   updatedAt: string;
   chatMessages?: any[];
+  currentQuestionIndex?: number;
 }
 
 const REQUIRED_KEYS_MAP: Record<string, string> = {
@@ -217,6 +221,29 @@ export const DEFAULT_TEMPLATE: InterviewTemplate = {
   ]
 };
 
+function isComplaintMsg(msg: string): boolean {
+  const clean = msg.toLowerCase().trim();
+  const patterns = [
+    'ja respondi', 'já respondi',
+    'ja falei', 'já falei',
+    'ja disse', 'já disse',
+    'ja informei', 'já informei',
+    'voce ja perguntou', 'você já perguntou',
+    'voce perguntou', 'você perguntou',
+    'ja perguntei', 'já perguntei',
+    'ja repeti', 'já repeti',
+    'eu ja falei', 'eu já falei',
+    'eu ja respondi', 'eu já respondi',
+    'eu ja disse', 'eu já disse',
+    'ja respondi isso', 'já respondi isso',
+    'ja te respondi', 'já te respondi',
+    'ja te falei', 'já te falei',
+    'ja comentei', 'já comentei',
+    'você já me perguntou', 'voce ja me perguntou'
+  ];
+  return patterns.some(pattern => clean.includes(pattern));
+}
+
 class InterviewEngineClass {
   private openai: OpenAI | null = null;
   private templates: Record<string, InterviewTemplate> = {
@@ -236,19 +263,24 @@ class InterviewEngineClass {
   }
 
   // Gets or initializes the InterviewState in Firestore
-  async getInterviewState(interviewId: string): Promise<InterviewState> {
+  async getInterviewState(interviewId: string, recruiterSettings?: any): Promise<InterviewState> {
     const docRef = doc(db, 'interviewStates', interviewId);
     try {
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         const data = snap.data();
+        const reqQuestions = getRequiredQuestionsList(recruiterSettings);
         return {
           interviewId,
           currentStage: data.currentStage || 'IDENTIFICACAO',
           completedStages: data.completedStages || [],
           pendingFields: data.pendingFields || [],
           structuredData: data.structuredData || {},
+          answeredFields: data.answeredFields || {},
+          requiredQuestions: data.requiredQuestions || reqQuestions.map(q => ({ key: q.key, question: q.question })),
+          isComplete: data.isComplete || false,
           chatMessages: data.chatMessages || [],
+          currentQuestionIndex: data.currentQuestionIndex !== undefined ? data.currentQuestionIndex : 0,
           createdAt: data.createdAt || new Date().toISOString(),
           updatedAt: data.updatedAt || new Date().toISOString()
         };
@@ -257,15 +289,20 @@ class InterviewEngineClass {
       console.warn('[INTERVIEW_ENGINE] Could not fetch state from Firestore, starting fresh.', error);
     }
 
+    const reqQuestions = getRequiredQuestionsList(recruiterSettings);
     // Default initialization
-    const initialFields = DEFAULT_TEMPLATE.stages[0].fields.map(f => f.key);
+    const initialFields = reqQuestions.map(f => f.key);
     return {
       interviewId,
       currentStage: 'IDENTIFICACAO',
       completedStages: [],
       pendingFields: initialFields,
       structuredData: {},
+      answeredFields: {},
+      requiredQuestions: reqQuestions.map(q => ({ key: q.key, question: q.question })),
+      isComplete: false,
       chatMessages: [],
+      currentQuestionIndex: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -275,12 +312,17 @@ class InterviewEngineClass {
   async saveInterviewState(interviewId: string, state: InterviewState, recruiterSettings?: any): Promise<void> {
     const docRef = doc(db, 'interviewStates', interviewId);
     try {
-      const isComp = canCompleteInterview(state.structuredData, recruiterSettings);
-      const missing = getMissingRequiredFields(state.structuredData, recruiterSettings);
+      const reqQuestions = getRequiredQuestionsList(recruiterSettings);
+      const isComp = state.currentQuestionIndex !== undefined 
+        ? state.currentQuestionIndex >= reqQuestions.length 
+        : false;
+      const missing = reqQuestions.slice(state.currentQuestionIndex || 0).map(q => q.key);
       await setDoc(docRef, {
         ...state,
         camposPendentes: missing,
         isComplete: isComp,
+        answeredFields: state.answeredFields || {},
+        requiredQuestions: state.requiredQuestions || reqQuestions.map(q => ({ key: q.key, question: q.question })),
         updatedAt: new Date().toISOString()
       }, { merge: true });
     } catch (error) {
@@ -295,7 +337,10 @@ class InterviewEngineClass {
       const snap = await getDoc(docRef);
       const existingData = snap.exists() ? snap.data() : null;
 
-      const isComplete = canCompleteInterview(state.structuredData, recruiterSettings);
+      const reqQuestions = getRequiredQuestionsList(recruiterSettings);
+      const isComplete = state.currentQuestionIndex !== undefined 
+        ? state.currentQuestionIndex >= reqQuestions.length 
+        : false;
 
       // Rule 8: Only create or save inside recruitmentApplications if it's complete,
       // OR if a partial/existing document already exists (to update its status/messages/etc.)
@@ -350,13 +395,39 @@ class InterviewEngineClass {
     userMessage: string,
     recruiterSettings: any
   ): Promise<{ responseText: string; isComplete: boolean; missingFields: string[]; state: InterviewState }> {
-    const state = await this.getInterviewState(interviewId);
+    const state = await this.getInterviewState(interviewId, recruiterSettings);
     const template = this.getTemplate();
     const openai = this.getOpenAI();
 
     // Store previous pending fields to calculate currentField log
     const previousPendingFields = [...(state.pendingFields || [])];
-    const currentField = previousPendingFields[0] || 'Nenhum (Iniciando)';
+    const requiredQuestions = getRequiredQuestionsList(recruiterSettings);
+
+    const idxBefore = state.currentQuestionIndex !== undefined ? state.currentQuestionIndex : 0;
+    const campoAtual = idxBefore < requiredQuestions.length ? requiredQuestions[idxBefore].key : '';
+    const currentField = campoAtual || 'Nenhum (Iniciando)';
+
+    // Check if answeredFields map is initialized
+    if (!state.answeredFields) {
+      state.answeredFields = {};
+    }
+    for (const q of requiredQuestions) {
+      if (isValidRequiredValue(q.key, state.structuredData[q.key])) {
+        if (q.key === 'nomeCompleto') {
+          const words = String(state.structuredData[q.key]).trim().split(/\s+/);
+          if (words.length >= 2) {
+            state.answeredFields[q.key] = true;
+          }
+        } else {
+          state.answeredFields[q.key] = true;
+        }
+      }
+    }
+
+    // Check if candidate complained
+    const isComplaint = campoAtual ? isComplaintMsg(userMessage) : false;
+
+    let validationInstruction = '';
 
     // 1. PRE-POPULATE EXPERIENCES PROGRAMMATICALLY IF NO EXPERIENCE SPECIFIED
     const userMsgLower = userMessage.toLowerCase();
@@ -370,18 +441,39 @@ class InterviewEngineClass {
       state.structuredData['experienciaProfissional'] = 'não possui experiência formal';
       state.structuredData['ultimaExperiencia'] = 'não se aplica';
       state.structuredData['motivoSaida'] = 'não se aplica';
+      state.answeredFields['experienciaProfissional'] = true;
+      state.answeredFields['ultimaExperiencia'] = true;
+      state.answeredFields['motivoSaida'] = true;
     }
 
-    // Get ordered required questions from settings
-    const requiredQuestions = getRequiredQuestionsList(recruiterSettings);
+    // 2. EXTRACTION OR COMPLAINT PROCESSING
+    if (isComplaint && campoAtual) {
+      // Rule 7: Mark current field as answered and advance index, apologizing briefly
+      console.log(`[INTERVIEW_ENGINE_QUEUE] Candidate complained on field ${campoAtual}. Forcing advancement.`);
+      state.answeredFields[campoAtual] = true;
+      if (!state.structuredData[campoAtual]) {
+        state.structuredData[campoAtual] = 'Confirmado anteriormente pelo candidato';
+      }
+      // Advance current index
+      let idxAfter = idxBefore + 1;
+      while (idxAfter < requiredQuestions.length) {
+        const k = requiredQuestions[idxAfter].key;
+        if (state.answeredFields[k] === true || isValidRequiredValue(k, state.structuredData[k])) {
+          state.answeredFields[k] = true;
+          idxAfter++;
+        } else {
+          break;
+        }
+      }
+      state.currentQuestionIndex = idxAfter;
+    } else {
+      // Update structured fields incrementally via OpenAI (ALL FIELDS AT ONCE - Rule 7)
+      try {
+        const fieldDescriptions = requiredQuestions
+          .map(f => `- ${f.key}: ${f.label}`)
+          .join('\n');
 
-    // 2. UPDATE STRUCTURED FIELDS INCREMENTALLY (ALL FIELDS AT ONCE - Rule 7)
-    try {
-      const fieldDescriptions = requiredQuestions
-        .map(f => `- ${f.key}: ${f.label}`)
-        .join('\n');
-
-      const extractionPrompt = `Você é o extrator de dados de recrutamento da Discreta Boutique.
+        const extractionPrompt = `Você é o extrator de dados de recrutamento da Discreta Boutique.
 Sua missão é analisar a última mensagem enviada pelo candidato e atualizar de forma precisa o JSON de dados coletados.
 
 CAMPOS DA ENTREVISTA:
@@ -412,70 +504,186 @@ Retorne obrigatoriamente um objeto JSON com o formato exato abaixo:
   "structuredData": { ... }
 }`;
 
-      const extractionResponse = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'Você é um analisador e extrator de dados de recrutamento extremamente conciso. Retorne estritamente um objeto JSON.' },
-          { role: 'user', content: extractionPrompt }
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.1
-      });
+        const extractionResponse = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'Você é um analisador e extrator de dados de recrutamento extremamente conciso. Retorne estritamente um objeto JSON.' },
+            { role: 'user', content: extractionPrompt }
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.1
+        });
 
-      const extractionResult = JSON.parse(extractionResponse.choices[0].message.content || '{}');
-      if (extractionResult.structuredData) {
-        state.structuredData = {
-          ...state.structuredData,
-          ...extractionResult.structuredData
-        };
+        const extractionResult = JSON.parse(extractionResponse.choices[0].message.content || '{}');
+        if (extractionResult.structuredData) {
+          state.structuredData = {
+            ...state.structuredData,
+            ...extractionResult.structuredData
+          };
+        }
+      } catch (error) {
+        console.error('[INTERVIEW_ENGINE] Incremental extraction failed:', error);
       }
-    } catch (error) {
-      console.error('[INTERVIEW_ENGINE] Incremental extraction failed:', error);
-    }
 
-    // 3. VALIDATE CONTACT DATA (WhatsApp & Email format check)
-    let validationInstruction = '';
-    if (state.structuredData['whatsapp']) {
-      const ws = state.structuredData['whatsapp'].toString().trim();
-      if (ws !== '' && !isValidWhatsApp(ws)) {
-        delete state.structuredData['whatsapp'];
-        validationInstruction += `\n- Atenção: O número de WhatsApp fornecido (${ws}) parece inválido. Por favor, peça para o candidato digitar novamente o WhatsApp com DDD (exemplo: 11999998888).`;
+      // Check current field validation & simple fallback validations
+      let isFieldValid = false;
+      if (campoAtual) {
+        const extractedValue = state.structuredData[campoAtual];
+        if (isValidRequiredValue(campoAtual, extractedValue)) {
+          if (campoAtual === 'nomeCompleto') {
+            const words = String(extractedValue).trim().split(/\s+/);
+            isFieldValid = (words.length >= 2);
+          } else if (campoAtual === 'whatsapp') {
+            const digits = String(extractedValue).replace(/\D/g, '');
+            isFieldValid = (digits.length === 10 || digits.length === 11);
+          } else if (campoAtual === 'email') {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            isFieldValid = emailRegex.test(String(extractedValue).trim());
+          } else {
+            isFieldValid = true;
+          }
+        }
+
+        // 11. Validações simples fallback (Rule 11)
+        if (!isFieldValid) {
+          const rawLower = userMessage.trim().toLowerCase();
+          
+          // WhatsApp: must contain 10 or 11 digits
+          if (campoAtual === 'whatsapp') {
+            const digits = userMessage.replace(/\D/g, '');
+            if (digits.length === 10 || digits.length === 11) {
+              state.structuredData['whatsapp'] = digits;
+              isFieldValid = true;
+            }
+          }
+          // Email: must contain @ and domain
+          else if (campoAtual === 'email') {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (emailRegex.test(userMessage.trim())) {
+              state.structuredData['email'] = userMessage.trim();
+              isFieldValid = true;
+            }
+          }
+          // Idade: must contain digits
+          else if (campoAtual === 'idade') {
+            const digits = userMessage.replace(/\D/g, '');
+            if (digits.length > 0 && Number(digits) > 0 && Number(digits) < 120) {
+              state.structuredData['idade'] = digits;
+              isFieldValid = true;
+            }
+          }
+          // Nome completo: at least two words
+          else if (campoAtual === 'nomeCompleto') {
+            const words = userMessage.trim().split(/\s+/);
+            if (words.length >= 2) {
+              state.structuredData['nomeCompleto'] = userMessage.trim();
+              isFieldValid = true;
+            }
+          }
+          // Boolean/disponibilidade fields: accept "sim, não, tenho, posso, disponível, sou disponível, consigo, não posso"
+          else if (
+            campoAtual.startsWith('disponibilidade') || 
+            campoAtual.startsWith('experiencia') || 
+            ['confortoProdutosIntimos', 'facilidadeAprender', 'trabalhoEquipe', 'facilidadeRedesSociais'].includes(campoAtual)
+          ) {
+            const booleanKeywords = [
+              'sim', 'não', 'nao', 'tenho', 'posso', 'disponível', 'disponivel', 
+              'sou disponível', 'sou disponivel', 'consigo', 'não posso', 'nao posso',
+              'com certeza', 'claro', 'nunca', 'jamais', 'sem problemas'
+            ];
+            const isMatch = booleanKeywords.some(kw => {
+              const regex = new RegExp(`\\b${kw}\\b`, 'i');
+              return regex.test(rawLower);
+            });
+            if (isMatch) {
+              state.structuredData[campoAtual] = userMessage.trim();
+              isFieldValid = true;
+            }
+          }
+          // Generic fields: if user typed any text and it is not empty, we can accept it as a valid response
+          else if (userMessage.trim().length >= 2) {
+            state.structuredData[campoAtual] = userMessage.trim();
+            isFieldValid = true;
+          }
+        }
       }
-    }
 
-    if (state.structuredData['email']) {
-      const em = state.structuredData['email'].toString().trim();
-      if (em !== '' && !isValidEmail(em)) {
-        delete state.structuredData['email'];
-        validationInstruction += `\n- Atenção: O e-mail fornecido (${em}) possui formato inválido. Por favor, peça para o candidato digitar um e-mail válido contendo @ e um domínio válido.`;
+      if (campoAtual && isFieldValid) {
+        state.answeredFields[campoAtual] = true;
       }
-    }
 
-    // 4. CONTROL STAGE PROGRESSION AND PENDING FIELDS PROGRAMMATICALLY
-    let missing = getMissingRequiredFields(state.structuredData, recruiterSettings);
-    
-    // Fallback: Se a engine falhar no cálculo simples de perguntas pendentes, usa a lista ordenada de chaves do requiredQuestions que não estão preenchidas
-    if (missing.length === 0 && requiredQuestions.length > 0) {
-      const allFilled = requiredQuestions.every(q => {
+      // Mark all other fields as answered if their value in structuredData is valid (Rule 8)
+      for (const q of requiredQuestions) {
         const val = state.structuredData[q.key];
-        return val !== undefined && val !== null && val.toString().trim() !== '';
-      });
-      if (!allFilled) {
-        missing = requiredQuestions
-          .map(q => q.key)
-          .filter(key => {
-            const val = state.structuredData[key];
-            return val === undefined || val === null || val.toString().trim() === '';
-          });
+        if (isValidRequiredValue(q.key, val)) {
+          if (q.key === 'nomeCompleto') {
+            const words = String(val).trim().split(/\s+/);
+            if (words.length >= 2) {
+              state.answeredFields[q.key] = true;
+            }
+          } else {
+            state.answeredFields[q.key] = true;
+          }
+        }
       }
+
+      // 3. VALIDATE CONTACT DATA (WhatsApp & Email format check)
+      if (state.structuredData['whatsapp']) {
+        const ws = state.structuredData['whatsapp'].toString().trim();
+        if (ws !== '' && !isValidWhatsApp(ws)) {
+          delete state.structuredData['whatsapp'];
+          if (state.answeredFields) {
+            delete state.answeredFields['whatsapp'];
+          }
+          validationInstruction += `\n- Atenção: O número de WhatsApp fornecido (${ws}) parece inválido. Por favor, peça para o candidato digitar novamente o WhatsApp com DDD (exemplo: 11999998888).`;
+        }
+      }
+
+      if (state.structuredData['email']) {
+        const em = state.structuredData['email'].toString().trim();
+        if (em !== '' && !isValidEmail(em)) {
+          delete state.structuredData['email'];
+          if (state.answeredFields) {
+            delete state.answeredFields['email'];
+          }
+          validationInstruction += `\n- Atenção: O e-mail fornecido (${em}) possui formato inválido. Por favor, peça para o candidato digitar um e-mail válido contendo @ e um domínio válido.`;
+        }
+      }
+
+      // Advance index
+      let idxAfter = idxBefore;
+      if (campoAtual && isFieldValid) {
+        idxAfter = idxBefore + 1;
+      }
+      while (idxAfter < requiredQuestions.length) {
+        const k = requiredQuestions[idxAfter].key;
+        if (state.answeredFields[k] === true) {
+          idxAfter++;
+        } else {
+          break;
+        }
+      }
+      state.currentQuestionIndex = idxAfter;
     }
 
-    if (missing.length > 0) {
+    const idx = state.currentQuestionIndex ?? 0;
+    const isComplete = idx >= requiredQuestions.length;
+    state.isComplete = isComplete;
+
+    // Remaining missing fields from the current index onwards that do not have a valid value yet
+    const missing = requiredQuestions
+      .slice(idx)
+      .map(q => q.key)
+      .filter(key => !state.answeredFields?.[key]);
+
+    if (idx < requiredQuestions.length) {
       state.pendingFields = missing;
+      const nextFieldKey = requiredQuestions[idx].key;
+      
       // Find which stage in DEFAULT_TEMPLATE contains the first missing field
       let foundStage = 'IDENTIFICACAO';
       for (const stage of template.stages) {
-        if (stage.fields.some(f => f.key === missing[0])) {
+        if (stage.fields.some(f => f.key === nextFieldKey)) {
           foundStage = stage.id;
           break;
         }
@@ -513,8 +721,8 @@ Retorne obrigatoriamente um objeto JSON com o formato exato abaixo:
     const availableJobsText = recruiterSettings.availableJobsText || '';
     const hasJobs = availableJobsText.trim() !== '';
 
-    const nextFieldKey = state.pendingFields[0];
-    const nextMissingQuestion = requiredQuestions.find(q => q.key === nextFieldKey);
+    const nextFieldKey = idx < requiredQuestions.length ? requiredQuestions[idx].key : '';
+    const nextMissingQuestion = idx < requiredQuestions.length ? requiredQuestions[idx] : null;
     
     const proximoCampoObrigatorio = nextFieldKey || 'Nenhum (Entrevista completa)';
     const perguntaObrigatoriaExata = nextMissingQuestion ? nextMissingQuestion.question : '';
@@ -573,9 +781,10 @@ DIRETRIZ CRÍTICA DE PERGUNTAS SOBRE VAGAS OU SALÁRIOS (REQUISITO 8):
 - Logo em seguida, na mesma mensagem, faça uma transição natural e amigável para retomar o fluxo da entrevista e faça a pergunta correspondente ao próximo campo pendente de forma humana e acolhedora: "${perguntaObrigatoriaExata}".
 
 INSTRUÇÃO DE CONDUÇÃO CRÍTICA (REQUISITOS OBRIGATÓRIOS DO ROTEIRO - REQUISITO 9):
-- O roteiro de perguntas obrigatórias do campo "requiredQuestionsText" manda 100% no fluxo da entrevista. Você não deve inventar perguntas ou tentar decidir sozinha qual assunto abordar de forma livre. Você é estritamente obrigada a seguir o roteiro estático estabelecido na ordem.
-- Você deve fazer uma pergunta simpática para obter EXATAMENTE a informação do proximoCampoObrigatorio: "${proximoCampoObrigatorio}". Use como base a pergunta definida como: "${perguntaObrigatoriaExata}". Você pode adaptar levemente o tom para que soe natural, mas não mude o objetivo da pergunta em hipótese alguma!
-- NÃO pergunte sobre nenhum outro campo que já foi preenchido ou que esteja à frente no roteiro. Foque estritamente em obter o campo atual.
+- O roteiro de perguntas obrigatórias do campo "requiredQuestionsText" manda 100% no fluxo da entrevista. Você é estritamente PROIBIDA de decidir qual pergunta fazer ou de inventar novos assuntos/perguntas.
+- O backend determina 100% a pergunta a ser feita. Você DEVE fazer uma pergunta simpática para obter EXATAMENTE a informação do campo: "${proximoCampoObrigatorio}".
+- Para isso, use estritamente como base a pergunta definida pelo backend: "${perguntaObrigatoriaExata}". Sua única função é humanizar e redigir essa pergunta de forma natural, simpática e profissional.
+- NÃO pergunte sobre nenhum outro campo, não pule para perguntas futuras e não repita perguntas já respondidas. Foque estritamente em humanizar a pergunta exata indicada acima.
 ${instrucaoFormulaConforto}
 
 REGRAS DE CONDUTA PROFISSIONAL DA AURORA (REQUISITOS OBRIGATÓRIOS DO SEGMENTO ÍNTIMO):
@@ -616,7 +825,7 @@ ${recruiterSettings.finalMessage}`;
     }
 
     // 6. BLOCK PREMATURE FINALIZATION (Rule 5)
-    const isComplete = missing.length === 0;
+    // isComplete is already declared above as idx >= requiredQuestions.length
 
     if (!isComplete) {
       // Log missing required fields (Rule 10)

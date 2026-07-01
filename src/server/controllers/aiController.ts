@@ -630,8 +630,10 @@ export const recruitmentChat = async (req: Request, res: Response) => {
 
     res.json({ 
       responseText: result.responseText,
-      isComplete: result.isComplete,
-      missingFields: result.missingFields
+      structuredData: result.state.structuredData,
+      nextField: result.state.pendingFields[0] || '',
+      missingFields: result.missingFields,
+      isComplete: result.isComplete
     });
   } catch (error: any) {
     console.error('Erro no recruitmentChat:', error);
