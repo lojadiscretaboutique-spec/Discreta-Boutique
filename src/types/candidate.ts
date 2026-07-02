@@ -86,4 +86,6 @@ export interface RecruitmentSettings {
   lgpdText: string;
   availableJobsText?: string;
   requiredQuestionsText?: string;
+  shareImageUrl?: string;
+  shareDescription?: string;
 }

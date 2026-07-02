@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { 
   Save, Sliders, ArrowLeft, Brain, User, MessageSquare, AlertTriangle, 
-  Check, Loader2, RefreshCw, Eye, EyeOff, ShieldCheck, Briefcase 
+  Check, Loader2, RefreshCw, Eye, EyeOff, ShieldCheck, Briefcase,
+  Upload, Trash2, Image as ImageIcon
 } from 'lucide-react';
 import { candidateService, DEFAULT_RECRUITMENT_SETTINGS } from '../../services/candidateService';
 import { RecruitmentSettings } from '../../types/candidate';
@@ -15,9 +16,34 @@ export default function AdminTrabalheConoscoSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   // Main recruitment settings state
   const [settings, setSettings] = useState<RecruitmentSettings>(DEFAULT_RECRUITMENT_SETTINGS);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingImage(true);
+      const { ref: fileRef, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const { storage } = await import('../../lib/storage');
+      
+      const storagePath = `branding/recruitment_share_${Date.now()}_${file.name}`;
+      const r = fileRef(storage, storagePath);
+      await uploadBytes(r, file);
+      const downloadUrl = await getDownloadURL(r);
+      
+      handleChange('shareImageUrl', downloadUrl);
+      toast('Imagem de compartilhamento enviada com sucesso!', 'success');
+    } catch (err) {
+      console.error('[UPLOAD_SHARE_IMAGE_ERROR]', err);
+      toast('Erro ao fazer upload da imagem de compartilhamento.', 'error');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   // Load settings on mount
   useEffect(() => {
@@ -196,6 +222,82 @@ export default function AdminTrabalheConoscoSettings() {
                 placeholder="Ex: Muito obrigada..."
                 className="w-full h-28 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-red-600 resize-none"
               />
+            </div>
+          </div>
+
+          {/* Social Share Preview Configuration */}
+          <div className="bg-slate-900/50 border border-slate-900/60 rounded-xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2.5 flex items-center gap-2">
+              <ImageIcon className="text-red-500" size={16} />
+              Prévia de Compartilhamento (SEO)
+            </h3>
+            <p className="text-[10px] text-slate-400 leading-relaxed">
+              Configure a imagem e a descrição que aparecem quando você compartilha o link <code className="text-red-400 font-mono">discretaboutique.com.br/trabalhe-conosco</code> no WhatsApp, Facebook, Instagram ou outras redes.
+            </p>
+
+            {/* Share Description */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">
+                Descrição de Compartilhamento / Vaga
+              </label>
+              <textarea
+                value={settings.shareDescription || ''}
+                onChange={(e) => handleChange('shareDescription', e.target.value)}
+                placeholder="Ex: Estamos contratando Consultora de Vendas! Faça sua entrevista virtual com a nossa recrutadora e envie seu currículo de forma rápida e discreta."
+                className="w-full h-20 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-red-600 resize-none font-sans leading-relaxed"
+              />
+            </div>
+
+            {/* Share Image Upload */}
+            <div className="space-y-2">
+              <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">
+                Imagem de Compartilhamento (1200x630 recomendado)
+              </label>
+              
+              {settings.shareImageUrl ? (
+                <div className="relative group border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
+                  <img src={settings.shareImageUrl} alt="Preview" className="w-full h-40 object-cover" />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('Deseja realmente remover esta imagem de compartilhamento?')) {
+                          handleChange('shareImageUrl', '');
+                        }
+                      }}
+                      className="p-2 bg-red-600 text-white rounded-lg text-xs hover:bg-red-700 font-bold flex items-center gap-1 transition-all"
+                    >
+                      <Trash2 size={12} />
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="border border-dashed border-slate-800 rounded-lg p-6 flex flex-col items-center justify-center gap-2 bg-slate-950/40">
+                  <ImageIcon size={24} className="text-slate-600" />
+                  <span className="text-[10px] text-slate-400">Nenhuma imagem configurada</span>
+                  <label className="cursor-pointer px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs font-semibold text-slate-200 hover:bg-slate-800 transition-colors flex items-center gap-1.5">
+                    {uploadingImage ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin text-red-500" />
+                        <span>Enviando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={12} className="text-slate-400" />
+                        <span>Selecionar Imagem</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={uploadingImage}
+                      onChange={handleImageUpload}
+                    />
+                  </label>
+                </div>
+              )}
             </div>
           </div>
 

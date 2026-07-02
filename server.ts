@@ -3655,7 +3655,39 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
       }
 
       // 5. Institutional Pages Overrides
-      else if (req.path === '/quem-somos') {
+      else if (req.path === '/trabalhe-conosco') {
+        title = "Trabalhe Conosco | Discreta Boutique";
+        description = "Faça parte da nossa equipe na Discreta Boutique! Envie seus dados de forma totalmente confidencial e discreta.";
+        try {
+          const recruitmentUrl = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/recruitmentSettings/main`;
+          const recRes = await Promise.resolve().then(() => fetch(recruitmentUrl)).catch(() => null);
+          if (recRes && recRes.ok) {
+            const recData = await recRes.json();
+            const fields = recData.fields || {};
+            
+            // 1. Get description
+            const customDesc = fields.shareDescription?.stringValue;
+            const jobsDesc = fields.availableJobsText?.stringValue;
+            if (customDesc && customDesc.trim() !== "") {
+              description = customDesc;
+            } else if (jobsDesc && jobsDesc.trim() !== "") {
+              description = jobsDesc;
+            }
+            
+            if (description && description.length > 300) {
+              description = description.slice(0, 297) + "...";
+            }
+            
+            // 2. Get image
+            const customImage = fields.shareImageUrl?.stringValue;
+            if (customImage && customImage.trim() !== "") {
+              image = customImage;
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching Trabalhe Conosco metadata:", err);
+        }
+      } else if (req.path === '/quem-somos') {
         title = "Quem Somos | Discreta Boutique - Moda Íntima e Bem-estar em Icó";
         description = "Saiba mais sobre a trajetória da Discreta Boutique em Icó-CE, nosso compromisso com a privacidade e nossa curadoria cuidadosa de lingerie e produtos para o prazer.";
       } else if (req.path === '/politica-de-privacidade') {

@@ -140,7 +140,9 @@ Retorne um JSON válido contendo exatamente a estrutura abaixo:
   isActive: true,
   lgpdText: "Em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/18), informamos que os dados cadastrados nesta conversa (como nome, contato, informações profissionais e percepções de mercado) serão tratados exclusivamente para análise de aptidão ao nosso time e contatos de recrutamento. Seus dados serão mantidos em sigilo absoluto em nossa infraestrutura de segurança e nunca serão compartilhados com terceiros. Você pode solicitar a remoção permanente de sua ficha a qualquer momento pelo nosso canal oficial de atendimento.",
   availableJobsText: "",
-  requiredQuestionsText: DEFAULT_REQUIRED_QUESTIONS_TEXT
+  requiredQuestionsText: DEFAULT_REQUIRED_QUESTIONS_TEXT,
+  shareImageUrl: "",
+  shareDescription: ""
 };
 
 export const candidateService = {
