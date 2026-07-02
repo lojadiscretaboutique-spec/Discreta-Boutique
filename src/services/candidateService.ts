@@ -331,7 +331,9 @@ export const candidateService = {
           isActive: data.isActive !== undefined ? data.isActive : DEFAULT_RECRUITMENT_SETTINGS.isActive,
           lgpdText: data.lgpdText || DEFAULT_RECRUITMENT_SETTINGS.lgpdText,
           availableJobsText: data.availableJobsText || DEFAULT_RECRUITMENT_SETTINGS.availableJobsText,
-          requiredQuestionsText: data.requiredQuestionsText || DEFAULT_RECRUITMENT_SETTINGS.requiredQuestionsText
+          requiredQuestionsText: data.requiredQuestionsText || DEFAULT_RECRUITMENT_SETTINGS.requiredQuestionsText,
+          shareImageUrl: data.shareImageUrl || DEFAULT_RECRUITMENT_SETTINGS.shareImageUrl || "",
+          shareDescription: data.shareDescription || DEFAULT_RECRUITMENT_SETTINGS.shareDescription || ""
         };
       }
       return DEFAULT_RECRUITMENT_SETTINGS;

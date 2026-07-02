@@ -478,7 +478,7 @@ export default function HomePage() {
     if (banners.length <= 1) return;
     const timer = setInterval(() => {
       setCurrentBanner(prev => (prev + 1) % banners.length);
-    }, 5000);
+    }, 8500);
     return () => clearInterval(timer);
   }, [banners.length]);
 
@@ -619,18 +619,18 @@ export default function HomePage() {
       {/* 1. HERO BANNERS */}
       {banners.length > 0 && (
         <section className="relative z-10 w-full bg-transparent overflow-hidden">
-          <div className="relative w-full">
-            <AnimatePresence mode="wait">
+          <div className="relative w-full aspect-[16/9]">
+            <AnimatePresence initial={false}>
               <motion.div
                 key={banners[currentBanner].id}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.5, ease: "easeInOut" }}
-                className="w-full"
+                transition={{ duration: 1.5, ease: "easeInOut" }}
+                className="absolute inset-0 w-full h-full"
               >
                 {banners[currentBanner].linkUrl ? (
-                  <Link to={banners[currentBanner].linkUrl} className="block w-full cursor-pointer">
+                  <Link to={banners[currentBanner].linkUrl} className="block w-full h-full cursor-pointer">
                     <HeroBanner banner={banners[currentBanner]} isEager={currentBanner === 0} onLoad={handleBannerImageLoaded} />
                   </Link>
                 ) : (
@@ -722,6 +722,23 @@ export default function HomePage() {
                   ))
                 )}
               </div>
+
+              {!loading && categories.length > 0 && (
+                <>
+                  <button 
+                    onClick={() => scrollCategories('left')}
+                    className="absolute left-2 top-[50%] -translate-y-1/2 w-10 h-10 bg-black/60 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-20 md:left-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0 shadow-[0_0_15px_rgba(0,0,0,0.7)] cursor-pointer"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  <button 
+                    onClick={() => scrollCategories('right')}
+                    className="absolute right-2 top-[50%] -translate-y-1/2 w-10 h-10 bg-black/60 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all z-20 md:right-[-20px] md:group-hover/carousel:opacity-100 md:opacity-0 shadow-[0_0_15px_rgba(0,0,0,0.7)] cursor-pointer"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </section>

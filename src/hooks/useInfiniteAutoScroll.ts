@@ -30,7 +30,7 @@ export function useInfiniteAutoScroll(
   }
 
   useAutoAdvanceCarousel(containerRef, {
-    enabled: options.enabled,
+    enabled: false, // Disabled to prioritize manual scrolling per user request
     intervalMs,
     pauseOnInteraction: true,
     resumeDelay: options.resumeDelay ?? 6000,

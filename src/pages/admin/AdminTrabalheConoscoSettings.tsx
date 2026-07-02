@@ -9,6 +9,7 @@ import {
 import { candidateService, DEFAULT_RECRUITMENT_SETTINGS } from '../../services/candidateService';
 import { RecruitmentSettings } from '../../types/candidate';
 import { useFeedback } from '../../contexts/FeedbackContext';
+import { optimizeImage } from '../../utils/imageOptimizer';
 
 export default function AdminTrabalheConoscoSettings() {
   const { toast } = useFeedback();
@@ -27,16 +28,21 @@ export default function AdminTrabalheConoscoSettings() {
 
     try {
       setUploadingImage(true);
+      
+      // Optimize image to max 1200x630 (standard SEO aspect ratio), 80% quality, WebP format
+      const optimized = await optimizeImage(file, 1200, 630, 0.8, true);
+      const optimizedFile = optimized.file;
+
       const { ref: fileRef, uploadBytes, getDownloadURL } = await import('firebase/storage');
       const { storage } = await import('../../lib/storage');
       
-      const storagePath = `branding/recruitment_share_${Date.now()}_${file.name}`;
+      const storagePath = `branding/recruitment_share_${Date.now()}.webp`;
       const r = fileRef(storage, storagePath);
-      await uploadBytes(r, file);
+      await uploadBytes(r, optimizedFile);
       const downloadUrl = await getDownloadURL(r);
       
       handleChange('shareImageUrl', downloadUrl);
-      toast('Imagem de compartilhamento enviada com sucesso!', 'success');
+      toast('Imagem de compartilhamento otimizada e enviada com sucesso!', 'success');
     } catch (err) {
       console.error('[UPLOAD_SHARE_IMAGE_ERROR]', err);
       toast('Erro ao fazer upload da imagem de compartilhamento.', 'error');
