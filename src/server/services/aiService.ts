@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, orderBy, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 const ProductContentSchema = z.object({
@@ -731,45 +731,117 @@ class AIService {
     }
   }
 
-  async rankOffers(products: any[]): Promise<string[]> {
-    // Limitar para os primeiros 40 produtos para evitar payloads gigantes e garantir qualidade no ranking
-    const topProducts = products.slice(0, 40);
-    
-    const compactProducts = topProducts.map(p => ({
-      id: p.id,
-      n: (p.name || "").substring(0, 80), // Limitar nome para economizar tokens
-      p: p.price,
-      pp: p.promoPrice,
-      d: p.price > 0 ? (((p.price - (p.promoPrice || p.price)) / p.price * 100).toFixed(0) + '%') : '0%',
-      c: p.cliques || 0,
-      v: p.conversoes || 0,
-      s: p.score || 0
-    }));
+  getLocalFallback(products: any[]): string[] {
+    const fallbackProducts = products
+      .filter(p => p && p.active !== false && (p.stock === undefined || p.stock > 0) && (p.promoPrice || p.promotionalPrice || p.onSale))
+      .sort((a, b) => {
+        const priceA = a.price || 0;
+        const priceB = b.price || 0;
+        const promoA = a.promoPrice || a.promotionalPrice || priceA;
+        const promoB = b.promoPrice || b.promotionalPrice || priceB;
+        
+        const descA = priceA > 0 ? ((priceA - promoA) / priceA) : 0;
+        const descB = priceB > 0 ? ((priceB - promoB) / priceB) : 0;
+        if (descB !== descA) return descB - descA;
+        return (b.featured ? 1 : 0) - (a.featured ? 1 : 0);
+      })
+      .slice(0, 8);
 
-    console.log(`[AI] Ranquando ${compactProducts.length} ofertas para vitrine premium`);
-    const startTime = Date.now();
+    if (fallbackProducts.length === 0) {
+      return products.slice(0, 8).map(p => p.id || p.uid);
+    }
+    return fallbackProducts.map(p => p.id || p.uid);
+  }
 
-    const prompt = `
-      Você é o Diretor de Merchandising da Discreta Boutique. 
-      Sua missão é RANQUEAR as melhores ofertas para uma vitrine premium de alta conversão.
-      
-      ITENS DISPONÍVEIS:
-      ${JSON.stringify(compactProducts)}
-      
-      REGRAS DE RANQUEAMENTO:
-      1. Priorize produtos com MAIOR PERCENTUAL DE DESCONTO.
-      2. Considere o apelo visual e luxo (pelo nome do produto).
-      3. Use Stats: Produtos com mais relevância (s) e vendas (v) devem subir no ranking.
-      4. Itens que parecem "Trend" ou "Must-have" devem ser destacados.
-      5. Retorne os IDs na ordem decrescente de prioridade visual.
-
-      IMPORTANTE: Retorne APENAS um objeto JSON no formato exatamente igual a:
-      {
-        "rankedIds": ["id1", "id2", "id3", ...]
-      }
-    `;
-
+  async rankOffers(products: any[], force = false): Promise<string[]> {
+    const cacheRef = doc(db, 'aiRankingCache', 'homeOffers');
     try {
+      const cacheSnap = await getDoc(cacheRef);
+      const nowMs = Date.now();
+
+      if (cacheSnap.exists()) {
+        const cacheData = cacheSnap.data();
+        const expiresAt = cacheData.expiresAt ? new Date(cacheData.expiresAt).getTime() : 0;
+        const lockedAt = cacheData.lockedAt ? new Date(cacheData.lockedAt).getTime() : 0;
+
+        // Rule 4: If expiresAt hasn't passed, use cache and do NOT call OpenAI
+        if (expiresAt > nowMs && Array.isArray(cacheData.items) && cacheData.items.length > 0) {
+          console.log(`[AI] Usando cache recente para ranking de ofertas (válido até: ${cacheData.expiresAt})`);
+          return cacheData.items;
+        }
+
+        // Rule 5: If locked is true and lockedAt is less than 5 minutes ago, return previous cache or fallback
+        if (cacheData.locked === true && (nowMs - lockedAt) < 5 * 60 * 1000) {
+          console.log(`[AI] Geração de ranking já em andamento (lock ativo). Retornando cache anterior.`);
+          if (Array.isArray(cacheData.items) && cacheData.items.length > 0) {
+            return cacheData.items;
+          }
+          return this.getLocalFallback(products);
+        }
+      }
+
+      // Rule 3: OpenAI can only run if force is true. If force is false (automatic call from public home page), we MUST NOT call OpenAI.
+      if (!force) {
+        if (cacheSnap.exists()) {
+          const cacheData = cacheSnap.data();
+          if (Array.isArray(cacheData.items) && cacheData.items.length > 0) {
+            console.log(`[AI] Cache expirado, mas chamada automática na Home pública não pode chamar OpenAI. Usando cache antigo.`);
+            return cacheData.items;
+          }
+        }
+        console.log(`[AI] Chamada automática na Home pública sem cache existente. Usando fallback local simples.`);
+        return this.getLocalFallback(products);
+      }
+
+      // If we got here, it means force is true, and the cache has expired or doesn't exist, and there is no active lock.
+      console.log(`[AI] Gerando novo ranking de ofertas com OpenAI (Geração Manual)...`);
+      
+      // Acquire lock
+      await setDoc(cacheRef, {
+        items: cacheSnap.exists() ? (cacheSnap.data().items || []) : [],
+        updatedAt: cacheSnap.exists() ? (cacheSnap.data().updatedAt || new Date().toISOString()) : new Date().toISOString(),
+        expiresAt: cacheSnap.exists() ? (cacheSnap.data().expiresAt || new Date().toISOString()) : new Date().toISOString(),
+        source: "openai",
+        locked: true,
+        lockedAt: new Date().toISOString()
+      }, { merge: true });
+
+      // Limitar para os primeiros 40 produtos para evitar payloads gigantes e garantir qualidade no ranking
+      const topProducts = products.slice(0, 40);
+      
+      const compactProducts = topProducts.map(p => ({
+        id: p.id || p.uid,
+        n: (p.name || "").substring(0, 80), // Limitar nome para economizar tokens
+        p: p.price,
+        pp: p.promoPrice || p.promotionalPrice,
+        d: p.price > 0 ? (((p.price - (p.promoPrice || p.promotionalPrice || p.price)) / p.price * 100).toFixed(0) + '%') : '0%',
+        c: p.cliques || 0,
+        v: p.conversoes || 0,
+        s: p.score || 0
+      }));
+
+      const startTime = Date.now();
+
+      const prompt = `
+        Você é o Diretor de Merchandising da Discreta Boutique. 
+        Sua missão é RANQUEAR as melhores ofertas para uma vitrine premium de alta conversão.
+        
+        ITENS DISPONÍVEIS:
+        ${JSON.stringify(compactProducts)}
+        
+        REGRAS DE RANQUEAMENTO:
+        1. Priorize produtos com MAIOR PERCENTUAL DE DESCONTO.
+        2. Considere o apelo visual e luxo (pelo nome do produto).
+        3. Use Stats: Produtos com mais relevância (s) e vendas (v) devem subir no ranking.
+        4. Itens que parecem "Trend" ou "Must-have" devem ser destacados.
+        5. Retorne os IDs na ordem decrescente de prioridade visual.
+
+        IMPORTANTE: Retorne APENAS um objeto JSON no formato exatamente igual a:
+        {
+          "rankedIds": ["id1", "id2", "id3", ...]
+        }
+      `;
+
       const client = this.getClient();
       const response = await client.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -803,11 +875,30 @@ class AIService {
       const duration = Date.now() - startTime;
       console.log(`[AI] OpenAI Ranking status: success (${duration}ms)`);
 
+      // Save to cache and release lock
+      const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(); // 6 hours
+      await setDoc(cacheRef, {
+        items: rankedIds,
+        updatedAt: new Date().toISOString(),
+        expiresAt: expiresAt,
+        source: "openai",
+        locked: false,
+        lockedAt: ""
+      });
+
       return rankedIds;
     } catch (error: any) {
       console.error('[AI][RANK_OFFERS_ERROR]', error.message);
-      // Fallback para a ordem original do banco se a IA falhar
-      return products.map(p => p.id);
+      
+      // Release lock on error if we had acquired it
+      try {
+        await setDoc(cacheRef, { locked: false, lockedAt: "" }, { merge: true });
+      } catch (lockError) {
+        // ignore
+      }
+
+      // Fallback para a ordem local se a IA falhar
+      return this.getLocalFallback(products);
     }
   }
 

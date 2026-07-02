@@ -1,12 +1,10 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'motion/react';
 import { ChevronLeft, ChevronRight, Flame } from 'lucide-react';
 import { Product } from '../../services/productService';
 import { openaiOfferSorting } from '../../services/openaiOfferSorting';
 import { ProductItemCard } from '../ui/ProductItemCard';
-import { useInfiniteAutoScroll } from '../../hooks/useInfiniteAutoScroll';
 
 interface ImperdiveisCarouselProps {
   products: Product[];
@@ -19,7 +17,7 @@ interface ImperdiveisCarouselProps {
 export function ImperdiveisCarousel({ 
   products: initialProducts, 
   loading: initialLoading,
-  autoScroll = true,
+  autoScroll = false,
   autoScrollSpeed = 'slow',
   infiniteLoop = true
 }: ImperdiveisCarouselProps) {
@@ -27,11 +25,6 @@ export function ImperdiveisCarousel({
   const [visibleCount, setVisibleCount] = useState(4); // Carrega 4 inicialmente (conforme pedido de carregar pouco)
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  useInfiniteAutoScroll(scrollRef, {
-    enabled: autoScroll && !loading && !initialLoading && allProducts.length >= 4,
-    speed: autoScrollSpeed,
-  });
 
   useEffect(() => {
     async function rank() {
@@ -104,20 +97,12 @@ export function ImperdiveisCarousel({
             className="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-4"
           >
             {displayProducts.map((product, idx) => (
-              <motion.div
+              <div
                 key={product.id || idx}
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, margin: "-10px" }}
-                transition={{ 
-                  duration: 0.4,
-                  delay: idx % 10 * 0.05,
-                  ease: [0.23, 1, 0.32, 1]
-                }}
                 className="min-w-[42%] sm:min-w-[240px] snap-start h-full"
               >
                 <ProductItemCard product={product} isPriority={idx < 2} />
-              </motion.div>
+              </div>
             ))}
             
             {/* Load more placeholder if needed */}

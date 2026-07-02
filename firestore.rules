@@ -334,6 +334,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /aiRankingCache/{doc} {
+      allow read, create, update: if true;
+      allow delete: if false;
+    }
+
     match /abandoned_carts/{doc} {
       allow read, create, update: if true; 
       allow delete: if can('logs', 'excluir');

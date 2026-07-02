@@ -511,11 +511,11 @@ export const generateStrategicReport = async (req: Request, res: Response) => {
 
 export const rankOffers = async (req: Request, res: Response) => {
   try {
-    const { products } = req.body;
+    const { products, force } = req.body;
     if (!products || !Array.isArray(products)) {
       return res.status(400).json({ error: 'Lista de produtos não informada' });
     }
-    const rankedIds = await aiService.rankOffers(products);
+    const rankedIds = await aiService.rankOffers(products, !!force);
     res.json(rankedIds);
   } catch (error: any) {
     console.error('[AI][RANK_OFFERS_CONTROLLER_ERROR]', error.message);

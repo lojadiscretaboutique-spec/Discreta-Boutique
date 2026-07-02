@@ -4,7 +4,6 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Product } from '../../services/productService';
 import { ProductItemCard, SkeletonCard } from '../ui/ProductItemCard';
-import { useInfiniteAutoScroll } from '../../hooks/useInfiniteAutoScroll';
 
 export function ProductCarousel({ 
   title, 
@@ -19,7 +18,7 @@ export function ProductCarousel({
   themeBg,
   layout,
   loading,
-  autoScroll = true,
+  autoScroll = false,
   autoScrollSpeed = 'slow',
   infiniteLoop = true
 }: { 
@@ -63,11 +62,6 @@ export function ProductCarousel({
   const displayProducts = loading ? Array(4).fill(0) : products.slice(0, visibleCount);
   const isVertical = layout?.orientation === 'vertical';
   const isCompactStyle = layout?.style === 'compact';
-
-  useInfiniteAutoScroll(scrollRef, {
-    enabled: autoScroll && !isVertical && !loading && products.length >= 4,
-    speed: autoScrollSpeed,
-  });
 
   const gridColsClass = isVertical 
     ? cn(

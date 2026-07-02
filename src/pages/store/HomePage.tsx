@@ -7,7 +7,6 @@ import { cn } from '../../lib/utils';
 import { Product } from '../../services/productService';
 import { getLancamentos, getDestaques, getMaisVendidos, getEmAlta, getRecomendados, fillFallback, getHomeScore } from '../../lib/ranking';
 import { Category } from '../../services/categoryService';
-import { motion, AnimatePresence } from 'motion/react';
 import { HeroBanner } from '../../components/ui/HeroBanner';
 import { ProductCarousel } from '../../components/home/ProductCarousel';
 import { ImperdiveisCarousel } from '../../components/home/ImperdiveisCarousel';
@@ -22,7 +21,6 @@ import { isProductInCategory } from '../../utils/categoryUtils';
 import { measurePerformance } from '../../utils/performance';
 import { HomeLiveShopSection } from '../../components/home/HomeLiveShopSection';
 import { StoryShopCarousel } from '../../components/store/StoryShopCarousel';
-import { useInfiniteAutoScroll } from '../../hooks/useInfiniteAutoScroll';
 import { homeCacheService } from '../../services/homeCacheService';
 
 interface Banner {
@@ -63,16 +61,12 @@ export default function HomePage() {
   }>({ lancamentos: [], destaques: [], maisVendidos: [], emAlta: [], recomendados: [], ofertas: [] });
   const [categories, setCategories] = useState<Category[]>([]);
   const [currentBanner, setCurrentBanner] = useState(0);
+  const [prevBanner, setPrevBanner] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const setHomeReady = useUIStore(s => s.setHomeReady);
 
   const [visibleProducts, setVisibleProducts] = useState<Product[]>([]);
   const categoriesScrollRef = useRef<HTMLDivElement>(null);
-
-  useInfiniteAutoScroll(categoriesScrollRef, {
-    enabled: !loading && categories.length >= 4,
-    speed: 'slow',
-  });
 
   const scrollCategories = (direction: 'left' | 'right') => {
     if (categoriesScrollRef.current) {
@@ -473,14 +467,26 @@ export default function HomePage() {
     };
   }, [loadCacheOrFallback, setHomeReady]);
 
-  // Auto-play banners
+  // Auto-play banners with 6 seconds interval
   useEffect(() => {
     if (banners.length <= 1) return;
     const timer = setInterval(() => {
+      setPrevBanner(currentBanner);
       setCurrentBanner(prev => (prev + 1) % banners.length);
-    }, 8500);
+    }, 6000);
     return () => clearInterval(timer);
-  }, [banners.length]);
+  }, [banners.length, currentBanner]);
+
+  // Preload next banner image
+  useEffect(() => {
+    if (banners.length <= 1) return;
+    const nextIndex = (currentBanner + 1) % banners.length;
+    const nextBanner = banners[nextIndex];
+    if (nextBanner && nextBanner.imageUrl) {
+      const img = new Image();
+      img.src = nextBanner.imageUrl;
+    }
+  }, [currentBanner, banners]);
 
   const getProductsForSection = (id: string, settings: any, layout: any) => {
     if (!settings) return [];
@@ -618,33 +624,52 @@ export default function HomePage() {
     <div className="flex-1 flex flex-col bg-black text-white">
       {/* 1. HERO BANNERS */}
       {banners.length > 0 && (
-        <section className="relative z-10 w-full bg-transparent overflow-hidden">
-          <div className="relative w-full aspect-[16/9]">
-            <AnimatePresence initial={false}>
-              <motion.div
-                key={banners[currentBanner].id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 1.5, ease: "easeInOut" }}
-                className="absolute inset-0 w-full h-full"
-              >
-                {banners[currentBanner].linkUrl ? (
-                  <Link to={banners[currentBanner].linkUrl} className="block w-full h-full cursor-pointer">
-                    <HeroBanner banner={banners[currentBanner]} isEager={currentBanner === 0} onLoad={handleBannerImageLoaded} />
-                  </Link>
-                ) : (
-                  <HeroBanner banner={banners[currentBanner]} isEager={currentBanner === 0} onLoad={handleBannerImageLoaded} />
-                )}
-              </motion.div>
-            </AnimatePresence>
+        <section 
+          className="relative z-10 overflow-hidden"
+          style={{
+            width: '100vw',
+            marginLeft: 'calc(50% - 50vw)',
+            marginRight: 'calc(50% - 50vw)',
+            background: '#000'
+          }}
+        >
+          <div className="relative w-full">
+            {banners.map((banner, index) => {
+              const isActive = index === currentBanner;
+              const isPrev = index === prevBanner;
+
+              return (
+                <div
+                  key={banner.id}
+                  className={cn(
+                    "w-full transition-opacity duration-1000 ease-in-out",
+                    isActive 
+                      ? "opacity-100 relative block z-0" 
+                      : isPrev
+                        ? "opacity-0 absolute top-0 left-0 pointer-events-none z-10"
+                        : "opacity-0 absolute top-0 left-0 pointer-events-none z-0"
+                  )}
+                >
+                  {banner.linkUrl ? (
+                    <Link to={banner.linkUrl} className="block w-full h-auto cursor-pointer">
+                      <HeroBanner banner={banner} isEager={isActive || isPrev} onLoad={handleBannerImageLoaded} />
+                    </Link>
+                  ) : (
+                    <HeroBanner banner={banner} isEager={isActive || isPrev} onLoad={handleBannerImageLoaded} />
+                  )}
+                </div>
+              );
+            })}
             
             {/* Dots */}
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-20">
               {banners.map((_, i) => (
                 <button 
                   key={i} 
-                  onClick={() => setCurrentBanner(i)}
+                  onClick={() => {
+                    setPrevBanner(currentBanner);
+                    setCurrentBanner(i);
+                  }}
                   className={cn(
                     "h-1.5 transition-all rounded-full",
                     i === currentBanner ? "bg-white w-8 shadow-sm" : "bg-white/50 w-2"

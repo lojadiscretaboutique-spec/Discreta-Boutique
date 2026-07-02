@@ -5,7 +5,7 @@ export const openaiOfferSorting = {
    * Envia uma lista de produtos em oferta para o backend e recebe a ordem ideal de ranqueamento.
    * @param products Lista filtrada de produtos retornada pelo Firebase
    */
-  async rankOffers(products: Product[]): Promise<Product[]> {
+  async rankOffers(products: Product[], force = false): Promise<Product[]> {
     if (products.length <= 1) return products;
 
     try {
@@ -18,7 +18,7 @@ export const openaiOfferSorting = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ products: productsToRank }),
+        body: JSON.stringify({ products: productsToRank, force }),
       });
 
       if (!response.ok) {
