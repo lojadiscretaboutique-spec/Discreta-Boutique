@@ -20,19 +20,24 @@ service firebase.storage {
       allow write: if signedIn();
     }
 
-    match /story-shop/videos/{storyId}/{fileName} {
-      allow read: if true;
-      allow write: if signedIn();
+    match /{shopSegment}/videos/{storyId}/{fileName} {
+      allow read: if shopSegment == "story-shop";
+      allow write: if shopSegment == "story-shop" && signedIn();
     }
 
-    match /story-shop/thumbnails/{storyId}/{fileName} {
-      allow read: if true;
-      allow write: if signedIn();
+    match /{shopSegment}/thumbnails/{storyId}/{fileName} {
+      allow read: if shopSegment == "story-shop";
+      allow write: if shopSegment == "story-shop" && signedIn();
     }
 
     match /branding/{allPaths=**} {
       allow read: if true;
       allow write: if signedIn();
+    }
+
+    match /recruitment/{allPaths=**} {
+      allow write: if true;
+      allow read: if signedIn();
     }
 
     match /{allPaths=**} {

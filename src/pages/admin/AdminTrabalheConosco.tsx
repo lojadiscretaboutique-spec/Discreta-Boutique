@@ -510,6 +510,66 @@ export default function AdminTrabalheConosco() {
                         </div>
                       </div>
 
+                      {/* Attachments Section */}
+                      {(selectedCandidate.selfieUrl || selectedCandidate.resumeUrl) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {selectedCandidate.selfieUrl && (
+                            <div className="p-4 bg-slate-950 border border-slate-900 rounded-lg space-y-3">
+                              <span className="text-[10px] text-slate-500 uppercase block font-bold flex items-center gap-1">
+                                <Camera size={12} className="text-red-500" /> Selfie do Candidato (Câmera ao Vivo)
+                              </span>
+                              <div className="relative aspect-video max-w-xs overflow-hidden rounded-lg border border-slate-800 bg-neutral-900 mx-auto">
+                                <img 
+                                  src={selectedCandidate.selfieUrl} 
+                                  alt="Selfie Candidato" 
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {selectedCandidate.resumeUrl && (
+                            <div className="p-4 bg-slate-950 border border-slate-900 rounded-lg flex flex-col justify-between space-y-3">
+                              <div className="space-y-1">
+                                <span className="text-[10px] text-slate-500 uppercase block font-bold flex items-center gap-1">
+                                  <FileText size={12} className="text-red-500" /> Currículo em Anexo
+                                </span>
+                                <div className="p-3 bg-slate-900/60 border border-slate-800/80 rounded-lg flex items-center gap-2">
+                                  <FileText className="text-red-400 shrink-0" size={20} />
+                                  <span className="text-xs text-slate-300 font-medium truncate block max-w-[200px]">
+                                    {selectedCandidate.resumeFileName || 'curriculo.pdf'}
+                                  </span>
+                                </div>
+                              </div>
+                              <a 
+                                href={selectedCandidate.resumeUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-bold text-slate-200 text-center transition-colors block"
+                              >
+                                Visualizar / Baixar Currículo
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Compliance & Termos */}
+                      <div className="p-4 bg-slate-950/60 border border-slate-900 rounded-lg space-y-2">
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Histórico de Termos e Privacidade (Compliance)</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] text-slate-400">
+                          <div className="flex items-center gap-2">
+                            <span className="text-green-500 font-bold">✓ Aceite LGPD:</span>
+                            <span>{selectedCandidate.lgpdAccepted ? `Confirmado em ${selectedCandidate.lgpdAcceptedAt ? new Date(selectedCandidate.lgpdAcceptedAt).toLocaleString() : 'N/A'}` : 'Não'}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-green-500 font-bold">✓ Declaração Final:</span>
+                            <span>{selectedCandidate.declarationAccepted ? `Confirmado em ${selectedCandidate.declarationAcceptedAt ? new Date(selectedCandidate.declarationAcceptedAt).toLocaleString() : 'N/A'}` : 'Não'}</span>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Complete Structured Q&A mapped directly from structuredData */}
                       <div className="space-y-4 pt-2">
                         <h3 className="text-xs uppercase font-bold tracking-wider text-slate-400 border-b border-slate-800 pb-1.5">Respostas à Entrevista Conversacional</h3>

@@ -231,6 +231,94 @@ export default function AdminTrabalheConoscoSettings() {
             </div>
           </div>
 
+          {/* Requisitos de Mídia */}
+          <div className="bg-slate-900/50 border border-slate-900/60 rounded-xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2.5 flex items-center gap-2">
+              <Upload className="text-red-500" size={16} />
+              Arquivos & Mídia Obrigatória
+            </h3>
+
+            {/* Selfie Obrigatória */}
+            <div className="p-3 bg-slate-950 rounded-lg border border-slate-800/60 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-300 block">Selfie da Câmera</span>
+                <span className="text-[10px] text-emerald-500 block mt-0.5">Sempre opcional para o candidato</span>
+              </div>
+              <span className="text-[10px] uppercase font-mono font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-900/50 px-2.5 py-1 rounded-lg">
+                Opcional
+              </span>
+            </div>
+
+            {/* Currículo Obrigatório */}
+            <div className="p-3 bg-slate-950 rounded-lg border border-slate-800/60 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-300 block">Anexo de Currículo Obrigatório</span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">Exige arquivo de currículo (.pdf, .doc, .docx)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleChange('resumeRequired', !settings.resumeRequired)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  settings.resumeRequired ? 'bg-red-600' : 'bg-slate-800'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    settings.resumeRequired ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Tamanho máximo do currículo */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">
+                Tamanho Máximo do Currículo (MB)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="50"
+                value={settings.resumeMaxSizeMb || 5}
+                onChange={(e) => handleChange('resumeMaxSizeMb', parseInt(e.target.value) || 5)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-red-600"
+              />
+            </div>
+
+            {/* Tipos aceitos de currículo */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">
+                Formatos Permitidos (Separados por vírgula)
+              </label>
+              <input
+                type="text"
+                value={settings.resumeAcceptedTypes || '.pdf,.doc,.docx'}
+                onChange={(e) => handleChange('resumeAcceptedTypes', e.target.value)}
+                placeholder="Ex: .pdf,.doc,.docx"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-red-600"
+              />
+            </div>
+          </div>
+
+          {/* Declaração de Consentimento Final */}
+          <div className="bg-slate-900/50 border border-slate-900/60 rounded-xl p-5 space-y-3">
+            <h3 className="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2.5 flex items-center gap-2">
+              <ShieldCheck className="text-red-500" size={16} />
+              Termo da Declaração Final
+            </h3>
+            <p className="text-[10px] text-slate-400 leading-relaxed">
+              Texto que o candidato deve concordar e marcar o aceite antes de efetivar o envio do formulário.
+            </p>
+            <div className="space-y-1.5">
+              <textarea
+                value={settings.declarationText || ''}
+                onChange={(e) => handleChange('declarationText', e.target.value)}
+                placeholder="Texto de declaração e confirmação final..."
+                className="w-full h-32 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-red-600 resize-none font-sans leading-relaxed"
+              />
+            </div>
+          </div>
+
           {/* Social Share Preview Configuration */}
           <div className="bg-slate-900/50 border border-slate-900/60 rounded-xl p-5 space-y-4">
             <h3 className="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2.5 flex items-center gap-2">

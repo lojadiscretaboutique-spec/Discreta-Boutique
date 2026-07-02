@@ -142,7 +142,12 @@ Retorne um JSON válido contendo exatamente a estrutura abaixo:
   availableJobsText: "",
   requiredQuestionsText: DEFAULT_REQUIRED_QUESTIONS_TEXT,
   shareImageUrl: "",
-  shareDescription: ""
+  shareDescription: "",
+  resumeRequired: false,
+  selfieRequired: false,
+  resumeMaxSizeMb: 5,
+  resumeAcceptedTypes: ".pdf,.doc,.docx",
+  declarationText: "Confirmo que as informações declaradas são verdadeiras e autorizo o uso para o processo seletivo da Discreta Boutique."
 };
 
 export const candidateService = {
@@ -185,7 +190,7 @@ export const candidateService = {
       }
     }
 
-    const payload = {
+    const payload: any = {
       ...candidate,
       id: targetId,
       status: finalStatus,
@@ -193,8 +198,30 @@ export const candidateService = {
       updatedAt: serverTimestamp(),
     };
 
+    // Recursively clean undefined values to prevent Firestore crashes
+    const cleanUndefined = (obj: any): any => {
+      if (obj === null || typeof obj !== 'object') {
+        return obj;
+      }
+      if (obj instanceof Date) {
+        return obj;
+      }
+      if (Array.isArray(obj)) {
+        return obj.map(cleanUndefined);
+      }
+      const result: any = {};
+      for (const key of Object.keys(obj)) {
+        if (obj[key] !== undefined) {
+          result[key] = cleanUndefined(obj[key]);
+        }
+      }
+      return result;
+    };
+
+    const cleanedPayload = cleanUndefined(payload);
+
     try {
-      await setDoc(docRef, payload, { merge: true });
+      await setDoc(docRef, cleanedPayload, { merge: true });
       return targetId;
     } catch (error) {
       return handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${targetId}`);
@@ -333,7 +360,12 @@ export const candidateService = {
           availableJobsText: data.availableJobsText || DEFAULT_RECRUITMENT_SETTINGS.availableJobsText,
           requiredQuestionsText: data.requiredQuestionsText || DEFAULT_RECRUITMENT_SETTINGS.requiredQuestionsText,
           shareImageUrl: data.shareImageUrl || DEFAULT_RECRUITMENT_SETTINGS.shareImageUrl || "",
-          shareDescription: data.shareDescription || DEFAULT_RECRUITMENT_SETTINGS.shareDescription || ""
+          shareDescription: data.shareDescription || DEFAULT_RECRUITMENT_SETTINGS.shareDescription || "",
+          resumeRequired: data.resumeRequired !== undefined ? data.resumeRequired : DEFAULT_RECRUITMENT_SETTINGS.resumeRequired,
+          selfieRequired: data.selfieRequired !== undefined ? data.selfieRequired : DEFAULT_RECRUITMENT_SETTINGS.selfieRequired,
+          resumeMaxSizeMb: data.resumeMaxSizeMb !== undefined ? data.resumeMaxSizeMb : DEFAULT_RECRUITMENT_SETTINGS.resumeMaxSizeMb,
+          resumeAcceptedTypes: data.resumeAcceptedTypes || DEFAULT_RECRUITMENT_SETTINGS.resumeAcceptedTypes,
+          declarationText: data.declarationText || DEFAULT_RECRUITMENT_SETTINGS.declarationText
         };
       }
       return DEFAULT_RECRUITMENT_SETTINGS;

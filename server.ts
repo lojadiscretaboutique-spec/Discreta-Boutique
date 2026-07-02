@@ -52,6 +52,58 @@ async function startServer() {
   // AI Routes
   app.use('/api/ia', aiRoutes);
 
+  // Recruitment secure server-side file upload proxy (bypasses direct client storage rules issues)
+  app.post("/api/recruitment/upload", async (req, res) => {
+    try {
+      const { file, fileName, path: destPath, contentType } = req.body;
+
+      if (!file || !destPath || !contentType) {
+        return res.status(400).json({ success: false, error: "Campos obrigatórios ausentes." });
+      }
+
+      // Convert base64 to Buffer
+      const base64Data = file.includes(";base64,") ? file.split(";base64,")[1] : file;
+      const buffer = Buffer.from(base64Data, "base64");
+
+      // Ensure Admin SDK is initialized
+      getAdminDb();
+
+      // Read firebase configuration
+      const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+      const configData = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      const bucketName = configData.storageBucket;
+
+      if (!bucketName) {
+        return res.status(500).json({ success: false, error: "Bucket de storage não configurado." });
+      }
+
+      const bucket = admin.storage().bucket(bucketName);
+      const fullPath = `${destPath}/${fileName || "file"}`;
+      const fileRef = bucket.file(fullPath);
+
+      // Generate secure download token
+      const downloadToken = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
+
+      await fileRef.save(buffer, {
+        metadata: {
+          contentType: contentType,
+          metadata: {
+            firebaseStorageDownloadTokens: downloadToken
+          }
+        }
+      });
+
+      // Public Firebase Storage URL with direct media download token
+      const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(fullPath)}?alt=media&token=${downloadToken}`;
+
+      console.log(`[Admin Upload] File saved: ${fullPath}, URL: ${publicUrl}`);
+      return res.json({ success: true, url: publicUrl });
+    } catch (err: any) {
+      console.error("[Admin Upload] Error:", err);
+      return res.status(500).json({ success: false, error: err.message || "Erro ao fazer upload do arquivo." });
+    }
+  });
+
   // WiFi/Hotspot Lead Capture Route
   app.options('/api/wifi-leads', (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');

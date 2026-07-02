@@ -702,7 +702,12 @@ export const getRecruitmentSettings = async (req: Request, res: Response) => {
       recruiterName: settings.recruiterName,
       initialMessage: settings.initialMessage,
       finalMessage: settings.finalMessage,
-      lgpdText: settings.lgpdText
+      lgpdText: settings.lgpdText,
+      resumeRequired: settings.resumeRequired,
+      selfieRequired: settings.selfieRequired,
+      resumeMaxSizeMb: settings.resumeMaxSizeMb,
+      resumeAcceptedTypes: settings.resumeAcceptedTypes,
+      declarationText: settings.declarationText
     });
   } catch (error: any) {
     console.error('Erro no getRecruitmentSettings:', error);

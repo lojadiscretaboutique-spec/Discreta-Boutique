@@ -61,9 +61,12 @@ export interface Candidate {
   email: string;
   city: string;
   neighborhood: string;
+  age?: string;
   status: 'NOVO' | 'EM_ANALISE' | 'CHAMAR_ENTREVISTA' | 'APROVADO' | 'REPROVADO' | 'ARQUIVADO' | 'INCOMPLETA';
   lgpdAccepted: boolean;
   lgpdAcceptedAt: any;
+  declarationAccepted?: boolean;
+  declarationAcceptedAt?: any;
   createdAt: any;
   updatedAt: any;
   structuredData: CandidateStructuredData;
@@ -74,6 +77,9 @@ export interface Candidate {
   ipAddress?: string;
   userAgent?: string;
   interviewId?: string;
+  selfieUrl?: string;
+  resumeUrl?: string;
+  resumeFileName?: string;
 }
 
 export interface RecruitmentSettings {
@@ -88,4 +94,9 @@ export interface RecruitmentSettings {
   requiredQuestionsText?: string;
   shareImageUrl?: string;
   shareDescription?: string;
+  resumeRequired?: boolean;
+  selfieRequired?: boolean;
+  resumeMaxSizeMb?: number;
+  resumeAcceptedTypes?: string;
+  declarationText?: string;
 }
