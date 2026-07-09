@@ -18,32 +18,41 @@ export const productCategorizationService = {
     tags: string[],
     allCategories: Category[]
   ): { categoryId: string; confidence: number }[] {
-    const text = `${productName} ${description}`.toLowerCase();
-    const brandText = brand?.toLowerCase() || '';
-    const tagText = tags?.join(' ').toLowerCase() || '';
+    const safeName = productName || '';
+    const safeDesc = description || '';
+    const safeBrand = brand || '';
+    const safeTags = Array.isArray(tags) ? tags : [];
+
+    const text = `${safeName} ${safeDesc}`.toLowerCase();
+    const brandText = safeBrand.toLowerCase();
+    const tagText = safeTags.join(' ').toLowerCase();
     
     // Scoring weights
     const WEIGHTS = { NAME: 0.5, TAG: 0.3, BRAND: 0.1, DESC: 0.1 };
     
     const suggestions: { categoryId: string; confidence: number }[] = [];
 
+    if (!Array.isArray(allCategories)) return [];
+
     allCategories.forEach(cat => {
+      if (!cat || !cat.name) return;
+      
       const keywords = cat.name.toLowerCase().split(' ');
       let score = 0;
       
       keywords.forEach(kw => {
-        if (kw.length <= 2) return;
+        if (!kw || kw.length <= 2) return;
         
         let kwMatches = 0;
-        if (productName.toLowerCase().includes(kw)) kwMatches += 1;
+        if (safeName.toLowerCase().includes(kw)) kwMatches += 1;
         if (tagText.includes(kw)) kwMatches += 1;
         if (brandText.includes(kw)) kwMatches += 0.5;
-        if (description.toLowerCase().includes(kw)) kwMatches += 0.2;
+        if (safeDesc.toLowerCase().includes(kw)) kwMatches += 0.2;
         
         if (kwMatches > 0) score += Math.min(1, kwMatches);
       });
       
-      if (score > 0) {
+      if (score > 0 && keywords.length > 0) {
         const confidence = Math.min(100, (score / keywords.length) * 100);
         if (confidence > 25) { 
             suggestions.push({ categoryId: cat.id, confidence });

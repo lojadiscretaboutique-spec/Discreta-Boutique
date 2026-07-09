@@ -275,7 +275,6 @@ function AppContent() {
             <Route path="marketing/postagem" element={<AdminPostagem />} />
             <Route path="marketing/wifi-users" element={<AdminWifiUsers />} />
             <Route path="clientes" element={<AdminCustomers />} />
-            <Route path="caixa" element={<AdminCaixa />} />
             <Route path="pdv" element={<AdminPDV />} />
             <Route path="compras" element={<AdminPurchases />} />
             <Route path="financeiro">
@@ -286,6 +285,7 @@ function AppContent() {
               <Route path="comissoes" element={<AdminCommissions />} />
               <Route path="integracao" element={<AdminIntegracao />} />
               <Route path="formas-pagamento" element={<AdminPaymentMethods />} />
+              <Route path="caixa" element={<AdminCaixa />} />
             </Route>
             <Route path="areas-entrega" element={<AdminDeliveryAreas />} />
             <Route path="horarios" element={<AdminOperatingHours />} />

@@ -20,7 +20,6 @@ export function AdminLayout() {
     { name: 'PDV / Vender', path: '/admin/pdv', icon: ShoppingCart, permission: 'orders' },
     { name: 'Vendas', path: '/admin/vendas', icon: ShoppingCart, permission: 'orders', submenu: [
         { name: 'Pedidos', path: '/admin/pedidos', permission: 'orders' },
-        { name: 'Caixa', path: '/admin/caixa', permission: 'caixa' },
     ]},
     { name: 'Produtos', path: '/admin/produtos', icon: Package, permission: 'produtos', submenu: [
         { name: 'Lista de Produtos', path: '/admin/produtos', permission: 'produtos' },
@@ -34,6 +33,7 @@ export function AdminLayout() {
     ]},
     { name: 'Clientes', path: '/admin/clientes', icon: Users, permission: 'clientes' },
     { name: 'Financeiro', path: '/admin/financeiro', icon: DollarSign, permission: 'financeiro', submenu: [
+        { name: 'Caixa', path: '/admin/financeiro/caixa', permission: 'caixa' },
         { name: 'Lançamentos', path: '/admin/financeiro/lancamentos', permission: 'financeiro' },
         { name: 'Contas a Receber', path: '/admin/financeiro/lancamentos?filtro=receber', permission: 'financeiro' },
         { name: 'Contas a Pagar', path: '/admin/financeiro/lancamentos?filtro=pagar', permission: 'financeiro' },
@@ -343,7 +343,7 @@ export function AdminLayout() {
                     const isSubActive = isUsersSub 
                         ? (location.pathname.startsWith('/admin/usuarios') || location.pathname.startsWith('/admin/perfis') || location.pathname.startsWith('/admin/logs') || location.pathname.startsWith('/admin/trabalhe-conosco'))
                         : isFinanceSub 
-                            ? location.pathname.startsWith('/admin/financeiro')
+                            ? (location.pathname.startsWith('/admin/financeiro') || location.pathname.startsWith('/admin/caixa'))
                             : isConfigSub
                                 ? (location.pathname.startsWith('/admin/config') || location.pathname.startsWith('/admin/areas-entrega') || location.pathname.startsWith('/admin/horarios'))
                                 : isMarketingSub
@@ -353,7 +353,7 @@ export function AdminLayout() {
                                 : isStockSub
                                     ? (location.pathname.startsWith('/admin/mov_estoque') || location.pathname.startsWith('/admin/etiquetas') || location.pathname.startsWith('/admin/compras'))
                                 : isSalesSub
-                                    ? (location.pathname.startsWith('/admin/pedidos') || location.pathname.startsWith('/admin/caixa'))
+                                    ? location.pathname.startsWith('/admin/pedidos')
                                 : isAnalyticsSub
                                     ? location.pathname.startsWith('/admin/analytics')
                                     : false;

@@ -164,8 +164,8 @@ export const comboService = {
       
       const pData = pSnap.data() as Product;
       
-      if (!pData.controlStock) {
-        // If one item doesn't control stock, it doesn't limit the combo
+      if (!pData.controlStock || pData.allowBackorder) {
+        // If one item doesn't control stock or allows backorder, it doesn't limit the combo
         stocks.push(9999); 
         continue;
       }
