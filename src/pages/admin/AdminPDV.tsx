@@ -522,11 +522,27 @@ export function AdminPDV() {
   const [lastOrderId, setLastOrderId] = useState("");
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
   const [discountType, setDiscountType] = useState<'value' | 'percent'>('value');
-  const [discountBase, setDiscountBase] = useState<number>(0);
-  const [shipping, setShipping] = useState<number>(0);
+  const [discountBase, setDiscountBase] = useState<number | "">(0);
+  const [shipping, setShipping] = useState<number | "">(0);
   const [partialAmount, setPartialAmount] = useState<string>("");
   const [isDelivery, setIsDelivery] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
+
+  // Helper functions for currency input formatting and parsing
+  const formatCurrencyInput = (value: number | string | undefined | null): string => {
+    if (value === undefined || value === null || value === "") return "";
+    const val = typeof value === "number" ? value : parseFloat(value) || 0;
+    return new Intl.NumberFormat("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(val);
+  };
+
+  const parseCurrencyInput = (inputValue: string): number => {
+    const digits = inputValue.replace(/\D/g, "");
+    if (!digits) return 0;
+    return parseInt(digits, 10) / 100;
+  };
 
   useEffect(() => {
     const loadPdvMethods = async () => {
@@ -576,10 +592,11 @@ export function AdminPDV() {
   }, [selectedCustomer]);
 
   useEffect(() => {
+      const discountBaseVal = typeof discountBase === 'number' ? discountBase : 0;
       if (discountType === 'value') {
-        setGlobalDiscount(discountBase);
+        setGlobalDiscount(discountBaseVal);
       } else {
-        setGlobalDiscount(cartSubtotal > 0 ? roundTo2((cartSubtotal * discountBase) / 100) : 0);
+        setGlobalDiscount(cartSubtotal > 0 ? roundTo2((cartSubtotal * discountBaseVal) / 100) : 0);
       }
     }, [discountType, discountBase, cartSubtotal]);
   const [editingOrderType, setEditingOrderType] = useState<string | null>(null);
@@ -1293,12 +1310,13 @@ export function AdminPDV() {
     });
   };
 
+  const shippingVal = typeof shipping === "number" ? shipping : 0;
   const calculatedTotal = roundTo2(
-    cartSubtotal - itemsDiscountTotal + shipping - globalDiscount,
+    cartSubtotal - itemsDiscountTotal + shippingVal - globalDiscount,
   );
   const total = Math.max(0, calculatedTotal);
 
-  const totalDiscount = roundTo2(cartSubtotal + shipping - total);
+  const totalDiscount = roundTo2(cartSubtotal + shippingVal - total);
 
   const totalPaid = roundTo2(payments.reduce((acc, p) => acc + p.amount, 0));
   const additionalAmount = totalPaid > total ? roundTo2(totalPaid - total) : 0;
@@ -1375,7 +1393,7 @@ export function AdminPDV() {
         financialReceivedAmount: finalPaidTotal,
         cashEntryAmount: finalPaidTotal,
         discount: totalDiscount,
-        shipping: shipping,
+        shipping: typeof shipping === "number" ? shipping : 0,
         notes: notes,
         paymentMethod: payments
           .map((p) => `${p.method} (${formatCurrency(p.amount)})`)
@@ -1545,7 +1563,7 @@ export function AdminPDV() {
         subtotal: cartSubtotal,
         total,
         discount: totalDiscount,
-        shipping: shipping,
+        shipping: typeof shipping === "number" ? shipping : 0,
         customerName: orderData.customerName,
         customerWhatsapp: orderData.customerWhatsapp,
         customerAddress: orderData.customerAddress,
@@ -1631,7 +1649,7 @@ export function AdminPDV() {
       : "";
 
     return (
-      <div className="fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[100] bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4 text-slate-900 dark:text-slate-100">
         {/* Hidden thermal receipt for print */}
         <div className="hidden">
           <div ref={printRef} className="thermal-receipt">
@@ -1817,26 +1835,26 @@ export function AdminPDV() {
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-10 max-w-md w-full text-center shadow-2xl overflow-hidden relative"
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[2.5rem] p-10 max-w-md w-full text-center shadow-2xl overflow-hidden relative"
         >
           <div className="absolute top-0 left-0 w-full h-3 bg-red-600 animate-pulse"></div>
-          <div className="w-20 h-20 bg-green-950/30 border-2 border-green-500 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/10">
+          <div className="w-20 h-20 bg-green-500/10 border-2 border-green-500 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/10">
             <CheckCircle2 size={40} />
           </div>
-          <h1 className="text-3xl font-black text-white italic tracking-tight uppercase leading-none mb-3">
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white italic tracking-tight uppercase leading-none mb-3">
             Venda Realizada!
           </h1>
-          <p className="text-sm text-slate-300 font-bold tracking-wide mb-2">
+          <p className="text-sm text-slate-600 dark:text-slate-300 font-bold tracking-wide mb-2">
             Pedido finalizado com sucesso.
           </p>
-          <p className="inline-block bg-slate-950/85 border border-slate-800 text-red-500 text-xl font-mono px-6 py-2 rounded-2xl mb-8 font-black tracking-widest">
+          <p className="inline-block bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-red-500 text-xl font-mono px-6 py-2 rounded-2xl mb-8 font-black tracking-widest">
             #{lastOrderId.slice(-6).toUpperCase()}
           </p>
 
           <div className="flex flex-col gap-3">
             <button
               onClick={handlePrintReceipt}
-              className="w-full h-14 bg-white hover:bg-slate-100 text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 border-2 border-white transition-all hover:scale-[1.01]"
+              className="w-full h-14 bg-white dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-900 dark:text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700 transition-all hover:scale-[1.01]"
             >
               <Printer size={18} />
               Imprimir Pedido
@@ -1853,7 +1871,7 @@ export function AdminPDV() {
                 setStep("cart");
                 navigate("/admin/pedidos");
               }}
-              className="w-full h-14 border-2 border-slate-800 bg-slate-950 hover:bg-slate-900 text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all hover:scale-[1.01]"
+              className="w-full h-14 border border-slate-200 dark:border-slate-800 bg-slate-100 hover:bg-slate-200 dark:bg-slate-950 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all hover:scale-[1.01]"
             >
               <FileText size={18} />
               Ver Pedidos
@@ -1866,10 +1884,10 @@ export function AdminPDV() {
 
   if (checkingSession) {
     return (
-      <div className="fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[100] bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-xs font-black uppercase tracking-widest text-slate-400">
+          <span className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
             Verificando Caixa...
           </span>
         </div>
@@ -1879,19 +1897,19 @@ export function AdminPDV() {
 
   if (!currentSession) {
     return (
-      <div className="fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-4 text-center">
+      <div className="fixed inset-0 z-[100] bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4 text-center">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-slate-900 rounded-[2.5rem] p-12 max-w-md w-full shadow-2xl"
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[2.5rem] p-12 max-w-md w-full shadow-2xl"
         >
           <div className="w-20 h-20 bg-red-600/10 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
             <AlertCircle size={40} />
           </div>
-          <h2 className="text-2xl font-black text-white uppercase italic tracking-tight">
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase italic tracking-tight">
             Caixa Fechado!
           </h2>
-          <p className="text-slate-400 font-medium leading-relaxed mb-8">
+          <p className="text-slate-600 dark:text-slate-400 font-medium leading-relaxed mb-8">
             O PDV está bloqueado porque não há nenhum caixa aberto no momento.
             Para começar a vender, você precisa abrir o caixa primeiro.
           </p>
@@ -1905,7 +1923,7 @@ export function AdminPDV() {
             <Button
               variant="ghost"
               onClick={() => navigate("/admin")}
-              className="text-slate-400 font-bold uppercase tracking-widest"
+              className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest hover:text-slate-800 dark:hover:text-white"
             >
               Voltar ao Início
             </Button>
@@ -2746,20 +2764,13 @@ export function AdminPDV() {
                               Desc Reais:
                             </span>
                             <input
-                              type="number"
-                              value={item.discount || 0}
-                              onChange={(e) =>
-                                updateItemDiscount(
-                                  idx,
-                                  parseFloat(e.target.value) || 0,
-                                )
-                              }
-                              onBlur={(e) =>
-                                updateItemDiscount(
-                                  idx,
-                                  roundTo2(parseFloat(e.target.value)) || 0,
-                                )
-                              }
+                              type="text"
+                              inputMode="numeric"
+                              value={formatCurrencyInput(item.discount || 0)}
+                              onChange={(e) => {
+                                const val = parseCurrencyInput(e.target.value);
+                                updateItemDiscount(idx, val);
+                              }}
                               className="w-16 bg-slate-100 dark:bg-slate-900/5 border border-slate-200 dark:border-white/10 rounded px-1.5 py-0.5 text-[10px] font-black text-green-600 dark:text-green-500 outline-none focus:border-green-500 transition-colors"
                             />
                           </div>
@@ -2809,11 +2820,16 @@ export function AdminPDV() {
                       {discountType === 'value' ? 'R$' : '%'}
                     </button>
                     <input
-                      type="number"
-                      value={discountBase}
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(discountBase)}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
+                        const val = parseCurrencyInput(e.target.value);
                         setDiscountBase(val);
+                      }}
+                      onFocus={() => setDiscountBase("")}
+                      onBlur={() => {
+                        if (discountBase === "") setDiscountBase(0);
                       }}
                       className="w-16 bg-transparent border-none px-2 py-1 text-xs font-black text-green-600 dark:text-green-500 text-right outline-none focus:ring-0 transition-colors"
                       placeholder="0,00"
@@ -2838,15 +2854,16 @@ export function AdminPDV() {
                 <div className="flex items-center gap-2">
                   <span className="text-slate-600 dark:text-slate-300 font-bold">+</span>
                   <input
-                    type="number"
-                    value={shipping}
+                    type="text"
+                    inputMode="numeric"
+                    value={formatCurrencyInput(shipping)}
                     onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
+                      const val = parseCurrencyInput(e.target.value);
                       setShipping(val);
                     }}
-                    onBlur={(e) => {
-                      const val = roundTo2(parseFloat(e.target.value)) || 0;
-                      setShipping(val);
+                    onFocus={() => setShipping("")}
+                    onBlur={() => {
+                      if (shipping === "") setShipping(0);
                     }}
                     className="w-20 bg-white dark:bg-slate-900/5 border border-slate-200 dark:border-white/10 rounded px-2 py-1 text-xs font-black text-slate-900 dark:text-white text-right outline-none focus:border-red-500 transition-colors"
                     placeholder="0,00"
@@ -2953,11 +2970,13 @@ export function AdminPDV() {
                       <div className="relative flex-1">
                         <span className="absolute left-3 xs:left-4 md:left-6 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 font-black text-base xs:text-xl sm:text-lg md:text-2xl lg:text-3xl italic">R$</span>
                         <input
-                          type="number"
-                          step="0.01"
-                          value={partialAmount}
-                          onChange={(e) => setPartialAmount(e.target.value)}
-                          onBlur={(e) => setPartialAmount(roundTo2(parseFloat(e.target.value)).toString())}
+                          type="text"
+                          inputMode="numeric"
+                          value={formatCurrencyInput(partialAmount)}
+                          onChange={(e) => {
+                            const val = parseCurrencyInput(e.target.value);
+                            setPartialAmount(val.toFixed(2));
+                          }}
                           className="w-full h-11 xs:h-12 sm:h-14 md:h-16 lg:h-20 bg-slate-100 dark:bg-slate-950 border-2 border-slate-200 dark:border-white/5 rounded-xl xs:rounded-2xl pl-10 xs:pl-12 sm:pl-16 md:pl-20 lg:pl-24 pr-4 text-lg xs:text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white outline-none focus:border-red-600 focus:bg-white dark:focus:bg-black transition-all shadow-inner"
                           placeholder="0,00"
                         />
@@ -3035,10 +3054,13 @@ export function AdminPDV() {
                           <div className="relative">
                             <span className="absolute left-3 xs:left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 font-black text-xs xs:text-sm sm:text-base md:text-lg lg:text-xl italic">R$</span>
                             <input
-                              type="number"
-                              value={receivedAmount}
-                              onChange={(e) => setReceivedAmount(e.target.value)}
-                              onBlur={(e) => setReceivedAmount(roundTo2(parseFloat(e.target.value)).toString())}
+                              type="text"
+                              inputMode="numeric"
+                              value={formatCurrencyInput(receivedAmount)}
+                              onChange={(e) => {
+                                const val = parseCurrencyInput(e.target.value);
+                                setReceivedAmount(val.toFixed(2));
+                              }}
                               className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-white/10 rounded-lg xs:rounded-xl h-10 xs:h-12 sm:h-14 w-full pl-8 xs:pl-10 pr-3 text-sm xs:text-base sm:text-lg md:text-2xl font-black text-slate-900 dark:text-white outline-none focus:border-red-600 transition-colors"
                               placeholder="0,00"
                             />
@@ -3136,7 +3158,7 @@ export function AdminPDV() {
                      </div>
 
                      {/* ENTREGA / DELIVERY */}
-                      <div className="mt-4 pt-4 xs:mt-6 xs:pt-6 border-t border-slate-800">
+                      <div className="mt-4 pt-4 xs:mt-6 xs:pt-6 border-t border-slate-200 dark:border-slate-800">
                         <label className="flex items-center gap-2 xs:gap-3 cursor-pointer select-none mb-2">
                           <input
                             type="checkbox"
@@ -3152,7 +3174,7 @@ export function AdminPDV() {
                         </label>
                         {isDelivery && (
                           <div className="mt-2.5 space-y-1.5 mb-3">
-                            <label className="text-[8px] xs:text-[10px] block font-black uppercase text-slate-500 tracking-widest">
+                            <label className="text-[8px] xs:text-[10px] block font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest">
                               Confirmar Endereço de Entrega
                             </label>
                             <textarea
@@ -3171,8 +3193,8 @@ export function AdminPDV() {
                       </div>
 
                      {/* OBSERVAÇOES */}
-                     <div className="mt-4 pt-4 xs:mt-6 xs:pt-6 border-t border-slate-800">
-                        <label className="text-[8px] xs:text-[10px] flex items-center gap-1.5 font-black uppercase text-slate-500 tracking-widest mb-2">
+                     <div className="mt-4 pt-4 xs:mt-6 xs:pt-6 border-t border-slate-200 dark:border-slate-800">
+                        <label className="text-[8px] xs:text-[10px] flex items-center gap-1.5 font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest mb-2">
                            <FileText size={12} /> Observações (Opcional)
                         </label>
                         <textarea
@@ -3220,21 +3242,25 @@ export function AdminPDV() {
                        )}
                      </div>
 
-                     <Button
+                     <button
                        onClick={handleFinishOrder}
                        disabled={isFinishing || (!saveAsNewOrder && totalPaid < total - 0.01)}
-                       className="w-full h-12 xs:h-16 sm:h-20 md:h-24 bg-green-600 hover:bg-green-500 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:opacity-100 disabled:border-b-0 border-b-4 xs:border-b-8 border-green-800 text-white rounded-xl xs:rounded-[1.5rem] text-sm xs:text-base sm:text-lg md:text-xl font-black uppercase tracking-[0.1em] flex items-center justify-center gap-2 xs:gap-4 transition-all relative overflow-hidden group active:border-b-0 active:translate-y-1"
+                       className={cn(
+                         "w-full h-12 xs:h-16 sm:h-20 md:h-24 rounded-xl xs:rounded-[1.5rem] text-sm xs:text-base sm:text-lg md:text-xl font-black uppercase tracking-[0.1em] flex items-center justify-center gap-2 xs:gap-4 transition-all relative overflow-hidden group outline-none",
+                         "!bg-green-600 hover:!bg-green-500 !text-white cursor-pointer border-b-4 xs:border-b-8 border-green-800 active:border-b-0 active:translate-y-1 hover:scale-[1.01]",
+                         "disabled:!bg-slate-200 disabled:!text-slate-500 disabled:!border-slate-300 disabled:border-2 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none disabled:active:translate-y-0 disabled:scale-100"
+                       )}
                      >
                        {isFinishing ? (
                          <Loader2 className="animate-spin text-white" size={24} />
                        ) : (
                          <>
                            FINALIZAR VENDA
-                           <CheckCircle2 size={24} className="md:size-8 group-hover:scale-125 group-disabled:scale-100 transition-transform" />
+                           <CheckCircle2 size={24} className="md:size-8 group-hover:scale-125 transition-transform text-white" />
                            <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] pointer-events-none hidden md:block"></div>
                          </>
                        )}
-                     </Button>
+                     </button>
                    </div>
                 </div>
               </div>
@@ -3362,25 +3388,25 @@ export function AdminPDV() {
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
-              className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md overflow-hidden text-center p-8 shadow-2xl"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-3xl w-full max-w-md overflow-hidden text-center p-8 shadow-2xl"
             >
               <div className="flex justify-center mb-6 text-red-500">
                 <AlertCircle size={64} className="opacity-80" />
               </div>
-              <h3 className="text-2xl font-black uppercase tracking-tighter italic text-white mb-2">
+              <h3 className="text-2xl font-black uppercase tracking-tighter italic text-slate-900 dark:text-white mb-2">
                 Estoque Insuficiente
               </h3>
-              <p className="text-slate-300 font-bold mb-6">
+              <p className="text-slate-600 dark:text-slate-300 font-bold mb-6">
                 Não é permitido vender produtos sem estoque no PDV.
               </p>
-              <div className="bg-slate-800 rounded-xl p-4 mb-8">
-                <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mb-1">
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 mb-8 border border-slate-100 dark:border-slate-800">
+                <p className="text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest mb-1">
                   Produto
                 </p>
-                <p className="text-lg font-black text-white leading-tight mb-4">
+                <p className="text-lg font-black text-slate-900 dark:text-white leading-tight mb-4">
                   {stockWarningModal.productName}
                 </p>
-                <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mb-1">
+                <p className="text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest mb-1">
                   Estoque Atual
                 </p>
                 <p className="text-3xl font-black text-red-500">

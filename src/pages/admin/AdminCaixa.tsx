@@ -55,6 +55,22 @@ export function AdminCaixa() {
   const [closingBalance, setClosingBalance] = useState('0');
   const [submitting, setSubmitting] = useState(false);
 
+  // Helper functions for currency input formatting and parsing
+  const formatCurrencyInput = (value: number | string | undefined | null): string => {
+    if (value === undefined || value === null || value === "") return "";
+    const val = typeof value === "number" ? value : parseFloat(value) || 0;
+    return new Intl.NumberFormat("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(val);
+  };
+
+  const parseCurrencyInput = (inputValue: string): number => {
+    const digits = inputValue.replace(/\D/g, "");
+    if (!digits) return 0;
+    return parseInt(digits, 10) / 100;
+  };
+
   const [selectedSession, setSelectedSession] = useState<CashSession | null>(null);
   const [sessionTransactions, setSessionTransactions] = useState<CashTransaction[]>([]);
   const [loadingSessionTrans, setLoadingSessionTrans] = useState(false);
@@ -727,11 +743,19 @@ export function AdminCaixa() {
                       <Input 
                         className="pl-10 bg-slate-50 dark:bg-slate-950 text-slate-950 dark:text-slate-100 border border-slate-300 dark:border-slate-800 font-bold placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-2 focus:ring-red-600 focus:border-red-600 outline-none" 
                         placeholder="Saldo Inicial" 
-                        type="number" 
-                        step="0.01" 
-                        value={initialBalance} 
-                        onChange={e => setInitialBalance(e.target.value)} 
-                        onBlur={e => setInitialBalance(roundTo2(parseFloat(e.target.value)).toString())}
+                        type="text" 
+                        inputMode="numeric"
+                        value={formatCurrencyInput(initialBalance)} 
+                        onChange={e => {
+                          const val = parseCurrencyInput(e.target.value);
+                          setInitialBalance(val === 0 ? "" : val.toFixed(2));
+                        }} 
+                        onFocus={() => setInitialBalance("")}
+                        onBlur={() => {
+                          if (initialBalance === "") {
+                            setInitialBalance("0");
+                          }
+                        }}
                       />
                     </div>
                     <Button type="submit" disabled={submitting} className="bg-emerald-600 hover:bg-emerald-700 h-10 px-6 text-white font-bold">
@@ -885,13 +909,21 @@ export function AdminCaixa() {
                         <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 font-bold">R$</span>
                             <Input 
-                              type="number"
-                              step="0.01"
+                              type="text"
+                              inputMode="numeric"
                               className="pl-10 font-bold bg-slate-50 dark:bg-slate-950 text-slate-950 dark:text-slate-100 border border-slate-300 dark:border-slate-800 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-2 focus:ring-red-600 focus:border-red-600" 
                               placeholder="0,00" 
-                              value={transAmount}
-                              onChange={e => setTransAmount(e.target.value)}
-                              onBlur={e => setTransAmount(roundTo2(parseFloat(e.target.value)).toString())}
+                              value={formatCurrencyInput(transAmount)}
+                              onChange={e => {
+                                const val = parseCurrencyInput(e.target.value);
+                                setTransAmount(val === 0 ? "" : val.toFixed(2));
+                              }}
+                              onFocus={() => setTransAmount("")}
+                              onBlur={() => {
+                                if (transAmount === "") {
+                                  setTransAmount("");
+                                }
+                              }}
                             />
                         </div>
                     </div>
@@ -996,13 +1028,21 @@ export function AdminCaixa() {
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 font-bold">R$</span>
                                 <Input 
-                                  type="number" 
-                                  step="0.01" 
+                                  type="text" 
+                                  inputMode="numeric"
                                   className="pl-10 font-bold bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-955 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-2 focus:ring-red-600 focus:border-red-600 disabled:opacity-75" 
                                   placeholder="0,00" 
-                                  value={closingBalance}
-                                  onChange={e => setClosingBalance(e.target.value)}
-                                  onBlur={e => setClosingBalance(roundTo2(parseFloat(e.target.value)).toString())}
+                                  value={formatCurrencyInput(closingBalance)}
+                                  onChange={e => {
+                                    const val = parseCurrencyInput(e.target.value);
+                                    setClosingBalance(val === 0 ? "" : val.toFixed(2));
+                                  }}
+                                  onFocus={() => setClosingBalance("")}
+                                  onBlur={() => {
+                                    if (closingBalance === "") {
+                                      setClosingBalance("0");
+                                    }
+                                  }}
                                   disabled={!canEdit}
                                 />
                             </div>
