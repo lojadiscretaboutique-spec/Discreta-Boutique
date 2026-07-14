@@ -40,6 +40,26 @@ service firebase.storage {
       allow read: if signedIn();
     }
 
+    match /popups/{allPaths=**} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+
+    match /combos/{allPaths=**} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+
+    match /instagram/{allPaths=**} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+
+    match /themes/{allPaths=**} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

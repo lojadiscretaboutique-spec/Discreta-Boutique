@@ -173,7 +173,7 @@ export function AdminPopups() {
       if (imageFile) {
         // Otimizar imagem para celular
         const optimizedFile = await processImageToMobileWebP(imageFile);
-        const fileRef = ref(storage, `popups/${Date.now()}_${optimizedFile.name}`);
+        const fileRef = ref(storage, `banners/popups/${Date.now()}_${optimizedFile.name}`);
         await uploadBytes(fileRef, optimizedFile);
         imageUrl = await getDownloadURL(fileRef);
       }
