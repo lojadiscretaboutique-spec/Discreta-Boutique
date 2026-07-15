@@ -1102,7 +1102,7 @@ export function AdminCaixa() {
                   {sessions.length === 0 ? (
                       <tr><td colSpan={8} className="p-8 text-center text-slate-500 dark:text-slate-400">Nenhum histórico disponível.</td></tr>
                   ) : sessions.map(s => {
-                      const expectedCash = roundTo2(s.initialBalance + (sessionsCashTotals[s.id || ''] || 0));
+                      const expectedCash = roundTo2(sessionsCashTotals[s.id || ''] || 0);
                       const diff = s.status === 'fechado' ? roundTo2((s.finalBalance || 0) - expectedCash) : 0;
                       const isSelected = selectedSession?.id === s.id;
                       return (
