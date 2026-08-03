@@ -394,23 +394,53 @@ export const productService = {
 
       await updateDoc(productRef, updateData);
 
-      // Simple sync for variants: delete all and recreate
-      if (product.hasVariants) {
+      // Sync variants preserving existing document IDs whenever possible
+      if (product.hasVariants && variants) {
         const vCols = collection(db, `products/${id}/variants`);
         const vSnap = await getDocs(vCols);
+        const existingDocs = vSnap.docs;
+        const usedDocIds = new Set<string>();
         const batch = writeBatch(db);
-        
-        // Delete current
-        vSnap.docs.forEach(d => batch.delete(d.ref));
-        
-        // Add new
+
         variants.forEach(v => {
-          const vRef = doc(vCols);
-          const vData = { ...v };
-          delete vData.id;
+          let targetDocId = v.id;
+
+          // If v.id is provided and matches an existing doc, reuse it
+          if (targetDocId && existingDocs.some(d => d.id === targetDocId)) {
+            usedDocIds.add(targetDocId);
+          } else {
+            // Check if any existing doc matches by SKU or Name that wasn't used yet
+            const matchDoc = existingDocs.find(d => {
+              if (usedDocIds.has(d.id)) return false;
+              const data = d.data();
+              if (v.sku && data.sku && String(v.sku).trim().toLowerCase() === String(data.sku).trim().toLowerCase()) return true;
+              if (v.name && data.name && String(v.name).trim().toLowerCase() === String(data.name).trim().toLowerCase()) return true;
+              return false;
+            });
+
+            if (matchDoc) {
+              targetDocId = matchDoc.id;
+              usedDocIds.add(targetDocId);
+            } else {
+              // Create new doc ID
+              const newRef = doc(vCols);
+              targetDocId = newRef.id;
+              usedDocIds.add(targetDocId);
+            }
+          }
+
+          const vRef = doc(vCols, targetDocId);
+          const vData = { ...v, id: targetDocId };
           batch.set(vRef, vData);
         });
-        
+
+        // Delete existing docs that are no longer present in the updated variants list
+        existingDocs.forEach(d => {
+          if (!usedDocIds.has(d.id)) {
+            batch.delete(d.ref);
+          }
+        });
+
         await batch.commit();
 
         // Recalculate accurately after variants are committed

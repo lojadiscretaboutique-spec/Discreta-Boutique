@@ -4,6 +4,7 @@ import { auth } from '../lib/auth';
 import { auditLogService } from './auditLogService';
 import { stockSyncService } from './stockSyncService';
 import { smartStockService } from './smartStockService';
+import { resolveVariantDoc } from './variantResolver';
 
 export interface NewStockMovement {
   id?: string;
@@ -31,8 +32,18 @@ export const stockMovementService = {
   async registerMovement(data: Omit<NewStockMovement, 'id' | 'createdAt' | 'previousStock' | 'newStock' | 'createdBy' | 'createdByName'>) {
     try {
       let targetRef;
-      if (data.variantId) {
-        targetRef = doc(db, `products/${data.productId}/variants/${data.variantId}`);
+      let effectiveVariantId = data.variantId;
+
+      if (data.variantId || data.variantName || data.sku) {
+        const resolved = await resolveVariantDoc(data.productId, data.variantId, data.variantName, data.sku);
+        if (resolved) {
+          targetRef = resolved.ref;
+          effectiveVariantId = resolved.variantId;
+        } else if (data.variantId) {
+          targetRef = doc(db, `products/${data.productId}/variants/${data.variantId}`);
+        } else {
+          targetRef = doc(db, 'products', data.productId);
+        }
       } else {
         targetRef = doc(db, 'products', data.productId);
       }
@@ -82,6 +93,7 @@ export const stockMovementService = {
 
       const movementData: any = {
         ...data,
+        variantId: effectiveVariantId,
         costPrice: resolvedCostPrice || 0,
         status: data.status || 'realizada',
         previousStock: currentStock,

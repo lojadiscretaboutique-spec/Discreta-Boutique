@@ -3,6 +3,7 @@ import { db } from '../lib/firebase';
 import { auth } from '../lib/auth';
 import { Product } from './productService';
 import { auditLogService } from './auditLogService';
+import { resolveVariantDoc } from './variantResolver';
 
 export interface StockMovement {
   id?: string;
@@ -34,9 +35,14 @@ const removeUndefined = (obj: any): any => {
 export const stockService = {
   async registerMovement(data: Omit<StockMovement, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'createdByName'>) {
     try {
+      let resolvedVariant = null;
+      if (data.variantId || data.variantName || data.sku) {
+        resolvedVariant = await resolveVariantDoc(data.productId, data.variantId, data.variantName, data.sku);
+      }
+
       await runTransaction(db, async (transaction) => {
         const productRef = doc(db, 'products', data.productId);
-        const variantRef = data.variantId ? doc(db, `products/${data.productId}/variants/${data.variantId}`) : null;
+        const variantRef = resolvedVariant ? resolvedVariant.ref : (data.variantId ? doc(db, `products/${data.productId}/variants/${data.variantId}`) : null);
         
         // 1. Get current stock
         let currentStock = 0;

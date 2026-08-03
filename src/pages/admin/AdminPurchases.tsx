@@ -214,10 +214,11 @@ export function AdminPurchases() {
         toast("Estoque atualizado!");
         loadData();
       } catch (e: any) {
-        setOverlaySteps(prev => prev.map(s => s.status === 'running' ? { ...s, status: 'error' } : s));
-        toast(e.message || "Erro ao finalizar", "error");
+        const errorMsg = e?.message || "Erro ao finalizar recebimento";
+        setOverlaySteps(prev => prev.map(s => s.status === 'running' ? { ...s, message: errorMsg, status: 'error' } : s));
+        toast(errorMsg, "error");
       } finally {
-        finishOverlay();
+        finishOverlay(3500);
       }
     }
   };
@@ -434,7 +435,10 @@ export function AdminPurchases() {
   const addItem = (p: Product, variant?: ProductVariant) => {
     setForm(prev => {
       const existingItemIndex = prev.items.findIndex(item => 
-        item.productId === p.id && item.variantId === variant?.id
+        item.productId === p.id && (
+          (variant?.id && item.variantId === variant.id) ||
+          (variant?.name && item.variantName === variant.name)
+        )
       );
 
       let newItems = [...prev.items];
@@ -449,6 +453,7 @@ export function AdminPurchases() {
           subtotal: newQuantity * existingItem.costPrice
         };
       } else {
+        const initialCost = (variant?.costPrice && variant.costPrice > 0) ? variant.costPrice : (p.costPrice || 0);
         const newItem: PurchaseItem = {
           productId: p.id!,
           productName: p.name,
@@ -456,8 +461,8 @@ export function AdminPurchases() {
           variantName: variant?.name,
           sku: variant?.sku || p.sku || '',
           quantity: 1,
-          costPrice: p.costPrice || 0,
-          subtotal: p.costPrice || 0
+          costPrice: initialCost,
+          subtotal: initialCost
         };
         newItems = [...newItems, newItem];
       }
@@ -602,7 +607,19 @@ export function AdminPurchases() {
                  {form.items.map((item, idx) => ({ item, idx })).reverse().map(({ item, idx }) => (
                    <div key={idx} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-800 p-4 rounded-2xl border border-slate-100">
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-white truncate">{item.productName}</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-white truncate">{item.productName}</span>
+                          {item.variantName && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-200 font-medium">
+                              {item.variantName}
+                            </span>
+                          )}
+                          {item.stockProcessed && (
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                              <CheckCircle2 size={12} /> Estoque Lançado
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-zinc-400 font-mono">{item.sku}</div>
                       </div>
                       <div className="w-24">
