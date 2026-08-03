@@ -191,6 +191,8 @@ export const CadastroPage = () => {
     };
 
     // ... (rest of the file)
+    // Dados Pessoais
+    const [fullName, setFullName] = useState('');
     const [cpf, setCpf] = useState('');
     const [birthDate, setBirthDate] = useState('');
     const [whatsapp, setWhatsapp] = useState('');

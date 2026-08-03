@@ -199,7 +199,7 @@ service cloud.firestore {
 
     match /customers/{doc} {
       allow create, get, update: if true;
-      allow list: if can('clientes', 'visualizar');
+      allow list: if can('clientes', 'visualizar') || can('dashboard', 'visualizar') || signedIn();
       allow delete: if can('clientes', 'excluir');
     }
 
