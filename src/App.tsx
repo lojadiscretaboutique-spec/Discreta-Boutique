@@ -81,6 +81,11 @@ const AdminPaymentMethods = lazy(() => import('./pages/admin/financial/AdminPaym
 const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours').then(m => ({ default: m.AdminOperatingHours })));
 const AdminWebhooks = lazy(() => import('./pages/admin/AdminWebhooks').then(m => ({ default: m.AdminWebhooks })));
 const AdminSmartStock = lazy(() => import('./pages/admin/AdminSmartStock'));
+const AdminInventoryBalanceList = lazy(() => import('./pages/admin/estoque/AdminInventoryBalanceList').then(m => ({ default: m.AdminInventoryBalanceList })));
+const AdminInventoryBalanceNew = lazy(() => import('./pages/admin/estoque/AdminInventoryBalanceNew').then(m => ({ default: m.AdminInventoryBalanceNew })));
+const AdminInventoryBalanceCount = lazy(() => import('./pages/admin/estoque/AdminInventoryBalanceCount').then(m => ({ default: m.AdminInventoryBalanceCount })));
+const AdminInventoryBalanceDivergences = lazy(() => import('./pages/admin/estoque/AdminInventoryBalanceDivergences').then(m => ({ default: m.AdminInventoryBalanceDivergences })));
+const AdminStockCard = lazy(() => import('./pages/admin/estoque/AdminStockCard').then(m => ({ default: m.AdminStockCard })));
 const AdminMarketingHub = lazy(() => import('./pages/admin/marketing/AdminMarketingHub'));
 const AdminVisitors = lazy(() => import('./pages/admin/analytics/AdminVisitors').then(m => ({ default: m.AdminVisitors })));
 const AdminThemeManager = lazy(() => import('./pages/admin/AdminThemeManager').then(m => ({ default: m.AdminThemeManager })));
@@ -259,6 +264,11 @@ function AppContent() {
             <Route path="combos" element={<AdminCombos />} />
             <Route path="etiquetas" element={<AdminLabels />} />
             <Route path="mov_estoque" element={<MovEstoque />} />
+            <Route path="estoque/balancos" element={<AdminInventoryBalanceList />} />
+            <Route path="estoque/balancos/novo" element={<AdminInventoryBalanceNew />} />
+            <Route path="estoque/balancos/:balanceId" element={<AdminInventoryBalanceCount />} />
+            <Route path="estoque/balancos/:balanceId/divergencias" element={<AdminInventoryBalanceDivergences />} />
+            <Route path="estoque/ficha/:productId" element={<AdminStockCard />} />
             <Route path="usuarios" element={<AdminUsers />} />
             <Route path="perfis" element={<AdminRoles />} />
             <Route path="logs" element={<AdminLogs />} />

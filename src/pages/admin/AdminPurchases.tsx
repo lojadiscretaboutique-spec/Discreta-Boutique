@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Trash2, ShoppingCart, Truck, CheckCircle2, 
@@ -12,6 +12,91 @@ import { useFeedback } from '../../contexts/FeedbackContext';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 
+/**
+ * Robustly checks if an item in the purchase list matches the exact same stock entity.
+ * Simple products match on productId (when neither item nor target has variant).
+ * Variant products match on productId AND variantId (or variantName fallback).
+ */
+export function isSameStockItem(
+  item: PurchaseItem, 
+  productId: string, 
+  variantId?: string, 
+  variantName?: string
+): boolean {
+  if (!item || !productId) return false;
+  if (item.productId !== productId) return false;
+
+  const targetVId = variantId ? String(variantId).trim() : undefined;
+  const targetVName = variantName ? String(variantName).trim().toLowerCase() : undefined;
+  
+  const itemVId = item.variantId ? String(item.variantId).trim() : undefined;
+  const itemVName = item.variantName ? String(item.variantName).trim().toLowerCase() : undefined;
+
+  // Case A: Target is a simple product (no variant specified)
+  if (!targetVId && !targetVName) {
+    return !itemVId && !itemVName;
+  }
+
+  // Case B: Target is a variant, but existing item has no variant
+  if (!itemVId && !itemVName) {
+    return false;
+  }
+
+  // Check matching variant ID
+  if (targetVId && itemVId && targetVId === itemVId) {
+    return true;
+  }
+
+  // Check matching variant Name as fallback
+  if (targetVName && itemVName && targetVName === itemVName) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Pre-save safeguard that consolidates any duplicate stock items in the payload.
+ */
+export function consolidatePurchaseItems(items: PurchaseItem[]): PurchaseItem[] {
+  const consolidated: PurchaseItem[] = [];
+
+  for (const item of items) {
+    if (!item || !item.productId) continue;
+
+    const qty = isNaN(Number(item.quantity)) || Number(item.quantity) <= 0 ? 1 : Number(item.quantity);
+    const cost = isNaN(Number(item.costPrice)) || Number(item.costPrice) < 0 ? 0 : Number(item.costPrice);
+
+    const existingIndex = consolidated.findIndex(c => 
+      isSameStockItem(c, item.productId, item.variantId, item.variantName)
+    );
+
+    if (existingIndex > -1) {
+      const existing = consolidated[existingIndex];
+      const newQty = existing.quantity + qty;
+      const finalCost = existing.costPrice > 0 ? existing.costPrice : cost;
+
+      consolidated[existingIndex] = {
+        ...existing,
+        quantity: newQty,
+        costPrice: finalCost,
+        subtotal: newQty * finalCost,
+        stockProcessed: existing.stockProcessed || item.stockProcessed,
+        stockProcessedAt: existing.stockProcessedAt || item.stockProcessedAt
+      };
+    } else {
+      consolidated.push({
+        ...item,
+        quantity: qty,
+        costPrice: cost,
+        subtotal: qty * cost
+      });
+    }
+  }
+
+  return consolidated;
+}
+
 export function AdminPurchases() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +109,11 @@ export function AdminPurchases() {
   const [productsList, setProductsList] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [addQuantity, setAddQuantity] = useState<number>(1);
+  const [pendingAddQty, setPendingAddQty] = useState<number>(1);
+  const [highlightedIdx, setHighlightedIdx] = useState<number | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const [variantModalOpen, setVariantModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [variantsList, setVariantsList] = useState<ProductVariant[]>([]);
@@ -101,9 +191,25 @@ export function AdminPurchases() {
       return;
     }
 
+    // Pre-save consolidation safeguard against duplicate items in payload
+    const consolidatedItems = consolidatePurchaseItems(form.items);
+    if (consolidatedItems.length === 0) {
+      toast("A compra deve ter pelo menos 1 item com quantidade maior que zero", "warning");
+      return;
+    }
+
+    const consolidatedItemsSubtotal = consolidatedItems.reduce((acc, i) => acc + i.subtotal, 0);
+    const finalForm = {
+      ...form,
+      items: consolidatedItems,
+      total: consolidatedItemsSubtotal + (form.shipping || 0)
+    };
+
+    setForm(finalForm);
+
     startOverlay("Salvando Compra", [
       "Verificando status do caixa...",
-      "Validando dados da compra...",
+      "Consolidando itens e validando compra...",
       "Salvando informações de itens e fornecedor...",
       "Processo finalizado!"
     ]);
@@ -125,7 +231,7 @@ export function AdminPurchases() {
       await updateStep(1, 'success', 200);
 
       await updateStep(2, 'running', 400);
-      await purchaseService.savePurchase({ ...form, id: editingId || undefined });
+      await purchaseService.savePurchase({ ...finalForm, id: editingId || undefined });
       await updateStep(2, 'success', 200);
 
       await updateStep(3, 'success', 600);
@@ -307,50 +413,60 @@ export function AdminPurchases() {
     }
   };
 
-  const handleProductSelect = async (p: Product) => {
+  const handleProductSelect = async (p: Product, qtyOverride?: number) => {
+    const qty = qtyOverride || addQuantity || 1;
     if (p.hasVariants) {
       setSearchTerm('');
+      setPendingAddQty(qty);
       const pData = await productService.getProduct(p.id!);
       setSelectedProduct(p);
       setVariantsList(pData ? pData.variants : []);
       setVariantModalOpen(true);
     } else {
-      addItem(p);
+      addItem(p, undefined, qty);
     }
   };
 
   const handleBarcodeOrEnter = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && searchTerm.trim()) {
       e.preventDefault();
-      const term = searchTerm.toLowerCase().trim();
-      
+      let term = searchTerm.toLowerCase().trim();
+      let qtyFromSearch = addQuantity > 0 ? addQuantity : 1;
+
+      // Check multiplier format e.g. "5*78912345" or "3x78912345"
+      const multiplierMatch = term.match(/^(\d+)\s*[*xX]\s*(.+)$/);
+      if (multiplierMatch) {
+        qtyFromSearch = parseInt(multiplierMatch[1], 10) || 1;
+        term = multiplierMatch[2].trim().toLowerCase();
+      }
+
       // Look for exact match in main product
       const match = productsList.find(p => 
         p.gtin?.toLowerCase() === term || 
         p.sku?.toLowerCase() === term
       );
-      
+
       if (match) {
-        handleProductSelect(match);
+        handleProductSelect(match, qtyFromSearch);
         return;
       } 
-      
+
       // Look for exact match in variants
       const variantMatchProduct = productsList.find(p => p.variantIdentifiers?.map(vi => vi.toLowerCase()).includes(term));
       if (variantMatchProduct) {
-         try {
-            const pData = await productService.getProduct(variantMatchProduct.id!);
-            if (pData) {
-               const variant = pData.variants.find(v => v.barcode?.toLowerCase() === term || v.sku?.toLowerCase() === term);
-               if (variant) {
-                  addItem(variantMatchProduct, variant);
-                  setSearchTerm('');
-                  return;
-               }
+        try {
+          const pData = await productService.getProduct(variantMatchProduct.id!);
+          if (pData) {
+            const variant = pData.variants.find(v => v.barcode?.toLowerCase() === term || v.sku?.toLowerCase() === term);
+            if (variant) {
+              addItem(variantMatchProduct, variant, qtyFromSearch);
+              setSearchTerm('');
+              return;
             }
-         } catch(err) {
-            console.error(err);
-         }
+          }
+        } catch(err) {
+          console.error(err);
+        }
       }
 
       const partialMatches = productsList.filter(p => 
@@ -363,7 +479,7 @@ export function AdminPurchases() {
       );
 
       if (partialMatches.length === 1) {
-        handleProductSelect(partialMatches[0]);
+        handleProductSelect(partialMatches[0], qtyFromSearch);
       } else {
         toast("Produto não encontrado unicamente por este código.", "warning");
       }
@@ -432,26 +548,33 @@ export function AdminPurchases() {
     }
   };
 
-  const addItem = (p: Product, variant?: ProductVariant) => {
+  const addItem = (p: Product, variant?: ProductVariant, quantityToAdd: number = 1) => {
+    const safeQty = isNaN(Number(quantityToAdd)) || Number(quantityToAdd) <= 0 ? 1 : Number(quantityToAdd);
+
     setForm(prev => {
       const existingItemIndex = prev.items.findIndex(item => 
-        item.productId === p.id && (
-          (variant?.id && item.variantId === variant.id) ||
-          (variant?.name && item.variantName === variant.name)
-        )
+        isSameStockItem(item, p.id!, variant?.id, variant?.name)
       );
 
       let newItems = [...prev.items];
+      let targetIdx = -1;
+      let isQuantityUpdated = false;
 
       if (existingItemIndex > -1) {
         const existingItem = newItems[existingItemIndex];
-        const newQuantity = existingItem.quantity + 1;
-        
+        const newQuantity = (Number(existingItem.quantity) || 0) + safeQty;
+        const currentCost = existingItem.costPrice > 0 
+          ? existingItem.costPrice 
+          : ((variant?.costPrice && variant.costPrice > 0) ? variant.costPrice : (p.costPrice || 0));
+
         newItems[existingItemIndex] = {
           ...existingItem,
           quantity: newQuantity,
-          subtotal: newQuantity * existingItem.costPrice
+          costPrice: currentCost,
+          subtotal: newQuantity * currentCost
         };
+        targetIdx = existingItemIndex;
+        isQuantityUpdated = true;
       } else {
         const initialCost = (variant?.costPrice && variant.costPrice > 0) ? variant.costPrice : (p.costPrice || 0);
         const newItem: PurchaseItem = {
@@ -460,35 +583,81 @@ export function AdminPurchases() {
           variantId: variant?.id,
           variantName: variant?.name,
           sku: variant?.sku || p.sku || '',
-          quantity: 1,
+          quantity: safeQty,
           costPrice: initialCost,
-          subtotal: initialCost
+          subtotal: safeQty * initialCost
         };
         newItems = [...newItems, newItem];
+        targetIdx = newItems.length - 1;
       }
 
-      const itemsTotal = newItems.reduce((acc, i) => acc + i.subtotal, 0);
-      
+      const itemsTotal = newItems.reduce((acc, i) => acc + (i.subtotal || 0), 0);
+
+      // Trigger highlight animation & toast notification
+      setTimeout(() => {
+        setHighlightedIdx(targetIdx);
+        if (isQuantityUpdated) {
+          toast(`Quantidade somada no item existente (+${safeQty})`, "info");
+        } else {
+          toast(`Item adicionado à compra (${safeQty}x)`, "success");
+        }
+        setTimeout(() => setHighlightedIdx(null), 1800);
+      }, 20);
+
       return { 
         ...prev, 
         items: newItems,
         total: itemsTotal + (prev.shipping || 0)
       };
     });
+
     setSearchTerm('');
+    setAddQuantity(1);
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 50);
   };
 
   const updateItem = (index: number, field: keyof PurchaseItem, value: any) => {
     setForm(prev => {
-      const items = [...prev.items];
-      const item = { ...items[index], [field]: value };
-      
-      if (field === 'quantity' || field === 'costPrice') {
-         item.subtotal = item.quantity * item.costPrice;
+      let items = [...prev.items];
+      if (!items[index]) return prev;
+
+      if (field === 'quantity') {
+        let numVal = Number(value);
+        if (isNaN(numVal) || numVal < 0) {
+          numVal = 1;
+        }
+        if (numVal === 0) {
+          // Remove item when quantity set to 0
+          items = items.filter((_, i) => i !== index);
+        } else {
+          const cost = items[index].costPrice || 0;
+          items[index] = {
+            ...items[index],
+            quantity: numVal,
+            subtotal: numVal * cost
+          };
+        }
+      } else if (field === 'costPrice') {
+        let numVal = Number(value);
+        if (isNaN(numVal) || numVal < 0) {
+          numVal = 0;
+        }
+        const qty = items[index].quantity || 0;
+        items[index] = {
+          ...items[index],
+          costPrice: numVal,
+          subtotal: qty * numVal
+        };
+      } else {
+        items[index] = {
+          ...items[index],
+          [field]: value
+        };
       }
-      
-      items[index] = item;
-      const itemsTotal = items.reduce((acc, i) => acc + i.subtotal, 0);
+
+      const itemsTotal = items.reduce((acc, i) => acc + (i.subtotal || 0), 0);
 
       return { 
         ...prev, 
@@ -561,43 +730,57 @@ export function AdminPurchases() {
             </div>
 
             <div className="bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-700">
-               <div className="flex justify-between items-center mb-6">
+               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
                  <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Itens da Compra</h3>
                  {!isReadOnly && (
-                   <div className="relative w-64">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                      <Input 
-                        placeholder="Buscar cód/nome (ou bipe)" 
-                        className="pl-10 h-10 text-sm"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        onKeyDown={handleBarcodeOrEnter}
-                      />
-                      {searchTerm.length > 1 && (
-                        <div className="absolute top-full left-0 w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
-                          {productsList.filter(p => {
-                            const term = searchTerm.toLowerCase();
-                            return p.name.toLowerCase().includes(term) ||
-                                   p.sku?.toLowerCase().includes(term) ||
-                                   p.gtin?.toLowerCase().includes(term) ||
-                                   p.shortDescription?.toLowerCase().includes(term) ||
-                                   p.variantIdentifiers?.map(vi => vi.toLowerCase()).includes(term) ||
-                                   p.searchTerms?.some(st => st.includes(term));
-                          }).map(p => (
-                            <div key={p.id} className="p-2 border-b border-slate-100 last:border-0 hover:bg-slate-800 cursor-pointer" onClick={() => handleProductSelect(p)}>
-                               <div className="flex items-center justify-between">
-                                  <div className="flex flex-col">
-                                     <div className="text-xs font-bold text-slate-200">{p.name}</div>
-                                     <div className="text-[10px] text-slate-400">
-                                        {p.sku && `SKU: ${p.sku}`} {p.gtin && ` | Cód: ${p.gtin}`}
+                   <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-700 shrink-0">
+                         <span className="text-[10px] font-black uppercase text-slate-400">Qtd:</span>
+                         <input 
+                           type="number" 
+                           min={1} 
+                           value={addQuantity} 
+                           onChange={e => setAddQuantity(Math.max(1, parseInt(e.target.value) || 1))} 
+                           className="w-12 h-7 bg-slate-900 border border-slate-600 rounded text-center text-xs font-bold text-white focus:ring-1 focus:ring-red-500 outline-none" 
+                           title="Quantidade a adicionar ao incluir o produto"
+                         />
+                      </div>
+                      <div className="relative flex-1 sm:w-64">
+                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                         <Input 
+                           ref={searchInputRef}
+                           placeholder="Buscar cód/nome (ou bipe)" 
+                           className="pl-10 h-10 text-sm"
+                           value={searchTerm}
+                           onChange={e => setSearchTerm(e.target.value)}
+                           onKeyDown={handleBarcodeOrEnter}
+                         />
+                         {searchTerm.length > 1 && (
+                           <div className="absolute top-full left-0 w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                             {productsList.filter(p => {
+                               const term = searchTerm.toLowerCase();
+                               return p.name.toLowerCase().includes(term) ||
+                                      p.sku?.toLowerCase().includes(term) ||
+                                      p.gtin?.toLowerCase().includes(term) ||
+                                      p.shortDescription?.toLowerCase().includes(term) ||
+                                      p.variantIdentifiers?.map(vi => vi.toLowerCase()).includes(term) ||
+                                      p.searchTerms?.some(st => st.includes(term));
+                             }).map(p => (
+                               <div key={p.id} className="p-2 border-b border-slate-800 last:border-0 hover:bg-slate-800 cursor-pointer" onClick={() => handleProductSelect(p)}>
+                                  <div className="flex items-center justify-between">
+                                     <div className="flex flex-col">
+                                        <div className="text-xs font-bold text-slate-200">{p.name}</div>
+                                        <div className="text-[10px] text-slate-400">
+                                           {p.sku && `SKU: ${p.sku}`} {p.gtin && ` | Cód: ${p.gtin}`}
+                                        </div>
                                      </div>
+                                     <Button size="sm" onClick={(e) => { e.stopPropagation(); handleProductSelect(p); }} className="h-6 text-[10px]">Add</Button>
                                   </div>
-                                  <Button size="sm" onClick={(e) => { e.stopPropagation(); handleProductSelect(p); }} className="h-6 text-[10px]">Add</Button>
                                </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                             ))}
+                           </div>
+                         )}
+                      </div>
                    </div>
                  )}
                </div>
@@ -605,7 +788,13 @@ export function AdminPurchases() {
                <div className="space-y-3">
                  {form.items.length === 0 && <div className="p-12 text-center text-slate-400 text-sm italic">Nenhum produto adicionado.</div>}
                  {form.items.map((item, idx) => ({ item, idx })).reverse().map(({ item, idx }) => (
-                   <div key={idx} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-800 p-4 rounded-2xl border border-slate-100">
+                   <div 
+                     key={idx} 
+                     className={cn(
+                       "flex flex-col md:flex-row md:items-center gap-4 bg-slate-800 p-4 rounded-2xl border transition-all duration-300",
+                       highlightedIdx === idx ? "border-emerald-500 ring-2 ring-emerald-500/30 bg-emerald-950/40" : "border-slate-700"
+                     )}
+                   >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-bold text-white truncate">{item.productName}</span>
@@ -619,6 +808,11 @@ export function AdminPurchases() {
                               <CheckCircle2 size={12} /> Estoque Lançado
                             </span>
                           )}
+                          {highlightedIdx === idx && (
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black animate-pulse">
+                              ✓ Qtd Somada!
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-zinc-400 font-mono">{item.sku}</div>
                       </div>
@@ -626,9 +820,10 @@ export function AdminPurchases() {
                         <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Qtd</label>
                         <Input 
                           type="number"
+                          min={1}
                           value={item.quantity}
                           onChange={e => !isReadOnly && updateItem(idx, 'quantity', Number(e.target.value))}
-                          className="h-8 text-xs"
+                          className="h-8 text-xs font-bold"
                           disabled={isReadOnly}
                         />
                       </div>
@@ -763,13 +958,13 @@ export function AdminPurchases() {
                        <Button 
                          size="sm" 
                          onClick={() => {
-                           addItem(selectedProduct, v);
+                           addItem(selectedProduct, v, pendingAddQty);
                            setVariantModalOpen(false);
                            setSearchTerm('');
                          }}
                          className="text-xs uppercase font-bold"
                        >
-                         Adicionar
+                         Adicionar {pendingAddQty > 1 ? `(${pendingAddQty}x)` : ''}
                        </Button>
                      </div>
                    ))}

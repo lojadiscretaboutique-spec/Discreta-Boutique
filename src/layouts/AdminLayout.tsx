@@ -28,6 +28,7 @@ export function AdminLayout() {
     ]},
     { name: 'Estoque', path: '/admin/estoque', icon: ClipboardList, permission: 'stock', submenu: [
         { name: 'Movimentação de Estoque', path: '/admin/mov_estoque', permission: 'stock' },
+        { name: 'Balanço de Estoque 📋', path: '/admin/estoque/balancos', permission: 'stock' },
         { name: 'Etiquetas', path: '/admin/etiquetas', permission: 'produtos' },
         { name: 'Compras', path: '/admin/compras', permission: 'compras' },
     ]},

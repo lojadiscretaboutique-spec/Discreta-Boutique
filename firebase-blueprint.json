@@ -108,6 +108,31 @@ export default {
       },
       required: ["name", "slug", "sku", "price", "active"]
     },
+    InventoryBalance: {
+      title: "Inventory Balance",
+      description: "Physical stocktake inventory balance header",
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        code: { type: "string" },
+        name: { type: "string" },
+        description: { type: "string" },
+        status: { type: "string" },
+        scope: { type: "string" },
+        scopeValue: { type: "string" },
+        blindCount: { type: "boolean" },
+        expectedItems: { type: "number" },
+        countedItems: { type: "number" },
+        totalExpectedUnits: { type: "number" },
+        totalCountedUnits: { type: "number" },
+        shortageItems: { type: "number" },
+        surplusItems: { type: "number" },
+        shortageCostValue: { type: "number" },
+        surplusCostValue: { type: "number" },
+        createdAt: { type: "string", format: "date-time" }
+      },
+      required: ["code", "name", "status", "scope"]
+    },
     ProductVariant: {
       title: "Product Variant",
       description: "Variation of a product",
