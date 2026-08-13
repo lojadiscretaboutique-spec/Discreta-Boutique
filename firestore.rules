@@ -249,16 +249,13 @@ service cloud.firestore {
     }
 
     match /cashSessions/{doc} {
-      allow read: if can('caixa', 'visualizar');
-      allow create: if can('caixa', 'criar');
-      allow update: if can('caixa', 'editar');
-      allow delete: if can('caixa', 'excluir');
+      allow read, create, update: if signedIn();
+      allow delete: if can('caixa', 'excluir') || isMasterAdmin();
     }
 
     match /cashTransactions/{doc} {
-      allow read: if can('caixa', 'visualizar') || can('orders', 'editar') || can('orders', 'excluir');
-      allow create: if can('caixa', 'criar') || can('orders', 'criar');
-      allow update, delete: if can('caixa', 'excluir') || can('orders', 'editar') || can('orders', 'excluir');
+      allow read, create, update: if signedIn();
+      allow delete: if can('caixa', 'excluir') || can('orders', 'excluir') || isMasterAdmin();
     }
 
     match /pdvDiscountAuthorizations/{doc} {
