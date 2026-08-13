@@ -13,7 +13,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/ta
 import { formatCurrency, cn, PLACEHOLDER_IMAGE } from '../../lib/utils';
 import { productService, Product, ProductVariant } from '../../services/productService';
 import { comboService, Combo, ComboItem } from '../../services/comboService';
-import { categoryService } from '../../services/categoryService';
+import { categoryService, Category } from '../../services/categoryService';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { useAuthStore } from '../../store/authStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -396,7 +396,10 @@ export function AdminCombos() {
   };
 
   const handleDelete = async (id: string) => {
-    const isConfirmed = await confirm("Excluir Combo", "Tem certeza que deseja excluir este combo? Esta ação não pode ser desfeita.");
+    const isConfirmed = await confirm({
+      title: "Excluir Combo",
+      message: "Tem certeza que deseja excluir este combo? Esta ação não pode ser desfeita."
+    });
     if (!isConfirmed) return;
 
     try {
@@ -427,7 +430,7 @@ export function AdminCombos() {
 
   // Global stats calculation
   const totalSales = combos.reduce((acc, c) => acc + (c.soldCount || 0), 0);
-  const totalProfit = combos.reduce((acc, c) => acc + (c.totalProfit || 0), 0);
+  const totalProfit = combos.reduce((acc, c) => acc + (c.profit || 0), 0);
   
   // Calculate most used products
   const productUsageMap = new Map<string, {name: string, count: number}>();

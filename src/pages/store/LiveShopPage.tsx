@@ -267,10 +267,10 @@ export function LiveShopPage() {
   };
 
   // Combo kit purchase action
-  const handleClaimKitCombo = (kit: LiveSession['kits']) => {
+  const handleClaimKitCombo = (kit: LiveSession['kits'][number]) => {
     kit.productIds.forEach(pId => {
       const prod = storeProducts.find(p => p.id === pId);
-      if (prod) {
+      if (prod && prod.id) {
         // Add individual products but customized with kit discount share
         const fairSharePrice = prod.price * (kit.price / kit.originalPrice);
         const cartItem: CartItem = {
