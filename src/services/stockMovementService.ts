@@ -1,4 +1,4 @@
-import { collection, doc, serverTimestamp, getDocs, getDoc, updateDoc, query, orderBy, limit, addDoc, where, deleteDoc } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, getDocs, getDoc, updateDoc, query, orderBy, limit, addDoc, where, deleteDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { auth } from '../lib/auth';
 import { auditLogService } from './auditLogService';
@@ -31,6 +31,28 @@ export interface NewStockMovement {
 export const stockMovementService = {
   async registerMovement(data: Omit<NewStockMovement, 'id' | 'createdAt' | 'previousStock' | 'newStock' | 'createdBy' | 'createdByName'>) {
     try {
+      // 0. Idempotency Check for Order Movements
+      if (data.orderId && data.type === 'out') {
+        const existingQ = query(
+          collection(db, 'stockMovements'),
+          where('orderId', '==', data.orderId),
+          where('productId', '==', data.productId)
+        );
+        const existingSnap = await getDocs(existingQ);
+        const duplicate = existingSnap.docs.find(d => {
+          const m = d.data();
+          if (data.variantId) {
+            return m.variantId === data.variantId && m.type === 'out';
+          }
+          return !m.variantId && m.type === 'out';
+        });
+
+        if (duplicate) {
+          console.log(`[stockMovementService] Movement already exists for order ${data.orderId}, product ${data.productId}. Skipping duplicate.`);
+          return true;
+        }
+      }
+
       let targetRef;
       let effectiveVariantId = data.variantId;
 
@@ -47,123 +69,90 @@ export const stockMovementService = {
       } else {
         targetRef = doc(db, 'products', data.productId);
       }
-      
-      // 1. Get current item to retrieve stock securely
-      const pSnap = await getDoc(targetRef);
-      if (!pSnap.exists()) throw new Error("Item não encontrado na base de dados (Produto ou Variação)");
-      
-      const currentStock = pSnap.data().stock || 0;
 
-      // 2. Calculate new stock mathematically
-      let newStock = currentStock;
-      if (data.type === 'in') newStock += data.quantity;
-      else if (data.type === 'out') newStock -= data.quantity;
-      
-      // Allow negative stock only if specifically allowed, but generally we prevent it
-      // if (newStock < 0) throw new Error(`Operação Negada: O estoque atual é de ${currentStock} unid. Você solicitou subtrair ${data.quantity}.`);
+      // 1. Atomic Firestore Transaction for Stock Concurrency & Balance Integrity
+      return await runTransaction(db, async (transaction) => {
+        const pSnap = await transaction.get(targetRef);
+        if (!pSnap.exists()) {
+          throw new Error(`Item não encontrado na base de dados (${data.productName})`);
+        }
 
-      // 3. Create movement doc explicitly safely
-      // Resolve cost price with proper fallback if variant has no costPrice
-      let resolvedCostPrice = (data as any).costPrice;
-      if (typeof resolvedCostPrice !== 'number' || resolvedCostPrice <= 0) {
-        const docData = pSnap.data();
-        if (data.variantId) {
-          if (docData && typeof docData.costPrice === 'number' && docData.costPrice > 0) {
-            resolvedCostPrice = docData.costPrice;
-          } else {
-            // Fetch parent product to use as base fallback
-            try {
-              const parentSnap = await getDoc(doc(db, 'products', data.productId));
-              if (parentSnap.exists()) {
-                const parentData = parentSnap.data();
-                if (typeof parentData.costPrice === 'number') {
-                  resolvedCostPrice = parentData.costPrice;
-                }
-              }
-            } catch (e) {
-              console.warn("Could not fetch parent product for cost price fallback:", e);
-            }
+        const pData = pSnap.data();
+        const currentStock = Number(pData.stock) || 0;
+
+        let newStock = currentStock;
+        if (data.type === 'in') {
+          newStock += data.quantity;
+        } else if (data.type === 'out') {
+          if (currentStock < data.quantity && !pData.allowBackorder) {
+            throw new Error(`Estoque insuficiente para "${data.productName}". Disponível: ${currentStock}, solicitado: ${data.quantity}`);
           }
-        } else {
-          if (docData && typeof docData.costPrice === 'number') {
-            resolvedCostPrice = docData.costPrice;
+          newStock = currentStock - data.quantity;
+        }
+
+        let resolvedCostPrice = (data as any).costPrice;
+        if (typeof resolvedCostPrice !== 'number' || resolvedCostPrice <= 0) {
+          if (pData && typeof pData.costPrice === 'number' && pData.costPrice > 0) {
+            resolvedCostPrice = pData.costPrice;
           }
         }
-      }
 
-      const movementData: any = {
-        ...data,
-        variantId: effectiveVariantId,
-        costPrice: resolvedCostPrice || 0,
-        status: data.status || 'realizada',
-        previousStock: currentStock,
-        newStock: newStock,
-        createdBy: auth.currentUser?.uid || 'system',
-        createdByName: auth.currentUser?.email || 'Admin',
-        createdAt: serverTimestamp(),
-      };
+        const newMovementRef = doc(collection(db, 'stockMovements'));
+        const movementData: any = {
+          ...data,
+          variantId: effectiveVariantId || null,
+          costPrice: resolvedCostPrice || 0,
+          status: data.status || 'realizada',
+          previousStock: currentStock,
+          newStock: newStock,
+          createdBy: auth.currentUser?.uid || 'system',
+          createdByName: auth.currentUser?.email || 'Admin',
+          createdAt: serverTimestamp(),
+        };
 
-      // Clean undefined fields to avoid FirebaseError: Function addDoc() called with invalid data
-      Object.keys(movementData).forEach(key => {
-        if (movementData[key] === undefined) {
-          delete movementData[key];
+        Object.keys(movementData).forEach(key => {
+          if (movementData[key] === undefined) {
+            delete movementData[key];
+          }
+        });
+
+        const updatePayload: any = {
+          stock: newStock,
+          updatedAt: serverTimestamp()
+        };
+
+        if (data.type === 'in' && newStock > 0) {
+          updatePayload.active = true;
         }
-      });
 
-      await addDoc(collection(db, 'stockMovements'), movementData);
+        transaction.set(newMovementRef, movementData);
+        transaction.update(targetRef, updatePayload);
 
-      // 4. Update the related product's/variant's stock directly
-      const updatePayload: any = {
-        stock: newStock,
-        updatedAt: serverTimestamp()
-      };
+        return { newStock, effectiveVariantId };
+      }).then(async () => {
+        // Post-transaction operations
+        if (data.productId) {
+          smartStockService.updateProductSmartMinStock(data.productId);
+        }
 
-      // Se for entrada de estoque e o novo estoque for positivo, ativa o produto/variação automaticamente
-      if (data.type === 'in' && newStock > 0) {
-        updatePayload.active = true;
-        
-        // Se for uma variação, garantir que o produto pai também seja ativado
-        if (data.variantId) {
+        if (effectiveVariantId) {
           try {
-            await updateDoc(doc(db, 'products', data.productId), { 
-              active: true,
-              updatedAt: serverTimestamp() 
-            });
-          } catch (error) {
-            console.warn("Não foi possível ativar o produto pai automaticamente:", error);
+            await stockSyncService.syncParentStock(data.productId);
+          } catch (e) {
+            console.warn("Não foi possível sincronizar o estoque total do produto pai:", e);
           }
         }
-      }
 
-      await updateDoc(targetRef, updatePayload);
+        await auditLogService.logAction('Registrar', 'stock_movement', data.productId, { 
+          qty: data.quantity, 
+          type: data.type, 
+          reason: data.reason, 
+          variantId: effectiveVariantId || null, 
+          orderId: data.orderId || null 
+        });
 
-      // 5. Smart Stock: Auto-update minStock based on history
-      // We trigger this after the movement to ensure it's reflecting the latest sales if it was an 'out' movement
-      if (data.productId) {
-        // Fire and forget - don't block the movement registration
-        smartStockService.updateProductSmartMinStock(data.productId);
-      }
-
-      // Sincronizar o estoque do pai se for uma entrada/saída de variação
-      if (data.variantId) {
-        try {
-          // Trigger a full sync instead of just increment to ensure real consistency
-          await stockSyncService.syncParentStock(data.productId);
-        } catch (e) {
-          console.warn("Não foi possível sincronizar o estoque total do produto pai:", e);
-        }
-      }
-
-      // 5. Audit Log
-      await auditLogService.logAction('Registrar', 'stock_movement', data.productId, { 
-        qty: data.quantity, 
-        type: data.type, 
-        reason: data.reason, 
-        variantId: data.variantId || null, 
-        orderId: data.orderId || null 
+        return true;
       });
-
-      return true;
     } catch (error: any) {
       console.error("Erro ao registrar movimentação de estoque:", error);
       throw error;

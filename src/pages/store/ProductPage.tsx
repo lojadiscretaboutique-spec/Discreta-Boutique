@@ -225,7 +225,7 @@ export function ProductPage() {
             productData = adjustedProduct;
             setVariants(adjustedVariants);
             if (adjustedVariants.length > 0) {
-              const firstInStock = adjustedVariants.find(v => v.stock > 0);
+              const firstInStock = adjustedVariants.find(v => (v.stock ?? 0) > 0);
               setSelectedVariant(firstInStock || adjustedVariants[0]);
             }
           } else {
@@ -324,7 +324,7 @@ export function ProductPage() {
   const isOutOfStock = () => {
     if (!product.controlStock || product.allowBackorder) return false;
     if (product.hasVariants) {
-      return selectedVariant ? selectedVariant.stock <= 0 : false;
+      return selectedVariant ? (selectedVariant.stock ?? 0) <= 0 : false;
     }
     return product.stock <= 0;
   };
@@ -342,14 +342,14 @@ export function ProductPage() {
         if (!variant) return;
 
         addItem({
-          id: `${product.id}-${variantId}`,
-          productId: product.id,
+          id: `${product.id || 'prod'}-${variantId}`,
+          productId: product.id || '',
           name: product.name,
           price: Number(variant.price || currentPrice),
           quantity: quantity,
           sku: variant.sku || product.sku,
           gtin: variant.barcode || product.gtin,
-          imageUrl: variant.imageUrl || currentImage,
+          imageUrl: (variant.imageUrl || currentImage) ?? undefined,
           variantId: variant.id,
           variantName: variant.name,
           costPrice: variant.costPrice || product.costPrice || 0,
@@ -370,14 +370,14 @@ export function ProductPage() {
       }
       
       addItem({
-        id: `${product.id}-base`,
-        productId: product.id,
+        id: `${product.id || 'prod'}-base`,
+        productId: product.id || '',
         name: product.name,
         price: Number(currentPrice),
         quantity: 1,
         sku: product.sku,
         gtin: product.gtin,
-        imageUrl: currentImage,
+        imageUrl: currentImage ?? undefined,
         costPrice: product.costPrice || 0,
         searchId,
         isFreeShipping: pricing.isFreeShipping,

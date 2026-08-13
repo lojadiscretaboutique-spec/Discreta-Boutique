@@ -5,12 +5,14 @@ import {
   orderBy,
   onSnapshot,
   doc,
+  getDoc,
   updateDoc,
   deleteDoc,
   getDocs,
   where,
   limit,
   getCountFromServer,
+  Query,
 } from "firebase/firestore";
 import { serverTimestamp } from "firebase/firestore";
 import { db } from "../../lib/firebase";
@@ -25,6 +27,9 @@ import {
 } from "date-fns";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import { useAuthStore } from "../../store/authStore";
+import { markDiscountAuditAsSaleCancelled } from "../../services/pdvDiscountAuditService";
+import { auditLogService } from "../../services/auditLogService";
+import { Order, OrderItem } from "../../types/order";
 import {
   Eye,
   Printer,
@@ -45,6 +50,7 @@ import {
   Share2,
   Copy,
   Check,
+  History,
 } from "lucide-react";
 import { orderReversalService } from "../../services/orderReversalService";
 import { canReverseOrder } from "../../utils/orderReversalValidation";
@@ -59,40 +65,117 @@ import { cashService } from "../../services/cashService";
 
 import { useNavigate } from "react-router-dom";
 
-interface OrderItem {
-  productId: string;
-  variantId?: string;
-  name: string;
-  price: number;
-  quantity: number;
-  sku?: string;
-  gtin?: string;
-}
+const formatAddress = (addr: any): string => {
+  if (!addr) return "Retirada em Loja";
+  if (typeof addr === "string") return addr.trim() || "Retirada em Loja";
+  if (typeof addr === "object") {
+    const parts = [
+      addr.street || addr.logradouro || addr.rua,
+      addr.number || addr.numero ? `nº ${addr.number || addr.numero}` : "",
+      addr.complement || addr.complemento ? `(${addr.complement || addr.complemento})` : "",
+      addr.neighborhood || addr.bairro,
+      addr.city || addr.cidade,
+      addr.state || addr.uf,
+      addr.cep || addr.zipCode || addr.zip
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : "Retirada em Loja";
+  }
+  return String(addr);
+};
 
-interface Order {
-  id: string;
-  createdAt: { toDate: () => Date } | null | any;
-  customerName: string;
-  customerWhatsapp: string;
-  customerAddress: string;
-  items: OrderItem[];
-  notes?: string;
-  total: number;
-  status: string;
-  paymentMethod?: string;
-  payments?: any[]; // added payments array
-  type?: "online" | "pdv";
-  subTotal?: number;
-  deliveryFee?: number;
-  shipping?: number; // adding shipping alias
-  discount?: number;
-  additionalAmount?: number;
-  financialReceivedAmount?: number;
-  cashEntryAmount?: number;
-  change?: number;
-  scheduledDate?: string;
-  scheduledTime?: string;
-}
+const getFriendlyPaymentMethodName = (order: Order): string => {
+  if (order.paymentMethodNameSnapshot) {
+    return order.paymentMethodNameSnapshot;
+  }
+  if (order.payments && order.payments.length > 0) {
+    return order.payments.map(p => {
+      const name = p.method;
+      if (name === 'pix' || name === 'PIX' || name === 'PIX_ONLINE') return 'Pix';
+      if (name === 'money' || name === 'cash' || name === 'CASH' || name === 'dinheiro') return 'Dinheiro';
+      if (name === 'credit_card' || name === 'CREDIT_CARD' || name === 'cartao_credito') return 'Cartão de Crédito';
+      if (name === 'debit_card' || name === 'DEBIT_CARD' || name === 'cartao_debito') return 'Cartão de Débito';
+      return name || 'Outro';
+    }).join(' + ');
+  }
+  const method = order.paymentMethod || order.paymentProvider || '';
+  if (!method) return 'A DEFINIR';
+  
+  const m = String(method).toLowerCase();
+  if (m === 'pix' || m === 'pix_online' || m === 'mercado_pago') return 'Pix';
+  if (m === 'money' || m === 'cash' || m === 'dinheiro') return 'Dinheiro';
+  if (m === 'credit_card' || m === 'cartao_credito' || m === 'card') return 'Cartão de Crédito';
+  if (m === 'debit_card' || m === 'cartao_debito') return 'Cartão de Débito';
+  if (m === 'multiple' || m === 'multiplo') return 'Múltiplas Formas';
+  if (m === 'online_payment' || m === 'online') return 'Pagamento Online';
+  
+  return method;
+};
+
+const getOrderPaymentId = (order: Order): string | undefined => {
+  if (order.payments && order.payments.length > 0) {
+    const firstWithId = order.payments.find(p => p.transactionId);
+    if (firstWithId?.transactionId) {
+      return String(firstWithId.transactionId);
+    }
+  }
+
+  const legacyOrder = order as Order & {
+    paymentId?: string | number;
+    mercadoPagoPaymentId?: string | number;
+    mercadopagoPaymentId?: string | number;
+  };
+
+  if (legacyOrder.paymentId) {
+    return String(legacyOrder.paymentId);
+  }
+  if (legacyOrder.mercadoPagoPaymentId) {
+    return String(legacyOrder.mercadoPagoPaymentId);
+  }
+  if (legacyOrder.mercadopagoPaymentId) {
+    return String(legacyOrder.mercadopagoPaymentId);
+  }
+
+  return undefined;
+};
+
+const getEffectiveDiscountPercentage = (subtotal: number, discount: number): string => {
+  if (!subtotal || subtotal <= 0 || !discount || discount <= 0) return "0%";
+  const pct = (discount / subtotal) * 100;
+  if (isNaN(pct) || !isFinite(pct)) return "0%";
+  return `${pct.toFixed(1)}%`;
+};
+
+const getTimestampMs = (val: any): number => {
+  if (!val) return 0;
+  if (typeof val === "number") return val;
+  if (typeof val.toMillis === "function") return val.toMillis();
+  if (typeof val.toDate === "function") return val.toDate().getTime();
+  if (val.seconds) return val.seconds * 1000;
+  if (val instanceof Date) return val.getTime();
+  if (typeof val === "string") {
+    const parsed = new Date(val).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
+
+const formatLogDate = (val: any): string => {
+  const ms = getTimestampMs(val);
+  if (!ms) return "Data não informada";
+  try {
+    return format(new Date(ms), "dd/MM/yyyy 'às' HH:mm");
+  } catch {
+    return "Data não informada";
+  }
+};
+
+const isPickupOrder = (order: Order): boolean => {
+  const method = (order.shippingMethod || (order as any).deliveryType || "").toLowerCase();
+  const type = (order.type || "").toLowerCase();
+  if (method.includes("retirada") || method.includes("pickup") || method.includes("balcao")) return true;
+  if (type === "pdv" && (!order.customerAddress || order.customerAddress.toLowerCase().includes("retirada"))) return true;
+  return false;
+};
 
 export function AdminOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -165,12 +248,81 @@ export function AdminOrders() {
   const [viewingDetailsId, setViewingDetailsId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [activeSession, setActiveSession] = useState<any>(null);
+  const [processingStatusId, setProcessingStatusId] = useState<string | null>(null);
+  const [orderLogs, setOrderLogs] = useState<any[]>([]);
 
   const { toast, confirm } = useFeedback();
   const navigate = useNavigate();
-  const { hasPermission } = useAuthStore();
+  const { user, hasPermission } = useAuthStore();
   const printRef = useRef<HTMLDivElement>(null);
   const [reversingId, setReversingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedOrder?.id) {
+      setOrderLogs([]);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchOrderHistory = async () => {
+      try {
+        const q = query(
+          collection(db, "auditLogs"),
+          where("targetId", "==", selectedOrder.id)
+        );
+        const snap = await getDocs(q);
+        const auditItems = snap.docs.map(docSnap => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            type: "audit",
+            createdAt: data.createdAt,
+            userName: data.userName || data.userEmail || "Sistema",
+            action: data.action,
+            previousStatus: data.details?.previousStatus,
+            newStatus: data.details?.newStatus,
+            reason: data.details?.reason || data.details?.discountReason,
+            note: data.details?.note || data.details?.discountNote || data.details?.notes,
+            details: data.details
+          };
+        });
+
+        const embeddedHistory = (selectedOrder as any).history || (selectedOrder as any).statusHistory || [];
+        const embeddedItems = embeddedHistory.map((h: any, idx: number) => ({
+          id: `embedded-${idx}`,
+          type: "embedded",
+          createdAt: h.createdAt || h.date || h.timestamp,
+          userName: h.userName || h.user || h.updatedBy || h.userEmail || "Sistema",
+          action: h.action || h.status || "Alteração",
+          previousStatus: h.previousStatus || h.oldStatus,
+          newStatus: h.newStatus || h.status,
+          reason: h.reason || h.motivo,
+          note: h.note || h.observacao || h.obs,
+          details: h
+        }));
+
+        const allLogs = [...auditItems, ...embeddedItems];
+
+        allLogs.sort((a, b) => {
+          const tA = getTimestampMs(a.createdAt);
+          const tB = getTimestampMs(b.createdAt);
+          return tB - tA;
+        });
+
+        if (isMounted) {
+          setOrderLogs(allLogs);
+        }
+      } catch (e) {
+        console.error("Erro ao carregar histórico do pedido:", e);
+      }
+    };
+
+    fetchOrderHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedOrder?.id]);
 
   useEffect(() => {
     // Fetch active session once to conditionally hide/show the 'Estornar' button
@@ -186,7 +338,7 @@ export function AdminOrders() {
   }, []);
 
   const handleReverseOrder = async (order: Order) => {
-    if (reversingId) return;
+    if (reversingId || processingStatusId) return;
 
     const isConfirmed = await confirm({
       title: "Estornar Pedido?",
@@ -198,6 +350,7 @@ export function AdminOrders() {
     if (!isConfirmed) return;
 
     setReversingId(order.id);
+    setProcessingStatusId(order.id);
     try {
       // 1. Get current session
       const currentSession = await cashService.getCurrentSession();
@@ -206,14 +359,15 @@ export function AdminOrders() {
       await orderReversalService.validateOrderReversal(order, currentSession);
 
       // 3. Perform Reversal
-      const user = useAuthStore.getState().user;
-      await orderReversalService.reverseOrder(order, user!.uid, user!.email || "system", navigate);
+      const currentUser = user || useAuthStore.getState().user;
+      await orderReversalService.reverseOrder(order, currentUser!.uid, currentUser!.email || "system", navigate);
 
       toast("Pedido estornado com sucesso! Redirecionando para o PDV...", "success");
     } catch (error: any) {
       toast(error.message || "Erro ao estornar pedido", "error");
     } finally {
       setReversingId(null);
+      setProcessingStatusId(null);
     }
   };
 
@@ -226,7 +380,7 @@ export function AdminOrders() {
   useEffect(() => {
     const loadMetrics = async (dateStart?: Date, dateEnd?: Date) => {
       try {
-        let qGeral = collection(db, "orders");
+        let qGeral: Query = collection(db, "orders");
         let qAbertos = query(
           collection(db, "orders"),
           where("status", "not-in", ["ENTREGUE", "CANCELADO"]),
@@ -365,6 +519,8 @@ export function AdminOrders() {
   }, [toast, limitCount, datePeriod, customStartDate, customEndDate]);
 
   const handleDeleteOrder = async (order: Order) => {
+    if (processingStatusId) return;
+
     const session = await cashService.getCurrentSession();
     if (!session) {
       toast("Não é possível realizar exclusões com o caixa fechado.", "error");
@@ -372,7 +528,7 @@ export function AdminOrders() {
     }
 
     const isMercadoPago = order.paymentMethod?.toLowerCase().includes("pix") || 
-                          (order as any).paymentProvider === "mercado_pago" || 
+                          order.paymentProvider === "mercado_pago" || 
                           order.paymentMethod === "online_payment";
 
     if (isMercadoPago) {
@@ -388,7 +544,15 @@ export function AdminOrders() {
     });
     if (!confirmed) return;
 
+    setProcessingStatusId(order.id);
     try {
+      // Re-verify in DB
+      const freshSnap = await getDoc(doc(db, "orders", order.id));
+      if (!freshSnap.exists()) {
+        toast("Pedido já foi excluído.", "info");
+        return;
+      }
+
       // Check if financial transactions exist
       const financialQ = query(
         collection(db, "financial_transactions"),
@@ -409,14 +573,24 @@ export function AdminOrders() {
       // Delete order document
       await deleteDoc(doc(db, "orders", order.id));
 
+      // Audit log
+      await auditLogService.logAction('APAGAR_PEDIDO', 'ORDERS', order.id, {
+        userEmail: user?.email || 'system',
+        orderTotal: order.total
+      });
+
       toast("Pedido apagado com sucesso!", "success");
     } catch (err) {
       console.error(err);
       toast("Erro ao apagar pedido", "error");
+    } finally {
+      setProcessingStatusId(null);
     }
   };
 
   const handleCancelDelivered = async (order: Order) => {
+    if (processingStatusId) return;
+
     const session = await cashService.getCurrentSession();
     if (!session) {
       toast(
@@ -434,39 +608,76 @@ export function AdminOrders() {
     });
     if (!confirmed) return;
 
+    setProcessingStatusId(order.id);
     try {
-      // 1. Generate return movement
-      for (const item of order.items) {
-        await stockMovementService.registerMovement({
-          productId: item.productId,
-          productName: item.name,
-          variantId: item.variantId || undefined,
-          sku: item.sku || "",
-          quantity: item.quantity,
-          type: "in",
-          reason: "Devolução de Cliente (Cancelamento de Entrega)",
-          channel: order.type === "pdv" ? "Loja Física" : "Loja Virtual",
-          orderId: order.id,
-          status: "realizada",
-        });
+      // Fresh DB check to prevent double cancellation
+      const freshSnap = await getDoc(doc(db, "orders", order.id));
+      if (freshSnap.exists()) {
+        const freshData = freshSnap.data();
+        if (freshData?.status === "CANCELADO" || freshData?.status === "ESTORNADO") {
+          toast(`Este pedido já foi ${freshData.status.toLowerCase()}. Operação cancelada.`, "warning");
+          return;
+        }
       }
 
-      // 2. Generate financial reversal
-      await financialService.saveTransaction({
-        type: "expense",
-        description: `Estorno de Venda - Pedido #${order.id.slice(-6).toUpperCase()}`,
-        amount: order.total,
-        dueDate: new Date().toISOString().split("T")[0],
-        paymentDate: new Date().toISOString().split("T")[0],
-        status: "paid",
-        category: "Estorno de Vendas",
-        notes: `Cancelamento de pedido entregue em ${format(new Date(), "dd/MM/yyyy")}`,
-        orderId: order.id,
-      });
+      // 1. Generate return movement (idempotent: check if devolução movements already exist)
+      const stockCheck = await getDocs(query(
+        collection(db, "stockMovements"),
+        where("orderId", "==", order.id),
+        where("reason", "==", "Devolução de Cliente (Cancelamento de Entrega)")
+      ));
+
+      if (stockCheck.empty) {
+        for (const item of order.items) {
+          await stockMovementService.registerMovement({
+            productId: item.productId,
+            productName: item.name,
+            variantId: item.variantId || undefined,
+            sku: item.sku || "",
+            quantity: item.quantity,
+            type: "in",
+            reason: "Devolução de Cliente (Cancelamento de Entrega)",
+            channel: order.type === "pdv" ? "Loja Física" : "Loja Virtual",
+            orderId: order.id,
+            status: "realizada",
+          });
+        }
+      }
+
+      // 2. Generate financial reversal (idempotent: check if estorno transaction already exists)
+      const finCheck = await getDocs(query(
+        collection(db, "financial_transactions"),
+        where("orderId", "==", order.id),
+        where("category", "==", "Estorno de Vendas")
+      ));
+
+      if (finCheck.empty) {
+        await financialService.saveTransaction({
+          type: "expense",
+          description: `Estorno de Venda - Pedido #${order.id.slice(-6).toUpperCase()}`,
+          amount: order.total,
+          dueDate: new Date().toISOString().split("T")[0],
+          paymentDate: new Date().toISOString().split("T")[0],
+          status: "paid",
+          category: "Estorno de Vendas",
+          notes: `Cancelamento de pedido entregue em ${format(new Date(), "dd/MM/yyyy")}`,
+          orderId: order.id,
+        });
+      }
 
       await updateDoc(doc(db, "orders", order.id), {
         status: "CANCELADO",
         updatedAt: serverTimestamp(),
+      });
+
+      // Update discount audit
+      await markDiscountAuditAsSaleCancelled(order.id, user?.email || 'Operador', 'Cancelamento de pedido entregue');
+
+      // Audit log
+      await auditLogService.logAction('CANCELAR_ENTREGUE', 'ORDERS', order.id, {
+        userEmail: user?.email || 'system',
+        previousStatus: order.status,
+        orderTotal: order.total
       });
 
       // Send manual webhook notification
@@ -477,6 +688,8 @@ export function AdminOrders() {
     } catch (err) {
       console.error(err);
       toast("Erro ao processar cancelamento.", "error");
+    } finally {
+      setProcessingStatusId(null);
     }
   };
 
@@ -499,13 +712,14 @@ export function AdminOrders() {
   };
 
   const updateStatus = async (id: string, newStatus: string) => {
+    if (processingStatusId) return;
+
     const session = await cashService.getCurrentSession();
     if (!session) {
       toast(
         "Não é possível alterar o status do pedido com o caixa fechado.",
         "error",
       );
-      // Reset select input if possible, but the state will update anyway on next render
       return;
     }
 
@@ -513,7 +727,7 @@ export function AdminOrders() {
     if (!order) return;
 
     // Prevent changing from specific states manually via this general function
-    if (order.status === "CANCELADO" || order.status === "ENTREGUE") {
+    if (order.status === "CANCELADO" || order.status === "ENTREGUE" || order.status === "ESTORNADO") {
       toast(
         `Pedido já está com status ${order.status} e não pode ser alterado.`,
         "warning",
@@ -521,16 +735,32 @@ export function AdminOrders() {
       return;
     }
 
-    if (newStatus === "CANCELADO") {
-      const confirmed = await confirm({
-        title: "CANCELAR PEDIDO",
-        message:
-          "Tem certeza que deseja cancelar este pedido? Isso reverterá as reservas de estoque.",
-        variant: "danger",
-      });
-      if (!confirmed) return;
+    if (newStatus === order.status) return;
 
-      try {
+    setProcessingStatusId(id);
+    try {
+      // Re-verify in DB
+      const freshSnap = await getDoc(doc(db, "orders", id));
+      if (freshSnap.exists()) {
+        const freshStatus = freshSnap.data()?.status;
+        if (freshStatus === "CANCELADO" || freshStatus === "ESTORNADO") {
+          toast(`Este pedido já se encontra ${freshStatus}. Nenhuma alteração realizada.`, "warning");
+          return;
+        }
+      }
+
+      if (newStatus === "CANCELADO") {
+        const confirmed = await confirm({
+          title: "CANCELAR PEDIDO",
+          message:
+            "Tem certeza que deseja cancelar este pedido? Isso reverterá as reservas de estoque.",
+          variant: "danger",
+        });
+        if (!confirmed) {
+          setProcessingStatusId(null);
+          return;
+        }
+
         await stockMovementService.deleteMovementsByOrderId(id);
         await financialService.deleteTransactionsByOrderId(id);
 
@@ -539,21 +769,26 @@ export function AdminOrders() {
           updatedAt: serverTimestamp(),
         });
 
+        // Update discount audit log status to SALE_CANCELLED
+        await markDiscountAuditAsSaleCancelled(id, user?.email || 'Operador', 'Cancelamento de pedido via Gestão de Pedidos');
+
+        // Audit log
+        await auditLogService.logAction('CANCELAR_PEDIDO', 'ORDERS', id, {
+          previousStatus: order.status,
+          newStatus: "CANCELADO",
+          userEmail: user?.email || 'system',
+          orderTotal: order.total
+        });
+
         // Send manual webhook notification
         await triggerWebhookNotification(order, "CANCELADO");
 
         toast(`Pedido cancelado com sucesso!`, "success");
         return;
-      } catch (err) {
-        console.error(err);
-        toast("Erro ao processar cancelamento.", "error");
-        return;
       }
-    }
 
-    try {
       const isMercadoPago = order.paymentMethod?.toLowerCase().includes("pix") || 
-                            (order as any).paymentProvider === "mercado_pago" || 
+                            order.paymentProvider === "mercado_pago" || 
                             order.paymentMethod === "online_payment";
 
       if (newStatus === "ENTREGUE" && order.type === "online" && !isMercadoPago) {
@@ -595,6 +830,14 @@ export function AdminOrders() {
         }
       }
 
+      // Audit log
+      await auditLogService.logAction('ALTERAR_STATUS', 'ORDERS', id, {
+        previousStatus: order.status,
+        newStatus,
+        userEmail: user?.email || 'system',
+        orderTotal: order.total
+      });
+
       // Send manual webhook notification
       await triggerWebhookNotification(order, newStatus);
 
@@ -602,12 +845,21 @@ export function AdminOrders() {
     } catch (err) {
       console.error(err);
       toast("Erro ao atualizar", "error");
+    } finally {
+      setProcessingStatusId(null);
     }
   };
 
   const handlePrint = () => {
     const printContent = printRef.current;
     if (!printContent) return;
+
+    if (selectedOrder?.id) {
+      auditLogService.logAction('REIMPRIMIR_PEDIDO', 'ORDERS', selectedOrder.id, {
+        userEmail: user?.email || 'system',
+        orderTotal: selectedOrder.total
+      });
+    }
 
     const printWindow = window.open("", "", "width=300,height=600");
     if (!printWindow) return;
@@ -708,7 +960,7 @@ export function AdminOrders() {
 
   const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
 
-  const getCleanWhatsapp = (num: string) => {
+  const getCleanWhatsapp = (num?: string) => {
     if (!num) return "";
     const clean = num.replace(/\D/g, "");
     if (clean.length === 10 || clean.length === 11) {
@@ -1053,7 +1305,7 @@ export function AdminOrders() {
                         {formatCurrency(order.total)}
                       </div>
                       <div className="text-[9px] text-red-600 tracking-widest block max-w-[120px] truncate-tight flex items-center gap-1">
-                        {((order as any).paymentProvider === "mercado_pago" || order.paymentMethod?.toLowerCase().includes("pix") || order.paymentMethod === "online_payment") && (
+                        {(order.paymentProvider === "mercado_pago" || order.paymentMethod?.toLowerCase().includes("pix") || order.paymentMethod === "online_payment") && (
                            <img src={MERCADO_PAGO_LOGO_BASE64} alt="Mercado Pago" className="w-3 h-3" referrerPolicy="no-referrer" />
                         )}
                         {order.paymentMethodNameSnapshot || order.paymentMethod || "A DEFINIR"}
@@ -1104,7 +1356,7 @@ export function AdminOrders() {
                               order.status === "entregue" ||
                               order.status === "CANCELADO" ||
                               order.status === "cancelado" ||
-                              (order.status === "AGUARDANDO_PAGAMENTO" && (order.paymentMethod?.toLowerCase().includes("pix") || (order as any).paymentProvider === "mercado_pago" || order.paymentMethod === "online_payment"))
+                              (order.status === "AGUARDANDO_PAGAMENTO" && (order.paymentMethod?.toLowerCase().includes("pix") || order.paymentProvider === "mercado_pago" || order.paymentMethod === "online_payment"))
                             }
                             onClick={() =>
                               navigate(`/admin/pdv?orderId=${order.id}`)
@@ -1124,7 +1376,7 @@ export function AdminOrders() {
                               order.status === "ENTREGUE" ||
                               order.status === "CANCELADO" ||
                               order.status === "entregue" ||
-                              (order.status === "AGUARDANDO_PAGAMENTO" && (order.paymentMethod?.toLowerCase().includes("pix") || (order as any).paymentProvider === "mercado_pago" || order.paymentMethod === "online_payment"))
+                              (order.status === "AGUARDANDO_PAGAMENTO" && (order.paymentMethod?.toLowerCase().includes("pix") || order.paymentProvider === "mercado_pago" || order.paymentMethod === "online_payment"))
                             }
                             onChange={(e) =>
                               updateStatus(order.id, e.target.value)
@@ -1137,7 +1389,7 @@ export function AdminOrders() {
                             <option value="SAIU PARA ENTREGA">
                               Saiu p/ Entrega
                             </option>
-                            {(canApprove && order.type !== "online") || (order.type === "online" && (order.paymentMethod?.toLowerCase().includes("pix") || (order as any).paymentProvider === "mercado_pago" || order.paymentMethod === "online_payment")) ? (
+                            {(canApprove && order.type !== "online") || (order.type === "online" && (order.paymentMethod?.toLowerCase().includes("pix") || order.paymentProvider === "mercado_pago" || order.paymentMethod === "online_payment")) ? (
                               <option value="ENTREGUE">Entregue</option>
                             ) : null}
                             {canCancel && (
@@ -1265,10 +1517,10 @@ export function AdminOrders() {
                         </div>
                         <div>
                           <p className="font-bold text-white">
-                            {selectedOrder.customerName}
+                            {selectedOrder.customerName || selectedOrder.customer?.name || "Cliente não informado"}
                           </p>
                           <p className="text-xs text-slate-400">
-                            {selectedOrder.customerWhatsapp}
+                            {selectedOrder.customerWhatsapp || selectedOrder.customerPhone || selectedOrder.customer?.phone || "Não informado"}
                           </p>
                         </div>
                       </div>
@@ -1302,16 +1554,25 @@ export function AdminOrders() {
 
                     <section>
                       <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-[3px] mb-3">
-                        Endereço
+                        {isPickupOrder(selectedOrder) ? "Modalidade / Retirada" : "Endereço de Entrega"}
                       </h3>
                       <div className="flex gap-2 text-slate-300">
                         <MapPin
                           size={16}
                           className="shrink-0 mt-0.5 text-slate-400"
                         />
-                        <p className="text-xs leading-relaxed font-medium">
-                          {selectedOrder.customerAddress}
-                        </p>
+                        <div className="flex flex-col">
+                          <p className="text-xs leading-relaxed font-medium">
+                            {isPickupOrder(selectedOrder)
+                              ? "Retirada em Loja (Balcão)"
+                              : formatAddress(selectedOrder.customerAddress || selectedOrder.shippingAddress)}
+                          </p>
+                          {!isPickupOrder(selectedOrder) && (selectedOrder.deliveryFee || selectedOrder.shipping) ? (
+                            <p className="text-[10px] text-slate-400 font-bold mt-1">
+                              Taxa de Entrega: {formatCurrency(selectedOrder.deliveryFee || selectedOrder.shipping || 0)}
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
                     </section>
                   </div>
@@ -1319,17 +1580,49 @@ export function AdminOrders() {
                   <div className="space-y-6">
                     <section>
                       <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-[3px] mb-3">
-                        Pagamento
+                        Forma de Pagamento
                       </h3>
-                      <div className="flex items-center gap-2 text-red-600 font-black uppercase italic text-sm tracking-tighter">
-                        <CreditCard size={18} />
-                        {selectedOrder.paymentMethodNameSnapshot || selectedOrder.paymentMethod || "A DEFINIR"}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2 text-red-600 font-black uppercase italic text-sm tracking-tighter">
+                          <CreditCard size={18} />
+                          {getFriendlyPaymentMethodName(selectedOrder)}
+                        </div>
+                        {selectedOrder.paymentStatus && (
+                          <div className="text-xs font-bold flex items-center gap-1.5 mt-1">
+                            <span className="text-slate-400 text-[10px] uppercase tracking-wider">Situação:</span>
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-full text-[10px] font-black uppercase",
+                              selectedOrder.paymentStatus === "approved" || selectedOrder.status === "ENTREGUE" || selectedOrder.status === "CONCLUIDO" 
+                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" 
+                                : selectedOrder.paymentStatus === "pending" || selectedOrder.paymentStatus === "in_process"
+                                ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                                : selectedOrder.paymentStatus === "rejected"
+                                ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                                : "bg-slate-800 text-slate-300"
+                            )}>
+                              {selectedOrder.paymentStatus === "approved" || selectedOrder.status === "ENTREGUE" || selectedOrder.status === "CONCLUIDO"
+                                ? "Confirmado / Pago"
+                                : selectedOrder.paymentStatus === "pending" || selectedOrder.paymentStatus === "in_process"
+                                ? "Aguardando Confirmação"
+                                : selectedOrder.paymentStatus === "rejected"
+                                ? "Rejeitado"
+                                : selectedOrder.paymentStatus === "refunded"
+                                ? "Estornado"
+                                : selectedOrder.paymentStatus}
+                            </span>
+                          </div>
+                        )}
+                        {getOrderPaymentId(selectedOrder) && (
+                          <span className="text-[10px] text-slate-500 font-mono mt-0.5">
+                            ID Transação: {getOrderPaymentId(selectedOrder)}
+                          </span>
+                        )}
                       </div>
                     </section>
 
                     <section>
                       <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-[3px] mb-3">
-                        Status Atual
+                        Status Atual do Pedido
                       </h3>
                       <span
                         className={cn(
@@ -1363,12 +1656,12 @@ export function AdminOrders() {
                             </span>
                             {item.variantId && (
                               <span className="text-[10px] text-red-600 font-bold uppercase">
-                                {formatVariantName(item.name)}
+                                {item.attributes ? Object.entries(item.attributes).map(([k, v]) => `${k}: ${v}`).join(' | ') : formatVariantName(item.name)}
                               </span>
                             )}
                             {item.sku && (
                               <span className="text-[10px] text-slate-500 font-mono tracking-tighter">
-                                {item.sku}
+                                SKU: {item.sku}
                               </span>
                             )}
                           </div>
@@ -1384,7 +1677,7 @@ export function AdminOrders() {
                 {selectedOrder.scheduledDate && (
                   <section className="mb-8 p-4 bg-red-50 border border-red-100 rounded-2xl">
                     <h3 className="text-[10px] font-black uppercase text-red-600 tracking-[3px] mb-3 flex items-center gap-2">
-                      <Clock size={14} /> Entrega Agendada
+                      <Clock size={14} /> {isPickupOrder(selectedOrder) ? "Retirada Agendada" : "Entrega Agendada"}
                     </h3>
                     <div className="flex flex-col">
                       <p className="text-xl font-black text-red-600 tracking-tighter">
@@ -1395,8 +1688,7 @@ export function AdminOrders() {
                         @ {selectedOrder.scheduledTime}h
                       </p>
                       <p className="text-[10px] font-black uppercase text-red-400 tracking-widest mt-1 italic">
-                        O cliente poderá receber até 60min antes do horário
-                        desejado.
+                        O cliente receberá/retirará no horário selecionado.
                       </p>
                     </div>
                   </section>
@@ -1413,16 +1705,115 @@ export function AdminOrders() {
                   </section>
                 )}
 
+                {/* Desconto & Autorização */}
+                {selectedOrder.discount && selectedOrder.discount > 0 ? (
+                  <section className="mb-8 p-4 bg-emerald-950/20 border border-emerald-500/20 rounded-2xl">
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="text-[10px] font-black uppercase text-emerald-400 tracking-[3px] flex items-center gap-1.5">
+                        Desconto Aplicado: {formatCurrency(selectedOrder.discount)} ({getEffectiveDiscountPercentage(selectedOrder.subTotal || selectedOrder.subtotal || selectedOrder.total + selectedOrder.discount, selectedOrder.discount)})
+                      </h3>
+                    </div>
+                    {selectedOrder.discountAuthorizationId ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mt-2 pt-2 border-t border-emerald-500/20">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-500 block uppercase">Autorizado por</span>
+                          <span className="font-bold text-slate-200">
+                            {selectedOrder.discountAuthorizedBy || "Supervisor"} ({selectedOrder.discountAuthorizedByRole?.toUpperCase() || "GERENTE"})
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-500 block uppercase">Motivo</span>
+                          <span className="font-bold text-slate-200">
+                            {selectedOrder.discountReason || "Não informado"}
+                          </span>
+                        </div>
+                        {selectedOrder.discountNote && (
+                          <div className="col-span-1 sm:col-span-2 text-xs italic text-slate-400">
+                            Obs: "{selectedOrder.discountNote}"
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 italic">
+                        Desconto concedido dentro do limite operacional do operador (não exigiu autorização prévia por PIN).
+                      </p>
+                    )}
+                  </section>
+                ) : null}
+
+                {/* Histórico e Auditoria */}
+                <section className="mb-8">
+                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-[3px] mb-3 flex items-center gap-2">
+                    <History size={14} /> Histórico do Pedido
+                  </h3>
+                  {orderLogs.length === 0 ? (
+                    <div className="bg-slate-950/50 border border-slate-800/80 rounded-2xl p-4 text-xs text-slate-500 italic">
+                      Nenhum evento registrado até o momento.
+                    </div>
+                  ) : (
+                    <div className="bg-slate-950/50 border border-slate-800/80 rounded-2xl p-4 space-y-3 max-h-52 overflow-y-auto custom-scrollbar">
+                      {orderLogs.map((log) => (
+                        <div key={log.id} className="text-xs border-b border-slate-800/60 last:border-0 pb-2 last:pb-0 space-y-1">
+                          <div className="flex justify-between items-center text-slate-400 text-[11px]">
+                            <span className="font-bold text-slate-300">{log.userName}</span>
+                            <span>{formatLogDate(log.createdAt)}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-red-500 uppercase text-[10px] tracking-wider">
+                              {log.action}
+                            </span>
+                            {log.previousStatus && log.newStatus && (
+                              <span className="text-[11px] text-slate-400">
+                                ({log.previousStatus} ➔ {log.newStatus})
+                              </span>
+                            )}
+                          </div>
+                          {log.reason && (
+                            <p className="text-slate-300 font-medium text-[11px]">
+                              Motivo: <span className="italic">{log.reason}</span>
+                            </p>
+                          )}
+                          {log.note && (
+                            <p className="text-slate-400 italic text-[10px]">
+                              Obs: "{log.note}"
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
                 <div className="flex justify-between items-center p-6 bg-slate-900 text-white rounded-3xl">
                   <div className="space-y-1">
                     <div className="flex justify-between items-center gap-4 min-w-[200px]">
                       <p className="text-[10px] font-black uppercase text-white/40 tracking-[2px]">
-                        Valor da Venda
+                        Subtotal
                       </p>
                       <p className="text-sm font-bold tracking-tighter">
-                        {formatCurrency(selectedOrder.total)}
+                        {formatCurrency(selectedOrder.subTotal || selectedOrder.subtotal || selectedOrder.items.reduce((acc, item) => acc + item.price * item.quantity, 0))}
                       </p>
                     </div>
+                    {selectedOrder.discount && selectedOrder.discount > 0 ? (
+                      <div className="flex justify-between items-center gap-4">
+                        <p className="text-[10px] font-black uppercase text-emerald-400 tracking-[2px]">
+                          Desconto
+                        </p>
+                        <p className="text-sm font-bold text-emerald-400 tracking-tighter">
+                          -{formatCurrency(selectedOrder.discount)}
+                        </p>
+                      </div>
+                    ) : null}
+                    {(selectedOrder.deliveryFee || selectedOrder.shipping) ? (
+                      <div className="flex justify-between items-center gap-4">
+                        <p className="text-[10px] font-black uppercase text-white/60 tracking-[2px]">
+                          Taxa de Entrega
+                        </p>
+                        <p className="text-sm font-bold text-white/80 tracking-tighter">
+                          +{formatCurrency(selectedOrder.deliveryFee || selectedOrder.shipping || 0)}
+                        </p>
+                      </div>
+                    ) : null}
                     {selectedOrder.additionalAmount &&
                       selectedOrder.additionalAmount > 0 && (
                         <div className="flex justify-between items-center gap-4">
@@ -1436,7 +1827,7 @@ export function AdminOrders() {
                       )}
                     <div className="flex justify-between items-center gap-4 pt-2 border-t border-white/10">
                       <p className="text-[10px] font-black uppercase text-red-500 tracking-[3px]">
-                        Total Recebido
+                        Total do Pedido
                       </p>
                       <p className="text-2xl font-black italic tracking-tighter">
                         {formatCurrency(
@@ -1445,6 +1836,16 @@ export function AdminOrders() {
                         )}
                       </p>
                     </div>
+                    {selectedOrder.change && selectedOrder.change > 0 ? (
+                      <div className="flex justify-between items-center gap-4 pt-1">
+                        <p className="text-[10px] font-black uppercase text-amber-400 tracking-[2px]">
+                          Troco
+                        </p>
+                        <p className="text-xs font-bold text-amber-400 tracking-tighter">
+                          {formatCurrency(selectedOrder.change)}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex gap-2">
                     {(selectedOrder.status === "ENTREGUE" || selectedOrder.status === "entregue") && canCancel && (
@@ -1615,11 +2016,11 @@ export function AdminOrders() {
                   {formatOrderDate(selectedOrder.createdAt, "dd/MM/yyyy HH:mm")}
                 </div>
                 <div>
-                  TIPO: {selectedOrder.type === "pdv" ? "BALCAO" : "ONLINE"}
+                  MODALIDADE: {selectedOrder.type === "pdv" ? "BALCAO" : "ONLINE"} ({isPickupOrder(selectedOrder) ? "RETIRADA" : "ENTREGA"})
                 </div>
                 {selectedOrder.scheduledDate && (
                   <div style={{ fontWeight: "bold" }}>
-                    <span style={{ fontWeight: 900 }}>ENTREGA AGENDADA:</span>
+                    <span style={{ fontWeight: 900 }}>AGENDAMENTO:</span>
                     <br />
                     <span style={{ fontWeight: 900, fontSize: "14px" }}>
                       {selectedOrder.scheduledDate.split("-").reverse().join("/")}{" "}
@@ -1630,16 +2031,11 @@ export function AdminOrders() {
               </div>
               <div className="divider"></div>
               <div className="font-bold">CLIENTE:</div>
-              <div>{selectedOrder.customerName}</div>
-              <div>{selectedOrder.customerWhatsapp}</div>
-              {selectedOrder.customerAddress && (
-                <>
-                  <div style={{ marginTop: "5px" }}>ENDERECO:</div>
-                  <div style={{ fontSize: "12px", fontWeight: "bold" }}>
-                    {selectedOrder.customerAddress}
-                  </div>
-                </>
-              )}
+              <div>{selectedOrder.customerName || selectedOrder.customer?.name || "Cliente não informado"}</div>
+              <div>{selectedOrder.customerWhatsapp || selectedOrder.customerPhone || "Não informado"}</div>
+              <div style={{ marginTop: "5px" }}>
+                {isPickupOrder(selectedOrder) ? "RETIRADA EM LOJA" : `ENDERECO: ${formatAddress(selectedOrder.customerAddress || selectedOrder.shippingAddress)}`}
+              </div>
               <div className="divider"></div>
               <table>
                 <thead>
@@ -1677,25 +2073,34 @@ export function AdminOrders() {
                   style={{ display: "flex", justifyContent: "space-between" }}
                 >
                   <span>Subtotal:</span>
-                  <span>{formatCurrency(selectedOrder.subTotal || selectedOrder.items.reduce((acc, item) => acc + item.price * item.quantity, 0))}</span>
+                  <span>{formatCurrency(selectedOrder.subTotal || selectedOrder.subtotal || selectedOrder.items.reduce((acc, item) => acc + item.price * item.quantity, 0))}</span>
                 </div>
-                {(selectedOrder.deliveryFee !== undefined || selectedOrder.shipping !== undefined) && (selectedOrder.deliveryFee! > 0 || selectedOrder.shipping! > 0) && (
+                {!isPickupOrder(selectedOrder) && (selectedOrder.deliveryFee || selectedOrder.shipping) ? (
                   <div
                     className="item"
                     style={{ display: "flex", justifyContent: "space-between" }}
                   >
-                    <span>Frete/Entrega:</span>
+                    <span>Taxa Entrega:</span>
                     <span>{formatCurrency(selectedOrder.deliveryFee || selectedOrder.shipping || 0)}</span>
                   </div>
-                )}
+                ) : null}
                 {selectedOrder.discount && selectedOrder.discount > 0 ? (
-                  <div
-                    className="item"
-                    style={{ display: "flex", justifyContent: "space-between" }}
-                  >
-                    <span>Desconto:</span>
-                    <span>-{formatCurrency(selectedOrder.discount)}</span>
-                  </div>
+                  <>
+                    <div
+                      className="item"
+                      style={{ display: "flex", justifyContent: "space-between" }}
+                    >
+                      <span>Desconto:</span>
+                      <span>-{formatCurrency(selectedOrder.discount)}</span>
+                    </div>
+                    {selectedOrder.discountAuthorizationId && (
+                      <div
+                        style={{ fontSize: "10px", color: "#555", marginTop: "2px", marginBottom: "4px" }}
+                      >
+                        Autorizado por: {selectedOrder.discountAuthorizedBy || "Supervisor"} ({selectedOrder.discountReason || "Motivo N/I"})
+                      </div>
+                    )}
+                  </>
                 ) : null}
                 <div
                   className="item"
@@ -1739,6 +2144,15 @@ export function AdminOrders() {
                     )}
                   </span>
                 </div>
+                {selectedOrder.change && selectedOrder.change > 0 ? (
+                  <div
+                    className="item"
+                    style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginTop: "2px" }}
+                  >
+                    <span>Troco:</span>
+                    <span>{formatCurrency(selectedOrder.change)}</span>
+                  </div>
+                ) : null}
               </div>
               <div className="divider"></div>
               <div className="font-bold">FORMA DE PAGTO:</div>
@@ -1752,8 +2166,11 @@ export function AdminOrders() {
                   ))}
                 </div>
               ) : (
-                <div>{selectedOrder.paymentMethodNameSnapshot || selectedOrder.paymentMethod || "A DEFINIR"}</div>
+                <div>{getFriendlyPaymentMethodName(selectedOrder)}</div>
               )}
+              <div style={{ marginTop: "4px", fontSize: "10px", fontWeight: "bold" }}>
+                SITUAÇÃO: {selectedOrder.paymentStatus === "approved" || selectedOrder.status === "ENTREGUE" || selectedOrder.status === "CONCLUIDO" ? "PAGAMENTO CONFIRMADO" : "PENDENTE / A RECEBER"}
+              </div>
               {selectedOrder.notes && (
                 <>
                   <div style={{ marginTop: "5px", fontStyle: "italic" }}>

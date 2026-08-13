@@ -13,6 +13,7 @@ import { getAdminDb } from './src/server/lib/firebaseAdmin';
 import admin from 'firebase-admin';
 import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc, query, limit, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { blogAiService } from "./src/server/services/blogAiService";
+import { validateAuthorizationPin } from './src/services/pdvPinAuthService';
 
 // Verify connection
 (async () => {
@@ -208,6 +209,366 @@ async function startServer() {
     }
   });
 
+  // Secure route to validate PIN of discount authorizer
+  app.post("/api/admin/pdv-discount/authorize", async (req, res) => {
+    try {
+      const {
+        pin,
+        operatorId,
+        saleDraft,
+        valorBruto,
+        descontoTotal,
+        percentualEfetivo,
+        nivelNecessario,
+        companyId,
+        sessionId,
+        authorizerId,
+        clientActionId,
+        motivo,
+        observacao,
+        cartId,
+        cartFingerprint,
+        descontoItens,
+        descontoGeral,
+        valorFinal
+      } = req.body;
+
+      if (!pin) {
+        return res.status(200).json({
+          success: false,
+          message: "Não foi possível autorizar. Verifique o código ou solicite outro autorizador."
+        });
+      }
+
+      if (valorBruto === undefined || descontoTotal === undefined || percentualEfetivo === undefined || !companyId) {
+        return res.status(200).json({
+          success: false,
+          message: "Não foi possível autorizar. Verifique o código ou solicite outro autorizador."
+        });
+      }
+
+      const result = await validateAuthorizationPin({
+        pin,
+        operatorId: operatorId || "",
+        saleDraft,
+        valorBruto: Number(valorBruto),
+        descontoTotal: Number(descontoTotal),
+        percentualEfetivo: Number(percentualEfetivo),
+        nivelNecessario: nivelNecessario || "NONE",
+        companyId,
+        sessionId: sessionId || "unknown",
+        authorizerId,
+        clientActionId,
+        motivo,
+        observacao,
+        cartId,
+        cartFingerprint,
+        descontoItens: descontoItens !== undefined ? Number(descontoItens) : 0,
+        descontoGeral: descontoGeral !== undefined ? Number(descontoGeral) : 0,
+        valorFinal: valorFinal !== undefined ? Number(valorFinal) : undefined
+      });
+
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Erro no endpoint de autorização de desconto:", error);
+      return res.status(200).json({
+        success: false,
+        message: "Não foi possível autorizar. Verifique o código ou solicite outro autorizador."
+      });
+    }
+  });
+
+  // Secure route to invalidate a discount authorization
+  app.post("/api/admin/pdv-discount/invalidate", async (req, res) => {
+    try {
+      const { authorizationId, reason } = req.body;
+      if (!authorizationId) {
+        return res.status(200).json({ success: false, message: "ID de autorização obrigatório." });
+      }
+
+      const authRef = doc(db, 'pdvDiscountAuthorizations', authorizationId);
+      const authSnap = await getDoc(authRef);
+      if (authSnap.exists()) {
+        const data = authSnap.data();
+        if (data.status === 'AUTHORIZED') {
+          await updateDoc(authRef, {
+            status: 'INVALIDATED',
+            invalidationReason: reason || 'Carrinho alterado',
+            invalidatedAt: new Date()
+          });
+        }
+      }
+
+      return res.json({ success: true, message: "Autorização invalidada com sucesso." });
+    } catch (error) {
+      console.error("Erro ao invalidar autorização:", error);
+      return res.status(200).json({ success: false, message: "Erro interno ao invalidar." });
+    }
+  });
+
+  // Secure backend route to verify discount authorization and finalize order/sale (Prompt 13)
+  app.post("/api/admin/pdv-discount/verify-and-finalize", async (req, res) => {
+    try {
+      const { orderData, editingOrderId, authorizationId, cartFingerprint, clientActionId } = req.body;
+
+      const effectiveActionId = clientActionId || orderData?.clientActionId;
+
+      // 0. Idempotency Check: if clientActionId is provided and not editing, check for existing order
+      if (effectiveActionId && !editingOrderId) {
+        const existingQ = query(collection(db, "orders"), where("clientActionId", "==", effectiveActionId));
+        const existingSnap = await getDocs(existingQ);
+        if (!existingSnap.empty) {
+          const existingDoc = existingSnap.docs[0];
+          console.log(`[verify-and-finalize] Found existing order ${existingDoc.id} for clientActionId ${effectiveActionId}`);
+          return res.status(200).json({
+            success: true,
+            orderId: existingDoc.id,
+            alreadyExisted: true,
+            message: "Venda já registrada anteriormente."
+          });
+        }
+      }
+
+      // 1. If authorization is provided, perform secure backend checks
+      if (authorizationId) {
+        const authRef = doc(db, 'pdvDiscountAuthorizations', authorizationId);
+        const authSnap = await getDoc(authRef);
+
+        if (!authSnap.exists()) {
+          return res.status(200).json({
+            success: false,
+            message: "Autorização de desconto inválida ou não encontrada no sistema."
+          });
+        }
+
+        const authData = authSnap.data();
+
+        if (authData.status !== 'AUTHORIZED') {
+          return res.status(200).json({
+            success: false,
+            message: `A autorização não está ativa (Status atual: ${authData.status}).`
+          });
+        }
+
+        // Validate fingerprint matching (cart tampering check)
+        if (authData.cartFingerprint !== cartFingerprint) {
+          return res.status(200).json({
+            success: false,
+            message: "O carrinho foi alterado desde que a autorização foi concedida. Solicite uma nova."
+          });
+        }
+
+        // Mark authorization as USED
+        await updateDoc(authRef, {
+          status: 'USED',
+          usedAt: new Date(),
+          orderId: editingOrderId || "new"
+        });
+      }
+
+      // 1.5. Server-side cart item & stock validations (Step 5, 8, 13)
+      if (!orderData || !orderData.items || !Array.isArray(orderData.items) || orderData.items.length === 0) {
+        return res.status(200).json({
+          success: false,
+          message: "O carrinho enviado está vazio ou inválido."
+        });
+      }
+
+      for (const item of orderData.items) {
+        if (!item.productId || typeof item.productId !== "string") {
+          return res.status(200).json({
+            success: false,
+            message: `O item "${item.name || 'Sem nome'}" não possui um productId válido.`
+          });
+        }
+
+        if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+          return res.status(200).json({
+            success: false,
+            message: `A quantidade para o item "${item.name || item.productId}" deve ser um número inteiro positivo.`
+          });
+        }
+
+        if (typeof item.price !== "number" || !isFinite(item.price) || item.price < 0) {
+          return res.status(200).json({
+            success: false,
+            message: `O preço do item "${item.name || item.productId}" deve ser um número válido.`
+          });
+        }
+
+        // Verify product in database
+        const productRef = doc(db, "products", item.productId);
+        const productSnap = await getDoc(productRef);
+
+        if (!productSnap.exists()) {
+          return res.status(200).json({
+            success: false,
+            message: `Produto "${item.name || item.productId}" não cadastrado no banco de dados.`
+          });
+        }
+
+        const pData = productSnap.data();
+        if (pData.active === false) {
+          return res.status(200).json({
+            success: false,
+            message: `O produto "${item.name || pData.name}" está desativado.`
+          });
+        }
+
+        if (item.variantId) {
+          // Verify variation in subcollection
+          const variantRef = doc(db, "products", item.productId, "variants", item.variantId);
+          const variantSnap = await getDoc(variantRef);
+
+          if (!variantSnap.exists()) {
+            return res.status(200).json({
+              success: false,
+              message: `A variação especificada para "${item.name || pData.name}" não existe.`
+            });
+          }
+
+          const vData = variantSnap.data();
+          if (vData.active === false) {
+            return res.status(200).json({
+              success: false,
+              message: `A variação de "${item.name || pData.name}" está desativada.`
+            });
+          }
+
+          if (!editingOrderId) {
+            const currentVariantStock = Number(vData.stock) || 0;
+            if (currentVariantStock < item.quantity && !pData.allowBackorder && !vData.allowBackorder) {
+              return res.status(200).json({
+                success: false,
+                message: `Estoque insuficiente para "${item.name || pData.name}" (Variação). Disponível: ${currentVariantStock}, solicitado: ${item.quantity}.`
+              });
+            }
+          }
+        } else {
+          // Verify simple product stock
+          if (!editingOrderId) {
+            const currentProductStock = Number(pData.stock) || 0;
+            if (currentProductStock < item.quantity && !pData.allowBackorder) {
+              return res.status(200).json({
+                success: false,
+                message: `Estoque insuficiente para "${item.name || pData.name}". Disponível: ${currentProductStock}, solicitado: ${item.quantity}.`
+              });
+            }
+          }
+        }
+      }
+
+      // 2. Complete order writing securely on server
+      let finalOrderId = editingOrderId;
+      const orderPayload = {
+        ...orderData,
+        clientActionId: effectiveActionId || orderData?.clientActionId || null,
+        updatedAt: new Date()
+      };
+
+      if (editingOrderId) {
+        await updateDoc(doc(db, "orders", editingOrderId), orderPayload);
+      } else {
+        const docRef = await addDoc(collection(db, "orders"), {
+          ...orderPayload,
+          createdAt: new Date()
+        });
+        finalOrderId = docRef.id;
+        
+        if (authorizationId) {
+          await updateDoc(doc(db, 'pdvDiscountAuthorizations', authorizationId), {
+            orderId: finalOrderId
+          });
+        }
+      }
+
+      // Record in pdvDiscountAuditLogs if sale contains a discount
+      const totalDisc = Number(orderData.discount || orderData.discountAmount || 0);
+      if (totalDisc > 0 || authorizationId || orderData.discountReason) {
+        try {
+          const subtotal = Number(orderData.subtotal || ((orderData.total || 0) + totalDisc));
+          const effPct = subtotal > 0 ? Number(((totalDisc / subtotal) * 100).toFixed(2)) : 0;
+          const reqAuth = Boolean(authorizationId || orderData.discountAuthorizedBy);
+
+          // Calculate items discount sum
+          let itemDiscSum = 0;
+          const itemsList = Array.isArray(orderData.items) ? orderData.items.map((it: any) => {
+            const origPrice = Number(it.originalPrice || it.price || 0);
+            const finalPrice = Number(it.price || 0);
+            const unitDisc = origPrice > finalPrice ? origPrice - finalPrice : 0;
+            const qty = Number(it.quantity || 1);
+            const totalUnitDisc = unitDisc * qty;
+            itemDiscSum += totalUnitDisc;
+
+            return {
+              productId: it.productId || it.id || '',
+              variantId: it.variantId || null,
+              productName: it.name || 'Produto',
+              variantName: it.variantName || null,
+              sku: it.sku || null,
+              barcode: it.barcode || null,
+              quantity: qty,
+              originalUnitPrice: origPrice,
+              unitDiscount: unitDisc,
+              itemDiscountPercent: origPrice > 0 ? Number(((unitDisc / origPrice) * 100).toFixed(2)) : 0,
+              finalUnitPrice: finalPrice,
+              totalItemDiscount: totalUnitDisc,
+              costPrice: it.costPrice ? Number(it.costPrice) : null,
+              isBelowCost: Boolean(it.costPrice && finalPrice < Number(it.costPrice))
+            };
+          }) : [];
+
+          const auditDocId = `audit-${finalOrderId}`;
+          await setDoc(doc(db, "pdvDiscountAuditLogs", auditDocId), {
+            id: auditDocId,
+            companyId: orderData.companyId || 'discreta',
+            orderId: finalOrderId,
+            orderNumber: `#${String(finalOrderId).slice(-6).toUpperCase()}`,
+            dateTime: new Date(),
+            operatorId: orderData.sellerId || '',
+            operatorName: orderData.sellerName || 'Caixa',
+            operatorRole: orderData.sellerRole || 'Caixa',
+            customerId: orderData.customerId || null,
+            customerName: orderData.customerName || 'Cliente Balcão',
+            terminalId: orderData.terminalId || 'Caixa 01',
+            grossTotal: subtotal,
+            itemsDiscountTotal: itemDiscSum,
+            globalDiscount: totalDisc >= itemDiscSum ? totalDisc - itemDiscSum : totalDisc,
+            manualReductions: 0,
+            totalDiscount: totalDisc,
+            effectivePercent: effPct,
+            finalTotal: Number(orderData.total || 0),
+            discountType: itemDiscSum > 0 && totalDisc > itemDiscSum ? 'mixed' : (itemDiscSum > 0 ? 'override' : 'percentage'),
+            reason: orderData.discountReason || (reqAuth ? 'Desconto Autorizado no PDV' : 'Desconto Concedido no Balcão'),
+            reasonCode: 'PDV',
+            observation: orderData.discountNote || '',
+            requiresAuthorization: reqAuth,
+            requiredAuthLevel: orderData.discountAuthorizedByRole ? orderData.discountAuthorizedByRole.toUpperCase() : (reqAuth ? 'GERENTE' : 'Dentro do limite do operador'),
+            authorizationId: authorizationId || null,
+            authorizerName: orderData.discountAuthorizedBy || (reqAuth ? 'Gerente' : 'Não se aplica'),
+            authorizerRole: orderData.discountAuthorizedByRole || (reqAuth ? 'GERENTE' : 'Sistema'),
+            authorizedAt: new Date(),
+            status: reqAuth ? 'USED' : 'APPLIED',
+            saleStatus: orderData.status || 'ENTREGUE',
+            discountItems: itemsList,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }, { merge: true });
+        } catch (auditErr) {
+          console.warn("Erro ao gravar log de auditoria no servidor:", auditErr);
+        }
+      }
+
+      return res.json({ success: true, orderId: finalOrderId });
+    } catch (error: any) {
+      console.error("Erro ao verificar e finalizar pedido:", error);
+      return res.status(200).json({
+        success: false,
+        message: "Erro interno do servidor ao salvar o pedido."
+      });
+    }
+  });
+
   // Endpoint to create order and trigger webhook
   app.post("/api/pedidos", async (req, res) => {
     try {
@@ -303,14 +664,14 @@ async function startServer() {
         if (!response.ok) {
           status = "error";
           errorMessage = `HTTP error ${responseStatus}: ${statusResponseText}`;
-          console.error(`❌ [Customer Welcome webhook] Failed: ${errorMessage}`);
+          console.warn(`⚠️ [Customer Welcome webhook] Non-200 response: ${errorMessage}`);
         } else {
           console.log(`⭐ [Customer Welcome webhook] Success: ${responseStatus}`);
         }
       } catch (err: any) {
         status = "error";
         errorMessage = err.message || String(err);
-        console.error(`❌ [Customer Welcome webhook] Exception trying to fetch:`, err);
+        console.warn(`⚠️ [Customer Welcome webhook] Exception trying to fetch:`, err);
       }
 
       // 3. Save logs to collection 'notificationLogs'
@@ -387,14 +748,14 @@ async function startServer() {
         if (!response.ok) {
           status = "error";
           errorMessage = `HTTP error ${responseStatus}: ${statusResponseText}`;
-          console.error(`❌ [Customer Activate webhook] Failed: ${errorMessage}`);
+          console.warn(`⚠️ [Customer Activate webhook] Non-200 response: ${errorMessage}`);
         } else {
           console.log(`⭐ [Customer Activate webhook] Success: ${responseStatus}`);
         }
       } catch (err: any) {
         status = "error";
         errorMessage = err.message || String(err);
-        console.error(`❌ [Customer Activate webhook] Exception trying to fetch:`, err);
+        console.warn(`⚠️ [Customer Activate webhook] Exception trying to fetch:`, err);
       }
 
       // 3. Save logs to collection 'notificationLogs'
@@ -638,11 +999,11 @@ async function startServer() {
             console.log(`⭐ [OTP WhatsApp] Received OK response from webhook`);
           } else {
             whatsappError = `HTTP error ${responseStatus}: ${wpResText}`;
-            console.error(`❌ [OTP WhatsApp] Webhook returned non-200: ${whatsappError}`);
+            console.warn(`⚠️ [OTP WhatsApp] Webhook returned non-200: ${whatsappError}`);
           }
         } catch (wpErr: any) {
           whatsappError = wpErr.message || String(wpErr);
-          console.error("❌ [OTP WhatsApp] Webhook fetch exception:", wpErr);
+          console.warn("⚠️ [OTP WhatsApp] Webhook fetch exception:", wpErr);
         }
 
         // Save whatsapp dispatch log
@@ -3000,11 +3361,35 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
     }
   }
 
+  let vite: import('vite').ViteDevServer | undefined;
+  if (process.env.NODE_ENV !== "production") {
+    // In DEV mode, serve a no-op Service Worker to avoid MIME/HTML errors
+    app.get('/sw.js', (_req, res) => {
+      res.setHeader('Content-Type', 'application/javascript');
+      res.send('self.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", () => self.clients.claim());');
+    });
+
+    vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.resolve(process.cwd(), 'dist');
+    app.use(express.static(distPath, { index: false }));
+  }
+
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
     const isAsset = /\.(js|ts|jsx|tsx|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|txt|map|webp|avif|json)$/.test(req.path);
     if (isAsset && !req.path.includes('manifest')) {
-      return next();
+      if (req.path.endsWith('.css')) {
+        return res.status(404).type('text/css').send('/* Asset CSS not found */');
+      }
+      if (req.path.endsWith('.js')) {
+        return res.status(404).type('application/javascript').send('// Asset JS not found');
+      }
+      return res.status(404).send('Asset not found');
     }
 
     if (req.path.startsWith('/api/')) return next();
@@ -3812,7 +4197,9 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
       let html = '';
       if (process.env.NODE_ENV !== 'production') {
         html = await fs.promises.readFile(path.resolve(process.cwd(), 'index.html'), 'utf-8');
-        html = await vite.transformIndexHtml(req.url, html);
+        if (vite) {
+          html = await vite.transformIndexHtml(req.url, html);
+        }
         // Replace existing title completely in head AFTER vite transform to prevent overrides
         html = html.replace(/<title>[^<]+<\/title>/, `<title>${title}</title>`);
         html = html.replace('</title>', '</title>\n' + ogTags);
@@ -3834,19 +4221,6 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
       res.status(500).end(errorMessage);
     }
   });
-
-  let vite: import('vite').ViteDevServer;
-  if (process.env.NODE_ENV !== "production") {
-    vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distPath, { index: false }));
-  }
-
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);

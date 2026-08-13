@@ -24,6 +24,10 @@ export interface FinancialTransaction {
   paymentContext?: string;
   notes?: string;
   orderId?: string;
+  purchaseId?: string;
+  idempotencyKey?: string;
+  transactionType?: 'purchase_payment' | 'purchase_cancellation' | 'sale' | 'sale_refund' | 'manual' | string;
+  origin?: string;
   userId?: string;
   createdAt?: any;
   updatedAt?: any;
@@ -57,10 +61,48 @@ export const financialService = {
     return results;
   },
 
+  async findPurchaseTransaction(purchaseId: string, transactionType?: 'purchase_payment' | 'purchase_cancellation'): Promise<FinancialTransaction | null> {
+    try {
+      // 1. Primary structured query by purchaseId
+      const q = query(collection(db, 'financial_transactions'), where('purchaseId', '==', purchaseId));
+      const snap = await getDocs(q);
+      let matches = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FinancialTransaction));
+
+      if (transactionType) {
+        matches = matches.filter(t => t.transactionType === transactionType);
+      }
+
+      if (matches.length > 0) {
+        return matches[0];
+      }
+
+      // 2. Backward-compatible Legacy Fallback query
+      const code = `#${purchaseId.slice(-6).toUpperCase()}`;
+      const allTx = await this.listTransactions();
+      const legacyMatch = allTx.find(t => {
+        const text = `${t.notes || ''} ${t.description || ''}`;
+        if (!text.toUpperCase().includes(code.toUpperCase())) return false;
+        if (transactionType === 'purchase_payment') {
+          return t.type === 'expense';
+        } else if (transactionType === 'purchase_cancellation') {
+          return t.type === 'income';
+        }
+        return true;
+      });
+
+      return legacyMatch || null;
+    } catch (err) {
+      console.error('[findPurchaseTransaction] Erro ao buscar transação por purchaseId:', err);
+      return null;
+    }
+  },
+
   async saveTransaction(data: Partial<FinancialTransaction>): Promise<string> {
-    const isNew = !data.id;
-    const docId = data.id || `FIN_${Date.now()}`;
+    const docId = data.id || `FIN_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const ref = doc(db, 'financial_transactions', docId);
+    
+    const snap = await getDoc(ref);
+    const isNew = !snap.exists();
     
     const payload = { ...data, updatedAt: serverTimestamp() } as any;
     delete payload.id;
@@ -100,7 +142,7 @@ export const financialService = {
                 userId: fullData.userId || 'system',
                 source: 'loja_fisica' as any,
                 financialId: docId,
-                orderId: fullData.orderId || null
+                orderId: fullData.orderId || undefined
             };
 
             if (snap.empty) {

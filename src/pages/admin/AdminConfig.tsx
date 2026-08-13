@@ -7,10 +7,35 @@ import { db } from '../../lib/firebase';
 import { storage } from '../../lib/storage';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Moon, Sun, LayoutDashboard, Check, Upload, Image as ImageIcon, Trash2, Settings, RefreshCcw } from 'lucide-react';
+import { 
+  Moon, 
+  Sun, 
+  LayoutDashboard, 
+  Check, 
+  Upload, 
+  Image as ImageIcon, 
+  Trash2, 
+  Settings, 
+  RefreshCcw,
+  Percent,
+  ShieldAlert,
+  Clock,
+  Lock,
+  ShieldCheck,
+  SlidersHorizontal,
+  AlertTriangle,
+  DollarSign,
+  CheckSquare
+} from 'lucide-react';
+import { DiscountReasonsManager } from '../../components/admin/DiscountReasonsManager';
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { cn } from '../../lib/utils';
 import { cacheService } from '../../services/cacheService';
+import { 
+  PDVDiscountConfig, 
+  DEFAULT_PDV_DISCOUNT_CONFIG, 
+  DiscountAuthCondition 
+} from '../../types/pdvDiscount';
 
 interface StoreConfig {
   storeName: string;
@@ -21,6 +46,7 @@ interface StoreConfig {
   logoUrl?: string;
   botConversaWebhook?: string;
   orderMessageTemplate?: string;
+  pdvDiscountConfig?: PDVDiscountConfig;
 }
 
 export function AdminConfig() {
@@ -38,16 +64,13 @@ export function AdminConfig() {
   const canEdit = hasPermission('settings', 'editar');
   
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    if (typeof window === 'undefined') return 'dark';
     return (localStorage.getItem('admin-theme') as 'dark' | 'light') || 'dark';
   });
 
   const handleThemeChange = (newTheme: 'dark' | 'light') => {
     setTheme(newTheme);
     localStorage.setItem('admin-theme', newTheme);
-    // document.documentElement class is updated by AdminLayout via localStorage/state sync or a custom event
-    // To ensure AdminLayout (which handles the global class) updates immediately, 
-    // we use a custom event or rely on the fact that they share common logic if relocated.
-    // However, the cleanest way is to dispatch a storage event for cross-component sync
     window.dispatchEvent(new Event('admin-theme-changed'));
   };
   
@@ -62,13 +85,22 @@ export function AdminConfig() {
     orderMessageTemplate: '',
   });
 
+  const [pdvDiscount, setPdvDiscount] = useState<PDVDiscountConfig>(DEFAULT_PDV_DISCOUNT_CONFIG);
+
   useEffect(() => {
     async function loadConfig() {
       try {
         const docRef = doc(db, 'settings', 'store');
         const snap = await getDoc(docRef);
         if (snap.exists()) {
-          setConfig(prev => ({ ...prev, ...snap.data() }));
+          const data = snap.data();
+          setConfig(prev => ({ ...prev, ...data }));
+          if (data.pdvDiscountConfig) {
+            setPdvDiscount({
+              ...DEFAULT_PDV_DISCOUNT_CONFIG,
+              ...data.pdvDiscountConfig
+            });
+          }
         }
 
         // Pull current app code version from Firestore
@@ -111,8 +143,9 @@ export function AdminConfig() {
     try {
       await setDoc(doc(db, 'settings', 'store'), {
         ...config,
-        deliveryFee: Number(config.deliveryFee)
-      });
+        deliveryFee: Number(config.deliveryFee),
+        pdvDiscountConfig: pdvDiscount
+      }, { merge: true });
       setSaved(true);
       toast("Configurações salvas com sucesso!");
       setTimeout(() => setSaved(false), 3000);
@@ -243,6 +276,440 @@ export function AdminConfig() {
                 </div>
               )}
             </form>
+          </div>
+
+          {/* Controle de Descontos do PDV */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 transition-colors">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
+                  <Percent className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">Controle de Descontos do PDV</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Defina os limites de autorização de desconto por perfil, regras e segurança do caixa.</p>
+                </div>
+              </div>
+              <span className={cn(
+                "px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider",
+                pdvDiscount.enabled 
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" 
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+              )}>
+                {pdvDiscount.enabled ? 'Ativado' : 'Desativado'}
+              </span>
+            </div>
+
+            <form onSubmit={handleSave} className="space-y-6">
+              {/* Ativar controle */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+                <div className="space-y-0.5 pr-4">
+                  <label className="text-sm font-bold text-slate-900 dark:text-slate-100 block cursor-pointer" htmlFor="toggle-pdv-discount">
+                    Ativar controle de autorização de descontos
+                  </label>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Quando ativado, os caixas deverão solicitar autorização por PIN se ultrapassarem os limites configurados.
+                  </p>
+                </div>
+                <input
+                  id="toggle-pdv-discount"
+                  type="checkbox"
+                  checked={pdvDiscount.enabled}
+                  onChange={e => setPdvDiscount(prev => ({ ...prev, enabled: e.target.checked }))}
+                  disabled={!canEdit}
+                  className="w-5 h-5 accent-red-600 rounded cursor-pointer shrink-0"
+                />
+              </div>
+
+              {/* Grid de Limites por Perfil */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <SlidersHorizontal className="w-4 h-4 text-red-600" /> Limites de Desconto por Função
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Caixa */}
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                      <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                      Operador de Caixa
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Limite (%)
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          value={pdvDiscount.caixaMaxPercent}
+                          onChange={e => setPdvDiscount(prev => ({ ...prev, caixaMaxPercent: Number(e.target.value) }))}
+                          disabled={!canEdit}
+                          className="dark:bg-slate-900 dark:border-slate-800 text-sm font-semibold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Limite (R$)
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={pdvDiscount.caixaMaxAmount}
+                          onChange={e => setPdvDiscount(prev => ({ ...prev, caixaMaxAmount: Number(e.target.value) }))}
+                          disabled={!canEdit}
+                          className="dark:bg-slate-900 dark:border-slate-800 text-sm font-semibold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Gerente */}
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                      <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                      Gerente
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Limite (%)
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          value={pdvDiscount.gerenteMaxPercent}
+                          onChange={e => setPdvDiscount(prev => ({ ...prev, gerenteMaxPercent: Number(e.target.value) }))}
+                          disabled={!canEdit}
+                          className="dark:bg-slate-900 dark:border-slate-800 text-sm font-semibold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Limite (R$)
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={pdvDiscount.gerenteMaxAmount}
+                          onChange={e => setPdvDiscount(prev => ({ ...prev, gerenteMaxAmount: Number(e.target.value) }))}
+                          disabled={!canEdit}
+                          className="dark:bg-slate-900 dark:border-slate-800 text-sm font-semibold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Administrador */}
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      Administrador
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Limite (%)
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          value={pdvDiscount.adminMaxPercent}
+                          onChange={e => setPdvDiscount(prev => ({ ...prev, adminMaxPercent: Number(e.target.value) }))}
+                          disabled={!canEdit}
+                          className="dark:bg-slate-900 dark:border-slate-800 text-sm font-semibold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Limite (R$)
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={pdvDiscount.adminMaxAmount}
+                          onChange={e => setPdvDiscount(prev => ({ ...prev, adminMaxAmount: Number(e.target.value) }))}
+                          disabled={!canEdit}
+                          className="dark:bg-slate-900 dark:border-slate-800 text-sm font-semibold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Proprietário */}
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                      Proprietário
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Limite (%)
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          value={pdvDiscount.proprietarioMaxPercent}
+                          onChange={e => setPdvDiscount(prev => ({ ...prev, proprietarioMaxPercent: Number(e.target.value) }))}
+                          disabled={!canEdit}
+                          className="dark:bg-slate-900 dark:border-slate-800 text-sm font-semibold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Limite (R$)
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={pdvDiscount.proprietarioMaxAmount}
+                          onChange={e => setPdvDiscount(prev => ({ ...prev, proprietarioMaxAmount: Number(e.target.value) }))}
+                          disabled={!canEdit}
+                          className="dark:bg-slate-900 dark:border-slate-800 text-sm font-semibold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Limites Máximos Absolutos */}
+              <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-900/30 bg-rose-500/5 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400" /> Teto Máximo Absoluto do Sistema
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Nenhuma autorização (mesmo de perfil elevado) poderá ultrapassar estes valores teto.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Percentual Máximo Absoluto (%)</label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      value={pdvDiscount.absoluteMaxPercent}
+                      onChange={e => setPdvDiscount(prev => ({ ...prev, absoluteMaxPercent: Number(e.target.value) }))}
+                      disabled={!canEdit}
+                      className="dark:bg-slate-900 dark:border-slate-800 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Valor Máximo Absoluto (R$)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={pdvDiscount.absoluteMaxAmount}
+                      onChange={e => setPdvDiscount(prev => ({ ...prev, absoluteMaxAmount: Number(e.target.value) }))}
+                      disabled={!canEdit}
+                      className="dark:bg-slate-900 dark:border-slate-800 font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Condição para Exigir Autorização */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  Gatilho de Autorização
+                </label>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Defina quando o sistema deve exigir autorização de perfil superior:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {[
+                    { id: 'EITHER', title: 'Qualquer um dos dois', desc: 'Exige PIN ao ultrapassar o percentual OU o valor em R$' },
+                    { id: 'PERCENTAGE', title: 'Somente Percentual', desc: 'Exige PIN apenas ao ultrapassar o limite percentual (%)' },
+                    { id: 'AMOUNT', title: 'Somente Valor (R$)', desc: 'Exige PIN apenas ao ultrapassar o limite em dinheiro (R$)' },
+                    { id: 'BOTH', title: 'Ambos Simultaneamente', desc: 'Exige PIN somente se ultrapassar o percentual E o valor em R$' },
+                  ].map((item) => (
+                    <label
+                      key={item.id}
+                      className={cn(
+                        "p-3 rounded-xl border text-left cursor-pointer transition-all flex items-start gap-3",
+                        pdvDiscount.requireAuthCondition === item.id
+                          ? "border-red-600 bg-red-50/50 dark:bg-red-950/30 text-slate-900 dark:text-white"
+                          : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700"
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="requireAuthCondition"
+                        value={item.id}
+                        checked={pdvDiscount.requireAuthCondition === item.id}
+                        onChange={e => setPdvDiscount(prev => ({ ...prev, requireAuthCondition: e.target.value as DiscountAuthCondition }))}
+                        disabled={!canEdit}
+                        className="mt-0.5 accent-red-600"
+                      />
+                      <div>
+                        <span className="text-xs font-bold block">{item.title}</span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight block mt-0.5">{item.desc}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Exigências e Regras de Negócio */}
+              <div className="space-y-3 pt-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <CheckSquare className="w-4 h-4 text-blue-500" /> Regras e Obrigatoriedades
+                </h3>
+
+                <div className="space-y-2.5">
+                  <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={pdvDiscount.requireReason}
+                      onChange={e => setPdvDiscount(prev => ({ ...prev, requireReason: e.target.checked }))}
+                      disabled={!canEdit}
+                      className="w-4 h-4 accent-red-600 rounded"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block">Exigir motivo para desconto</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">O operador deverá selecionar um motivo pré-cadastrado ao conceder desconto.</span>
+                    </div>
+                  </label>
+
+                  <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block">Exigir observação por escrito</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Tornar campo de observação obrigatório para descontos acima deste percentual:</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Input
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="100"
+                        value={pdvDiscount.requireNoteAbovePercent}
+                        onChange={e => setPdvDiscount(prev => ({ ...prev, requireNoteAbovePercent: Number(e.target.value) }))}
+                        disabled={!canEdit}
+                        className="w-20 dark:bg-slate-900 dark:border-slate-800 text-sm font-bold text-center"
+                      />
+                      <span className="text-xs font-bold text-slate-500">%</span>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={pdvDiscount.blockBelowCost}
+                      onChange={e => setPdvDiscount(prev => ({ ...prev, blockBelowCost: e.target.checked }))}
+                      disabled={!canEdit}
+                      className="w-4 h-4 accent-red-600 rounded"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block">Bloquear venda abaixo do custo</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Impede que descontos reduzam o valor de venda para abaixo do custo do produto.</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={pdvDiscount.invalidateOnCartChange}
+                      onChange={e => setPdvDiscount(prev => ({ ...prev, invalidateOnCartChange: e.target.checked }))}
+                      disabled={!canEdit}
+                      className="w-4 h-4 accent-red-600 rounded"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block">Invalidar autorização ao alterar o carrinho</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Cancela a liberação do supervisor se itens forem adicionados, alterados ou removidos do carrinho.</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Validade e Segurança do PIN */}
+              <div className="space-y-3 pt-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <Lock className="w-4 h-4 text-purple-500" /> Segurança e Sessão do PIN
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Validade da Autorização (min)
+                    </label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="120"
+                      value={pdvDiscount.authValidityMinutes}
+                      onChange={e => setPdvDiscount(prev => ({ ...prev, authValidityMinutes: Number(e.target.value) }))}
+                      disabled={!canEdit}
+                      className="dark:bg-slate-950 dark:border-slate-800 text-sm font-semibold"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">Tempo útil do PIN liberado</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Máx. Erros de PIN
+                    </label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={pdvDiscount.maxPinAttempts}
+                      onChange={e => setPdvDiscount(prev => ({ ...prev, maxPinAttempts: Number(e.target.value) }))}
+                      disabled={!canEdit}
+                      className="dark:bg-slate-950 dark:border-slate-800 text-sm font-semibold"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">Tentativas incorretas seguidas</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Tempo de Bloqueio (min)
+                    </label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="60"
+                      value={pdvDiscount.pinLockoutMinutes}
+                      onChange={e => setPdvDiscount(prev => ({ ...prev, pinLockoutMinutes: Number(e.target.value) }))}
+                      disabled={!canEdit}
+                      className="dark:bg-slate-950 dark:border-slate-800 text-sm font-semibold"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">Bloqueio após exceder limite</span>
+                  </div>
+                </div>
+              </div>
+
+              {canEdit ? (
+                <Button type="submit" disabled={saving} className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg shadow-red-900/20 mt-4">
+                  {saved ? <><Check className="mr-2" /> Alterações Salvas</> : saving ? 'Salvando...' : 'Salvar Configurações de Desconto'}
+                </Button>
+              ) : (
+                <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl text-center text-slate-500 font-bold text-xs border-2 border-dashed border-slate-200 dark:border-slate-700">
+                  Sem permissão para edição
+                </div>
+              )}
+            </form>
+
+            {/* Subseção: Motivos de Desconto */}
+            <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800">
+              <DiscountReasonsManager canEdit={canEdit} />
+            </div>
           </div>
         </div>
 

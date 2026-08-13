@@ -148,12 +148,16 @@ export function AdminDeliveryAreas() {
 
     const onSubmitCity = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!selectedState || !selectedState.id) {
+            toast('Nenhum estado selecionado.', 'error');
+            return;
+        }
         try {
             await deliveryAreaService.saveCity({ 
                 id: editItemId || undefined, 
                 ...cityForm,
-                stateId: selectedState!.id,
-                stateName: selectedState!.nome
+                stateId: selectedState.id,
+                stateName: selectedState.nome || 'Não informado'
             } as City);
             toast('Cidade salva com sucesso.', 'success');
             setFormModalOpen(false);
@@ -165,14 +169,18 @@ export function AdminDeliveryAreas() {
 
     const onSubmitArea = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!selectedState || !selectedState.id || !selectedCity || !selectedCity.id) {
+            toast('Estado ou cidade não selecionados.', 'error');
+            return;
+        }
         try {
             await deliveryAreaService.saveDeliveryArea({ 
                 id: editItemId || undefined, 
                 ...areaForm,
-                stateId: selectedState!.id,
-                stateName: selectedState!.nome,
-                cityId: selectedCity!.id,
-                cityName: selectedCity!.nome
+                stateId: selectedState.id,
+                stateName: selectedState.nome || 'Não informado',
+                cityId: selectedCity.id,
+                cityName: selectedCity.nome || 'Não informado'
             } as DeliveryArea);
             toast('Bairro salvo com sucesso.', 'success');
             setFormModalOpen(false);
@@ -274,12 +282,14 @@ export function AdminDeliveryAreas() {
                         let state = allStates.find(s => normalizeString(s.nome) === normalizeString(stateName));
                         if (!state) {
                             try {
+                                const siglaVal = stateName.trim().substring(0, 2).toUpperCase();
                                 const newStateId = await deliveryAreaService.saveState({
                                     nome: stateName.trim(),
-                                    uf: stateName.trim().substring(0, 2).toUpperCase(),
+                                    sigla: siglaVal,
+                                    uf: siglaVal,
                                     status: 'ativo'
                                 });
-                                state = { id: newStateId, nome: stateName.trim(), uf: stateName.trim().substring(0, 2).toUpperCase(), status: 'ativo' };
+                                state = { id: newStateId, nome: stateName.trim(), sigla: siglaVal, uf: siglaVal, status: 'ativo' };
                                 allStates.push(state);
                             } catch (e) {
                                 console.error(`Falha ao criar estado ${stateName}`, e);
@@ -288,24 +298,40 @@ export function AdminDeliveryAreas() {
                             }
                         }
                         
-                        const citiesInState = await deliveryAreaService.listCities(state.id!);
+                        if (!state || !state.id) {
+                            errors++;
+                            continue;
+                        }
+
+                        const citiesInState = await deliveryAreaService.listCities(state.id);
                         let city = citiesInState.find(c => normalizeString(c.nome) === normalizeString(cityName));
                         
                         if (!city) {
-                            const newCityId = await deliveryAreaService.saveCity({
-                                nome: cityName.trim(),
-                                stateId: state.id!,
-                                stateName: state.nome,
-                                status: 'ativo'
-                            });
-                            city = { id: newCityId, nome: cityName.trim(), stateId: state.id!, stateName: state.nome, status: 'ativo' };
+                            try {
+                                const newCityId = await deliveryAreaService.saveCity({
+                                    nome: cityName.trim(),
+                                    stateId: state.id,
+                                    stateName: state.nome,
+                                    status: 'ativo'
+                                });
+                                city = { id: newCityId, nome: cityName.trim(), stateId: state.id, stateName: state.nome, status: 'ativo' };
+                            } catch (e) {
+                                console.error(`Falha ao criar cidade ${cityName}`, e);
+                                errors++;
+                                continue;
+                            }
+                        }
+
+                        if (!city || !city.id) {
+                            errors++;
+                            continue;
                         }
 
                         // Try to find if area already exists even without ID in CSV
                         let existingId = obj.id;
                         if (!existingId || existingId === 'undefined' || existingId === 'null') {
                             const match = allExistingAreas.find(a => 
-                                a.cityId === city!.id && 
+                                a.cityId === city.id && 
                                 normalizeString(a.bairro) === normalizeString(bairroName)
                             );
                             if (match) existingId = match.id;
@@ -333,7 +359,7 @@ export function AdminDeliveryAreas() {
                             freteGratisAcima: parseNumber(obj.frete_gratis_acima),
                             ordem: parseNumber(obj.ordem),
                             observacoes: obj.observacoes || '',
-                            status: (obj.status?.toLowerCase() === 'inativo' ? 'inativo' : 'ativo') as any
+                            status: obj.status?.toLowerCase() === 'inativo' ? 'inativo' : 'ativo'
                         };
 
                         await deliveryAreaService.saveDeliveryArea(areaPayload);

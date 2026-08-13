@@ -129,19 +129,18 @@
       (function() {
         var hideSplash = function() {
           var splash = document.getElementById('initial-splash');
-          if (splash && splash.style.display !== 'none') {
+          if (splash) {
             splash.style.opacity = '0';
             setTimeout(function() {
-              splash.style.display = 'none';
+              if (splash.parentNode) splash.remove();
             }, 500);
           }
+          document.body.style.overflow = 'auto';
         };
-        // Wait longer if react didn't mount yet, but 5s max failsafe
         window.addEventListener('load', function() {
-           // Provide a slight delay so React can paint
-           setTimeout(hideSplash, 100);
+           setTimeout(hideSplash, 200);
         });
-        setTimeout(hideSplash, 5000);
+        setTimeout(hideSplash, 4000);
       })();
     </script>
   </body>

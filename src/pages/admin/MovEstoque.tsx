@@ -103,12 +103,20 @@ export function MovEstoque() {
                     // Auto-select variation if barcode matched
                     if (searchAtSelection.current && vars.length > 0) {
                         const term = searchAtSelection.current.trim().toLowerCase();
-                        const match = vars.find(v => 
-                            v.sku?.toLowerCase() === term || 
-                            v.barcode?.toLowerCase() === term
-                        );
+                        const cleanT = term.replace(/[\s\-\.\/]/g, '');
+                        const match = vars.find((v: any, idx: number) => {
+                            const vSkuClean = (v.sku || '').replace(/[\s\-\.\/]/g, '').toLowerCase();
+                            const vBarcodeClean = (v.barcode || v.gtin || '').replace(/[\s\-\.\/]/g, '').toLowerCase();
+                            return (
+                                v.sku?.toLowerCase() === term || 
+                                v.barcode?.toLowerCase() === term ||
+                                (vSkuClean && vSkuClean === cleanT) ||
+                                (vBarcodeClean && vBarcodeClean === cleanT)
+                            );
+                        });
                         if (match) {
-                            setFVariantId(match.id!);
+                            const matchedKey = match.id || match.sku || match.barcode || 'var_0';
+                            setFVariantId(matchedKey);
                         }
                     }
                     searchAtSelection.current = ''; // Reset
@@ -126,18 +134,45 @@ export function MovEstoque() {
         }
     }, [fProductId, products, toast]);
 
-    // Auto-selection on exact match (Barcode Support)
+    // Auto-selection on exact match (Barcode & Variation Support)
     useEffect(() => {
         const term = fProdSearch.trim();
         if (!term || term.length < 3 || fProductId) return;
         
-        // Exact match by SKU or GTIN or Internal Code
-        const exactMatch = products.find(p => 
-            p.sku?.toLowerCase() === term.toLowerCase() || 
-            p.gtin?.toLowerCase() === term.toLowerCase() ||
-            p.internalCode?.toLowerCase() === term.toLowerCase() ||
-            p.variantIdentifiers?.some(vi => vi.toLowerCase() === term.toLowerCase())
-        );
+        const cleanT = term.replace(/[\s\-\.\/]/g, '').toLowerCase();
+
+        // Exact match by SKU or GTIN or Internal Code or Variant Barcode
+        const exactMatch = products.find(p => {
+            const pSkuClean = (p.sku || '').replace(/[\s\-\.\/]/g, '').toLowerCase();
+            const pGtinClean = (p.gtin || '').replace(/[\s\-\.\/]/g, '').toLowerCase();
+            const pInternalClean = (p.internalCode || '').replace(/[\s\-\.\/]/g, '').toLowerCase();
+
+            if (
+                p.sku?.toLowerCase() === term.toLowerCase() || 
+                p.gtin?.toLowerCase() === term.toLowerCase() ||
+                p.internalCode?.toLowerCase() === term.toLowerCase() ||
+                (pSkuClean && pSkuClean === cleanT) ||
+                (pGtinClean && pGtinClean === cleanT) ||
+                (pInternalClean && pInternalClean === cleanT)
+            ) return true;
+
+            // Check variant barcodes inside product
+            if (Array.isArray(p.variants) && p.variants.length > 0) {
+                return p.variants.some((v: any) => {
+                    const vSku = (v.sku || '').toLowerCase();
+                    const vBarcode = (v.barcode || v.gtin || '').toLowerCase();
+                    const vSkuClean = vSku.replace(/[\s\-\.\/]/g, '');
+                    const vBarcodeClean = vBarcode.replace(/[\s\-\.\/]/g, '');
+                    return vSku === term.toLowerCase() || vBarcode === term.toLowerCase() || (vSkuClean && vSkuClean === cleanT) || (vBarcodeClean && vBarcodeClean === cleanT);
+                });
+            }
+
+            if (p.variantIdentifiers?.some(vi => vi.toLowerCase() === term.toLowerCase() || vi.replace(/[\s\-\.\/]/g, '').toLowerCase() === cleanT)) {
+                return true;
+            }
+
+            return false;
+        });
 
         if (exactMatch) {
             searchAtSelection.current = term;

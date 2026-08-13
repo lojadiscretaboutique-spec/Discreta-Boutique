@@ -6,7 +6,7 @@ import {
   Plus, Edit2, Trash2, X, Upload, Save, ArrowLeft, 
   Info, DollarSign, Layers, Shirt, Droplets, Image as ImageIcon, 
   Search, Check, Sparkles, CheckSquare, Square, Eye, EyeOff, Package, PackageX,
-  Filter, ChevronDown, ChevronUp, AlertCircle, Loader2
+  Filter, ChevronDown, ChevronUp, AlertCircle, Loader2, Copy
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -348,7 +348,7 @@ export function AdminProducts() {
       title: 'SEO Inteligente OpenAI',
       message: `Deseja processar ${targetIds.length} produtos? A IA irá gerar automaticamente Títulos, Descrições e Tags SEO. ${forceRegen ? "Modo Sobrescrever ATIVADO." : ""}`,
       confirmText: 'Iniciar Geração',
-      variant: 'info'
+      variant: 'primary'
     });
 
     if (!ok) return;
@@ -456,7 +456,7 @@ export function AdminProducts() {
     let message = '';
     let confirmTitle = '';
     let confirmText = '';
-    let variant: 'default' | 'danger' | 'warning' | 'info' | 'success' = 'default';
+    let variant: 'primary' | 'danger' = 'primary';
 
     switch (action) {
       case 'delete':
@@ -519,12 +519,14 @@ export function AdminProducts() {
     setLoading(true);
     try {
       if (action === 'delete') {
-        // Bulk delete one by one to handle variants correctly as in service
-        // (Batch would be more complex due to variants subcollection)
+        let deletedCount = 0;
+        let deactivatedCount = 0;
         for (const id of selectedIds) {
-          await productService.deleteProduct(id);
+          const res = await productService.deleteProduct(id);
+          if (res.status === 'deleted') deletedCount++;
+          else deactivatedCount++;
         }
-        toast(`${selectedIds.length} produtos excluídos com sucesso!`);
+        toast(`${deletedCount} produtos excluídos e ${deactivatedCount} desativados (por possuírem histórico/estoque).`, 'info');
       } else {
         const batch = writeBatch(db);
         selectedIds.forEach(id => {
@@ -653,18 +655,57 @@ export function AdminProducts() {
   const handleDelete = async (id: string, name: string) => {
     const ok = await confirm({
       title: 'Excluir Produto',
-      message: `Tem certeza que deseja excluir "${name}"? Esta ação não pode ser desfeita.`,
-      confirmText: 'Excluir',
+      message: `Tem certeza que deseja excluir "${name}"? Se houver histórico de vendas, movimentações, compras ou saldo em estoque, o produto será desativado para preservar os dados.`,
+      confirmText: 'Confirmar',
       variant: 'danger'
     });
 
     if (ok) {
       try {
-        await productService.deleteProduct(id);
+        const res = await productService.deleteProduct(id);
         loadData();
-        toast("Produto excluído com sucesso!");
+        toast(res.message, res.status === 'deactivated' ? 'info' : 'success');
       } catch {
         toast("Erro ao excluir produto.", 'error');
+      }
+    }
+  };
+
+  const handleDuplicate = async (id: string, name: string) => {
+    const ok = await confirm({
+      title: 'Duplicar Produto',
+      message: `Deseja criar uma cópia do produto "${name}"? O novo produto será criado em rascunho (inativo), com estoque zerado e dados limpos.`,
+      confirmText: 'Duplicar',
+      variant: 'primary'
+    });
+
+    if (ok) {
+      setLoading(true);
+      try {
+        const newId = await productService.duplicateProduct(id);
+        toast("Produto duplicado com sucesso em modo rascunho!", 'success');
+        loadData();
+        const detail = await productService.getProduct(newId);
+        if (detail) {
+          const p = detail.product;
+          setForm({
+            ...p,
+            categoryIds: p.categoryIds || (p.categoryId ? [p.categoryId] : []),
+            fashion: p.fashion || {},
+            cosmetics: p.cosmetics || {},
+            seo: p.seo || { slug: generateSlug(p.name), condition: 'new' },
+            extras: p.extras || { showInCatalog: true },
+          });
+          setVariants(detail.variants);
+          setEditingId(newId);
+          setView('form');
+          setActiveTab('general');
+        }
+      } catch (err: unknown) {
+        console.error(err);
+        toast("Erro ao duplicar produto.", 'error');
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -687,9 +728,33 @@ export function AdminProducts() {
     }
 
     setSubmitting(true);
-    // Check EAN uniqueness
-    const checkMainBarcode = form.hasVariants ? null : (form.gtin || generateEan13());
-    const barcodesToCheck = finalVariants.map(v => v.barcode).filter(Boolean);
+
+    // 1. Check SKU Uniqueness
+    const mainSku = form.sku ? form.sku.trim() : generateSku();
+    const skusToCheck = finalVariants.map(v => v.sku?.trim()).filter(Boolean) as string[];
+    if (!form.hasVariants && mainSku) {
+      skusToCheck.push(mainSku);
+    }
+    
+    if (skusToCheck.length > 0) {
+      if (new Set(skusToCheck.map(s => s.toLowerCase())).size !== skusToCheck.length) {
+        toast("Erro: Existem SKUs duplicados no formulário ou nas variações.", 'error');
+        setSubmitting(false);
+        return;
+      }
+      for (const s of new Set(skusToCheck)) {
+        const skuCheck = await productService.checkSkuExists(s, editingId || undefined);
+        if (skuCheck.exists) {
+          toast(`Erro: O SKU "${s}" já está cadastrado em ${skuCheck.foundIn}.`, 'error');
+          setSubmitting(false);
+          return;
+        }
+      }
+    }
+
+    // 2. Check EAN / GTIN Uniqueness
+    const checkMainBarcode = form.hasVariants ? null : (form.gtin ? form.gtin.trim() : generateEan13());
+    const barcodesToCheck = finalVariants.map(v => v.barcode?.trim()).filter(Boolean) as string[];
     if (checkMainBarcode) barcodesToCheck.push(checkMainBarcode);
 
     if (barcodesToCheck.length > 0) {
@@ -698,12 +763,13 @@ export function AdminProducts() {
         setSubmitting(false);
         return;
       }
-      const gtinPromises = barcodesToCheck.map(b => productService.checkGtinExists(b as string, editingId || undefined));
-      const gtinResults = await Promise.all(gtinPromises);
-      if (gtinResults.some(r => r)) {
-        toast("Erro: Um dos Códigos de Barras (EAN) já está em uso por outro produto ou variação.", 'error');
-        setSubmitting(false);
-        return;
+      for (const b of new Set(barcodesToCheck)) {
+        const gtinCheck = await productService.checkGtinExists(b, editingId || undefined);
+        if (gtinCheck.exists) {
+          toast(`Erro: O Código de Barras (EAN) "${b}" já está cadastrado em ${gtinCheck.foundIn}.`, 'error');
+          setSubmitting(false);
+          return;
+        }
       }
     }
 
@@ -868,7 +934,9 @@ export function AdminProducts() {
   const removeImage = async (index: number) => {
     const img = form.images[index];
     if (window.confirm("Deseja remover esta imagem?")) {
-      await productService.deleteImage(img.path);
+      if (img.path) {
+        await productService.deleteImage(img.path);
+      }
       const newImages = form.images.filter((_, i) => i !== index);
       // If we removed the main image, set current first as main
       if (img.isMain && newImages.length > 0) {
@@ -902,8 +970,8 @@ export function AdminProducts() {
   const generateVariants = () => {
     if (tempAttrs.length === 0) return;
 
-    const cartesian = <T,>(...args: T[][]): T[][] => args.reduce((a, b) => a.flatMap(d => b.map(e => [d, e].flat() as T[]))) as T[][];
-    const combinations = cartesian(...tempAttrs.map(a => a.values));
+    const cartesian = (arrays: string[][]): string[][] => arrays.reduce<string[][]>((a, b) => a.flatMap(d => b.map(e => [...d, e])), [[]]);
+    const combinations = cartesian(tempAttrs.map(a => a.values));
     
     const newVariants: ProductVariant[] = combinations.map((combo: string[] | string, index: number) => {
       const comboArr = Array.isArray(combo) ? combo : [combo];
@@ -1778,7 +1846,7 @@ export function AdminProducts() {
                   title: 'Atenção',
                   message: 'Deseja forçar a reconstrução manual do cache público do catálogo agora? Note que o cache é atualizado automaticamente na maioria das operações.',
                   confirmText: 'Regenerar Manualmente',
-                  variant: 'info'
+                  variant: 'primary'
                 });
                 if (!ok) return;
                 try {
@@ -2132,6 +2200,11 @@ export function AdminProducts() {
                            {canEdit && (
                              <button onClick={() => handleEdit(prod)} className="p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 hover:text-red-600 hover:border-red-600 transition-all shadow-sm">
                                <Edit2 size={16} />
+                             </button>
+                           )}
+                           {canCreate && (
+                             <button onClick={() => handleDuplicate(prod.id!, prod.name)} className="p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 hover:text-red-600 hover:border-red-600 transition-all shadow-sm" title="Duplicar Produto">
+                               <Copy size={16} />
                              </button>
                            )}
                            {canDelete && (

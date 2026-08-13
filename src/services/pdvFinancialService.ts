@@ -1,3 +1,5 @@
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "../lib/firebase";
 import { financialService } from "./financialService";
 import { cashService } from "./cashService";
 import { roundTo2 } from "../lib/utils";
@@ -11,6 +13,7 @@ export interface PdvSaleCapture {
   paymentMethod: string;
   payments: any[];
   userId: string;
+  userEmail?: string;
   sessionId: string;
 }
 
@@ -38,49 +41,57 @@ export const pdvFinancialService = {
     const additionalAmount = this.calculateAdditionalAmount(totalVenda, totalRecebido);
     const todayISO = new Date().toISOString().split('T')[0];
 
-    // 1. Register in Global Financial Module (Income)
-    // We register the FULL received amount as income
-    await financialService.saveTransaction({
-      type: "income",
-      description: `PDV: Venda #${orderRefTag} | ${customerName}${additionalAmount > 0 ? ` (C/ Acréscimo: R$ ${additionalAmount.toFixed(2)})` : ""}`,
-      amount: totalRecebido,
-      originalSaleAmount: totalVenda,
-      additionalAmount: additionalAmount,
-      dueDate: todayISO,
-      paymentDate: todayISO,
-      status: "paid",
-      category: "Vendas",
-      orderId: orderId,
-      paymentMethod: paymentMethod,
-      notes: `Venda balcão. Total Venda: R$ ${totalVenda.toFixed(2)}. Valor Recebido: R$ ${totalRecebido.toFixed(2)}. Acréscimo: R$ ${additionalAmount.toFixed(2)}.`,
-    });
+    // 1. Idempotency Check: Financial Transaction
+    const existingFinQ = query(
+      collection(db, 'financial_transactions'),
+      where('orderId', '==', orderId)
+    );
+    const existingFinSnap = await getDocs(existingFinQ);
 
-    // 2. Register separate "Acréscimo" if exists (Optional, maybe for reporting? The prompt says "os R$ 20,00 adicionais devem entrar como acréscimo financeiro da venda")
-    // The requirement says "o financeiro deve registrar R$ 200,00" (the full amount) but also mentions "acréscimo financeiro". 
-    // Usually, this means the transaction itself or its metadata identifies the part that is additional.
-    // I already included it in notes and description.
+    if (existingFinSnap.empty) {
+      await financialService.saveTransaction({
+        type: "income",
+        description: `PDV: Venda #${orderRefTag} | ${customerName}${additionalAmount > 0 ? ` (C/ Acréscimo: R$ ${additionalAmount.toFixed(2)})` : ""}`,
+        amount: totalRecebido,
+        originalSaleAmount: totalVenda,
+        additionalAmount: additionalAmount,
+        dueDate: todayISO,
+        paymentDate: todayISO,
+        status: "paid",
+        category: "Vendas",
+        orderId: orderId,
+        paymentMethod: paymentMethod,
+        notes: `Venda balcão. Total Venda: R$ ${totalVenda.toFixed(2)}. Valor Recebido: R$ ${totalRecebido.toFixed(2)}. Acréscimo: R$ ${additionalAmount.toFixed(2)}.`,
+      });
+    } else {
+      console.log(`[pdvFinancialService] Financial entry already exists for order ${orderId}. Skipping duplicate creation.`);
+    }
 
-    // 3. Register in Cash Session
-    // We iterate through payments but we must ensure we don't duplicate what saveTransaction might have done.
-    // financialService.saveTransaction usually syncs to cash if it's a manual entry, 
-    // but here in PDV we often register cash entries explicitly.
-    
-    // In our current saveTransaction logic, PDV sales might not auto-sync if isManual is false.
-    // So we manually add to cash session.
-    for (const p of payments) {
-      if (p.amount > 0) {
-        await cashService.addTransaction({
-          sessionId: sessionId,
-          type: 'entrada',
-          category: 'VENDA_PDV',
-          amount: p.amount,
-          description: `Venda PDV #${orderRefTag}${additionalAmount > 0 ? ' (Inclui Acréscimo)' : ''}`,
-          paymentMethod: p.method,
-          userId: userId,
-          source: 'loja_fisica' as any,
-          orderId: orderId
-        });
+    // 2. Idempotency Check: Cash Session Transactions
+    const existingCashQ = query(
+      collection(db, 'cashTransactions'),
+      where('orderId', '==', orderId)
+    );
+    const existingCashSnap = await getDocs(existingCashQ);
+
+    if (existingCashSnap.empty) {
+      for (const p of payments) {
+        if (p.amount > 0) {
+          await cashService.addTransaction({
+            sessionId: sessionId,
+            type: 'entrada',
+            category: 'VENDA_PDV',
+            amount: p.amount,
+            description: `Venda PDV #${orderRefTag}${additionalAmount > 0 ? ' (Inclui Acréscimo)' : ''}`,
+            paymentMethod: p.method,
+            userId: userId,
+            source: 'loja_fisica' as any,
+            orderId: orderId
+          });
+        }
       }
+    } else {
+      console.log(`[pdvFinancialService] Cash transactions already exist for order ${orderId}. Skipping duplicate creation.`);
     }
   }
 };

@@ -1,413 +1,509 @@
 import { Product } from '../services/productService';
 import { normalizeSearchText, getWordVariations } from './utils';
 
-const getCreationDate = (createdAt?: Date | string | null | any) => {
-    if (!createdAt) return new Date();
-    if (createdAt instanceof Date) return createdAt;
-    if (typeof createdAt === 'string') return new Date(createdAt);
-    if (typeof createdAt === 'object' && 'seconds' in (createdAt as any)) {
-        return new Date((createdAt as any).seconds * 1000);
-    }
-    return new Date();
+export interface AISuggestion {
+  termo_busca?: string;
+  curadoria?: string;
+  categoria?: string;
+  caracteristicas?: string[];
+  sinonimos?: string[];
+  subcategorias_sugeridas?: string[];
 }
 
-export const getBaseScore = (p: Product) => {
-  let score = p.score || 0;
-  const creationDate = getCreationDate(p.createdAt);
-  const ageInDays = (Date.now() - creationDate.getTime()) / (24 * 60 * 60 * 1000);
-  const decay = Math.pow(0.95, Math.floor(ageInDays / 7));
-  
-  let boost = 0;
-  if ((Date.now() - creationDate.getTime()) < (30 * 24 * 60 * 60 * 1000)) boost += 10;
-  const convRate = p.cliques && p.cliques > 5 ? (p.conversoes || 0) / p.cliques : 0;
-  if (convRate > 0.1) boost += 15;
-  if (p.onSale || (p.oldPrice && p.price < p.oldPrice)) boost += 5;
-  
-  return (score * decay) + boost;
+export interface CategorySimple {
+  id: string;
+  name?: string;
+  parentId?: string | null;
+}
+
+export type ExtendedProduct = Product & {
+  oldPrice?: number;
+  palavras_chave?: string[];
+  categoryName?: string;
+  _tempScore?: number;
+  _searchScore?: number;
 };
 
-export const getHomeScore = (p: Product) => {
-  const homeClicks = p.homeClicks || 0;
-  const homeScore = p.homeScore || 0;
-  
-  // Se ainda não temos os campos novos de home nos documentos antigos, usamos o score/cliques padrão como fallback
-  const scoreVal = homeScore > 0 ? homeScore : (p.score || 0);
-  const clicksVal = homeClicks > 0 ? homeClicks : (p.cliques || 0);
-  const conversoesVal = p.conversoes || 0;
-  
+interface FirestoreTimestamp {
+  seconds: number;
+  nanoseconds?: number;
+}
+
+const getCreationDate = (createdAt?: Date | string | number | FirestoreTimestamp | null): Date => {
+  if (!createdAt) return new Date();
+  if (createdAt instanceof Date) {
+    return isNaN(createdAt.getTime()) ? new Date() : createdAt;
+  }
+  if (typeof createdAt === 'number') {
+    const d = new Date(createdAt);
+    return isNaN(d.getTime()) ? new Date() : d;
+  }
+  if (typeof createdAt === 'string') {
+    const d = new Date(createdAt);
+    return isNaN(d.getTime()) ? new Date() : d;
+  }
+  if (typeof createdAt === 'object' && createdAt !== null && 'seconds' in createdAt && typeof createdAt.seconds === 'number') {
+    return new Date(createdAt.seconds * 1000);
+  }
+  return new Date();
+};
+
+export const getBaseScore = (p: Product): number => {
+  if (!p) return 0;
+  const extP = p as ExtendedProduct;
+  const rawScore = typeof p.score === 'number' && !isNaN(p.score) ? p.score : 0;
   const creationDate = getCreationDate(p.createdAt);
-  const ageInDays = (Date.now() - creationDate.getTime()) / (24 * 60 * 60 * 1000);
-  
-  // Aplica um leve decay temporal de forma que cliques recentes continuem importando, mas novos produtos tenham chance de subir
+  const now = Date.now();
+  const timeDiff = Math.max(0, now - creationDate.getTime());
+  const ageInDays = timeDiff / (24 * 60 * 60 * 1000);
+  const decay = Math.pow(0.95, Math.floor(ageInDays / 7));
+
+  let boost = 0;
+  if (timeDiff < (30 * 24 * 60 * 60 * 1000)) boost += 10;
+
+  const cliques = typeof p.cliques === 'number' && !isNaN(p.cliques) ? p.cliques : 0;
+  const conversoes = typeof p.conversoes === 'number' && !isNaN(p.conversoes) ? p.conversoes : 0;
+  const convRate = cliques > 5 ? conversoes / cliques : 0;
+  if (convRate > 0.1) boost += 15;
+
+  const oldPrice = typeof extP.oldPrice === 'number' && !isNaN(extP.oldPrice) ? extP.oldPrice : undefined;
+  const promoPrice = typeof p.promoPrice === 'number' && !isNaN(p.promoPrice) ? p.promoPrice : undefined;
+  const currentPrice = typeof p.price === 'number' && !isNaN(p.price) ? p.price : 0;
+
+  if (p.onSale || (oldPrice !== undefined && currentPrice < oldPrice) || (promoPrice !== undefined && promoPrice < currentPrice)) {
+    boost += 5;
+  }
+
+  const result = (rawScore * decay) + boost;
+  return isFinite(result) ? result : 0;
+};
+
+export const getHomeScore = (p: Product): number => {
+  if (!p) return 0;
+  const homeClicks = typeof p.homeClicks === 'number' && !isNaN(p.homeClicks) ? p.homeClicks : 0;
+  const homeScore = typeof p.homeScore === 'number' && !isNaN(p.homeScore) ? p.homeScore : 0;
+  const rawScore = typeof p.score === 'number' && !isNaN(p.score) ? p.score : 0;
+  const rawCliques = typeof p.cliques === 'number' && !isNaN(p.cliques) ? p.cliques : 0;
+  const conversoesVal = typeof p.conversoes === 'number' && !isNaN(p.conversoes) ? p.conversoes : 0;
+
+  const scoreVal = homeScore > 0 ? homeScore : rawScore;
+  const clicksVal = homeClicks > 0 ? homeClicks : rawCliques;
+
+  const creationDate = getCreationDate(p.createdAt);
+  const now = Date.now();
+  const timeDiff = Math.max(0, now - creationDate.getTime());
+  const ageInDays = timeDiff / (24 * 60 * 60 * 1000);
+
   const decay = Math.pow(0.97, Math.floor(ageInDays / 7));
-  
-  // Se o produto for super novo (menos de 15 dias), ganha um empurrão extra para engajar nos primeiros cliques
+
   let recencyBoost = 0;
   if (ageInDays < 15) {
     recencyBoost += 40;
   } else if (ageInDays < 30) {
     recencyBoost += 15;
   }
-  
-  return (scoreVal * 3 * decay) + (clicksVal * 5 * decay) + (conversoesVal * 15 * decay) + recencyBoost;
+
+  const result = (scoreVal * 3 * decay) + (clicksVal * 5 * decay) + (conversoesVal * 15 * decay) + recencyBoost;
+  return isFinite(result) ? result : 0;
 };
 
-export const getMatchScore = (p: Product, aiSuggestion: any) => {
-    let score = 0;
-    const name = p.name.toLowerCase();
-    const desc = `${(p.shortDescription || "").toLowerCase()} ${(p.fullDescription || "").toLowerCase()}`;
-    const pTags = (p.seo?.keywords || []).map(t => String(t).toLowerCase());
-    const aiKeywords = (p.ai_keywords || []).map(k => String(k).toLowerCase());
-    const aiSynonyms = (p.ai_synonyms || []).map(s => String(s).toLowerCase());
-    
-    if (!aiSuggestion) {
-      return 0;
-    }
+export const getMatchScore = (p: Product, aiSuggestion?: AISuggestion | null): number => {
+  if (!p || !aiSuggestion) {
+    return 0;
+  }
 
-    const mainTerm = (aiSuggestion.termo_busca || aiSuggestion.curadoria || "").toLowerCase();
-    const sugestaoCat = aiSuggestion.categoria?.toLowerCase() || "";
-    const caracteristicas = (aiSuggestion.caracteristicas || []).map((c: string) => c.toLowerCase());
-    const sinonimosSugeridos = (aiSuggestion.sinonimos || []).map((s: string) => s.toLowerCase());
-    const subcats = (aiSuggestion.subcategorias_sugeridas || []).map((s: string) => s.toLowerCase());
+  let score = 0;
+  const name = (p.name || "").toLowerCase();
+  const desc = `${(p.shortDescription || "").toLowerCase()} ${(p.fullDescription || "").toLowerCase()}`;
+  const pTags = (p.seo?.keywords || []).map(t => String(t).toLowerCase());
+  const aiKeywords = (p.ai_keywords || []).map(k => String(k).toLowerCase());
+  const aiSynonyms = (p.ai_synonyms || []).map(s => String(s).toLowerCase());
 
-    // 1. Exact Match on name (Massive boost to keep it top)
+  const mainTerm = (aiSuggestion.termo_busca || aiSuggestion.curadoria || "").toLowerCase();
+  const sugestaoCat = aiSuggestion.categoria?.toLowerCase() || "";
+  const caracteristicas = (aiSuggestion.caracteristicas || []).map((c: string) => String(c).toLowerCase());
+  const sinonimosSugeridos = (aiSuggestion.sinonimos || []).map((s: string) => String(s).toLowerCase());
+  const subcats = (aiSuggestion.subcategorias_sugeridas || []).map((s: string) => String(s).toLowerCase());
+
+  // 1. Exact Match on name (Massive boost to keep it top)
+  if (mainTerm) {
     if (name === mainTerm) score += 5000;
-    if (name.startsWith(mainTerm)) score += 2500;
-    if (name.includes(mainTerm)) score += 1500;
+    else if (name.startsWith(mainTerm)) score += 2500;
+    else if (name.includes(mainTerm)) score += 1500;
 
-    // Bonus for matching all words from the main term
     const mainTermWords = mainTerm.split(/\s+/).filter((w: string) => w.length >= 2);
     if (mainTermWords.length > 1 && mainTermWords.every((w: string) => name.includes(w))) {
       score += 800;
     }
+  }
 
-    // 2. Categoria e Subcategoria sugeridas pela IA
-    if (sugestaoCat && sugestaoCat !== 'outros') {
-       if (pTags.includes(sugestaoCat)) score += 100;
-    }
-    
-    subcats.forEach((sub: string) => {
-      if (name.includes(sub)) score += 150;
-      if (pTags.includes(sub)) score += 100;
-    });
+  // 2. Categoria e Subcategoria sugeridas pela IA
+  if (sugestaoCat && sugestaoCat !== 'outros') {
+    if (pTags.includes(sugestaoCat)) score += 100;
+  }
 
-    // 3. Tags e Keywords
-    const allProductKeywords = [...pTags, ...aiKeywords, ...aiSynonyms];
-    allProductKeywords.forEach(tag => {
-       const t = tag.toLowerCase();
-       if (mainTerm && (t === mainTerm)) score += 300;
-       if (mainTerm && t.includes(mainTerm)) score += 100;
-       
-       caracteristicas.forEach(c => {
-         if (t.includes(c.toLowerCase())) score += 80;
-       });
-       sinonimosSugeridos.forEach(s => {
-         if (t === s.toLowerCase()) score += 150; // Exact synonym match
-         else if (t.includes(s.toLowerCase())) score += 60;
-       });
-    });
+  subcats.forEach((sub: string) => {
+    if (name.includes(sub)) score += 150;
+    if (pTags.includes(sub)) score += 100;
+  });
 
-    // 4. Features e Sinônimos no Nome
-    caracteristicas.forEach((ct: string) => {
-      const feature = ct.toLowerCase();
-      if (name.includes(feature)) score += 120;
-      if (desc.includes(feature)) score += 40;
-    });
+  // 3. Tags e Keywords
+  const allProductKeywords = [...pTags, ...aiKeywords, ...aiSynonyms];
+  allProductKeywords.forEach(tag => {
+    const t = tag.toLowerCase();
+    if (mainTerm && t === mainTerm) score += 300;
+    else if (mainTerm && t.includes(mainTerm)) score += 100;
 
-    sinonimosSugeridos.forEach((st: string) => {
-      const syn = st.toLowerCase();
-      if (name.includes(syn)) score += 100;
-      if (desc.includes(syn)) score += 30;
+    caracteristicas.forEach((c: string) => {
+      if (t.includes(c.toLowerCase())) score += 80;
     });
-    
-    return score;
+    sinonimosSugeridos.forEach((s: string) => {
+      if (t === s.toLowerCase()) score += 150;
+      else if (t.includes(s.toLowerCase())) score += 60;
+    });
+  });
+
+  // 4. Features e Sinônimos no Nome
+  caracteristicas.forEach((ct: string) => {
+    const feature = ct.toLowerCase();
+    if (name.includes(feature)) score += 120;
+    if (desc.includes(feature)) score += 40;
+  });
+
+  sinonimosSugeridos.forEach((st: string) => {
+    const syn = st.toLowerCase();
+    if (name.includes(syn)) score += 100;
+    if (desc.includes(syn)) score += 30;
+  });
+
+  return isFinite(score) ? score : 0;
 };
 
 /**
  * Calculates cosine similarity between two vectors.
  */
-const calculateCosineSimilarity = (vecA: number[], vecB: number[]) => {
+const calculateCosineSimilarity = (vecA: number[], vecB: number[]): number => {
   if (!vecA || !vecB || vecA.length === 0 || vecB.length === 0) return 0;
   if (vecA.length !== vecB.length) return 0;
-  
+
   let dotProduct = 0;
   let normA = 0;
   let normB = 0;
-  
+
   for (let i = 0; i < vecA.length; i++) {
-      dotProduct += vecA[i] * vecB[i];
-      normA += vecA[i] * vecA[i];
-      normB += vecB[i] * vecB[i];
+    const valA = vecA[i] || 0;
+    const valB = vecB[i] || 0;
+    dotProduct += valA * valB;
+    normA += valA * valA;
+    normB += valB * valB;
   }
-  
-  const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-  return isNaN(similarity) ? 0 : similarity;
+
+  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+  if (denominator === 0) return 0;
+
+  const similarity = dotProduct / denominator;
+  return isFinite(similarity) ? similarity : 0;
 };
 
-export const getRankingHybrid = (products: Product[], aiSuggestion: any, queryEmbedding?: number[]): Product[] => {
-    return [...products].map(p => {
-        const base = getBaseScore(p) * 0.01; // Base metrics are secondary in search
-        const match = getMatchScore(p, aiSuggestion);
-        
-        let semanticBoost = 0;
-        if (queryEmbedding && p.embedding && p.embedding.length > 0) {
-            const similarity = calculateCosineSimilarity(queryEmbedding, p.embedding);
-            semanticBoost = similarity * 100; 
-        }
+export const getRankingHybrid = (products: Product[], aiSuggestion?: AISuggestion | null, queryEmbedding?: number[]): Product[] => {
+  if (!Array.isArray(products) || products.length === 0) return [];
 
-        return {
-            ...p,
-            _tempScore: base + match + semanticBoost
-        };
-    })
-    .filter(p => (p as any)._tempScore > 1) // Filter out clearly unrelated items if there's AI context
-    .sort((a: any, b: any) => b._tempScore - a._tempScore)
-    .map((p: any) => {
-        const { _tempScore: _unused, ...pWithoutScore } = p;
-        return pWithoutScore as Product;
+  const scored = products.map(p => {
+    const base = getBaseScore(p) * 0.01;
+    const match = getMatchScore(p, aiSuggestion);
+
+    let semanticBoost = 0;
+    if (queryEmbedding && Array.isArray(queryEmbedding) && p.embedding && Array.isArray(p.embedding) && p.embedding.length > 0) {
+      const similarity = calculateCosineSimilarity(queryEmbedding, p.embedding);
+      semanticBoost = similarity * 100;
+    }
+
+    const totalTempScore = base + match + semanticBoost;
+    const safeScore = isFinite(totalTempScore) ? totalTempScore : 0;
+
+    const extP: ExtendedProduct = {
+      ...p,
+      _tempScore: safeScore
+    };
+    return extP;
+  });
+
+  return scored
+    .filter(p => (p._tempScore ?? 0) > 1)
+    .sort((a, b) => (b._tempScore ?? 0) - (a._tempScore ?? 0))
+    .map(p => {
+      const { _tempScore, ...clean } = p;
+      return clean as Product;
     });
 };
 
-export const hasDirectTextMatch = (p: Product, queryText: string, categories: any[] = []): boolean => {
-    if (!queryText.trim()) return true;
+export const hasDirectTextMatch = (p: Product, queryText: string, categories: CategorySimple[] = []): boolean => {
+  if (!p) return false;
+  if (!queryText || !queryText.trim()) return true;
 
-    const normalizedQuery = normalizeSearchText(queryText);
-    const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
-    
-    // Se a query for muito curta (p.ex. uma palavra com menos de 2 letras), vamos usar o termo bruto minúsculo
-    const term = normalizedQuery.trim();
-    if (!term) return false;
+  const extP = p as ExtendedProduct;
+  const normalizedQuery = normalizeSearchText(queryText);
+  const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
 
-    // 1. Nome do Produto (ou todas as palavras dele se for busca multi-termo)
-    const name = normalizeSearchText(p.name || "");
-    if (name.includes(term)) return true;
-    if (queryWords.length > 0 && queryWords.every(word => name.includes(word))) return true;
+  const term = normalizedQuery.trim();
+  if (!term) return false;
 
-    // 2. SKU, Código Interno / GTIN
-    const sku = normalizeSearchText(p.sku || "");
-    const iCode = normalizeSearchText(p.internalCode || "");
-    const gtin = normalizeSearchText(p.gtin || "");
-    if (sku.includes(term) || iCode.includes(term) || gtin.includes(term)) return true;
+  // 1. Nome do Produto (ou todas as palavras dele se for busca multi-termo)
+  const name = normalizeSearchText(p.name || "");
+  if (name.includes(term)) return true;
+  if (queryWords.length > 0 && queryWords.every(word => name.includes(word))) return true;
 
-    // 3. Subcategoria
-    const subcat = normalizeSearchText(p.subcategory || "");
-    if (subcat.includes(term)) return true;
+  // 2. SKU, Código Interno / GTIN
+  const sku = normalizeSearchText(p.sku || "");
+  const iCode = normalizeSearchText(p.internalCode || "");
+  const gtin = normalizeSearchText(p.gtin || "");
+  if (sku.includes(term) || iCode.includes(term) || gtin.includes(term)) return true;
 
-    // 4. Tags / Palavras-chave / Sinônimos / Buscas
-    const tags = [
-        ...(p.tags || []),
-        ...(p.seo?.keywords || []),
-        ...(p.ai_keywords || []),
-        ...(p.ai_synonyms || []),
-        ...(p.searchTerms || []),
-        ...(p.palavras_chave || [])
-    ].map(t => normalizeSearchText(String(t)));
+  // 3. Subcategoria
+  const subcat = normalizeSearchText(p.subcategory || "");
+  if (subcat.includes(term)) return true;
 
-    if (tags.some(tag => tag.includes(term) || term.includes(tag))) return true;
-    if (queryWords.length > 0 && queryWords.some(word => tags.some(tag => tag.includes(word)))) return true;
+  // 4. Tags / Palavras-chave / Sinônimos / Buscas
+  const tags = [
+    ...(p.tags || []),
+    ...(p.seo?.keywords || []),
+    ...(p.ai_keywords || []),
+    ...(p.ai_synonyms || []),
+    ...(p.searchTerms || []),
+    ...(extP.palavras_chave || [])
+  ].map(t => normalizeSearchText(String(t)));
 
-    // 5. Categoria
-    if (p.categoryId) {
-        const catNameDirect = normalizeSearchText(p.categoryName || "");
-        if (catNameDirect.includes(term)) return true;
+  if (tags.some(tag => tag.includes(term) || term.includes(tag))) return true;
+  if (queryWords.length > 0 && queryWords.some(word => tags.some(tag => tag.includes(word)))) return true;
 
-        const cat = categories.find(c => c.id === p.categoryId);
-        if (cat) {
-            const catName = normalizeSearchText(cat.name || "");
-            if (catName.includes(term)) return true;
-        }
+  // 5. Categoria
+  if (p.categoryId) {
+    const catNameDirect = normalizeSearchText(extP.categoryName || "");
+    if (catNameDirect.includes(term)) return true;
+
+    if (Array.isArray(categories)) {
+      const cat = categories.find(c => c && c.id === p.categoryId);
+      if (cat) {
+        const catName = normalizeSearchText(cat.name || "");
+        if (catName.includes(term)) return true;
+      }
     }
+  }
 
-    // 6. Descrição (Se as palavras da busca constam na descrição)
-    const desc = normalizeSearchText(`${p.shortDescription || ""} ${p.fullDescription || ""} ${p.subtitle || ""}`);
-    if (desc.includes(term)) return true;
-    if (queryWords.length > 0 && queryWords.every(word => desc.includes(word))) return true;
+  // 6. Descrição (Se as palavras da busca constam na descrição)
+  const desc = normalizeSearchText(`${p.shortDescription || ""} ${p.fullDescription || ""} ${p.subtitle || ""}`);
+  if (desc.includes(term)) return true;
+  if (queryWords.length > 0 && queryWords.every(word => desc.includes(word))) return true;
 
-    return false;
+  return false;
 };
 
 // Ranking Sections
 const pick = (list: Product[], count: number, usedIds: Set<string>): Product[] => {
-    const available = list.filter(p => !usedIds.has(p.id!));
-    const selected = available.slice(0, count);
-    selected.forEach(p => usedIds.add(p.id!));
-    return selected;
+  if (!Array.isArray(list) || list.length === 0 || count <= 0) return [];
+  const available = list.filter(p => p && p.id && !usedIds.has(p.id));
+  const selected = available.slice(0, count);
+  selected.forEach(p => {
+    if (p.id) usedIds.add(p.id);
+  });
+  return selected;
 };
 
-export const getLancamentos = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => {
+export const getLancamentos = (all: Product[], used: Set<string>): Product[] => {
+  if (!Array.isArray(all)) return [];
+  return pick([...all].sort((a, b) => {
     const scoreB = getHomeScore(b);
     const scoreA = getHomeScore(a);
     if (scoreB !== scoreA) return scoreB - scoreA;
     return getCreationDate(b.createdAt).getTime() - getCreationDate(a.createdAt).getTime();
-}), 10, used);
-export const getDestaques = (all: Product[], used: Set<string>) => pick(all.filter(p => p.featured).sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
-export const getMaisVendidos = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
-export const getEmAlta = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
-export const getRecomendados = (all: Product[], used: Set<string>) => pick(all.sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
-export const fillFallback = (all: Product[], used: Set<string>, count: number) => pick(all.sort((a, b) => getHomeScore(b) - getHomeScore(a)), count, used);
-
-export const getRankingBusca = (products: Product[], aiSuggestion: any): Product[] => {
-    return getRankingHybrid(products, aiSuggestion);
+  }), 10, used);
 };
 
-export const getRankingProfissional = (products: Product[], queryText: string, categories: any[] = []): Product[] => {
-    if (!queryText.trim()) return products;
+export const getDestaques = (all: Product[], used: Set<string>): Product[] => {
+  if (!Array.isArray(all)) return [];
+  return pick([...all].filter(p => p && p.featured).sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
+};
 
-    const normalizedQuery = normalizeSearchText(queryText);
-    const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
-    const queryVariations = queryWords.flatMap(w => getWordVariations(w));
-    const allSearchTerms = Array.from(new Set([...queryWords, ...queryVariations, normalizedQuery]));
+export const getMaisVendidos = (all: Product[], used: Set<string>): Product[] => {
+  if (!Array.isArray(all)) return [];
+  return pick([...all].sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
+};
 
-    console.log(`[SEARCH][RANKING] Query: "${queryText}" | Terms:`, allSearchTerms);
+export const getEmAlta = (all: Product[], used: Set<string>): Product[] => {
+  if (!Array.isArray(all)) return [];
+  return pick([...all].sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
+};
 
-    const startTime = Date.now();
+export const getRecomendados = (all: Product[], used: Set<string>): Product[] => {
+  if (!Array.isArray(all)) return [];
+  return pick([...all].sort((a, b) => getHomeScore(b) - getHomeScore(a)), 10, used);
+};
 
-    // Filtrar primeiro apenas o conjunto de itens que têm correspondência textual direta exata (como no admin)
-    const exactMatchedProducts = products.filter(p => hasDirectTextMatch(p, queryText, categories));
+export const fillFallback = (all: Product[], used: Set<string>, count: number): Product[] => {
+  if (!Array.isArray(all)) return [];
+  return pick([...all].sort((a, b) => getHomeScore(b) - getHomeScore(a)), count, used);
+};
 
-    // Criar mapa de categorias para busca rápida de pais
-    const categoryMap = new Map();
-    categories.forEach(c => categoryMap.set(c.id, c));
+export const getRankingBusca = (products: Product[], aiSuggestion?: AISuggestion | null): Product[] => {
+  return getRankingHybrid(products, aiSuggestion);
+};
 
-    const getAncestors = (catId: string): any[] => {
-        const ancestors: any[] = [];
-        let currentId = catId;
-        const visited = new Set(); // Prevenir loops
-        
-        while (currentId && categoryMap.has(currentId) && !visited.has(currentId)) {
-            visited.add(currentId);
-            const cat = categoryMap.get(currentId);
-            ancestors.push(cat);
-            currentId = cat.parentId;
+export const getRankingProfissional = (products: Product[], queryText: string, categories: CategorySimple[] = []): Product[] => {
+  if (!Array.isArray(products) || products.length === 0) return [];
+  if (!queryText || !queryText.trim()) return products;
+
+  const normalizedQuery = normalizeSearchText(queryText);
+  const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
+  const queryVariations = queryWords.flatMap(w => getWordVariations(w));
+  const allSearchTerms = Array.from(new Set([...queryWords, ...queryVariations, normalizedQuery]));
+
+  console.log(`[SEARCH][RANKING] Query: "${queryText}" | Terms:`, allSearchTerms);
+
+  const startTime = Date.now();
+
+  const exactMatchedProducts = products.filter(p => hasDirectTextMatch(p, queryText, categories));
+
+  const categoryMap = new Map<string, CategorySimple>();
+  if (Array.isArray(categories)) {
+    categories.forEach(c => {
+      if (c && c.id) categoryMap.set(c.id, c);
+    });
+  }
+
+  const getAncestors = (catId: string): CategorySimple[] => {
+    const ancestors: CategorySimple[] = [];
+    let currentId = catId;
+    const visited = new Set<string>();
+
+    while (currentId && categoryMap.has(currentId) && !visited.has(currentId)) {
+      visited.add(currentId);
+      const cat = categoryMap.get(currentId);
+      if (cat) {
+        ancestors.push(cat);
+        currentId = cat.parentId || "";
+      } else {
+        break;
+      }
+    }
+    return ancestors;
+  };
+
+  const ranked = exactMatchedProducts.map(p => {
+    const extP = p as ExtendedProduct;
+    let score = 0;
+    const name = normalizeSearchText(p.name || "");
+    const desc = normalizeSearchText(`${p.shortDescription || ""} ${p.fullDescription || ""} ${p.subtitle || ""}`);
+    const subcat = normalizeSearchText(p.subcategory || "");
+
+    const ancestors = p.categoryId ? getAncestors(p.categoryId) : [];
+    const catNames = ancestors.map(a => normalizeSearchText(a.name || ""));
+
+    const tags = [
+      ...(p.tags || []),
+      ...(p.seo?.keywords || []),
+      ...(p.ai_keywords || []),
+      ...(p.ai_synonyms || []),
+      ...(p.searchTerms || []),
+      ...(extP.palavras_chave || [])
+    ].map(t => normalizeSearchText(String(t)));
+
+    const allWordsInName = queryWords.length > 0 && queryWords.every(word => name.includes(word));
+    const exactPhraseMatch = name.includes(normalizedQuery);
+    const startsWithPhrase = name.startsWith(normalizedQuery);
+
+    if (name === normalizedQuery) {
+      score += 5000;
+    } else if (startsWithPhrase) {
+      score += 2000;
+    } else if (exactPhraseMatch) {
+      score += 1500;
+
+      const queryLength = normalizedQuery.split(' ').length;
+      const nameLength = name.split(' ').length;
+      if (nameLength <= queryLength + 2) score += 500;
+    } else if (allWordsInName) {
+      score += 1000;
+
+      let lastIndex = -1;
+      let sequential = true;
+      for (const word of queryWords) {
+        const currentIndex = name.indexOf(word);
+        if (currentIndex < lastIndex) {
+          sequential = false;
+          break;
         }
-        return ancestors;
-    };
+        lastIndex = currentIndex;
+      }
+      if (sequential) score += 300;
+    }
 
-    const ranked = exactMatchedProducts.map(p => {
-        let score = 0;
-        const name = normalizeSearchText(p.name);
-        const desc = normalizeSearchText(`${p.shortDescription || ""} ${p.fullDescription || ""} ${p.subtitle || ""}`);
-        const subcat = normalizeSearchText(p.subcategory || "");
-        
-        // Categorias e Ancestrais (Hierarquia: Pai e Filhas)
-        const ancestors = p.categoryId ? getAncestors(p.categoryId) : [];
-        const catNames = ancestors.map(a => normalizeSearchText(a.name));
-        
-        const tags = [
-            ...(p.tags || []),
-            ...(p.seo?.keywords || []),
-            ...(p.ai_keywords || []),
-            ...(p.ai_synonyms || []),
-            ...(p.searchTerms || []),
-            ...(p.palavras_chave || [])
-        ].map(t => normalizeSearchText(String(t)));
-
-        // 1. Nome exato ou parcial (Prioridade Máxima)
-        const allWordsInName = queryWords.every(word => name.includes(word));
-        const exactPhraseMatch = name.includes(normalizedQuery);
-        const startsWithPhrase = name.startsWith(normalizedQuery);
-
-        if (name === normalizedQuery) {
-            score += 5000; // Match exato total - o suprassumo da busca
-        } else if (startsWithPhrase) {
-            score += 2000; // Começa exatamente com a frase buscada
-        } else if (exactPhraseMatch) {
-            score += 1500; // Contém a frase exata em qualquer lugar do nome
-            
-            // Bônus se a frase exata estiver "limpa" (sem muitas palavras extras ao redor)
-            const queryLength = normalizedQuery.split(' ').length;
-            const nameLength = name.split(' ').length;
-            if (nameLength <= queryLength + 2) score += 500;
-        } else if (allWordsInName) {
-            score += 1000;  // Contém todas as palavras, mesmo que dispersas
-            
-            // Verificar ordem das palavras para reforçar match sequencial
-            let lastIndex = -1;
-            let sequential = true;
-            for (const word of queryWords) {
-                const currentIndex = name.indexOf(word);
-                if (currentIndex < lastIndex) {
-                    sequential = false;
-                    break;
-                }
-                lastIndex = currentIndex;
-            }
-            if (sequential) score += 300;
-        }
-        
-        // Bônus por palavras individuais no nome
-        let wordsMatched = 0;
-        queryWords.forEach(word => {
-            if (name === word) {
-                score += 300;
-                wordsMatched++;
-            } else if (name.includes(word)) {
-                score += 100;
-                wordsMatched++;
-            }
-        });
-
-        // Penalidade para nomes que não contém a maioria das palavras buscadas se a busca for longa
-        if (queryWords.length >= 3 && wordsMatched < Math.ceil(queryWords.length / 2)) {
-            score -= 500; // Forte penalidade para "ruído"
-        }
-
-        // Penalidade para nomes muito longos se for uma busca curta (precisão por densidade)
-        if (exactPhraseMatch && name.length > normalizedQuery.length + 30) {
-            score -= 150; // Reduz mais agressivamente se houver muito texto extra irrelevante
-        }
-
-        // 2. Subcategoria (+120)
-        if (subcat && (subcat === normalizedQuery || allSearchTerms.some(t => subcat.includes(t) || t.includes(subcat)))) {
-            score += 120;
-        }
-
-        // 3. Tags e Synonyms (+80)
-        tags.forEach(tag => {
-            if (tag === normalizedQuery) score += 400; // Match exato com tag/keyword
-            if (allSearchTerms.some(t => tag.includes(t) || t.includes(tag))) {
-                score += 150;
-            }
-        });
-
-        // 4. Categorias (Pai e Filhas) (+400 para match exato, +100 para parcial)
-        catNames.forEach(cName => {
-            if (cName === normalizedQuery) score += 400; // Match exato com nome da categoria (pai ou filha)
-            else if (allSearchTerms.some(t => cName.includes(t) || t.includes(cName))) {
-                score += 100; // Match parcial
-            }
-        });
-
-        // 5. Keywords/SEO (+20) - Já estamos olhando nas tags acima, mas podemos reforçar
-        // p.seo?.keywords.forEach(...)
-
-        // 6. Descrição (+30 para parcial, +100 para todas as palavras)
-        const allWordsInDesc = queryWords.every(word => desc.includes(word));
-        if (allWordsInDesc) {
-            score += 100;
-        } else if (queryWords.some(word => desc.includes(word))) {
-            score += 30;
-        }
-
-        // 7. Sku / Código Interno (Boost importante para busca técnica)
-        const sku = normalizeSearchText(p.sku || "");
-        const iCode = normalizeSearchText(p.internalCode || "");
-        if (normalizedQuery === sku || normalizedQuery === iCode) score += 500;
-        else if (sku.includes(normalizedQuery) || (iCode && iCode.includes(normalizedQuery))) score += 200;
-
-        // Base score decay (recência e performance)
-        const base = getBaseScore(p) * 0.1; // Reduced weight for search context
-
-        return { ...p, _searchScore: score + base };
+    let wordsMatched = 0;
+    queryWords.forEach(word => {
+      if (name === word) {
+        score += 300;
+        wordsMatched++;
+      } else if (name.includes(word)) {
+        score += 100;
+        wordsMatched++;
+      }
     });
 
-    const results = ranked
-        .sort((a, b) => (b as any)._searchScore - (a as any)._searchScore)
-        .map(p => {
-            const { _searchScore: _unusedScore, ...clean } = p as any;
-            return clean as Product;
-        });
+    if (queryWords.length >= 3 && wordsMatched < Math.ceil(queryWords.length / 2)) {
+      score -= 500;
+    }
 
-    console.log(`[SEARCH][RANKING] Found ${results.length} results in ${Date.now() - startTime}ms`);
-    return results;
+    if (exactPhraseMatch && name.length > normalizedQuery.length + 30) {
+      score -= 150;
+    }
+
+    if (subcat && (subcat === normalizedQuery || allSearchTerms.some(t => subcat.includes(t) || t.includes(subcat)))) {
+      score += 120;
+    }
+
+    tags.forEach(tag => {
+      if (tag === normalizedQuery) score += 400;
+      if (allSearchTerms.some(t => tag.includes(t) || t.includes(tag))) {
+        score += 150;
+      }
+    });
+
+    catNames.forEach(cName => {
+      if (cName === normalizedQuery) score += 400;
+      else if (allSearchTerms.some(t => cName.includes(t) || t.includes(cName))) {
+        score += 100;
+      }
+    });
+
+    const allWordsInDesc = queryWords.length > 0 && queryWords.every(word => desc.includes(word));
+    if (allWordsInDesc) {
+      score += 100;
+    } else if (queryWords.some(word => desc.includes(word))) {
+      score += 30;
+    }
+
+    const sku = normalizeSearchText(p.sku || "");
+    const iCode = normalizeSearchText(p.internalCode || "");
+    if (normalizedQuery === sku || normalizedQuery === iCode) score += 500;
+    else if (sku.includes(normalizedQuery) || (iCode && iCode.includes(normalizedQuery))) score += 200;
+
+    const base = getBaseScore(p) * 0.1;
+
+    const safeFinalScore = isFinite(score + base) ? score + base : 0;
+
+    const rankedExtProduct: ExtendedProduct = {
+      ...p,
+      _searchScore: safeFinalScore
+    };
+    return rankedExtProduct;
+  });
+
+  const results = ranked
+    .sort((a, b) => (b._searchScore ?? 0) - (a._searchScore ?? 0))
+    .map(p => {
+      const { _searchScore, ...clean } = p;
+      return clean as Product;
+    });
+
+  console.log(`[SEARCH][RANKING] Found ${results.length} results in ${Date.now() - startTime}ms`);
+  return results;
 };

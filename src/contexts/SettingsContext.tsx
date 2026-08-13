@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { PDVDiscountConfig, DEFAULT_PDV_DISCOUNT_CONFIG } from '../types/pdvDiscount';
 
 interface StoreSettings {
   storeName: string;
@@ -9,6 +10,7 @@ interface StoreSettings {
   address: string;
   instagram: string;
   logoUrl?: string;
+  pdvDiscountConfig: PDVDiscountConfig;
   loading: boolean;
   isUsingFallback?: boolean;
 }
@@ -23,6 +25,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     address: '',
     instagram: '',
     logoUrl: undefined,
+    pdvDiscountConfig: DEFAULT_PDV_DISCOUNT_CONFIG,
     loading: true,
     isUsingFallback: false
   });
@@ -76,6 +79,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             address: data.address || '',
             instagram: data.instagram || '',
             logoUrl: data.logoUrl || undefined,
+            pdvDiscountConfig: {
+              ...DEFAULT_PDV_DISCOUNT_CONFIG,
+              ...(data.pdvDiscountConfig || {})
+            },
             loading: false,
             isUsingFallback: false
           };
@@ -85,7 +92,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         }
       }, (error) => {
         clearTimeout(timeoutId);
-        console.error("Error listening to settings:", error);
+        const isOffline = error?.code === 'unavailable' || (error?.message || '').toLowerCase().includes('offline');
+        if (isOffline) {
+          console.warn("[SettingsContext] Firestore offline. Usando configurações do cache local / padrão.");
+        } else {
+          console.error("Error listening to settings:", error);
+        }
         setSettings(prev => ({ ...prev, loading: false, isUsingFallback: true }));
       });
 
@@ -106,6 +118,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             address: data.address || '',
             instagram: data.instagram || '',
             logoUrl: data.logoUrl || undefined,
+            pdvDiscountConfig: {
+              ...DEFAULT_PDV_DISCOUNT_CONFIG,
+              ...(data.pdvDiscountConfig || {})
+            },
             loading: false,
             isUsingFallback: false
           };
@@ -123,7 +139,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         }
       }).catch((error) => {
         clearTimeout(timeoutId);
-        console.error("Error fetching settings with getDoc:", error);
+        const isOffline = error?.code === 'unavailable' || (error?.message || '').toLowerCase().includes('offline');
+        if (isOffline) {
+          console.warn("[SettingsContext] Firestore offline. Usando configurações do cache local / padrão.");
+        } else {
+          console.error("Error fetching settings with getDoc:", error);
+        }
         if (!cachedSettings) {
           setSettings(prev => ({ ...prev, loading: false, isUsingFallback: true }));
         }

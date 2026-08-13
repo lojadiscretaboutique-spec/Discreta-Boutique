@@ -19,7 +19,7 @@ export default defineConfig({
         // Optimization: Don't cache admin pages by default if they are large
         // and only cache critical assets to keep precache size small
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,webmanifest}'],
-        navigateFallbackDenylist: [/^\/admin/, /^\/api/], // Don't try to handle admin/api routes as SPA for offline
+        navigateFallbackDenylist: [/^\/api/], // Only exclude backend API routes from SPA fallback
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/firebasestorage\.googleapis\.com/,

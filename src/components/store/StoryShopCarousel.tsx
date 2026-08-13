@@ -274,8 +274,15 @@ export function StoryShopCarousel() {
             scrollToActive(0);
           }, 150);
         }
-      } catch (err) {
-        console.error('[STORY_SHOP] Error loading stories public cache', err);
+      } catch (err: any) {
+        const isOffline = err?.code === 'unavailable' || (err?.message || '').toLowerCase().includes('offline');
+        if (isOffline) {
+          if (import.meta.env.DEV) {
+            console.warn('[STORY_SHOP] Cliente offline ao carregar cache public_story_shop_cache.');
+          }
+        } else {
+          console.error('[STORY_SHOP] Error loading stories public cache', err);
+        }
       } finally {
         setHasLoaded(true);
       }

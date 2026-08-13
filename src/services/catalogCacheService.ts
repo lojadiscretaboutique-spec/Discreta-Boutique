@@ -32,7 +32,7 @@ export const catalogCacheService = {
   async scheduleCatalogCacheRegeneration(reason: string): Promise<void> {
     pendingRegenerationReasons.add(reason);
     
-    if (import.meta.env.DEV) {
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
       console.log(`[CATALOG_CACHE] Scheduled regeneration queued. Reason: ${reason}`);
     }
 
@@ -135,7 +135,7 @@ export const catalogCacheService = {
 
       return result;
     } catch (err) {
-      if (import.meta.env.DEV) {
+      if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
         console.warn('[PDV CATALOG_CACHE] Exception loading catalog cache:', err);
       }
       return null;

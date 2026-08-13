@@ -298,8 +298,8 @@ export default function HomePage() {
           const randomProduct = productsOfThisCat[randomIndex];
           
           if (randomProduct.images && randomProduct.images.length > 0) {
-            const mainImg = randomProduct.images.find(i => i.isMain) || randomProduct.images[0];
-            return { ...cat, image: { url: mainImg.url } };
+            const mainImg = randomProduct.images.find((img: { isMain?: boolean; url: string }) => img.isMain) || randomProduct.images[0];
+            return { ...cat, image: { url: mainImg.url, path: mainImg.path || '' } };
           }
         }
         return cat;
@@ -357,8 +357,13 @@ export default function HomePage() {
       if (isFull) {
         setHomeReady(true);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      const isOffline = e?.code === 'unavailable' || (e?.message || '').toLowerCase().includes('offline');
+      if (isOffline) {
+        console.warn('⚠️ [HomePage] Firestore offline no carregamento de dados da Home.');
+      } else {
+        console.error('Error in HomePage loadDeferredData:', e);
+      }
       if (isFull) {
         setHomeReady(true);
       }
@@ -471,11 +476,13 @@ export default function HomePage() {
   useEffect(() => {
     if (banners.length <= 1) return;
     const timer = setInterval(() => {
-      setPrevBanner(currentBanner);
-      setCurrentBanner(prev => (prev + 1) % banners.length);
+      setCurrentBanner(prev => {
+        setPrevBanner(prev);
+        return (prev + 1) % banners.length;
+      });
     }, 6000);
     return () => clearInterval(timer);
-  }, [banners.length, currentBanner]);
+  }, [banners.length]);
 
   // Preload next banner image
   useEffect(() => {

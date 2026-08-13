@@ -3,12 +3,13 @@ import { db } from '../lib/firebase';
 
 const MEMORY_CACHE = new Map<string, any>();
 let hasValidatedThisSession = false;
+let isResetting = false;
 
 export const cacheService = {
   /**
    * Valida se a versão do sistema no dispositivo bate com a última cadastrada no servidor.
-   * Se houver mudança, limpa totalmente o cache (localStorage, sessionStorage, caches do navegador e PWA) 
-   * e reinicia de forma fluida.
+   * Se houver mudança, limpa o cache de assets de forma segura e atômica
+   * e reinicia a aplicação.
    */
   async validateCache() {
     if (hasValidatedThisSession) return;
@@ -40,9 +41,7 @@ export const cacheService = {
       const cachedCodeVersion = localStorage.getItem('app_code_version');
       const cachedDataVersion = localStorage.getItem('app_data_version');
 
-      let needsReset = false;
-
-      // Se não houver versão registrada localmente, inicializa ela sem recarregar o app
+      // Se não houver versão registrada localmente, inicializa sem recarregar
       if (!cachedCodeVersion) {
         localStorage.setItem('app_code_version', serverCodeVersion);
         localStorage.setItem('app_data_version', String(lastRemoteUpdateTime));
@@ -50,50 +49,59 @@ export const cacheService = {
         return;
       }
 
-      // 2. Se a versão armazenada diferir da versão do servidor, força a limpeza total
+      // 2. Se a versão armazenada diferir da versão do servidor
       if (cachedCodeVersion !== serverCodeVersion) {
-        console.warn(`[Cache] Versão antiga do código detectada (${cachedCodeVersion} vs ${serverCodeVersion}). Iniciando limpeza...`);
-        needsReset = true;
+        const RESET_SESSION_KEY = 'discreta_version_reset_attempted';
+        if (!sessionStorage.getItem(RESET_SESSION_KEY)) {
+          console.warn(`[Cache] Nova versão detectada (${cachedCodeVersion} -> ${serverCodeVersion}). Iniciando atualização segura...`);
+          sessionStorage.setItem(RESET_SESSION_KEY, 'true');
+          this.hardReset(serverCodeVersion, String(lastRemoteUpdateTime));
+        } else {
+          console.warn(`[Cache] Atualização de versão já realizada nesta sessão. Mantendo versão atual.`);
+        }
+        return;
       }
 
-      // 3. Verificação de atualização sutil dos dados de catálogo
+      // 3. Verificação de atualização dos dados do catálogo
       if (cachedDataVersion && cachedDataVersion !== String(lastRemoteUpdateTime)) {
-        console.log(`[Cache] Dados atualizados detectados. Limpando cache de memória...`);
+        console.log(`[Cache] Dados de catálogo atualizados detectados. Limpando cache em memória...`);
         this.clearAll();
         localStorage.setItem('app_data_version', String(lastRemoteUpdateTime));
       }
-
-      if (needsReset) {
-        this.hardReset(serverCodeVersion, String(lastRemoteUpdateTime));
-      }
     } catch (e) {
-      console.warn("[Cache] Verificação oculta de versão ignorada por conectividade:", e);
+      console.warn("[Cache] Verificação de versão ignorada por conectividade:", e);
     }
   },
 
   /**
-   * Força uma limpeza robusta de todo vestígio de armazenamento no dispositivo
-   * e reinicia limpíssimo, preservando as chaves essenciais do usuário (carrinho, afiliados, preferências).
+   * Força uma limpeza atômica dos caches de código/assets no dispositivo,
+   * preservando a sessão de autenticação, carrinho e preferências do usuário.
    */
   async hardReset(newVersion: string, newDataTime: string) {
-    console.log("[Cache] Executando Hard Reset para total consistência...");
+    if (isResetting) {
+      console.warn("[Cache] Reset já está em andamento. Ignorando chamada duplicada.");
+      return;
+    }
+    isResetting = true;
+
+    console.log("[Cache] Executando atualização de cache atômica...");
 
     // 1. Limpa Cache de Memória
     this.clearAll();
 
-    // 2. Limpa Service Workers
+    // 2. Atualiza Service Worker se disponível sem desregistrar permanentemente
     if ('serviceWorker' in navigator) {
       try {
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (const registration of registrations) {
-          await registration.unregister();
+          registration.update().catch(() => {});
         }
       } catch (err) {
-        console.error("[Cache] Erro ao resolver Service Workers:", err);
+        console.warn("[Cache] Aviso ao atualizar Service Worker:", err);
       }
     }
 
-    // 3. Limpa CacheStorage (Imagens, Códigos PWA)
+    // 3. Limpa CacheStorage (Assets/Chunks PWA antigos)
     if ('caches' in window) {
       try {
         const keys = await caches.keys();
@@ -105,43 +113,59 @@ export const cacheService = {
       }
     }
 
-    // 4. Limpa localStorage e sessionStorage preservando com segurança os dados e carrinho do usuário
-    const savedCart = localStorage.getItem('discreta-cart');
-    const savedRef = localStorage.getItem('discreta_ref');
-    const savedAdminTheme = localStorage.getItem('admin-theme');
-    const savedWifiLeadName = localStorage.getItem('wifi_lead_name');
-    const savedWifiLeadPhone = localStorage.getItem('wifi_lead_phone');
-    const savedWifiLeadSubmitted = localStorage.getItem('wifi_lead_submitted');
-    const savedPendingLabels = localStorage.getItem('pending_labels');
-    const savedFinancialBanks = localStorage.getItem('discreta_financial_banks');
-    const savedFinancialMachines = localStorage.getItem('discreta_financial_machines');
-    const savedFinancialRates = localStorage.getItem('discreta_financial_card_rates');
-    const savedFinancialReceivables = localStorage.getItem('discreta_financial_receivables');
-    const savedFinancialReconciliations = localStorage.getItem('discreta_financial_reconciliations');
-    const savedFinancialConfigs = localStorage.getItem('discreta_financial_configs');
+    // 4. Preserva autenticação do Firebase e preferências essenciais do usuário
+    const preservedLocalKeys: Record<string, string | null> = {};
+    const preservedSessionKeys: Record<string, string | null> = {};
+
+    // Coleta chaves de localStorage a preservar
+    const localKeysToKeep = [
+      'discreta-cart',
+      'discreta_ref',
+      'admin-theme',
+      'discreta_active_theme_cache',
+      'wifi_lead_name',
+      'wifi_lead_phone',
+      'wifi_lead_submitted',
+      'pending_labels',
+      'discreta_financial_banks',
+      'discreta_financial_machines',
+      'discreta_financial_card_rates',
+      'discreta_financial_receivables',
+      'discreta_financial_reconciliations',
+      'discreta_financial_configs'
+    ];
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (localKeysToKeep.includes(k) || k.startsWith('firebase:') || k.startsWith('firebaseAuth:'))) {
+        preservedLocalKeys[k] = localStorage.getItem(k);
+      }
+    }
+
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && (k.startsWith('firebase:') || k.startsWith('firebaseAuth:') || k === 'discreta_version_reset_attempted')) {
+        preservedSessionKeys[k] = sessionStorage.getItem(k);
+      }
+    }
 
     localStorage.clear();
     sessionStorage.clear();
 
-    if (savedCart) localStorage.setItem('discreta-cart', savedCart);
-    if (savedRef) localStorage.setItem('discreta_ref', savedRef);
-    if (savedAdminTheme) localStorage.setItem('admin-theme', savedAdminTheme);
-    if (savedWifiLeadName) localStorage.setItem('wifi_lead_name', savedWifiLeadName);
-    if (savedWifiLeadPhone) localStorage.setItem('wifi_lead_phone', savedWifiLeadPhone);
-    if (savedWifiLeadSubmitted) localStorage.setItem('wifi_lead_submitted', savedWifiLeadSubmitted);
-    if (savedPendingLabels) localStorage.setItem('pending_labels', savedPendingLabels);
-    if (savedFinancialBanks) localStorage.setItem('discreta_financial_banks', savedFinancialBanks);
-    if (savedFinancialMachines) localStorage.setItem('discreta_financial_machines', savedFinancialMachines);
-    if (savedFinancialRates) localStorage.setItem('discreta_financial_card_rates', savedFinancialRates);
-    if (savedFinancialReceivables) localStorage.setItem('discreta_financial_receivables', savedFinancialReceivables);
-    if (savedFinancialReconciliations) localStorage.setItem('discreta_financial_reconciliations', savedFinancialReconciliations);
-    if (savedFinancialConfigs) localStorage.setItem('discreta_financial_configs', savedFinancialConfigs);
+    // Restaura chaves preservadas
+    Object.entries(preservedLocalKeys).forEach(([k, v]) => {
+      if (v !== null) localStorage.setItem(k, v);
+    });
+    Object.entries(preservedSessionKeys).forEach(([k, v]) => {
+      if (v !== null) sessionStorage.setItem(k, v);
+    });
 
     localStorage.setItem('app_code_version', newVersion);
     localStorage.setItem('app_data_version', newDataTime);
 
-    // 5. Reinicia o sistema na raiz como primeira vez
-    console.warn('[Cache] versão antiga detectada, mas sem redirecionamento automático.');
+    // 5. Executa reload controlado único
+    console.log('[Cache] Limpeza concluída. Executando recarregamento...');
+    window.location.reload();
   },
 
   /**

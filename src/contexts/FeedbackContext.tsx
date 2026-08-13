@@ -1,4 +1,4 @@
-import React, { useContext, useState, useCallback, ReactNode } from 'react';
+import React, { useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, CheckCircle, AlertTriangle, Info, AlertCircle } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -75,8 +75,10 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const contextValue = useMemo(() => ({ toast, confirm }), [toast, confirm]);
+
   return (
-    <FeedbackContext.Provider value={{ toast, confirm }}>
+    <FeedbackContext.Provider value={contextValue}>
       {children}
 
       {/* Toast Container */}

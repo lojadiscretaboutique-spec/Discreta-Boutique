@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { ThemeConfig } from '../types/theme';
 import { themeService } from '../services/themeService';
 import { hexToRgb } from '../utils/themeUtils';
@@ -171,8 +171,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             }
           }
         }
-      } catch (err) {
-        console.error("Failed initializing ThemeEngine:", err);
+      } catch (err: any) {
+        const isOffline = err?.code === 'unavailable' || (err?.message || '').toLowerCase().includes('offline');
+        if (isOffline) {
+          console.warn("[ThemeEngine] Offline ao inicializar tema. Usando cache local ou tema padrão.");
+        } else {
+          console.error("Failed initializing ThemeEngine:", err);
+        }
       } finally {
         completed = true;
         setLoading(false);
@@ -216,7 +221,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [previewTheme, applyVariables]);
 
   // Activate theme globally
-  const activateTheme = async (theme: ThemeConfig) => {
+  const activateTheme = useCallback(async (theme: ThemeConfig) => {
     try {
       await themeService.activateTheme(theme);
       storedThemeRef.current = theme;
@@ -227,10 +232,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       console.error("Failed inside ThemeProvider activation:", e);
       throw e;
     }
-  };
+  }, [refreshThemes]);
 
   // Create or Edit personalized theme
-  const saveCustomTheme = async (theme: ThemeConfig) => {
+  const saveCustomTheme = useCallback(async (theme: ThemeConfig) => {
     try {
       const generatedId = await themeService.saveTheme(theme);
       await refreshThemes();
@@ -239,10 +244,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       console.error("Failed inside ThemeProvider save:", e);
       throw e;
     }
-  };
+  }, [refreshThemes]);
 
   // Delete custom theme
-  const deleteCustomTheme = async (id: string, name: string) => {
+  const deleteCustomTheme = useCallback(async (id: string, name: string) => {
     try {
       await themeService.deleteTheme(id, name);
       await refreshThemes();
@@ -250,9 +255,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       console.error("Failed inside ThemeProvider delete:", e);
       throw e;
     }
-  };
+  }, [refreshThemes]);
 
-  const valObject: ThemeContextType = {
+  const valObject = useMemo<ThemeContextType>(() => ({
     currentTheme: previewTheme || currentTheme,
     allThemes,
     loading,
@@ -263,7 +268,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     deleteCustomTheme,
     refreshThemes,
     isUsingFallback: isUsingFallbackStatus,
-  };
+  }), [
+    previewTheme,
+    currentTheme,
+    allThemes,
+    loading,
+    activateTheme,
+    saveCustomTheme,
+    deleteCustomTheme,
+    refreshThemes,
+    isUsingFallbackStatus
+  ]);
 
   return (
     <ThemeContext.Provider value={valObject}>

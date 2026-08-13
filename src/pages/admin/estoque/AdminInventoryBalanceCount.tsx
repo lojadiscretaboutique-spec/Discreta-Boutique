@@ -155,7 +155,8 @@ export function AdminInventoryBalanceCount() {
 
       if (matches.length === 1) {
         const targetItem = matches[0];
-        const res = await inventoryBalanceService.recordScan(balanceId, targetItem.id, delta, 'SCAN');
+        const clientActionId = `scan_${targetItem.id}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        const res = await inventoryBalanceService.recordScan(balanceId, targetItem.id, delta, 'SCAN', clientActionId);
         if (res.success && res.item) {
           if (soundEnabled) playSound('success');
           setLastScannedItem({
@@ -183,7 +184,8 @@ export function AdminInventoryBalanceCount() {
   const handleSelectFromPicker = async (item: InventoryBalanceItem) => {
     if (!balanceId) return;
     try {
-      const res = await inventoryBalanceService.recordScan(balanceId, item.id, 1, 'SCAN');
+      const clientActionId = `scan_${item.id}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const res = await inventoryBalanceService.recordScan(balanceId, item.id, 1, 'SCAN', clientActionId);
       if (res.success && res.item) {
         if (soundEnabled) playSound('success');
         setLastScannedItem({

@@ -3,21 +3,20 @@ import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { auth } from '../lib/auth';
+import { UserProfile } from '../types/user';
 
 interface AuthStore {
   user: FirebaseUser | null;
-  userData: {
-    role: string;
-    active: boolean;
-    computedPermissions?: Record<string, Record<string, boolean>>;
-  } | null;
+  userData: UserProfile | null;
   isAdmin: boolean;
   isLoading: boolean;
   checkAuth: () => void;
   hasPermission: (module: string, action?: string) => boolean;
-  setUserData: (userData: any) => void;
+  setUserData: (userData: UserProfile | null) => void;
   reloadUserData: () => Promise<void>;
 }
+
+let authListenerInitialized = false;
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
   user: null,
@@ -33,19 +32,24 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
-        const uData = userDoc.data();
-        set({ userData: uData as any });
+        const uData = userDoc.data() as UserProfile;
+        set({ userData: uData });
       }
     } catch (e) {
       console.error("Error reloading user data:", e);
     }
   },
   checkAuth: () => {
+    if (authListenerInitialized) return;
+    authListenerInitialized = true;
+
+    console.log("[Discreta Boot] Auth resolvida - Inicializando ouvidor de autenticação");
+
     onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
-          const userData = userDoc.exists() ? userDoc.data() : null;
+          const userData = userDoc.exists() ? (userDoc.data() as UserProfile) : null;
           
           if (userData && userData.status === 'bloqueado') {
              // Blocked user
@@ -53,25 +57,46 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
              return;
           }
 
-          if (userData && userData.status !== 'bloqueado') {
+          if (userData && userData.status !== 'bloqueado' && userDoc.exists()) {
               // Update last login
               updateDoc(userDoc.ref, { lastLoginAt: serverTimestamp() }).catch(()=>{});
           }
 
-          const isAdmin = userData?.role === 'admin' || user.email === 'lojadiscretaboutique@gmail.com' || user.uid === 'VpnA7EDoSoUMF0VGOHyiCjyrOSf2';
+          const hasAdminRole = userData?.role === 'admin' 
+            || userData?.role === 'owner' 
+            || (Array.isArray(userData?.roles) && (userData.roles.includes('admin') || userData.roles.includes('owner')));
+
+          // Safe fallback for owner email/uid if user profile in firestore isn't set to admin role yet
+          const isOwnerFallback = user.email === 'lojadiscretaboutique@gmail.com' || user.uid === 'VpnA7EDoSoUMF0VGOHyiCjyrOSf2';
+
+          const isAdmin = !!(hasAdminRole || isOwnerFallback);
           
           set({ 
             user, 
-            userData: userData ? userData as any : null,
+            userData,
             isAdmin,
             isLoading: false 
           });
-        } catch (error) {
-          console.error("Auth check error:", error);
-          set({ user, userData: null, isAdmin: false, isLoading: false });
+          console.log("[Discreta Boot] Perfil carregado:", user.email, "isAdmin:", isAdmin);
+        } catch (error: any) {
+          const isOffline = error?.code === 'unavailable' || (error?.message || '').toLowerCase().includes('offline');
+          if (isOffline) {
+            console.warn("[Discreta Boot Auth] Offline ao carregar perfil do Firestore. Mantendo sessão do Auth:", user.email);
+            const isOwnerFallback = user.email === 'lojadiscretaboutique@gmail.com' || user.uid === 'VpnA7EDoSoUMF0VGOHyiCjyrOSf2';
+            set({ 
+              user, 
+              userData: null, 
+              isAdmin: isOwnerFallback, 
+              isLoading: false 
+            });
+          } else {
+            console.error("[Discreta Boot Error] Auth check error:", error);
+            set({ user, userData: null, isAdmin: false, isLoading: false });
+          }
         }
       } else {
         set({ user: null, userData: null, isAdmin: false, isLoading: false });
+        console.log("[Discreta Boot] Auth resolvida - Nenhum usuário autenticado");
       }
     });
   },

@@ -17,7 +17,8 @@ import {
   RefreshCw,
   Clock,
   ChevronRight,
-  Printer
+  Printer,
+  Trash2
 } from 'lucide-react';
 import { inventoryBalanceService } from '../../../services/inventoryBalanceService';
 import { InventoryBalance, InventoryBalanceStatus } from '../../../types/inventoryBalance';
@@ -64,6 +65,27 @@ export function AdminInventoryBalanceList() {
         loadBalances();
       } catch (e) {
         toast("Erro ao cancelar balanço.", "error");
+      }
+    }
+  };
+
+  const handleDelete = async (balance: InventoryBalance) => {
+    const isConfirmed = await confirm({
+      title: "Excluir Balanço Definitivamente?",
+      message: `ATENÇÃO: Tem certeza que deseja apagar DEFINITIVAMENTE o balanço "${balance.code} - ${balance.name}"? Esta ação removerá permanentemente todos os registros, itens e histórico deste balanço do banco de dados e NÃO poderá ser desfeita.`,
+      confirmText: "Sim, Excluir Definitivamente",
+      cancelText: "Cancelar",
+      variant: "danger"
+    });
+
+    if (isConfirmed && balance.id) {
+      try {
+        await inventoryBalanceService.deleteBalance(balance.id);
+        toast("Balanço excluído definitivamente com sucesso.", "success");
+        loadBalances();
+      } catch (e) {
+        console.error(e);
+        toast("Erro ao excluir balanço definitivamente.", "error");
       }
     }
   };
@@ -287,9 +309,14 @@ export function AdminInventoryBalanceList() {
               </thead>
               <tbody className="divide-y divide-zinc-800/60 text-sm text-zinc-300">
                 {filteredBalances.map((balance) => {
-                  const createdDate = balance.createdAt?.toDate 
-                    ? balance.createdAt.toDate().toLocaleDateString('pt-BR') 
-                    : new Date(balance.createdAt || Date.now()).toLocaleDateString('pt-BR');
+                  let createdDateStr = '';
+                  if (balance.createdAt && typeof balance.createdAt === 'object' && 'toDate' in balance.createdAt && typeof (balance.createdAt as any).toDate === 'function') {
+                    createdDateStr = (balance.createdAt as any).toDate().toLocaleDateString('pt-BR');
+                  } else if (balance.createdAt) {
+                    createdDateStr = new Date(balance.createdAt as any).toLocaleDateString('pt-BR');
+                  } else {
+                    createdDateStr = '-';
+                  }
 
                   const expected = balance.expectedItems || 0;
                   const counted = balance.countedItems || 0;
@@ -319,7 +346,7 @@ export function AdminInventoryBalanceList() {
 
                       <td className="py-4 px-4 whitespace-nowrap text-xs text-zinc-400">
                         <div className="font-medium text-zinc-300">{balance.createdByName}</div>
-                        <div>{createdDate}</div>
+                        <div>{createdDateStr}</div>
                       </td>
 
                       <td className="py-4 px-4 text-center">
@@ -381,12 +408,20 @@ export function AdminInventoryBalanceList() {
                           {(balance.status === 'EM_CONTAGEM' || balance.status === 'PAUSADO' || balance.status === 'RASCUNHO') && (
                             <button
                               onClick={() => handleCancel(balance)}
-                              className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                              className="p-1.5 rounded-lg text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
                               title="Cancelar Balanço"
                             >
                               <XCircle className="w-4 h-4" />
                             </button>
                           )}
+
+                          <button
+                            onClick={() => handleDelete(balance)}
+                            className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            title="Excluir Balanço Definitivamente"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>

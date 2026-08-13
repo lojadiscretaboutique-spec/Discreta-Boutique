@@ -25,9 +25,11 @@ import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebas
 import { db } from '../../../lib/firebase';
 import { productService, Product, ProductVariant } from '../../../services/productService';
 import { useFeedback } from '../../../contexts/FeedbackContext';
+import { parseSafeDate, formatSafeDate } from '../../../utils/dateUtils';
 
 interface StockMovementDoc {
   id: string;
+  balanceId?: string;
   productId: string;
   productName: string;
   variantId?: string;
@@ -43,7 +45,7 @@ interface StockMovementDoc {
   status?: string;
   createdBy?: string;
   createdByName?: string;
-  createdAt?: any;
+  createdAt?: Date | string | number | { toDate?: () => Date; seconds?: number } | null;
 }
 
 export function AdminStockCard() {
@@ -63,8 +65,43 @@ export function AdminStockCard() {
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
 
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [loadingProducts, setLoadingProducts] = useState(false);
+
   const loadData = async () => {
-    if (!productId) return;
+    if (!productId) {
+      // Load products for selector
+      try {
+        setLoadingProducts(true);
+        const prods = await productService.listProducts();
+        
+        // Ensure subcollection variants are loaded for products with variants
+        const prodsWithVariants = await Promise.all(
+          prods.map(async (p) => {
+            if (p.hasVariants && (!p.variants || p.variants.length === 0)) {
+              try {
+                const vSnap = await getDocs(collection(db, `products/${p.id}/variants`));
+                const subVariants = vSnap.docs.map(d => ({ id: d.id, ...d.data() } as ProductVariant));
+                return { ...p, variants: subVariants };
+              } catch (e) {
+                console.warn(`Error loading subcollection variants for product ${p.id}:`, e);
+                return p;
+              }
+            }
+            return p;
+          })
+        );
+        setAllProducts(prodsWithVariants);
+      } catch (e) {
+        console.error("Error loading products list:", e);
+      } finally {
+        setLoadingProducts(false);
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       setLoading(true);
       const res = await productService.getProduct(productId);
@@ -80,11 +117,17 @@ export function AdminStockCard() {
       const movRef = collection(db, 'stockMovements');
       const q = query(
         movRef,
-        where('productId', '==', productId),
-        orderBy('createdAt', 'desc')
+        where('productId', '==', productId)
       );
       const movSnap = await getDocs(q);
       const movList = movSnap.docs.map(d => ({ id: d.id, ...d.data() } as StockMovementDoc));
+      movList.sort((a, b) => {
+        const dateA = parseSafeDate(a.createdAt);
+        const dateB = parseSafeDate(b.createdAt);
+        const timeA = dateA ? dateA.getTime() : 0;
+        const timeB = dateB ? dateB.getTime() : 0;
+        return timeB - timeA;
+      });
       setMovements(movList);
     } catch (e) {
       console.error("Error loading stock card data:", e);
@@ -99,6 +142,12 @@ export function AdminStockCard() {
   }, [productId]);
 
   // Sync query params when variant tab changes
+  useEffect(() => {
+    if (selectedVariantIdParam) {
+      setActiveVariantTab(selectedVariantIdParam);
+    }
+  }, [selectedVariantIdParam]);
+
   const handleVariantTabChange = (variantId: string) => {
     setActiveVariantTab(variantId);
     if (variantId === 'ALL') {
@@ -109,11 +158,255 @@ export function AdminStockCard() {
     setSearchParams(searchParams);
   };
 
+  const normalizeCode = (str?: string) => (str || '').replace(/[\s\-\.\/]/g, '').toLowerCase();
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-zinc-400 space-y-3">
         <RefreshCw className="w-10 h-10 animate-spin text-amber-500" />
         <p className="text-sm font-semibold">Carregando Ficha de Estoque...</p>
+      </div>
+    );
+  }
+
+  if (!productId) {
+    const rawTerm = productSearch.trim();
+    const term = rawTerm.toLowerCase();
+    const cleanTerm = normalizeCode(rawTerm);
+
+    interface SearchResultItem {
+      id: string;
+      type: 'product' | 'variant';
+      name: string;
+      subtitle?: string;
+      sku: string;
+      gtin: string;
+      stock: number;
+      img: string;
+      badge: string;
+      targetUrl: string;
+    }
+
+    const searchItems: SearchResultItem[] = [];
+
+    allProducts.forEach(p => {
+      const parentName = p.name || '';
+      const parentSku = p.sku || '';
+      const parentGtin = p.gtin || p.barcode || p.ean || p.codigoBarras || '';
+      const parentBrand = p.brand || '';
+      const parentInternalCode = p.internalCode || '';
+      const mainImg = p.images?.find(i => i.isMain)?.url || p.images?.[0]?.url || '';
+
+      const parentSkuClean = normalizeCode(parentSku);
+      const parentGtinClean = normalizeCode(parentGtin);
+      const parentInternalClean = normalizeCode(parentInternalCode);
+
+      const searchTermsArray: string[] = Array.isArray(p.searchTerms) ? p.searchTerms : [];
+      const variantIdentifiersArray: string[] = Array.isArray(p.variantIdentifiers) ? p.variantIdentifiers : [];
+
+      const searchTermsClean = searchTermsArray.map(st => normalizeCode(st));
+      const variantIdentifiersClean = variantIdentifiersArray.map(vi => normalizeCode(vi));
+
+      const parentMatches = !term ||
+        parentName.toLowerCase().includes(term) ||
+        (parentSku && parentSku.toLowerCase().includes(term)) ||
+        (parentSkuClean && cleanTerm && parentSkuClean.includes(cleanTerm)) ||
+        (parentGtin && parentGtin.toLowerCase().includes(term)) ||
+        (parentGtinClean && cleanTerm && parentGtinClean.includes(cleanTerm)) ||
+        (parentBrand && parentBrand.toLowerCase().includes(term)) ||
+        (parentInternalCode && parentInternalCode.toLowerCase().includes(term)) ||
+        (parentInternalClean && cleanTerm && parentInternalClean.includes(cleanTerm)) ||
+        (searchTermsArray.some(st => st.toLowerCase().includes(term))) ||
+        (searchTermsClean.some(stc => cleanTerm && stc.includes(cleanTerm))) ||
+        (variantIdentifiersArray.some(vi => vi.toLowerCase().includes(term))) ||
+        (variantIdentifiersClean.some(vic => cleanTerm && vic.includes(cleanTerm)));
+
+      if (parentMatches) {
+        searchItems.push({
+          id: `prod_${p.id}`,
+          type: 'product',
+          name: parentName,
+          subtitle: parentBrand ? `Marca: ${parentBrand}` : undefined,
+          sku: parentSku || 'N/A',
+          gtin: parentGtin || (variantIdentifiersArray.length > 0 ? variantIdentifiersArray.join(', ') : 'N/A'),
+          stock: p.stock || 0,
+          img: mainImg,
+          badge: (p.variants && p.variants.length > 0) ? `${p.variants.length} variações` : 'Produto Pai',
+          targetUrl: `/admin/estoque/ficha/${p.id}`,
+        });
+      }
+
+      if (Array.isArray(p.variants) && p.variants.length > 0) {
+        p.variants.forEach((v, idx) => {
+          const varSku = v.sku || '';
+          const varGtin = v.barcode || v.gtin || v.ean || v.variantBarcode || v.codigoBarras || '';
+          const varName = v.name || '';
+          const attrValues = v.attributes ? Object.values(v.attributes).join(' ') : '';
+          const fullVarStr = `${parentName} ${varName} ${attrValues}`;
+
+          const varSkuClean = normalizeCode(varSku);
+          const varGtinClean = normalizeCode(varGtin);
+
+          const variantMatches = !!term && (
+            (varSku && varSku.toLowerCase().includes(term)) ||
+            (varSkuClean && cleanTerm && varSkuClean.includes(cleanTerm)) ||
+            (varGtin && varGtin.toLowerCase().includes(term)) ||
+            (varGtinClean && cleanTerm && varGtinClean.includes(cleanTerm)) ||
+            varName.toLowerCase().includes(term) ||
+            attrValues.toLowerCase().includes(term) ||
+            fullVarStr.toLowerCase().includes(term)
+          );
+
+          if (variantMatches) {
+            const attrDisplay = v.attributes 
+              ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(' / ') 
+              : '';
+            const displayName = varName 
+              ? `${parentName} — ${varName}` 
+              : attrDisplay 
+                ? `${parentName} — ${attrDisplay}` 
+                : `${parentName} (${attrValues || `Variação ${idx + 1}`})`;
+
+            const variantKey = v.id || v.sku || v.barcode || v.gtin || `var_${idx}`;
+            searchItems.push({
+              id: `var_${p.id}_${variantKey}`,
+              type: 'variant',
+              name: displayName,
+              subtitle: `Produto Pai: ${parentName}`,
+              sku: varSku || parentSku || 'N/A',
+              gtin: varGtin || parentGtin || 'N/A',
+              stock: v.stock || 0,
+              img: v.imageUrl || mainImg,
+              badge: 'Variação',
+              targetUrl: `/admin/estoque/ficha/${p.id}?variantId=${encodeURIComponent(variantKey)}`,
+            });
+          }
+        });
+      }
+    });
+
+    const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (searchItems.length > 0) {
+          const cleanT = normalizeCode(productSearch);
+          const exactMatch = searchItems.find(item => {
+            return normalizeCode(item.sku) === cleanT || normalizeCode(item.gtin) === cleanT;
+          }) || searchItems[0];
+
+          if (exactMatch) {
+            navigate(exactMatch.targetUrl);
+          }
+        }
+      }
+    };
+
+    return (
+      <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto pb-24">
+        <div className="border-b border-zinc-800 pb-5">
+          <Link
+            to="/admin/mov_estoque"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-amber-400 transition-colors mb-2"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Voltar para Movimentação de Estoque
+          </Link>
+          <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+            Consultar Ficha de Estoque Individual
+          </h1>
+          <p className="text-sm text-zinc-400 mt-1">
+            Selecione ou busque um produto por Nome, SKU ou código EAN/GTIN/Código de Barras para visualizar a linha do tempo e o extrato de movimentações.
+          </p>
+        </div>
+
+        {/* Product Search Box */}
+        <div className="relative max-w-xl">
+          <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+          <input
+            type="text"
+            autoFocus
+            placeholder="Bipar código de barras, SKU, EAN/GTIN ou buscar por nome..."
+            value={productSearch}
+            onChange={(e) => setProductSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            className="w-full pl-12 pr-10 py-3.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all shadow-xl"
+          />
+          {productSearch && (
+            <button
+              onClick={() => setProductSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500 hover:text-white bg-zinc-800 px-2 py-1 rounded"
+            >
+              Limpar
+            </button>
+          )}
+        </div>
+
+        {/* Products Grid */}
+        {loadingProducts ? (
+          <div className="p-12 text-center text-zinc-500 space-y-2">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500" />
+            <p className="text-sm font-semibold text-zinc-400">Carregando catálogo de produtos...</p>
+          </div>
+        ) : searchItems.length === 0 ? (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center text-zinc-500 space-y-2">
+            <Package className="w-10 h-10 mx-auto text-zinc-600" />
+            <p className="text-sm font-semibold text-zinc-400">Nenhum produto ou variação encontrado.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {searchItems.map(item => (
+              <div
+                key={item.id}
+                onClick={() => navigate(item.targetUrl)}
+                className="bg-zinc-900 border border-zinc-800 hover:border-amber-500/50 p-4 rounded-2xl transition-all cursor-pointer group hover:bg-zinc-800/60 shadow-lg flex items-center gap-4"
+              >
+                <div className="w-16 h-16 rounded-xl bg-zinc-950 border border-zinc-800 overflow-hidden shrink-0 flex items-center justify-center">
+                  {item.img ? (
+                    <img src={item.img} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                  ) : (
+                    <Package className="w-6 h-6 text-zinc-600" />
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="text-xs font-mono font-bold text-amber-400">
+                      SKU: {item.sku}
+                    </span>
+                    {item.gtin && item.gtin !== 'N/A' && (
+                      <span className="text-[11px] font-mono text-zinc-400">
+                        | EAN: {item.gtin}
+                      </span>
+                    )}
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ml-auto ${
+                      item.type === 'variant'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                    }`}>
+                      {item.badge}
+                    </span>
+                  </div>
+
+                  <div className="font-bold text-white text-sm truncate group-hover:text-amber-400 transition-colors">
+                    {item.name}
+                  </div>
+
+                  {item.subtitle && (
+                    <div className="text-[11px] text-zinc-500 truncate mt-0.5">
+                      {item.subtitle}
+                    </div>
+                  )}
+
+                  <div className="text-xs text-zinc-400 mt-2 flex items-center justify-between pt-1.5 border-t border-zinc-800/60">
+                    <span>Estoque: <strong className="text-white font-mono">{item.stock} un</strong></span>
+                    <span className="text-amber-400 font-semibold text-[11px] group-hover:underline">
+                      Ver Ficha →
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -131,11 +424,32 @@ export function AdminStockCard() {
   }
 
   // Selected variant data if a specific variant tab is selected
-  const selectedVariant = activeVariantTab !== 'ALL' ? variants.find(v => v.id === activeVariantTab) : null;
+  const selectedVariant = activeVariantTab !== 'ALL' 
+    ? variants.find((v, idx) => {
+        const vKey = v.id || v.sku || v.barcode || `var_${idx}`;
+        return (
+          v.id === activeVariantTab ||
+          v.sku === activeVariantTab ||
+          v.barcode === activeVariantTab ||
+          v.gtin === activeVariantTab ||
+          vKey === activeVariantTab
+        );
+      })
+    : null;
 
   // Filter movements by variant tab and search/type
   const filteredMovements = movements.filter(m => {
-    if (activeVariantTab !== 'ALL' && m.variantId !== activeVariantTab) return false;
+    if (activeVariantTab !== 'ALL') {
+      if (m.variantId) {
+        const selectedKey = selectedVariant?.id || selectedVariant?.sku || selectedVariant?.barcode || activeVariantTab;
+        const isMatch = 
+          m.variantId === activeVariantTab || 
+          m.variantId === selectedVariant?.id || 
+          m.variantId === selectedVariant?.sku || 
+          m.variantId === selectedKey;
+        if (!isMatch) return false;
+      }
+    }
     if (typeFilter !== 'ALL') {
       if (typeFilter === 'in' && m.type !== 'in') return false;
       if (typeFilter === 'out' && m.type !== 'out') return false;
@@ -166,14 +480,14 @@ export function AdminStockCard() {
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto pb-24">
-      {/* Header Breadcrumb */}
+      {/* Header Breadcrumb & Quick Scan */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-zinc-800 pb-5">
         <div>
           <Link
-            to="/admin/mov_estoque"
+            to="/admin/estoque/ficha"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-amber-400 transition-colors mb-2"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Voltar para Movimentação de Estoque
+            <ArrowLeft className="w-3.5 h-3.5" /> Voltar para Consulta de Produtos
           </Link>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
@@ -185,12 +499,20 @@ export function AdminStockCard() {
           </p>
         </div>
 
-        <button
-          onClick={() => window.print()}
-          className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-semibold transition-colors flex items-center gap-2 print:hidden"
-        >
-          <Printer className="w-4 h-4" /> Imprimir Ficha
-        </button>
+        <div className="flex items-center gap-2 print:hidden">
+          <button
+            onClick={() => navigate('/admin/estoque/ficha')}
+            className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-zinc-700 text-xs font-semibold transition-colors flex items-center gap-1.5"
+          >
+            <Search className="w-4 h-4" /> Consultar/Bipar Outro
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-semibold transition-colors flex items-center gap-2"
+          >
+            <Printer className="w-4 h-4" /> Imprimir Ficha
+          </button>
+        </div>
       </div>
 
       {/* Product Summary Header Card */}
@@ -205,18 +527,28 @@ export function AdminStockCard() {
           </div>
 
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
-                SKU: {selectedVariant ? selectedVariant.sku : product.sku}
+                SKU: {selectedVariant ? (selectedVariant.sku || product.sku) : product.sku}
               </span>
-              {(product.gtin || (selectedVariant && selectedVariant.barcode)) && (
-                <span className="text-xs font-mono text-zinc-400 bg-zinc-950 border border-zinc-800 px-2 py-0.5 rounded">
-                  EAN: {selectedVariant?.barcode || product.gtin}
+              {(product.gtin || (selectedVariant && (selectedVariant.barcode || selectedVariant.gtin))) && (
+                <span className="text-xs font-mono text-zinc-400 bg-zinc-950 border border-zinc-800 px-2 py-0.5 rounded flex items-center gap-1">
+                  <Barcode className="w-3 h-3 text-amber-500" /> EAN: {selectedVariant?.barcode || selectedVariant?.gtin || product.gtin}
+                </span>
+              )}
+              {selectedVariant && (
+                <span className="text-xs font-semibold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                  Variação Selecionada
                 </span>
               )}
             </div>
             <h2 className="text-xl font-bold text-white mt-1">
               {product.name}
+              {selectedVariant && (
+                <span className="text-amber-400 font-normal ml-2">
+                  — {selectedVariant.name || Object.values(selectedVariant.attributes || {}).join(' / ')}
+                </span>
+              )}
             </h2>
             <div className="text-xs text-zinc-400 mt-1 flex flex-wrap items-center gap-3">
               {product.brand && <span>Marca: <strong className="text-zinc-200">{product.brand}</strong></span>}
@@ -244,7 +576,7 @@ export function AdminStockCard() {
       </div>
 
       {/* Variant Selector Tabs (If Has Variants) */}
-      {product.hasVariants && variants.length > 0 && (
+      {variants.length > 0 && (
         <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-zinc-800">
           <span className="text-xs text-zinc-400 font-semibold mr-2 shrink-0 flex items-center gap-1">
             <Layers className="w-4 h-4 text-amber-500" /> Selecionar Visão:
@@ -261,19 +593,29 @@ export function AdminStockCard() {
             Visão Consolidada do Pai ({product.stock || 0} un)
           </button>
 
-          {variants.map(v => (
-            <button
-              key={v.id}
-              onClick={() => handleVariantTabChange(v.id!)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 ${
-                activeVariantTab === v.id
-                  ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/20'
-                  : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white'
-              }`}
-            >
-              {v.name} ({v.stock || 0} un)
-            </button>
-          ))}
+          {variants.map((v, idx) => {
+            const vKey = v.id || v.sku || v.barcode || `var_${idx}`;
+            const isActive = 
+              activeVariantTab === vKey || 
+              activeVariantTab === v.id || 
+              activeVariantTab === v.sku || 
+              activeVariantTab === v.barcode;
+            const displayName = v.name || (v.attributes ? Object.values(v.attributes).join(' / ') : `Variação ${idx + 1}`);
+
+            return (
+              <button
+                key={vKey}
+                onClick={() => handleVariantTabChange(vKey)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 ${
+                  isActive
+                    ? 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/20'
+                    : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white'
+                }`}
+              >
+                {displayName} ({v.stock || 0} un)
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -295,9 +637,7 @@ export function AdminStockCard() {
             {lastInMovement ? (
               <>
                 +{lastInMovement.quantity} un em{' '}
-                {lastInMovement.createdAt?.toDate 
-                  ? lastInMovement.createdAt.toDate().toLocaleDateString('pt-BR') 
-                  : 'Recente'}
+                {formatSafeDate(lastInMovement.createdAt, { day: '2-digit', month: '2-digit', year: 'numeric' })}
               </>
             ) : (
               'Sem registros'
@@ -316,9 +656,7 @@ export function AdminStockCard() {
             {lastOutMovement ? (
               <>
                 -{lastOutMovement.quantity} un em{' '}
-                {lastOutMovement.createdAt?.toDate 
-                  ? lastOutMovement.createdAt.toDate().toLocaleDateString('pt-BR') 
-                  : 'Recente'}
+                {formatSafeDate(lastOutMovement.createdAt, { day: '2-digit', month: '2-digit', year: 'numeric' })}
               </>
             ) : (
               'Sem registros'
@@ -330,33 +668,68 @@ export function AdminStockCard() {
         </div>
 
         {/* MANDATORY LAST BALANCE INFO BOX */}
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-zinc-900 to-amber-500/10 border border-amber-500/30">
-          <div className="text-xs text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-            <ClipboardList className="w-4 h-4 text-amber-500" /> Último Balanço de Estoque
-          </div>
+        {(() => {
+          const activeItem = selectedVariant || product;
+          const directCode = activeItem?.lastBalanceCode;
+          const directDate = activeItem?.lastBalanceDate;
+          const directCounted = activeItem?.lastBalanceCounted;
+          const directUser = activeItem?.lastBalanceUser;
 
-          {lastBalanceMovement || (selectedVariant && (selectedVariant as any).lastBalanceDate) || (product as any).lastBalanceDate ? (
-            <div className="mt-1 space-y-0.5">
-              <div className="text-sm font-extrabold text-white">
-                {(product as any).lastBalanceCode || (selectedVariant as any)?.lastBalanceCode || lastBalanceMovement?.reason?.split(':')[0] || 'Balanço Realizado'}
+          const hasDirectInfo = !!(directCode || directDate);
+          const hasMovementInfo = !!lastBalanceMovement;
+
+          if (!hasDirectInfo && !hasMovementInfo) {
+            return (
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-zinc-900 to-amber-500/10 border border-amber-500/30">
+                <div className="text-xs text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <ClipboardList className="w-4 h-4 text-amber-500" /> Último Balanço de Estoque
+                </div>
+                <div className="mt-2 text-xs font-semibold text-amber-400/80 bg-amber-500/10 border border-amber-500/20 p-2 rounded-lg text-center">
+                  Nunca realizado
+                </div>
               </div>
-              <div className="text-xs text-amber-300 font-mono">
-                {(product as any).lastBalanceDate?.toDate 
-                  ? (product as any).lastBalanceDate.toDate().toLocaleDateString('pt-BR')
-                  : lastBalanceMovement?.createdAt?.toDate
-                  ? lastBalanceMovement.createdAt.toDate().toLocaleDateString('pt-BR')
-                  : 'Data não informada'}
+            );
+          }
+
+          const displayCode = directCode || (lastBalanceMovement?.reason ? lastBalanceMovement.reason.split(':')[0] : 'Balanço Realizado');
+          const rawDate = directDate || lastBalanceMovement?.createdAt;
+
+          let displayDate = 'Data não informada';
+          const parsedBalanDate = parseSafeDate(rawDate);
+          if (parsedBalanDate) {
+            displayDate = formatSafeDate(parsedBalanDate, { day: '2-digit', month: '2-digit', year: 'numeric' });
+          }
+
+          const displayCounted = directCounted !== undefined 
+            ? directCounted 
+            : lastBalanceMovement?.newStock;
+
+          const displayUser = directUser || lastBalanceMovement?.createdByName || 'Sistema';
+
+          return (
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-zinc-900 to-amber-500/10 border border-amber-500/30">
+              <div className="text-xs text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <ClipboardList className="w-4 h-4 text-amber-500" /> Último Balanço de Estoque
               </div>
-              <div className="text-[10px] text-zinc-400">
-                Operador: {(product as any).lastBalanceUser || lastBalanceMovement?.createdByName || 'Admin'}
+              <div className="mt-1 space-y-0.5">
+                <div className="text-sm font-extrabold text-white">
+                  {displayCode}
+                </div>
+                <div className="text-xs text-amber-300 font-mono">
+                  Data: {displayDate}
+                </div>
+                {displayCounted !== undefined && (
+                  <div className="text-xs font-semibold text-zinc-300">
+                    Contado: <strong className="text-amber-400 font-mono">{displayCounted} un</strong>
+                  </div>
+                )}
+                <div className="text-[10px] text-zinc-400">
+                  Operador: {displayUser}
+                </div>
               </div>
             </div>
-          ) : (
-            <div className="mt-2 text-xs font-semibold text-amber-400/80 bg-amber-500/10 border border-amber-500/20 p-2 rounded-lg text-center">
-              Nunca contabilizado em balanço.
-            </div>
-          )}
-        </div>
+          );
+        })()}
       </div>
 
       {/* Movement History Section Header & Filters */}
@@ -423,9 +796,13 @@ export function AdminStockCard() {
               </thead>
               <tbody className="divide-y divide-zinc-800/60 text-sm text-zinc-300">
                 {filteredMovements.map(m => {
-                  const dateStr = m.createdAt?.toDate 
-                    ? m.createdAt.toDate().toLocaleString('pt-BR') 
-                    : new Date(m.createdAt || Date.now()).toLocaleString('pt-BR');
+                  const dateStr = formatSafeDate(m.createdAt, {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
 
                   const isEntry = m.type === 'in';
 
@@ -470,6 +847,14 @@ export function AdminStockCard() {
                       <td className="py-3.5 px-4 text-xs">
                         <div className="font-semibold text-zinc-200">{m.reason || 'Movimentação'}</div>
                         {m.notes && <div className="text-zinc-500 text-[11px] mt-0.5">{m.notes}</div>}
+                        {(m.balanceId || m.reason?.toLowerCase().includes('balanço')) && (
+                          <Link
+                            to={`/admin/estoque/balancos/${m.balanceId || m.reason?.split(':')[0]?.trim()}/divergencias`}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 transition-colors mt-1 print:hidden"
+                          >
+                            <ClipboardList className="w-3 h-3" /> Abrir Balanço →
+                          </Link>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4 text-xs text-zinc-400 whitespace-nowrap">

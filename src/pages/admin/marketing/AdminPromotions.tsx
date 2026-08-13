@@ -351,8 +351,6 @@ export function AdminPromotions() {
                     scope: 'all',
                     targetIds: [],
                     priority: 0,
-                    allowedPaymentMethods: [],
-                    tiers: [],
                     stackable: true,
                     applyMode: 'automatic',
                     startDate: '',
@@ -361,8 +359,8 @@ export function AdminPromotions() {
                     allowWithCoupons: false,
                     allowWithOtherPromotions: false,
                     ...promo, 
-                    allowedPaymentMethods: promo.allowedPaymentMethods || [], 
-                    tiers: promo.tiers || [] 
+                    allowedPaymentMethods: promo?.allowedPaymentMethods || [], 
+                    tiers: promo?.tiers || [] 
                   }); setIsModalOpen(true); }} 
                   className="p-2 sm:p-2.5 bg-slate-800 rounded-xl text-white hover:bg-slate-700 shadow-md transition-colors"
                   title="Editar"

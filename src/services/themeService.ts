@@ -133,8 +133,13 @@ export const themeService = {
       })) as ThemeConfig[];
 
       return [...PREMADE_THEMES, ...customThemes];
-    } catch (e) {
-      console.warn("Could not load custom themes from Firestore. Using premades only.", e);
+    } catch (e: any) {
+      const isOffline = e?.code === 'unavailable' || (e?.message || '').toLowerCase().includes('offline');
+      if (isOffline) {
+        console.warn("⚠️ [ThemeService] Firestore offline ao carregar temas personalizados. Usando pré-definidos.");
+      } else {
+        console.warn("Could not load custom themes from Firestore. Using premades only.", e);
+      }
       return PREMADE_THEMES;
     }
   },
@@ -177,8 +182,13 @@ export const themeService = {
           ...activeData,
         } as ThemeConfig;
       }
-    } catch (e) {
-      console.error("Error reading active theme:", e);
+    } catch (e: any) {
+      const isOffline = e?.code === 'unavailable' || (e?.message || '').toLowerCase().includes('offline');
+      if (isOffline) {
+        console.warn("⚠️ [ThemeService] Firestore offline ao ler tema ativo. Usando tema padrão/cache.");
+      } else {
+        console.error("Error reading active theme:", e);
+      }
     }
 
     return this.getDefaultTheme();

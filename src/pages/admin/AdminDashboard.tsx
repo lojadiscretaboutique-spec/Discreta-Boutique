@@ -24,7 +24,7 @@ export function AdminDashboard() {
   const [period, setPeriod] = useState<Period>('hoje');
   const [loading, setLoading] = useState(true);
   
-  const theme = (localStorage.getItem('admin-theme') as 'dark' | 'light') || 'dark';
+  const theme = (typeof window !== 'undefined' ? localStorage.getItem('admin-theme') : 'dark') || 'dark';
   
   const [orders, setOrders] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -79,8 +79,13 @@ export function AdminDashboard() {
       const validOrders = loadedOrders.filter((o: any) => o.status !== 'CANCELADO');
       setOrders(validOrders);
       setLoading(false);
-    }, (error) => {
-      console.error("Error listening to dashboard orders:", error);
+    }, (error: any) => {
+      const isOfflineOrMissing = error?.code === 'unavailable' || (error?.message || '').toLowerCase().includes('offline') || (error?.message || '').toLowerCase().includes('does not exist');
+      if (isOfflineOrMissing) {
+        console.warn("[AdminDashboard] Firestore offline or database unavailable for orders listener.");
+      } else {
+        console.error("Error listening to dashboard orders:", error);
+      }
       setLoading(false);
     });
 
@@ -90,14 +95,24 @@ export function AdminDashboard() {
     );
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
       setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (error) => {
-      console.error("Error listening to dashboard products:", error);
+    }, (error: any) => {
+      const isOfflineOrMissing = error?.code === 'unavailable' || (error?.message || '').toLowerCase().includes('offline') || (error?.message || '').toLowerCase().includes('does not exist');
+      if (isOfflineOrMissing) {
+        console.warn("[AdminDashboard] Firestore offline or database unavailable for products listener.");
+      } else {
+        console.error("Error listening to dashboard products:", error);
+      }
     });
 
     getCountFromServer(collection(db, 'customers')).then((snapshot) => {
       setCustomersCount(snapshot.data().count);
-    }).catch((error) => {
-      console.error("Error getting customers count:", error);
+    }).catch((error: any) => {
+      const isOfflineOrMissing = error?.code === 'unavailable' || (error?.message || '').toLowerCase().includes('offline') || (error?.message || '').toLowerCase().includes('does not exist');
+      if (isOfflineOrMissing) {
+        console.warn("[AdminDashboard] Firestore offline or database unavailable when getting customers count.");
+      } else {
+        console.error("Error getting customers count:", error);
+      }
     });
 
     return () => {

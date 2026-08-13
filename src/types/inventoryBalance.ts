@@ -1,3 +1,5 @@
+export type InventoryTimestamp = Date | { toDate?: () => Date; seconds?: number; nanoseconds?: number } | string | number;
+
 export type InventoryBalanceStatus = 
   | 'RASCUNHO'
   | 'EM_CONTAGEM'
@@ -20,7 +22,7 @@ export type ItemCountStatus =
   | 'NAO_LOCALIZADO';
 
 export interface ManualAdjustment {
-  timestamp: any;
+  timestamp: InventoryTimestamp;
   userId: string;
   userName: string;
   prevQty: number;
@@ -52,10 +54,17 @@ export interface InventoryBalanceItem {
   salePrice: number;
   
   counted: boolean;
-  lastCountedAt?: any;
+  lastCountedAt?: InventoryTimestamp;
   lastCountedBy?: string;
   lastCountedByName?: string;
   manualAdjustments?: ManualAdjustment[];
+
+  // Finalization tracking
+  finalized?: boolean;
+  adjustmentProcessed?: boolean;
+  adjustmentProcessedAt?: InventoryTimestamp;
+  adjustmentFinalizationId?: string;
+  adjustmentMovementId?: string;
 }
 
 export interface InventoryBalanceCountEvent {
@@ -71,8 +80,9 @@ export interface InventoryBalanceCountEvent {
   userId: string;
   userName: string;
   deviceId?: string;
-  createdAt: any;
-  syncedAt?: any;
+  clientActionId?: string;
+  createdAt: InventoryTimestamp;
+  syncedAt?: InventoryTimestamp;
 }
 
 export interface InventoryBalance {
@@ -92,18 +102,18 @@ export interface InventoryBalance {
   
   blindCount: boolean; // default true
   
-  createdAt: any;
+  createdAt: InventoryTimestamp;
   createdBy: string;
   createdByName: string;
   
-  startedAt?: any;
+  startedAt?: InventoryTimestamp;
   startedBy?: string;
-  pausedAt?: any;
+  pausedAt?: InventoryTimestamp;
   pausedBy?: string;
-  finishedAt?: any;
+  finishedAt?: InventoryTimestamp;
   finishedBy?: string;
   finishedByName?: string;
-  cancelledAt?: any;
+  cancelledAt?: InventoryTimestamp;
   cancelledBy?: string;
   
   expectedItems: number;
@@ -118,8 +128,16 @@ export interface InventoryBalance {
   shortageCostValue: number;
   surplusCostValue: number;
   
+  reconciliationCutoffAt?: InventoryTimestamp;
   uncountedResolution?: 'KEEP_CURRENT' | 'SET_ZERO';
   finalizationId?: string;
+  finalizationState?: 'IDLE' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  finalizationTotalItems?: number;
+  finalizationProcessedItems?: number;
+  finalizationFailedItems?: number;
+  finalizationStartedAt?: InventoryTimestamp;
+  finalizationCompletedAt?: InventoryTimestamp;
+  finalizationError?: string;
   companyId?: string;
   notes?: string;
 }

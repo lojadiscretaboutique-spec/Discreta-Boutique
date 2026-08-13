@@ -1,5 +1,6 @@
 
 import { Product } from './productService';
+import { parseSafeDate } from '../utils/dateUtils';
 
 export type CatalogSection = 'lancamentos' | 'destaques' | 'mais-vendidos' | 'em-alta' | 'recomendados' | 'promocoes';
 
@@ -48,9 +49,8 @@ export const catalogSectionsService = {
    */
   applySectionLogic(products: Product[], section: CatalogSection): Product[] {
     const getCreationTime = (createdAt?: any) => {
-      if (!createdAt) return 0;
-      if (createdAt.seconds) return createdAt.seconds * 1000;
-      return new Date(createdAt).getTime() || 0;
+      const d = parseSafeDate(createdAt);
+      return d ? d.getTime() : 0;
     };
 
     switch (section) {
@@ -62,8 +62,8 @@ export const catalogSectionsService = {
         return [...finalProds].sort((a, b) => {
           if (a.newRelease && !b.newRelease) return -1;
           if (!a.newRelease && b.newRelease) return 1;
-          const dateA = a.createdAt?.seconds || 0;
-          const dateB = b.createdAt?.seconds || 0;
+          const dateA = getCreationTime(a.createdAt);
+          const dateB = getCreationTime(b.createdAt);
           return dateB - dateA;
         });
       }

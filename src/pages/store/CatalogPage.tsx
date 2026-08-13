@@ -612,8 +612,8 @@ export function CatalogPage() {
               sectionProds = [...products];
             }
             sectionProds = [...sectionProds].sort((a, b) => {
-              const dateA = a.createdAt?.seconds || 0;
-              const dateB = b.createdAt?.seconds || 0;
+              const dateA = getCreationTime(a.createdAt);
+              const dateB = getCreationTime(b.createdAt);
               return dateB - dateA;
             });
             break;
@@ -643,8 +643,8 @@ export function CatalogPage() {
               sectionProds = [...sectionProds].sort((a, b) => {
                 if (a.newRelease && !b.newRelease) return -1;
                 if (!a.newRelease && b.newRelease) return 1;
-                const dA = a.createdAt?.seconds || 0;
-                const dB = b.createdAt?.seconds || 0;
+                const dA = getCreationTime(a.createdAt);
+                const dB = getCreationTime(b.createdAt);
                 return dB - dA;
               });
             } else if (normalizedId === 'destaques') {
@@ -697,8 +697,8 @@ export function CatalogPage() {
           switch (settings.orderByField) {
             case 'recent':
               sectionProds = [...sectionProds].sort((a, b) => {
-                const dateA = a.createdAt?.seconds || 0;
-                const dateB = b.createdAt?.seconds || 0;
+                const dateA = getCreationTime(a.createdAt);
+                const dateB = getCreationTime(b.createdAt);
                 return dateB - dateA;
               });
               break;
@@ -1246,6 +1246,7 @@ export function ProductGridCard({ product, onItemClick }: { product: Product, on
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!product.id) return;
     if (hasVariants) {
       navigate(`/produto/${product.seo?.slug || product.id}?id=${product.id}`);
     } else {

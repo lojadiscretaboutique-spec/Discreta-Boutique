@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, deleteField, FieldValue } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthStore } from '../../store/authStore';
 import { aiFrontendService } from '../../services/aiFrontendService';
@@ -131,7 +131,14 @@ export function AdminCategories() {
               const name = row.nome || row.name;
               if (!name) continue;
 
-              const catData: Partial<Category> = {
+              // Resolve parentId
+              let parentId = row.categoria_pai_id || row.parentId || null;
+              if (!parentId && (row.categoria_pai_nome || row.parentName)) {
+                const parent = currentCats.find(c => c.name.toLowerCase() === (row.categoria_pai_nome || row.parentName).toLowerCase());
+                if (parent) parentId = parent.id;
+              }
+
+              const catData: Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'productCount'> = {
                 name: name,
                 slug: row.slug || generateSlug(name),
                 sortOrder: Number(row.ordem || row.sortOrder || 0),
@@ -141,24 +148,15 @@ export function AdminCategories() {
                 showInHome: (row.exibir_na_home || row.showInHome)?.toString().toLowerCase() !== 'nao',
                 shortDescription: row.descricao_curta || row.shortDescription || '',
                 description: row.descricao || row.description || '',
-                level: 0
+                level: parentId ? 1 : 0,
+                parentId: parentId || null
               };
-
-              // Resolve parentId
-              let parentId = row.categoria_pai_id || row.parentId || null;
-              if (!parentId && (row.categoria_pai_nome || row.parentName)) {
-                const parent = currentCats.find(c => c.name.toLowerCase() === (row.categoria_pai_nome || row.parentName).toLowerCase());
-                if (parent) parentId = parent.id;
-              }
-              
-              catData.parentId = parentId || null;
-              catData.level = parentId ? 1 : 0;
 
               const existingId = row.id;
               // Ajustado para encontrar por nome e pai, permitindo duplicados em raizes diferentes
               const exists = currentCats.find(c => 
                 (existingId && c.id === existingId) || 
-                (c.name.trim().toLowerCase() === catData.name?.trim().toLowerCase() && c.parentId === catData.parentId)
+                (c.name.trim().toLowerCase() === catData.name.trim().toLowerCase() && c.parentId === catData.parentId)
               );
 
               if (exists) {
@@ -499,7 +497,9 @@ export function AdminCategories() {
       });
 
       if (ok) {
-        await categoryService.deleteImage(img.path);
+        if (img.path) {
+          await categoryService.deleteImage(img.path);
+        }
         if (type === 'image') {
           setForm({ ...form, image: undefined });
         } else {
@@ -782,7 +782,7 @@ export function AdminCategories() {
                               (e.target as HTMLImageElement).style.display = 'none';
                               toast("A imagem original desta categoria não foi encontrada no servidor e foi removida do cadastro.", "warning");
                               setForm(prev => ({ ...prev, image: undefined }));
-                              if (editingId) categoryService.updateCategory(editingId, { image: null }).catch(console.error);
+                              if (editingId) categoryService.updateCategory(editingId, { image: deleteField() as unknown as { url: string; path?: string } }).catch(console.error);
                             }}
                           />
                           <div className="absolute inset-0 flex items-center justify-center bg-slate-950 hidden peer-invalid:flex">
@@ -812,7 +812,7 @@ export function AdminCategories() {
                               (e.target as HTMLImageElement).style.display = 'none';
                               toast("O banner original desta categoria não foi encontrado servidor e foi removido do cadastro.", "warning");
                               setForm(prev => ({ ...prev, banner: undefined }));
-                              if (editingId) categoryService.updateCategory(editingId, { banner: null }).catch(console.error);
+                              if (editingId) categoryService.updateCategory(editingId, { banner: deleteField() as unknown as { url: string; path?: string } }).catch(console.error);
                             }}
                           />
                           <button onClick={() => removeImage('banner')} className="absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded-full shadow-lg z-10"><Trash2 size={16}/></button>
@@ -1447,7 +1447,7 @@ function CategoryRow({
                       referrerPolicy="no-referrer"
                       onError={() => {
                         setImgError(true);
-                        categoryService.updateCategory(category.id, { image: null }).catch(console.error);
+                        categoryService.updateCategory(category.id, { image: deleteField() as unknown as { url: string; path?: string } }).catch(console.error);
                       }}
                     />
                   ) : (
@@ -1551,7 +1551,7 @@ function SubcategoryRow({
                   referrerPolicy="no-referrer"
                   onError={() => {
                     setImgError(true);
-                    categoryService.updateCategory(sub.id, { image: null }).catch(console.error);
+                    categoryService.updateCategory(sub.id, { image: deleteField() as unknown as { url: string; path?: string } }).catch(console.error);
                   }}
                 />
               ) : (

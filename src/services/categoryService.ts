@@ -26,10 +26,10 @@ export interface Category {
   description?: string;
   parentId: string | null; // null for root categories
   level: number; // 0 for root, 1 for subcat, etc.
-  image?: { url: string; path: string };
+  image?: { url: string; path?: string };
   icon?: string;
   color?: string;
-  banner?: { url: string; path: string };
+  banner?: { url: string; path?: string };
   sortOrder: number;
   isActive: boolean;
   isFeatured: boolean;

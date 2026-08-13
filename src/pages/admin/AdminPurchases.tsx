@@ -278,10 +278,10 @@ export function AdminPurchases() {
     })) {
       try {
         await purchaseService.deletePurchase(id);
-        toast("Compra excluída");
+        toast("Compra excluída com sucesso!");
         loadData();
-      } catch (e) {
-        toast("Erro ao excluir", "error");
+      } catch (e: any) {
+        toast(e?.message || "Erro ao excluir", "error");
       }
     }
   };
@@ -295,8 +295,7 @@ export function AdminPurchases() {
 
     if (await confirm({ 
       title: 'Finalizar Recebimento', 
-      message: 'Ao finalizar, o estoque dos itens será atualizado automaticamente. Continuar?',
-      icon: <CheckCircle2 className="text-green-500" />
+      message: 'Ao finalizar, o estoque dos itens será atualizado automaticamente. Continuar?'
     })) {
       startOverlay("Recebendo Compra", [
         "Iniciando recebimento de mercadorias...",
@@ -338,8 +337,7 @@ export function AdminPurchases() {
 
     if (await confirm({ 
       title: 'Confirmar Pagamento', 
-      message: 'Esta ação registrará uma saída no financeiro. Continuar?', 
-      icon: <DollarSign className="text-blue-500" />
+      message: 'Esta ação registrará uma saída no financeiro. Continuar?'
     })) {
       startOverlay("Pagando Compra", [
         "Iniciando transação financeira...",
@@ -380,8 +378,8 @@ export function AdminPurchases() {
 
     if (await confirm({ 
       title: 'Cancelar Compra', 
-      message: `Deseja realmente CANCELAR a compra de ${supplier}? O estoque e o financeiro (se pago) serão estornados automaticamente.`, 
-      icon: <XCircle className="text-red-500" />
+      message: `Deseja realmente CANCELAR a compra de ${supplier}? O estoque e o financeiro (se pago) serão estornados automaticamente.`,
+      variant: 'danger'
     })) {
       startOverlay("Cancelando Compra", [
         "Iniciando cancelamento da compra...",
@@ -950,7 +948,7 @@ export function AdminPurchases() {
                    {variantsList.map(v => (
                      <div key={v.id} className="flex justify-between items-center p-3 border rounded-xl hover:bg-slate-800">
                        <div className="flex flex-col">
-                          <span className="font-bold text-sm">{formatVariantName(v.name)}</span>
+                          <span className="font-bold text-sm">{formatVariantName(v.name || "")}</span>
                           <span className="text-[10px] text-slate-400">
                              {v.sku && `SKU: ${v.sku}`} {v.barcode && `| Barras: ${v.barcode}`} | Est: {v.stock}
                           </span>

@@ -94,7 +94,12 @@ export const serverRecoveryService = {
                 }
             }
         } catch (error) {
-            console.error("[Recovery Job Error]:", error);
+            const errStr = error instanceof Error ? error.message : String(error);
+            if (errStr.includes('offline')) {
+                console.log("[Recovery Job] Network/client is offline, skipping cycle.");
+            } else {
+                console.error("[Recovery Job Error]:", error);
+            }
         }
     },
 

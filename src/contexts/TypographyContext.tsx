@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, ReactNode } from 'react';
 import { doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -100,6 +100,7 @@ export interface ProductCardsTypography {
   reviewsSizeDesktop: string;
   reviewsSizeTablet: string;
   reviewsSizeMobile: string;
+  reviewsSize_mobile?: string;
 }
 
 export interface MiniBannerTypography {
@@ -529,7 +530,12 @@ export function TypographyProvider({ children }: { children: ReactNode }) {
         handleDoc(docSnap);
       }, (error) => {
         clearTimeout(timeoutId);
-        console.error('Error listening to typography updates:', error);
+        const isOffline = error?.code === 'unavailable' || (error?.message || '').toLowerCase().includes('offline');
+        if (isOffline) {
+          console.warn('[TypographyContext] Firestore offline. Usando tipografia local / padrão.');
+        } else {
+          console.error('Error listening to typography updates:', error);
+        }
         setLoading(false);
       });
       return () => {
@@ -541,7 +547,12 @@ export function TypographyProvider({ children }: { children: ReactNode }) {
         handleDoc(docSnap);
       }).catch((error) => {
         clearTimeout(timeoutId);
-        console.error('Error loading typography via getDoc:', error);
+        const isOffline = error?.code === 'unavailable' || (error?.message || '').toLowerCase().includes('offline');
+        if (isOffline) {
+          console.warn('[TypographyContext] Firestore offline. Usando tipografia local / padrão.');
+        } else {
+          console.error('Error loading typography via getDoc:', error);
+        }
         setLoading(false);
       });
     }
@@ -921,7 +932,7 @@ export function TypographyProvider({ children }: { children: ReactNode }) {
     }
   }, [config, loading]);
 
-  const saveTypography = async (newConfig: AdvancedTypographyConfig) => {
+  const saveTypography = useCallback(async (newConfig: AdvancedTypographyConfig) => {
     try {
       const docRef = doc(db, 'settings', 'typography');
       await setDoc(docRef, newConfig);
@@ -930,14 +941,22 @@ export function TypographyProvider({ children }: { children: ReactNode }) {
       console.error('Failed to save typography settings:', e);
       throw e;
     }
-  };
+  }, []);
 
-  const resetToDefault = async () => {
+  const resetToDefault = useCallback(async () => {
     await saveTypography(INITIAL_DEFAULT_TYPOGRAPHY);
-  };
+  }, [saveTypography]);
+
+  const value = useMemo(() => ({
+    config,
+    loading,
+    saveTypography,
+    resetToDefault,
+    isUsingFallback
+  }), [config, loading, saveTypography, resetToDefault, isUsingFallback]);
 
   return (
-    <TypographyContext.Provider value={{ config, loading, saveTypography, resetToDefault, isUsingFallback }}>
+    <TypographyContext.Provider value={value}>
       {children}
     </TypographyContext.Provider>
   );

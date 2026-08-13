@@ -5,27 +5,16 @@ import firebaseConfig from '../../firebase-applet-config.json';
 import { db } from '../lib/firebase';
 import { auditLogService } from './auditLogService';
 import { roleService, MODULES, ACTIONS } from './roleService';
+import { UserProfile } from '../types/user';
 
-export interface User {
-  id?: string;
+export interface User extends UserProfile {
   name: string;
   email: string;
   password?: string; // Only used during creation
-  phone?: string;
-  cpf?: string;
-  avatarUrl?: string;
-  notes?: string;
   status: 'ativo' | 'bloqueado' | 'inativo';
-  role?: string; // Legacy
   roles: string[]; // List of roleIds
-  active?: boolean; // Legacy
   individualPermissions: Record<string, Record<string, boolean>>; 
   computedPermissions: Record<string, Record<string, boolean>>; 
-  createdAt?: any;
-  updatedAt?: any;
-  lastLoginAt?: any;
-  lastIp?: string;
-  commission?: number;
 }
 
 export const userService = {
@@ -169,6 +158,9 @@ export const userService = {
     
     delete payload.id;
     delete payload.password; // Never store password in Firestore
+    delete payload.pin; // Never store plain text PIN
+    delete payload.confirmPin; // Never store plain text PIN
+    delete payload.plainPin;
 
     try {
       if (!alreadyExists) {
@@ -178,7 +170,14 @@ export const userService = {
           await auditLogService.logAction('Criar', 'users', finalUserId, { email: data.email });
       } else {
           await updateDoc(userRef, payload);
-          await auditLogService.logAction('Editar', 'users', finalUserId, { roles: data.roles });
+          // Audit log without PIN or PIN hash
+          await auditLogService.logAction('Editar', 'users', finalUserId, { 
+            name: data.name,
+            email: data.email,
+            canAuthorizeDiscounts: data.canAuthorizeDiscounts,
+            pinActive: data.pinActive,
+            pinLocked: data.pinLocked
+          });
       }
     } catch (dbError: any) {
       console.error("Erro no Firestore ao salvar usuário:", dbError);

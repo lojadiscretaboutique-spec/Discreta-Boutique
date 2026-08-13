@@ -30,7 +30,7 @@ export const ProductVariationSelector: React.FC<ProductVariationSelectorProps> =
   };
 
   const sortedVariants = useMemo(() => {
-    return [...variants].sort((a, b) => (b.stock - a.stock) || a.name.localeCompare(b.name));
+    return [...variants].sort((a, b) => ((b.stock ?? 0) - (a.stock ?? 0)) || (a.name || '').localeCompare(b.name || ''));
   }, [variants]);
 
   if (variants.length === 0) return null;
@@ -49,7 +49,8 @@ export const ProductVariationSelector: React.FC<ProductVariationSelectorProps> =
           if (!v.active) return null;
           
           const qty = selectedQuantities[v.id!] || 0;
-          const isOutOfStk = v.stock <= 0;
+          const vStock = v.stock ?? 0;
+          const isOutOfStk = vStock <= 0;
 
           return (
             <div 
@@ -64,12 +65,12 @@ export const ProductVariationSelector: React.FC<ProductVariationSelectorProps> =
               }}
             >
               {v.imageUrl && (
-                <img src={v.imageUrl} alt={v.name} className="w-16 h-16 rounded-lg object-cover" />
+                <img src={v.imageUrl} alt={v.name || 'Variação'} className="w-16 h-16 rounded-lg object-cover" />
               )}
               <div className="flex-1">
                 <p className="text-xs font-bold uppercase" style={{ color: textColor }}>{v.name}</p>
                 <p className="text-[10px]" style={{ color: `${textColor}80` }}>
-                  {isOutOfStk ? 'Esgotado' : `Estoque: ${v.stock}`}
+                  {isOutOfStk ? 'Esgotado' : `Estoque: ${vStock}`}
                 </p>
                 {v.price && (
                   <p className="text-xs font-bold mt-1" style={{ color: accentColor }}>{formatCurrency(v.price)}</p>
@@ -88,10 +89,10 @@ export const ProductVariationSelector: React.FC<ProductVariationSelectorProps> =
                 <span className="w-8 text-center text-xs font-black" style={{ color: textColor }}>{qty}</span>
                 <button 
                   onClick={() => {
-                    if (qty >= v.stock) {
-                      triggerAlert(`Limite de estoque atingido para ${v.name}`);
+                    if (qty >= vStock) {
+                      triggerAlert(`Limite de estoque atingido para ${v.name || 'esta variação'}`);
                     } else {
-                      onQuantityChange(v.id!, Math.min(v.stock, qty + 1));
+                      onQuantityChange(v.id!, Math.min(vStock, qty + 1));
                     }
                   }}
                   disabled={isOutOfStk}

@@ -6,6 +6,7 @@ export interface State {
     id?: string;
     nome: string;
     sigla: string;
+    uf?: string;
     status: 'ativo' | 'inativo';
     ordem?: number;
     observacoes?: string;

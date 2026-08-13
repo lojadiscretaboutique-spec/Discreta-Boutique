@@ -51,6 +51,12 @@ import { financialService } from "../../services/financialService";
 import { paymentFinanceService, MethodConfig } from "../../services/paymentFinanceService";
 import { pdvFinancialService } from "../../services/pdvFinancialService";
 import { comboService, Combo } from "../../services/comboService";
+import { calculatePdvDiscounts } from "../../services/pdvDiscountCalculator";
+import { PDVDiscountConfig } from "../../types/pdvDiscount";
+import { classifyPdvDiscount } from "../../services/pdvAuthorizationClassifier";
+import { generateCartFingerprint } from "../../services/pdvCartFingerprint";
+import { DEFAULT_COMPANY_ID } from "../../constants/company";
+import { PDVDiscountAuthModal } from "../../components/admin/PDVDiscountAuthModal";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -147,7 +153,7 @@ function normalizeString(str: string): string {
 }
 
 export function AdminPDV() {
-  const { user, hasPermission } = useAuthStore();
+  const { user, userData, hasPermission } = useAuthStore();
   const { toast } = useFeedback();
   const navigate = useNavigate();
 
@@ -192,7 +198,7 @@ export function AdminPDV() {
         productsByName.current.set(p.nameNormalized, p);
       }
       if (p.variants && Array.isArray(p.variants)) {
-        p.variants.forEach((v) => {
+        p.variants.forEach((v: ProductVariant) => {
           variationsCount++;
           const keySku = (v.sku || v.variantSku || "")?.trim().toLowerCase();
           const keyBarcode = (v.barcode || v.variantBarcode || "")?.trim().toLowerCase();
@@ -265,7 +271,7 @@ export function AdminPDV() {
 
         const subcollectionVars = variantsByProductId[pId] || [];
         const inlineVars = Array.isArray(pData.variants)
-          ? pData.variants.map((v: any, index: number) => ({
+          ? pData.variants.map((v: ProductVariant, index: number) => ({
               id: v.id || v.variantId || `inline-${index}`,
               variantId: v.id || v.variantId || `inline-${index}`,
               name: v.name || v.variantName || "",
@@ -398,13 +404,17 @@ export function AdminPDV() {
     // 1. Barcode exato de variação (Prioridade máxima para evitar confusão de variantes)
     if (productsByVariantBarcode.current.has(lowerTerm)) {
       const match = productsByVariantBarcode.current.get(lowerTerm);
-      return { product: match.product, variant: match.variant, matchType: 'variantBarcode' as const };
+      if (match) {
+        return { product: match.product, variant: match.variant, matchType: 'variantBarcode' as const };
+      }
     }
 
     // 2. SKU exato de variação
     if (productsByVariantSku.current.has(lowerTerm)) {
       const match = productsByVariantSku.current.get(lowerTerm);
-      return { product: match.product, variant: match.variant, matchType: 'variantSku' as const };
+      if (match) {
+        return { product: match.product, variant: match.variant, matchType: 'variantSku' as const };
+      }
     }
 
     // 3. Barcode exato do produto pai
@@ -454,11 +464,62 @@ export function AdminPDV() {
     stock: number;
   } | null>(null);
 
-  const cartSubtotal = roundTo2(
-    cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
-  );
-  const itemsDiscountTotal = roundTo2(
-    cart.reduce((sum, item) => sum + (item.discount || 0), 0),
+  // Discount and Shipping states
+  const [globalDiscount, setGlobalDiscount] = useState<number>(0);
+  const [discountType, setDiscountType] = useState<'value' | 'percent'>('value');
+  const [discountBase, setDiscountBase] = useState<number | "">(0);
+
+  // --- PDV DISCOUNT CONTROL & AUTHORIZATION STATES (Prompt 10, 11, 12, 13, 14, 15) ---
+  const [discountConfig, setDiscountConfig] = useState<PDVDiscountConfig>({
+    enabled: true,
+    caixaMaxPercent: 5,
+    caixaMaxAmount: 20,
+    gerenteMaxPercent: 15,
+    gerenteMaxAmount: 100,
+    adminMaxPercent: 30,
+    adminMaxAmount: 200,
+    proprietarioMaxPercent: 50,
+    proprietarioMaxAmount: 500,
+    absoluteMaxPercent: 50,
+    absoluteMaxAmount: 1000,
+    requireAuthCondition: "EITHER",
+    requireReason: true,
+    requireNoteAbovePercent: 10,
+    blockBelowCost: true,
+    authValidityMinutes: 10,
+    maxPinAttempts: 3,
+    pinLockoutMinutes: 5,
+    invalidateOnCartChange: true,
+  });
+
+  const discountCalculation = calculatePdvDiscounts({
+    items: cart.map((i) => ({
+      price: i.price,
+      quantity: i.quantity,
+      discount: i.discount || 0,
+    })),
+    globalDiscountValue: typeof discountBase === "number" ? discountBase : 0,
+    globalDiscountType: discountType,
+  });
+
+  const cartSubtotal = discountCalculation.valorBruto;
+  const itemsDiscountTotal = discountCalculation.descontoItens;
+
+  const currentCompanyId = userData?.companyId || userData?.storeId || DEFAULT_COMPANY_ID;
+
+  // Discount classification at component scope for JSX usage
+  const discountClassification = classifyPdvDiscount(
+    discountConfig,
+    discountCalculation.percentualEfetivo,
+    discountCalculation.descontoTotal,
+    userData ? { 
+      role: userData.role,
+      roles: userData.roles,
+      canAuthorizeDiscounts: userData.canAuthorizeDiscounts,
+      useRoleDefaultLimits: userData.useRoleDefaultLimits,
+      customMaxPercent: userData.customMaxPercent,
+      customMaxAmount: userData.customMaxAmount,
+    } : null
   );
 
   // Customer state
@@ -520,13 +581,141 @@ export function AdminPDV() {
   const [lastFinishedOrder, setLastFinishedOrder] = useState<any>(null);
   const printRef = useRef<HTMLDivElement>(null);
   const [lastOrderId, setLastOrderId] = useState("");
-  const [globalDiscount, setGlobalDiscount] = useState<number>(0);
-  const [discountType, setDiscountType] = useState<'value' | 'percent'>('value');
-  const [discountBase, setDiscountBase] = useState<number | "">(0);
   const [shipping, setShipping] = useState<number | "">(0);
   const [partialAmount, setPartialAmount] = useState<string>("");
   const [isDelivery, setIsDelivery] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
+
+  // --- PDV DISCOUNT CONTROL & AUTHORIZATION STATES (Prompt 10, 11, 12, 13, 14, 15) ---
+  const [activeAuthorization, setActiveAuthorization] = useState<{
+    id: string;
+    authorizerId: string;
+    authorizerName: string;
+    authorizerRole: string;
+    motivo: string;
+    observacao: string;
+    cartFingerprint: string;
+  } | null>(null);
+
+  const [showDiscountAuthModal, setShowDiscountAuthModal] = useState(false);
+  const [availableAuthorizers, setAvailableAuthorizers] = useState<any[]>([]);
+  const [cartFingerprint, setCartFingerprint] = useState<string>("");
+  const [clientActionId, setClientActionId] = useState<string>(() => {
+    return typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID 
+      ? window.crypto.randomUUID() 
+      : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+  });
+
+  // Load discount configs and available authorizers from firestore
+  useEffect(() => {
+    const loadDiscountConfigsAndUsers = async () => {
+      try {
+        const storeRef = doc(db, 'settings', 'store');
+        const storeSnap = await getDoc(storeRef);
+        if (storeSnap.exists()) {
+          const storeData = storeSnap.data();
+          if (storeData.pdvDiscountConfig) {
+            setDiscountConfig(prev => ({
+              ...prev,
+              ...storeData.pdvDiscountConfig
+            }));
+          }
+        }
+
+        const q = query(
+          collection(db, 'users'),
+          where('canAuthorizeDiscounts', '==', true)
+        );
+        const userSnap = await getDocs(q);
+        let list = userSnap.docs.map(docSnap => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            name: data.name || '',
+            role: data.role || data.roles?.[0] || 'gerente'
+          };
+        });
+
+        // Fallback: If no users flagged with canAuthorizeDiscounts, fetch managers/admins/owners
+        if (list.length === 0) {
+          const allUsersSnap = await getDocs(collection(db, 'users'));
+          list = allUsersSnap.docs
+            .map(d => ({ id: d.id, ...d.data() } as any))
+            .filter(u => ['admin', 'gerente', 'proprietario', 'master'].includes(u.role || u.roles?.[0]))
+            .map(u => ({
+              id: u.id,
+              name: u.name || u.email || 'Autorizador',
+              role: u.role || u.roles?.[0] || 'gerente'
+            }));
+        }
+
+        setAvailableAuthorizers(list);
+      } catch (err) {
+        console.warn("Aviso ao carregar configurações de desconto ou autorizadores (usando fallback se necessário):", err);
+      }
+    };
+    loadDiscountConfigsAndUsers();
+  }, []);
+
+  // Automatically generate / update cart fingerprint
+  useEffect(() => {
+    const updateFingerprint = async () => {
+      const itemsPayload = cart.map(item => ({
+        productId: item.productId,
+        variantId: item.variantId || '',
+        quantity: item.quantity,
+        price: item.price,
+        originalPrice: item.costPrice || item.price,
+        discount: item.discount || 0
+      }));
+
+      const fp = await generateCartFingerprint({
+        items: itemsPayload,
+        globalDiscountValue: typeof discountBase === "number" ? discountBase : 0,
+        globalDiscountType: discountType,
+        globalDiscount: discountCalculation.descontoGeral,
+        manualReductions: 0,
+        valorBruto: discountCalculation.valorBruto,
+        valorFinal: discountCalculation.valorFinal,
+        operatorId: userData?.id || user?.uid || 'unknown',
+        companyId: currentCompanyId,
+        cartId: editingOrderId || 'pos_cart'
+      });
+
+      setCartFingerprint(fp);
+    };
+
+    updateFingerprint();
+  }, [
+    cart,
+    discountBase,
+    discountType,
+    discountCalculation.descontoGeral,
+    discountCalculation.valorBruto,
+    discountCalculation.valorFinal,
+    userData?.id,
+    user?.uid,
+    currentCompanyId,
+    editingOrderId
+  ]);
+
+  // Handle automatic invalidation when fingerprint changes
+  useEffect(() => {
+    if (activeAuthorization && cartFingerprint && activeAuthorization.cartFingerprint !== cartFingerprint) {
+      const authIdToInvalidate = activeAuthorization.id;
+      fetch('/api/admin/pdv-discount/invalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authorizationId: authIdToInvalidate,
+          reason: 'Conteúdo do carrinho ou valores alterados no PDV'
+        })
+      }).catch(err => console.error("Erro ao invalidar autorização:", err));
+
+      setActiveAuthorization(null);
+      toast("O conteúdo da venda foi alterado. Solicite uma nova autorização.", "warning");
+    }
+  }, [cartFingerprint, activeAuthorization]);
 
   // Helper functions for currency input formatting and parsing
   const formatCurrencyInput = (value: number | string | undefined | null): string => {
@@ -580,7 +769,11 @@ export function AdminPDV() {
     setDeliveryAddress("");
     setStep(targetStep);
     setSearchParams({});
-  }, [setSearchParams]);
+    // Stable idempotency regeneration for the next sale/checkout session
+    setClientActionId(typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID 
+      ? window.crypto.randomUUID() 
+      : Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
+  }, [setSearchParams, setClientActionId]);
 
   useEffect(() => {
     if (selectedCustomer) {
@@ -592,13 +785,8 @@ export function AdminPDV() {
   }, [selectedCustomer]);
 
   useEffect(() => {
-      const discountBaseVal = typeof discountBase === 'number' ? discountBase : 0;
-      if (discountType === 'value') {
-        setGlobalDiscount(discountBaseVal);
-      } else {
-        setGlobalDiscount(cartSubtotal > 0 ? roundTo2((cartSubtotal * discountBaseVal) / 100) : 0);
-      }
-    }, [discountType, discountBase, cartSubtotal]);
+    setGlobalDiscount(discountCalculation.descontoGeral);
+  }, [discountCalculation.descontoGeral]);
   const [editingOrderType, setEditingOrderType] = useState<string | null>(null);
   const [showMobileCart, setShowMobileCart] = useState(false);
 
@@ -1102,9 +1290,9 @@ export function AdminPDV() {
     setLoadingVariants(true);
     setModalVariants([]);
     try {
-      const fetchedVariants = (product as any).variants || [];
+      const fetchedVariants = product.variants || [];
       // Translate local structures if needed (such as variantId/variantName back to id/name)
-      const formattedVariants = fetchedVariants.map((v: any) => ({
+      const formattedVariants = fetchedVariants.map((v: ProductVariant) => ({
         id: v.id || v.variantId,
         variantId: v.id || v.variantId,
         name: v.name || v.variantName,
@@ -1311,12 +1499,10 @@ export function AdminPDV() {
   };
 
   const shippingVal = typeof shipping === "number" ? shipping : 0;
-  const calculatedTotal = roundTo2(
-    cartSubtotal - itemsDiscountTotal + shippingVal - globalDiscount,
-  );
+  const calculatedTotal = roundTo2(discountCalculation.valorFinal + shippingVal);
   const total = Math.max(0, calculatedTotal);
 
-  const totalDiscount = roundTo2(cartSubtotal + shippingVal - total);
+  const totalDiscount = discountCalculation.descontoTotal;
 
   const totalPaid = roundTo2(payments.reduce((acc, p) => acc + p.amount, 0));
   const additionalAmount = totalPaid > total ? roundTo2(totalPaid - total) : 0;
@@ -1345,13 +1531,91 @@ export function AdminPDV() {
       return;
     }
 
-    const paidTotal = payments.reduce((acc, p) => acc + p.amount, 0);
-    if (!saveAsNewOrder && paidTotal < total - 0.01) {
-      toast(
-        `O valor pago (${formatCurrency(paidTotal)}) deve ser pelo menos igual ao total do pedido (${formatCurrency(total)})`,
-        "error",
-      );
+    // --- PDV DISCOUNT CLASSIFICATION AND CHECKS (Prompt 10, 12, 14) ---
+    const classification = discountClassification;
+
+    // 1. Block if exceeds absolute maximum configured discount limit
+    if (classification.exceedsAbsolute) {
+      toast("Venda bloqueada. O desconto concedido supera o limite absoluto permitido.", "error");
       return;
+    }
+
+    // 2. Block below cost price check (Prompt 14)
+    if (discountConfig.blockBelowCost) {
+      const isAnyItemBelowCost = cart.some(item => {
+        const itemUnitDiscount = (item.discount || 0) / item.quantity;
+        const finalItemUnitPrice = item.price - itemUnitDiscount;
+        const cost = (item as any).costPrice || 0;
+        return cost > 0 && finalItemUnitPrice < cost;
+      });
+      if (isAnyItemBelowCost) {
+        toast("Venda bloqueada. Um ou mais itens possuem preço de venda abaixo do preço de custo.", "error");
+        return;
+      }
+    }
+
+    // 3. Request authorization if needed and not already authorized (Prompt 10 & 12)
+    if (classification.needsAuthorization && !activeAuthorization) {
+      setShowDiscountAuthModal(true);
+      toast("Esta venda necessita de autorização de desconto. Digite o PIN de um gerente ou administrador.", "info");
+      return;
+    }
+
+    // 4. Client-side payment & cart validations (Step 5, 13, 14, 15)
+    if (cart.length === 0) {
+      toast("O carrinho está vazio.", "error");
+      return;
+    }
+
+    for (const item of cart) {
+      if (!item.productId) {
+        toast(`O item "${item.name}" não possui identificador de produto válido.`, "error");
+        return;
+      }
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+        toast(`A quantidade de "${item.name}" deve ser um número inteiro positivo.`, "error");
+        return;
+      }
+      if (typeof item.price !== "number" || !isFinite(item.price) || item.price < 0) {
+        toast(`O preço de "${item.name}" é inválido.`, "error");
+        return;
+      }
+      const itemSubtotal = item.price * item.quantity - (item.discount || 0);
+      if (!isFinite(itemSubtotal) || itemSubtotal < 0) {
+        toast(`Subtotal inválido ou negativo para o item "${item.name}".`, "error");
+        return;
+      }
+    }
+
+    const paidTotal = payments.reduce((acc, p) => acc + p.amount, 0);
+    const roundedPaidTotal = roundTo2(paidTotal);
+    const roundedTotal = roundTo2(total);
+
+    if (!saveAsNewOrder) {
+      if (roundedPaidTotal < roundedTotal - 0.01) {
+        toast(
+          `O valor pago (${formatCurrency(roundedPaidTotal)}) deve ser pelo menos igual ao total do pedido (${formatCurrency(roundedTotal)})`,
+          "error",
+        );
+        return;
+      }
+
+      for (const p of payments) {
+        if (typeof p.amount !== "number" || !isFinite(p.amount) || p.amount <= 0) {
+          toast(`O valor do pagamento para "${p.method}" deve ser um número válido e maior que zero.`, "error");
+          return;
+        }
+
+        const methodInDb = pdvPaymentMethods.find(m => m.id === p.paymentMethodId || m.name === p.method);
+        if (!methodInDb) {
+          toast(`Método de pagamento "${p.method}" não cadastrado ou inválido no sistema.`, "error");
+          return;
+        }
+        if (methodInDb.active === false) {
+          toast(`O método de pagamento "${p.method}" está inativo.`, "error");
+          return;
+        }
+      }
     }
 
     setIsFinishing(true);
@@ -1369,6 +1633,7 @@ export function AdminPDV() {
       // 1. Prepare order data
       const orderData: any = {
         sessionId: currentSession?.id, // Tie order to cash session
+        clientActionId: clientActionId, // Add clientActionId for backend idempotency
         items: cart.map((item) => ({
           productId: item.productId,
           variantId: item.variantId || null,
@@ -1413,22 +1678,48 @@ export function AdminPDV() {
         customerAddress: deliveryAddress || formatCustomerAddress(selectedCustomer) || "",
         sellerId: user?.uid,
         sellerName: user?.email,
-        updatedAt: serverTimestamp(),
       };
 
-      let currentOrderId = editingOrderId;
+      // Add authorization fields to orderData if present (Prompt 15)
+      if (activeAuthorization) {
+        orderData.discountAuthorizationId = activeAuthorization.id;
+        orderData.discountAuthorizedBy = activeAuthorization.authorizerName;
+        orderData.discountAuthorizedByRole = activeAuthorization.authorizerRole;
+        orderData.discountReason = activeAuthorization.motivo;
+        orderData.discountNote = activeAuthorization.observacao;
+        orderData.discountCartFingerprint = activeAuthorization.cartFingerprint;
+      }
+
+      // 2. Call the secure backend verify-and-finalize API (Prompt 13)
+      setCheckoutStatus("Avaliando autorização e gravando venda...");
+      const verifyRes = await fetch("/api/admin/pdv-discount/verify-and-finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderData,
+          editingOrderId,
+          authorizationId: activeAuthorization?.id || null,
+          cartFingerprint,
+          clientActionId
+        })
+      });
+
+      const verifyData = await verifyRes.json();
+      if (!verifyData.success) {
+        toast(verifyData.message || "Falha ao validar autorização de desconto no servidor.", "error");
+        setIsFinishing(false);
+        return;
+      }
+
+      let currentOrderId = verifyData.orderId;
 
       if (editingOrderId) {
         setCheckoutStatus("Estornando estoque antigo...");
-        // 1. REVERTER ESTOQUE ANTIGO (Para pedidos que já foram finalizados)
+        // REVERTER ESTOQUE ANTIGO (Para pedidos que já foram finalizados)
         await stockMovementService.deleteMovementsByOrderId(editingOrderId);
 
-        setCheckoutStatus("Atualizando pedido no banco de dados...");
-        // 2. UPDATE EXISTING
-        await updateDoc(doc(db, "orders", editingOrderId), orderData);
-
         setCheckoutStatus("Registrando novas movimentações de estoque...");
-        // 3. REGISTRAR NOVAS MOVIMENTAÇÕES (A partir do carrinho atual em paralelo para máxima confiabilidade)
+        // REGISTRAR NOVAS MOVIMENTAÇÕES (A partir do carrinho atual em paralelo para máxima confiabilidade)
         const movementPromises = cart.map(async (item) => {
           if (item.isCombo) {
             const combo = allCombos.find(c => c.id === item.comboId);
@@ -1467,18 +1758,12 @@ export function AdminPDV() {
         await Promise.all(movementPromises);
 
         setCheckoutStatus("Ajustando lançamentos financeiros...");
-        // 4. Se estiver editando, limpamos os lançamentos financeiros antigos associados a este pedido
+        // Se estiver editando, limpamos os lançamentos financeiros antigos associados a este pedido
         await financialService.deleteTransactionsByOrderId(editingOrderId);
         await cashService.deleteTransactionsByOrderId(editingOrderId);
 
         toast("Pedido atualizado e estoque recalculado!", "success");
       } else {
-        setCheckoutStatus("Criando novo pedido no banco de dados...");
-        // CREATE NEW
-        orderData.createdAt = serverTimestamp();
-        const orderRef = await addDoc(collection(db, "orders"), orderData);
-        currentOrderId = orderRef.id;
-
         setCheckoutStatus("Registrando saídas de estoque...");
         // Registrar movimentações de saída para cada item em paralelo
         const movementPromises = cart.map(async (item) => {
@@ -3313,7 +3598,7 @@ export function AdminPDV() {
                         addToCart(selectedProduct, v);
                         setIsVariantModalOpen(false);
                       }}
-                      disabled={(!selectedProduct.allowBackorder && v.stock <= 0) || !v.active}
+                      disabled={(!selectedProduct.allowBackorder && (v.stock ?? 0) <= 0) || !v.active}
                       className="border-2 border-slate-200 dark:border-slate-700 rounded-xl p-4 text-left hover:border-red-600 hover:bg-red-50/50 dark:hover:bg-red-950/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
                     >
                       <h4 className="font-bold text-slate-900 dark:text-white leading-tight mb-1 group-hover:text-red-700">
@@ -3332,7 +3617,7 @@ export function AdminPDV() {
                         </span>
                       </div>
                       <div className="mt-2 text-[10px] font-bold uppercase tracking-widest">
-                        {v.stock > 0 ? (
+                        {(v.stock ?? 0) > 0 ? (
                           <span className="text-green-600 dark:text-emerald-400">
                             Estoque: {v.stock}
                           </span>
@@ -3423,6 +3708,37 @@ export function AdminPDV() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* PDV Discount Authorization PIN Prompt Modal (Prompt 10) */}
+      <PDVDiscountAuthModal
+        isOpen={showDiscountAuthModal}
+        onClose={() => setShowDiscountAuthModal(false)}
+        onAuthorizeSuccess={(auth, authId, reason, obs) => {
+          setActiveAuthorization({
+            id: authId,
+            authorizerId: auth.id,
+            authorizerName: auth.name,
+            authorizerRole: auth.role,
+            motivo: reason,
+            observacao: obs,
+            cartFingerprint
+          });
+          setShowDiscountAuthModal(false);
+          toast(`Desconto autorizado por ${auth.name}.`, "success");
+        }}
+        valorBruto={discountCalculation.valorBruto}
+        descontoItens={discountCalculation.descontoItens}
+        descontoGeral={discountCalculation.descontoGeral}
+        descontoTotal={discountCalculation.descontoTotal}
+        percentualEfetivo={discountCalculation.percentualEfetivo}
+        valorFinal={discountCalculation.valorFinal}
+        nivelNecessario={discountClassification.requiredLevel}
+        operatorId={userData?.id || user?.uid || ""}
+        companyId={currentCompanyId}
+        cartId={editingOrderId || "pos_cart"}
+        cartFingerprint={cartFingerprint}
+        availableAuthorizers={availableAuthorizers}
+      />
     </div>
   );
 }

@@ -6,10 +6,11 @@ import { AppRole, roleService, MODULES, ACTIONS } from '../../services/roleServi
 import { useFeedback } from '../../contexts/FeedbackContext';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Plus, Edit2, Trash2, X, Shield, Save, ArrowLeft, User as UserIcon, Mail } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Shield, Save, ArrowLeft, User as UserIcon, Mail, KeyRound, Lock, Percent, Check, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../lib/auth';
+import { hashPin, validatePin } from '../../utils/pinSecurity';
 
 export function AdminUsers() {
   const [users, setUsers] = useState<User[]>([]);
@@ -33,6 +34,12 @@ export function AdminUsers() {
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [individualPerms, setIndividualPerms] = useState<Record<string, Record<string, boolean>>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  // PIN Form State
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinWarning, setPinWarning] = useState<string | null>(null);
+  const [showPinSection, setShowPinSection] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -61,10 +68,22 @@ export function AdminUsers() {
           cpf: '',
           status: 'ativo',
           notes: '',
-          commission: 0
+          commission: 0,
+          canAuthorizeDiscounts: false,
+          useRoleDefaultLimits: true,
+          customMaxPercent: null,
+          customMaxAmount: null,
+          pinHash: null,
+          pinActive: true,
+          pinLocked: false,
+          pinUpdatedAt: null
       });
       setSelectedRoles([]);
       setIndividualPerms({});
+      setNewPin('');
+      setConfirmPin('');
+      setPinWarning(null);
+      setShowPinSection(false);
   };
 
   const handleNew = () => {
@@ -81,7 +100,15 @@ export function AdminUsers() {
           cpf: u.cpf || '',
           status: u.status || (u.active ? 'ativo' : 'inativo'),
           notes: u.notes || '',
-          commission: u.commission || 0
+          commission: u.commission || 0,
+          canAuthorizeDiscounts: u.canAuthorizeDiscounts ?? false,
+          useRoleDefaultLimits: u.useRoleDefaultLimits ?? true,
+          customMaxPercent: u.customMaxPercent ?? null,
+          customMaxAmount: u.customMaxAmount ?? null,
+          pinHash: u.pinHash || null,
+          pinActive: u.pinActive ?? true,
+          pinLocked: u.pinLocked ?? false,
+          pinUpdatedAt: u.pinUpdatedAt || null
       });
       setSelectedRoles(u.roles || (u.role ? [u.role] : [])); // Migrate legacy
       
@@ -94,7 +121,55 @@ export function AdminUsers() {
           });
       });
       setIndividualPerms(filled);
+      setNewPin('');
+      setConfirmPin('');
+      setPinWarning(null);
+      setShowPinSection(false);
       setView('form');
+  };
+
+  const handlePinInputChange = (val: string) => {
+      const clean = val.replace(/\D/g, ''); // Numbers only
+      setNewPin(clean);
+      if (clean.length > 0) {
+          const res = validatePin(clean);
+          if (!res.valid) {
+              setPinWarning(res.error || 'PIN fraco ou inválido');
+          } else {
+              setPinWarning(null);
+          }
+      } else {
+          setPinWarning(null);
+      }
+  };
+
+  const handleSaveNewPin = async () => {
+      if (!newPin) return toast("Informe o novo PIN de 4 a 8 dígitos.", "warning");
+      if (newPin.length < 4 || newPin.length > 8) return toast("O PIN deve conter entre 4 e 8 números.", "warning");
+      if (newPin !== confirmPin) return toast("O PIN e a confirmação não coincidem.", "warning");
+
+      const validation = validatePin(newPin);
+      if (!validation.valid) {
+          return toast(validation.error || "PIN inválido.", "warning");
+      }
+
+      try {
+          const hashed = await hashPin(newPin);
+          setForm(prev => ({
+              ...prev,
+              pinHash: hashed,
+              pinActive: true,
+              pinLocked: false,
+              pinUpdatedAt: new Date()
+          }));
+          setNewPin('');
+          setConfirmPin('');
+          setPinWarning(null);
+          setShowPinSection(false);
+          toast("PIN configurado com sucesso! Clique em 'Salvar Conta' para confirmar.", "success");
+      } catch (err: any) {
+          toast("Erro ao gerar hash do PIN: " + err.message, "error");
+      }
   };
 
   const handleToggleIndvPerm = (mod: string, act: string) => {
@@ -250,8 +325,232 @@ export function AdminUsers() {
                     </div>
                 </div>
 
-                {/* Coluna Acessos e Matriz */}
+                {/* Coluna Acessos, Descontos e Matriz */}
                 <div className="md:col-span-2 space-y-6">
+                    {/* Seção Autorização de Descontos e PIN do PDV */}
+                    <div className="bg-slate-900 rounded-xl shadow-sm border p-6 space-y-5">
+                        <div className="flex items-center justify-between border-b pb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-red-500/10 text-red-500">
+                                    <KeyRound size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-100 text-base">Autorização de Descontos e PIN do PDV</h3>
+                                    <p className="text-xs text-slate-400">Configure permissão de liberação de descontos e chave PIN de autorização.</p>
+                                </div>
+                            </div>
+                            <span className={form.canAuthorizeDiscounts ? "px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-slate-800 text-slate-500"}>
+                                {form.canAuthorizeDiscounts ? 'Autorizador' : 'Sem Autorização'}
+                            </span>
+                        </div>
+
+                        {/* Pode Autorizar Descontos */}
+                        <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/60 flex items-center justify-between">
+                            <div>
+                                <label className="text-sm font-bold text-slate-200 block cursor-pointer" htmlFor="user-can-auth-discounts">
+                                    Pode autorizar descontos?
+                                </label>
+                                <p className="text-xs text-slate-400">
+                                    Permite que este colaborador digite seu PIN no PDV para liberar descontos acima do caixa.
+                                </p>
+                            </div>
+                            <input
+                                id="user-can-auth-discounts"
+                                type="checkbox"
+                                checked={form.canAuthorizeDiscounts || false}
+                                onChange={e => setForm({ ...form, canAuthorizeDiscounts: e.target.checked })}
+                                className="w-5 h-5 accent-red-600 rounded cursor-pointer shrink-0"
+                            />
+                        </div>
+
+                        {/* Configurações de Limites quando pode autorizar */}
+                        {form.canAuthorizeDiscounts && (
+                            <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/30 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-200 block">
+                                            Usar limite padrão do perfil?
+                                        </label>
+                                        <p className="text-[11px] text-slate-400">
+                                            Utiliza os limites percentuais/valores definidos globalmente para o perfil deste colaborador.
+                                        </p>
+                                    </div>
+                                    <input
+                                        type="checkbox"
+                                        checked={form.useRoleDefaultLimits ?? true}
+                                        onChange={e => setForm({ ...form, useRoleDefaultLimits: e.target.checked })}
+                                        className="w-4 h-4 accent-red-600 rounded cursor-pointer shrink-0"
+                                    />
+                                </div>
+
+                                {!form.useRoleDefaultLimits && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800">
+                                        <div>
+                                            <label className="block text-xs font-bold mb-1 text-slate-300">
+                                                Limite Personalizado (%)
+                                            </label>
+                                            <Input
+                                                type="number"
+                                                step="0.1"
+                                                min="0"
+                                                max="100"
+                                                value={form.customMaxPercent ?? ''}
+                                                onChange={e => setForm({ ...form, customMaxPercent: e.target.value ? Number(e.target.value) : null })}
+                                                placeholder="Ex: 20"
+                                                className="bg-slate-900 border-slate-700 font-bold"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold mb-1 text-slate-300">
+                                                Limite Personalizado (R$)
+                                            </label>
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={form.customMaxAmount ?? ''}
+                                                onChange={e => setForm({ ...form, customMaxAmount: e.target.value ? Number(e.target.value) : null })}
+                                                placeholder="Ex: 150.00"
+                                                className="bg-slate-900 border-slate-700 font-bold"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* PIN de Autorização */}
+                        <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/80 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold uppercase tracking-wider text-slate-300">Status do PIN</span>
+                                        {form.pinHash ? (
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                                <Check size={12} /> PIN Configurado
+                                            </span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                                <AlertTriangle size={12} /> Sem PIN
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 mt-1">
+                                        Chave individual secreta usada pelo colaborador para autorizar transações.
+                                    </p>
+                                </div>
+
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setShowPinSection(!showPinSection)}
+                                    className="text-xs border-slate-700 shrink-0 gap-1.5"
+                                >
+                                    <Lock size={14} />
+                                    {showPinSection ? 'Cancelar Redefinição' : form.pinHash ? 'Redefinir PIN' : 'Cadastrar PIN'}
+                                </Button>
+                            </div>
+
+                            {/* Toggles de Estado do PIN */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                <label className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-800 bg-slate-900 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={form.pinActive ?? true}
+                                        onChange={e => setForm({ ...form, pinActive: e.target.checked })}
+                                        className="w-4 h-4 accent-red-600 rounded"
+                                    />
+                                    <div>
+                                        <span className="font-bold text-slate-200 block">PIN Ativo</span>
+                                        <span className="text-[10px] text-slate-400">Permite usar o PIN para liberações</span>
+                                    </div>
+                                </label>
+
+                                <label className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-800 bg-slate-900 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={form.pinLocked ?? false}
+                                        onChange={e => setForm({ ...form, pinLocked: e.target.checked })}
+                                        className="w-4 h-4 accent-rose-600 rounded"
+                                    />
+                                    <div>
+                                        <span className="font-bold text-slate-200 block">PIN Bloqueado</span>
+                                        <span className="text-[10px] text-slate-400">Marque para bloquear ou desmarque para reativar após erros</span>
+                                    </div>
+                                </label>
+                            </div>
+
+                            {/* Formulário para definir/redefinir PIN */}
+                            {showPinSection && (
+                                <div className="p-4 rounded-xl border border-red-900/40 bg-red-950/20 space-y-4 animate-in fade-in duration-200">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold uppercase text-red-400 flex items-center gap-1.5">
+                                            <KeyRound size={14} /> Definir Novo PIN Numérico
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">4 a 8 dígitos</span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                                                Novo PIN *
+                                            </label>
+                                            <Input
+                                                type="password"
+                                                inputMode="numeric"
+                                                maxLength={8}
+                                                value={newPin}
+                                                onChange={e => handlePinInputChange(e.target.value)}
+                                                placeholder="Ex: 8492"
+                                                className="bg-slate-900 border-slate-700 font-mono tracking-widest text-center font-bold text-base"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                                                Confirmar Novo PIN *
+                                            </label>
+                                            <Input
+                                                type="password"
+                                                inputMode="numeric"
+                                                maxLength={8}
+                                                value={confirmPin}
+                                                onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+                                                placeholder="Ex: 8492"
+                                                className="bg-slate-900 border-slate-700 font-mono tracking-widest text-center font-bold text-base"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {pinWarning && (
+                                        <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium flex items-center gap-2">
+                                            <AlertTriangle size={16} className="shrink-0" />
+                                            <span>{pinWarning}</span>
+                                        </div>
+                                    )}
+
+                                    <div className="text-[11px] text-slate-400 bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
+                                        <p className="font-bold text-slate-300 flex items-center gap-1">
+                                            <Shield size={13} className="text-emerald-400" /> Proteção de Segurança:
+                                        </p>
+                                        <p className="text-[10px] leading-relaxed">
+                                            O PIN é criptografado com SHA-256 e sal antes de ser gravado. Administradores podem alterar o PIN a qualquer momento, mas nunca visualizar o código original.
+                                        </p>
+                                    </div>
+
+                                    <Button
+                                        type="button"
+                                        onClick={handleSaveNewPin}
+                                        disabled={!newPin || newPin.length < 4 || newPin !== confirmPin || !!pinWarning}
+                                        className="w-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs h-10 rounded-lg shadow-md"
+                                    >
+                                        <Check size={16} className="mr-1.5" /> Aplicar e Criptografar PIN
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                     <div className="bg-slate-900 rounded-xl shadow-sm border p-6 space-y-4">
                         <h3 className="font-bold flex items-center gap-2 text-slate-100 border-b pb-3"><Shield size={18} /> Vinculação de Perfis Base</h3>
                         <p className="text-sm text-slate-400">Selecione 1 ou mais perfis de acesso padronizados. As permissões serão somadas.</p>
@@ -349,18 +648,19 @@ export function AdminUsers() {
             <table className="w-full text-sm min-w-[900px]">
             <thead className="bg-slate-800 border-b">
                 <tr className="text-slate-400 text-xs uppercase tracking-wider text-left">
-                <th className="p-4 font-semibold w-[300px]">Nome Empregado</th>
+                <th className="p-4 font-semibold w-[260px]">Nome Empregado</th>
                 <th className="p-4 font-semibold">Perfis Vinculados</th>
-                <th className="p-4 font-semibold w-32">Status</th>
-                <th className="p-4 font-semibold w-40">Último Login</th>
+                <th className="p-4 font-semibold w-36">PDV / PIN</th>
+                <th className="p-4 font-semibold w-28">Status</th>
+                <th className="p-4 font-semibold w-36">Último Login</th>
                 <th className="p-4 font-semibold w-24 text-right">Ações</th>
                 </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                    <tr><td colSpan={5} className="p-8 text-center text-slate-400">Carregando usuários...</td></tr>
+                    <tr><td colSpan={6} className="p-8 text-center text-slate-400">Carregando usuários...</td></tr>
                 ) : filteredUsers.length === 0 ? (
-                    <tr><td colSpan={5} className="p-8 text-center text-slate-400">Nenhuma conta encontrada.</td></tr>
+                    <tr><td colSpan={6} className="p-8 text-center text-slate-400">Nenhuma conta encontrada.</td></tr>
                 ) : filteredUsers.map(u => (
                 <tr key={u.id} className="hover:bg-slate-800 transition-colors">
                     <td className="p-4">
@@ -376,6 +676,28 @@ export function AdminUsers() {
                                     const rObj = roles.find(ro => ro.id === rId);
                                     return <span key={rId} className="bg-slate-950 border text-slate-200 text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider">{rObj?.name || rId}</span>
                                 })
+                            )}
+                        </div>
+                    </td>
+                    <td className="p-4">
+                        <div className="flex flex-col gap-1">
+                            {u.canAuthorizeDiscounts ? (
+                                <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] px-2 py-0.5 rounded font-extrabold uppercase w-fit">
+                                    Autorizador
+                                </span>
+                            ) : (
+                                <span className="bg-slate-800 text-slate-500 text-[10px] px-2 py-0.5 rounded font-bold uppercase w-fit">
+                                    Sem Autoriz.
+                                </span>
+                            )}
+                            {u.pinHash ? (
+                                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                                    <KeyRound size={11} /> PIN Configurado
+                                </span>
+                            ) : (
+                                <span className="text-[10px] text-slate-500 font-bold flex items-center gap-1">
+                                    <Lock size={11} /> Sem PIN
+                                </span>
                             )}
                         </div>
                     </td>

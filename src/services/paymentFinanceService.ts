@@ -110,6 +110,9 @@ export interface MethodConfig {
   showOnPDV: boolean;
   availableForDelivery: boolean;
   availableForPickup: boolean;
+  useIntegration?: boolean;
+  enabledDelivery?: boolean;
+  enabledPickup?: boolean;
   allowInstallments: boolean;
   maxInstallments: number;
   requiresProof: boolean;

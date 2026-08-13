@@ -17,7 +17,8 @@ import {
   ShieldCheck, 
   Lock,
   Layers,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Trash2
 } from 'lucide-react';
 import { inventoryBalanceService } from '../../../services/inventoryBalanceService';
 import { InventoryBalance, InventoryBalanceItem } from '../../../types/inventoryBalance';
@@ -105,6 +106,29 @@ export function AdminInventoryBalanceDivergences() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDelete = async () => {
+    if (!balance || !balanceId) return;
+
+    const isConfirmed = await confirm({
+      title: "Excluir Balanço Definitivamente?",
+      message: `ATENÇÃO: Tem certeza que deseja apagar DEFINITIVAMENTE o balanço "${balance.code} - ${balance.name}"? Esta ação removerá permanentemente todos os registros, itens e histórico deste balanço e NÃO poderá ser desfeita.`,
+      confirmText: "Sim, Excluir Definitivamente",
+      cancelText: "Cancelar",
+      variant: "danger"
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      await inventoryBalanceService.deleteBalance(balanceId);
+      toast("Balanço excluído definitivamente com sucesso.", "success");
+      navigate('/admin/estoque/balancos');
+    } catch (e: any) {
+      console.error("Error deleting balance:", e);
+      toast("Erro ao excluir balanço definitivamente.", "error");
+    }
   };
 
   // Filter items
@@ -209,6 +233,14 @@ export function AdminInventoryBalanceDivergences() {
             className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-semibold transition-colors flex items-center gap-2"
           >
             <Printer className="w-4 h-4" /> Imprimir Relatório
+          </button>
+
+          <button
+            onClick={handleDelete}
+            className="px-3.5 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-400 border border-rose-500/30 text-xs font-semibold transition-colors flex items-center gap-2"
+            title="Excluir Balanço Definitivamente"
+          >
+            <Trash2 className="w-4 h-4" /> Excluir
           </button>
 
           {balance.status !== 'FINALIZADO' ? (
@@ -403,13 +435,24 @@ export function AdminInventoryBalanceDivergences() {
                   return (
                     <tr key={item.id} className="hover:bg-zinc-800/40 transition-colors">
                       <td className="py-3 px-4 font-medium text-white">
-                        <div>
-                          {item.productName}
-                          {item.variantName && (
-                            <span className="text-amber-400 font-semibold text-xs ml-2">
-                              ({item.variantName})
-                            </span>
-                          )}
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            {item.productName}
+                            {item.variantName && (
+                              <span className="text-amber-400 font-semibold text-xs ml-2">
+                                ({item.variantName})
+                              </span>
+                            )}
+                          </div>
+                          <Link
+                            to={`/admin/estoque/ficha/${item.productId}${item.variantId ? `?variantId=${encodeURIComponent(item.variantId)}` : ''}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] font-semibold text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 transition-colors shrink-0 print:hidden"
+                            title="Abrir Ficha de Estoque em nova aba"
+                          >
+                            Ficha →
+                          </Link>
                         </div>
                       </td>
 

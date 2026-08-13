@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
 import firebaseConfig from '../../../firebase-applet-config.json';
 
 let adminDb: admin.firestore.Firestore | null = null;
@@ -36,14 +37,14 @@ export function getAdminDb() {
     
     try {
       // Very important: pass databaseId if not default
-      adminDb = databaseId && databaseId !== '(default)' 
-        ? adminApp.firestore(databaseId) 
-        : adminApp.firestore();
+      adminDb = (databaseId && databaseId !== '(default)' 
+        ? getFirestore(adminApp, databaseId) 
+        : getFirestore(adminApp)) as any;
       
       console.log(`[FirebaseAdmin] Firestore ready for project: ${adminApp.options.projectId} (DB: ${databaseId})`);
     } catch (e) {
       console.error("[FirebaseAdmin] Firestore instance error:", e);
-      adminDb = admin.firestore();
+      adminDb = getFirestore(adminApp) as any;
     }
   }
   return adminDb;

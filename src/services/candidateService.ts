@@ -11,7 +11,7 @@ enum OperationType {
   WRITE = 'write',
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   const errInfo = {
     error: error instanceof Error ? error.message : String(error),
     operationType,

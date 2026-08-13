@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore, setLogLevel } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Suprime warnings internos de conexão dociata do Firestore
@@ -29,12 +30,14 @@ console.log("🔥 [Firebase Client] Initializing with Project:", typedConfig.pro
 export const app = initializeApp(typedConfig);
 
 // Initialize Firestore with settings for better stability in sandboxed environments
-export const db = initializeFirestore(app, {
-  databaseId: typedConfig.firestoreDatabaseId || '(default)',
-  experimentalForceLongPolling: true,
-});
+const dbId = typedConfig.firestoreDatabaseId;
+export const db = (dbId && dbId !== '(default)')
+  ? initializeFirestore(app, { experimentalForceLongPolling: true }, dbId)
+  : initializeFirestore(app, { experimentalForceLongPolling: true });
 
 export const auth = getAuth(app);
+export const storage = getStorage(app, typedConfig.storageBucket);
 
 console.log("📍 [Firebase Client] App Project ID:", app.options.projectId);
 console.log("📦 [Firestore Client] Initialized Database:", typedConfig.firestoreDatabaseId || '(default)');
+

@@ -42,10 +42,31 @@ export const purchaseService = {
   async savePurchase(data: Partial<Purchase>): Promise<string> {
     const isNew = !data.id;
     const items = data.items || [];
-    const total = items.reduce((acc, item) => acc + item.subtotal, 0);
+    
+    // Consolidate identical items by productId and variantId
+    const consolidatedMap = new Map<string, PurchaseItem>();
+    for (const item of items) {
+      const key = `${item.productId}_${item.variantId || 'no_variant'}`;
+      if (consolidatedMap.has(key)) {
+        const existing = consolidatedMap.get(key)!;
+        const newQty = existing.quantity + item.quantity;
+        const newCost = item.costPrice || existing.costPrice;
+        consolidatedMap.set(key, {
+          ...existing,
+          quantity: newQty,
+          costPrice: newCost,
+          subtotal: Number((newQty * newCost).toFixed(2))
+        });
+      } else {
+        consolidatedMap.set(key, { ...item });
+      }
+    }
+    const consolidatedItems = Array.from(consolidatedMap.values());
+    const itemsSubtotal = consolidatedItems.reduce((acc, item) => acc + item.subtotal, 0);
+    const total = Number((itemsSubtotal + (data.shipping || 0)).toFixed(2));
     
     // Cleanup items to avoid undefined values which Firestore doesn't like
-    const cleanedItems = items.map(item => {
+    const cleanedItems = consolidatedItems.map(item => {
       const cleanItem: any = {
         productId: item.productId,
         productName: item.productName,
@@ -99,8 +120,8 @@ export const purchaseService = {
     const purchase = snap.data() as Purchase;
     
     const hasProcessedStock = (purchase.items || []).some(i => i.stockProcessed);
-    if (purchase.status === 'received' || purchase.paymentStatus === 'paid' || hasProcessedStock) {
-      throw new Error("Não é possível excluir uma compra que já possui lançamentos no estoque ou pagamento efetuado. Cancele a compra para estornar os lançamentos.");
+    if (purchase.status === 'received' || purchase.status === 'cancelled' || purchase.paymentStatus === 'paid' || hasProcessedStock) {
+      throw new Error("Não é possível excluir uma compra que já foi recebida, paga, cancelada ou possui lançamentos de estoque. Cancele a compra para manter o histórico comercial e auditoria.");
     }
 
     await deleteDoc(ref);
@@ -115,62 +136,131 @@ export const purchaseService = {
     const purchase = { id: snap.id, ...snap.data() } as Purchase;
     if (purchase.status === 'cancelled') throw new Error("Esta compra já está cancelada.");
 
-    // 1. Revert Stock if it was received or if any individual item was processed
-    const itemsToRevert = (purchase.items || []).filter(item => purchase.status === 'received' || item.stockProcessed);
+    // Deep copy items to track reversal status per item atomically
+    const currentItems: (PurchaseItem & { stockReverted?: boolean; stockRevertedAt?: string })[] = 
+      (purchase.items || []).map(i => ({ ...i }));
 
-    if (itemsToRevert.length > 0) {
-      for (const item of itemsToRevert) {
-        let resolvedVariant = null;
-        if (item.variantId || item.variantName || item.sku) {
-          resolvedVariant = await resolveVariantDoc(item.productId, item.variantId, item.variantName, item.sku);
-        }
-        const effectiveVariantId = resolvedVariant ? resolvedVariant.variantId : item.variantId;
-
-        await stockMovementService.registerMovement({
-          productId: item.productId,
-          productName: item.productName,
-          variantId: effectiveVariantId,
-          variantName: item.variantName,
-          sku: item.sku,
-          type: 'out',
-          quantity: item.quantity,
-          reason: 'Estorno de Compra (Cancelamento)',
-          channel: 'Admin/Compras',
-          notes: `Cancelamento Compra #${id.slice(-6).toUpperCase()}`
-        });
+    // 1. Identify items that require stock reversal
+    // An item requires reversal if it was processed into stock AND has not been reverted yet
+    const itemsToRevertIndices: number[] = [];
+    for (let i = 0; i < currentItems.length; i++) {
+      const item = currentItems[i];
+      const wasProcessed = item.stockProcessed || purchase.status === 'received';
+      const alreadyReverted = item.stockReverted === true;
+      if (wasProcessed && !alreadyReverted) {
+        itemsToRevertIndices.push(i);
       }
     }
 
-    // Reset stockProcessed flags on items
-    const updatedItems = (purchase.items || []).map(i => ({
-      ...i,
-      stockProcessed: false,
-      stockProcessedAt: null
-    }));
+    // 2. Pre-check stock levels for all items to be reverted to prevent negative stock
+    for (const index of itemsToRevertIndices) {
+      const item = currentItems[index];
+      const itemDesc = `${item.productName || 'Produto'}${item.variantName ? ' - ' + item.variantName : ''}${item.sku ? ' (SKU: ' + item.sku + ')' : ''}`;
 
-    // 2. Revert Financial if it was paid
-    if (purchase.paymentStatus === 'paid') {
-      await financialService.saveTransaction({
-        type: 'revenue',
-        description: `Estorno Compra Cancelada: ${purchase.supplier}`,
-        amount: purchase.total,
-        dueDate: new Date().toISOString().split('T')[0],
-        paymentDate: new Date().toISOString().split('T')[0],
-        status: 'paid',
-        category: 'Reembolsos',
-        paymentMethod: 'Não informado',
-        notes: `Estorno Compra #${id.slice(-6).toUpperCase()}`
+      const productRef = doc(db, 'products', item.productId);
+      const productSnap = await getDoc(productRef);
+      if (!productSnap.exists()) {
+        throw new Error(`Produto não encontrado para estorno (ID: ${item.productId}).`);
+      }
+
+      let resolvedVariant = null;
+      if (item.variantId || item.variantName || item.sku) {
+        resolvedVariant = await resolveVariantDoc(item.productId, item.variantId, item.variantName, item.sku);
+      }
+
+      let currentStock = 0;
+      if (resolvedVariant) {
+        currentStock = resolvedVariant.snap.data()?.stock || 0;
+      } else {
+        currentStock = productSnap.data()?.stock || 0;
+      }
+
+      if (currentStock < item.quantity) {
+        throw new Error(
+          `Não é possível cancelar a compra: o estoque atual do item "${itemDesc}" (${currentStock} un.) é menor que a quantidade comprada (${item.quantity} un.) a ser estornada. O estoque foi parcialmente vendido ou movimentado.`
+        );
+      }
+    }
+
+    // 3. Perform stock reversal for items needing reversal
+    const purchaseRefCode = `Cancelamento Compra #${id.slice(-6).toUpperCase()}`;
+
+    for (const index of itemsToRevertIndices) {
+      const item = currentItems[index];
+
+      let resolvedVariant = null;
+      if (item.variantId || item.variantName || item.sku) {
+        resolvedVariant = await resolveVariantDoc(item.productId, item.variantId, item.variantName, item.sku);
+      }
+      const effectiveVariantId = resolvedVariant ? resolvedVariant.variantId : item.variantId;
+
+      await stockMovementService.registerMovement({
+        productId: item.productId,
+        productName: item.productName,
+        variantId: effectiveVariantId,
+        variantName: item.variantName,
+        sku: item.sku,
+        type: 'out',
+        quantity: item.quantity,
+        reason: 'Estorno de Compra (Cancelamento)',
+        channel: 'Admin/Compras',
+        notes: purchaseRefCode
+      });
+
+      // Update flags on item
+      currentItems[index].stockProcessed = false;
+      currentItems[index].stockReverted = true;
+      currentItems[index].stockRevertedAt = new Date().toISOString();
+
+      // Save progress incrementally for partial failure safety
+      await updateDoc(ref, {
+        items: currentItems,
+        updatedAt: serverTimestamp()
       });
     }
 
-    // 3. Update Status
+    // 4. Financial Reversal or Pending Transaction Cleanup
+    if (purchase.paymentStatus === 'paid') {
+      // Check if refund transaction already exists to guarantee idempotency
+      const existingRefund = await financialService.findPurchaseTransaction(id, 'purchase_cancellation');
+
+      if (!existingRefund) {
+        const deterministicCancelTxId = `FIN_PUR_CANCEL_${id}`;
+        const idempotencyKey = `purchase:${id}:cancellation`;
+
+        await financialService.saveTransaction({
+          id: deterministicCancelTxId,
+          purchaseId: id,
+          idempotencyKey,
+          transactionType: 'purchase_cancellation',
+          origin: 'compras',
+          type: 'income',
+          description: `Estorno Compra Cancelada: ${purchase.supplier}`,
+          amount: purchase.total,
+          dueDate: new Date().toISOString().split('T')[0],
+          paymentDate: new Date().toISOString().split('T')[0],
+          status: 'paid',
+          category: 'Reembolsos',
+          paymentMethod: 'Não informado',
+          notes: purchaseRefCode
+        });
+      }
+    } else {
+      // If purchase was not paid, clean up any pending expense transaction associated with this purchase
+      const pendingTx = await financialService.findPurchaseTransaction(id, 'purchase_payment');
+      if (pendingTx && pendingTx.id && pendingTx.status === 'pending') {
+        await financialService.deleteTransaction(pendingTx.id, pendingTx.description);
+      }
+    }
+
+    // 5. Finalize Purchase Status as Cancelled
     await updateDoc(ref, {
-      items: updatedItems,
+      items: currentItems,
       status: 'cancelled',
       updatedAt: serverTimestamp()
     });
 
-    await auditLogService.logAction('Cancelar', 'compras', id, { supplier: purchase.supplier });
+    await auditLogService.logAction('Cancelar', 'compras', id, { supplier: purchase.supplier, total: purchase.total });
   },
 
   async finalizePurchase(id: string): Promise<void> {
@@ -320,9 +410,34 @@ export const purchaseService = {
     if (!snap.exists()) throw new Error("Compra não encontrada");
     
     const purchase = { id: snap.id, ...snap.data() } as Purchase;
-    
-    // 1. Create Financial Transaction (Expense)
+
+    // Idempotency check 1: if already paid on purchase doc, skip
+    if (purchase.paymentStatus === 'paid') {
+      console.log(`[markAsPaid] Compra ${id} já está registrada como paga. Operação ignorada.`);
+      return;
+    }
+
+    // Idempotency check 2: check if payment transaction already exists via purchaseId or fallback search
+    const existingTx = await financialService.findPurchaseTransaction(id, 'purchase_payment');
+    if (existingTx) {
+      console.log(`[markAsPaid] Transação financeira de pagamento já existe para a compra ${id} (ID: ${existingTx.id}). Atualizando apenas status da compra.`);
+      await updateDoc(ref, {
+        paymentStatus: 'paid',
+        updatedAt: serverTimestamp()
+      });
+      return;
+    }
+
+    const deterministicTxId = `FIN_PUR_PAY_${id}`;
+    const idempotencyKey = `purchase:${id}:payment`;
+
+    // 1. Create Financial Transaction (Expense) with structured binding and deterministic ID
     await financialService.saveTransaction({
+      id: deterministicTxId,
+      purchaseId: id,
+      idempotencyKey,
+      transactionType: 'purchase_payment',
+      origin: 'compras',
       type: 'expense',
       description: `Pagamento Compra: ${purchase.supplier}`,
       amount: purchase.total,

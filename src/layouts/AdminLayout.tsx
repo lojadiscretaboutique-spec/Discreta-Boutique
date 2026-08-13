@@ -1,4 +1,4 @@
-import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Package, ShoppingCart, Users, Settings, LogOut, LayoutDashboard, Image as ImageIcon, Layers, ClipboardList, Shield, MapPin, Banknote, DollarSign, Truck, Clock, Tag, Brain, Moon, Sun, RefreshCcw, Megaphone, BarChart2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useSettings } from '../contexts/SettingsContext';
@@ -20,6 +20,8 @@ export function AdminLayout() {
     { name: 'PDV / Vender', path: '/admin/pdv', icon: ShoppingCart, permission: 'orders' },
     { name: 'Vendas', path: '/admin/vendas', icon: ShoppingCart, permission: 'orders', submenu: [
         { name: 'Pedidos', path: '/admin/pedidos', permission: 'orders' },
+        { name: 'Histórico de Descontos 🏷️', path: '/admin/pdv/descontos', permission: 'orders' },
+        { name: 'Autorizações de Desconto', path: '/admin/pdv/autorizacoes-desconto', permission: 'orders' },
     ]},
     { name: 'Produtos', path: '/admin/produtos', icon: Package, permission: 'produtos', submenu: [
         { name: 'Lista de Produtos', path: '/admin/produtos', permission: 'produtos' },
@@ -29,6 +31,7 @@ export function AdminLayout() {
     { name: 'Estoque', path: '/admin/estoque', icon: ClipboardList, permission: 'stock', submenu: [
         { name: 'Movimentação de Estoque', path: '/admin/mov_estoque', permission: 'stock' },
         { name: 'Balanço de Estoque 📋', path: '/admin/estoque/balancos', permission: 'stock' },
+        { name: 'Ficha de Estoque 📄', path: '/admin/estoque/ficha', permission: 'stock' },
         { name: 'Etiquetas', path: '/admin/etiquetas', permission: 'produtos' },
         { name: 'Compras', path: '/admin/compras', permission: 'compras' },
     ]},
@@ -89,12 +92,13 @@ export function AdminLayout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false); // Unified state for all screen sizes
   
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    if (typeof window === 'undefined') return 'dark';
     return (localStorage.getItem('admin-theme') as 'dark' | 'light') || 'dark';
   });
 
   useEffect(() => {
     const handleThemeEvent = () => {
-      const savedTheme = (localStorage.getItem('admin-theme') as 'dark' | 'light') || 'dark';
+      const savedTheme = typeof window !== 'undefined' ? (localStorage.getItem('admin-theme') as 'dark' | 'light') || 'dark' : 'dark';
       setTheme(savedTheme);
     };
     window.addEventListener('admin-theme-changed', handleThemeEvent);
@@ -232,9 +236,9 @@ export function AdminLayout() {
       </div>
     );
   }
-  if (!user) return null;
+  if (!user) return <Navigate to="/admin/login" replace />;
 
-  if (!hasAnyPermission) return null;
+  if (!hasAnyPermission) return <Navigate to="/" replace />;
 
   return (
     <div className={cn("min-h-screen flex flex-col w-full font-sans print:bg-white print:min-h-0 admin-container transition-colors duration-300", theme === 'dark' ? "dark bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900")}>

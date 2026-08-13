@@ -1,5 +1,8 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
+
+console.log("[BOOT-TRACE] App module carregado");
+
 import { StoreLayout } from './layouts/StoreLayout';
 import { WifiHotspotPage } from './pages/store/WifiHotspotPage';
 import { motion } from 'motion/react';
@@ -9,6 +12,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { TypographyProvider } from './contexts/TypographyContext';
 import { cacheService } from './services/cacheService';
 import { useAuthStore } from './store/authStore';
+import { safeLazy } from './utils/safeLazy';
 import HomePage from './pages/store/HomePage';
 import { CatalogPage } from './pages/store/CatalogPage';
 import { ProductPage } from './pages/store/ProductPage';
@@ -22,103 +26,105 @@ import { CustomerAreaPage } from './pages/store/CustomerAreaPage';
 import { AreaClienteLayout } from './layouts/AreaClienteLayout';
 import { LiveShopPage } from './pages/store/LiveShopPage';
 
-const AdminLayout = lazy(() => import('./layouts/AdminLayout').then(m => ({ default: m.AdminLayout })));
+const AdminLayout = safeLazy(() => import('./layouts/AdminLayout').then(m => ({ default: m.AdminLayout })), 'AdminLayout');
 
 // Store Pages
-const CustomerAccountDataPage = lazy(() => import('./pages/store/area-cliente/CustomerAccountDataPage').then(m => ({ default: m.CustomerAccountDataPage })));
-const CustomerOrdersPage = lazy(() => import('./pages/store/area-cliente/CustomerOrdersPage').then(m => ({ default: m.CustomerOrdersPage })));
-const CustomerAddressesPage = lazy(() => import('./pages/store/area-cliente/CustomerAddressesPage').then(m => ({ default: m.CustomerAddressesPage })));
-const CustomerFavoritesPage = lazy(() => import('./pages/store/area-cliente/CustomerFavoritesPage').then(m => ({ default: m.CustomerFavoritesPage })));
-const CustomerLoyaltyPage = lazy(() => import('./pages/store/area-cliente/CustomerLoyaltyPage').then(m => ({ default: m.CustomerLoyaltyPage })));
-const CustomerReviewsPage = lazy(() => import('./pages/store/area-cliente/CustomerReviewsPage').then(m => ({ default: m.CustomerReviewsPage })));
-const CustomerNotificationsPage = lazy(() => import('./pages/store/area-cliente/CustomerNotificationsPage').then(m => ({ default: m.CustomerNotificationsPage })));
-const CustomerSupportPage = lazy(() => import('./pages/store/area-cliente/CustomerSupportPage').then(m => ({ default: m.CustomerSupportPage })));
-const CustomerChangePasswordPage = lazy(() => import('./pages/store/area-cliente/CustomerChangePasswordPage').then(m => ({ default: m.CustomerChangePasswordPage })));
+const CustomerAccountDataPage = safeLazy(() => import('./pages/store/area-cliente/CustomerAccountDataPage').then(m => ({ default: m.CustomerAccountDataPage })), 'CustomerAccountDataPage');
+const CustomerOrdersPage = safeLazy(() => import('./pages/store/area-cliente/CustomerOrdersPage').then(m => ({ default: m.CustomerOrdersPage })), 'CustomerOrdersPage');
+const CustomerAddressesPage = safeLazy(() => import('./pages/store/area-cliente/CustomerAddressesPage').then(m => ({ default: m.CustomerAddressesPage })), 'CustomerAddressesPage');
+const CustomerFavoritesPage = safeLazy(() => import('./pages/store/area-cliente/CustomerFavoritesPage').then(m => ({ default: m.CustomerFavoritesPage })), 'CustomerFavoritesPage');
+const CustomerLoyaltyPage = safeLazy(() => import('./pages/store/area-cliente/CustomerLoyaltyPage').then(m => ({ default: m.CustomerLoyaltyPage })), 'CustomerLoyaltyPage');
+const CustomerReviewsPage = safeLazy(() => import('./pages/store/area-cliente/CustomerReviewsPage').then(m => ({ default: m.CustomerReviewsPage })), 'CustomerReviewsPage');
+const CustomerNotificationsPage = safeLazy(() => import('./pages/store/area-cliente/CustomerNotificationsPage').then(m => ({ default: m.CustomerNotificationsPage })), 'CustomerNotificationsPage');
+const CustomerSupportPage = safeLazy(() => import('./pages/store/area-cliente/CustomerSupportPage').then(m => ({ default: m.CustomerSupportPage })), 'CustomerSupportPage');
+const CustomerChangePasswordPage = safeLazy(() => import('./pages/store/area-cliente/CustomerChangePasswordPage').then(m => ({ default: m.CustomerChangePasswordPage })), 'CustomerChangePasswordPage');
 
-const PrivacyPolicyPage = lazy(() => import('./pages/store/PrivacyPolicyPage'));
-const AboutUsPage = lazy(() => import('./pages/store/AboutUsPage'));
-const ExchangePolicyPage = lazy(() => import('./pages/store/ExchangePolicyPage'));
-const LGPDPage = lazy(() => import('./pages/store/LGPDPage'));
-const DiscreetDeliveryPage = lazy(() => import('./pages/store/DiscreetDeliveryPage'));
-const ContactPage = lazy(() => import('./pages/store/ContactPage'));
-const TrabalheConoscoPage = lazy(() => import('./pages/store/TrabalheConoscoPage'));
-const AdminTrabalheConosco = lazy(() => import('./pages/admin/AdminTrabalheConosco'));
-const AdminTrabalheConoscoSettings = lazy(() => import('./pages/admin/AdminTrabalheConoscoSettings'));
-const AffiliateLandingPage = lazy(() => import('./modules/afiliados/pages/AffiliateLandingPage').then(m => ({ default: m.AffiliateLandingPage })));
-const AdminAffiliates = lazy(() => import('./modules/afiliados/pages/AdminAffiliates').then(m => ({ default: m.AdminAffiliates })));
+const PrivacyPolicyPage = safeLazy(() => import('./pages/store/PrivacyPolicyPage'), 'PrivacyPolicyPage');
+const AboutUsPage = safeLazy(() => import('./pages/store/AboutUsPage'), 'AboutUsPage');
+const ExchangePolicyPage = safeLazy(() => import('./pages/store/ExchangePolicyPage'), 'ExchangePolicyPage');
+const LGPDPage = safeLazy(() => import('./pages/store/LGPDPage'), 'LGPDPage');
+const DiscreetDeliveryPage = safeLazy(() => import('./pages/store/DiscreetDeliveryPage'), 'DiscreetDeliveryPage');
+const ContactPage = safeLazy(() => import('./pages/store/ContactPage'), 'ContactPage');
+const TrabalheConoscoPage = safeLazy(() => import('./pages/store/TrabalheConoscoPage'), 'TrabalheConoscoPage');
+const AdminTrabalheConosco = safeLazy(() => import('./pages/admin/AdminTrabalheConosco'), 'AdminTrabalheConosco');
+const AdminTrabalheConoscoSettings = safeLazy(() => import('./pages/admin/AdminTrabalheConoscoSettings'), 'AdminTrabalheConoscoSettings');
+const AffiliateLandingPage = safeLazy(() => import('./modules/afiliados/pages/AffiliateLandingPage').then(m => ({ default: m.AffiliateLandingPage })), 'AffiliateLandingPage');
+const AdminAffiliates = safeLazy(() => import('./modules/afiliados/pages/AdminAffiliates').then(m => ({ default: m.AdminAffiliates })), 'AdminAffiliates');
 
 // Admin Pages
-const AdminLogin = lazy(() => import('./pages/admin/AdminLogin').then(m => ({ default: m.AdminLogin })));
-const AdminOrders = lazy(() => import('./pages/admin/AdminOrders').then(m => ({ default: m.AdminOrders })));
-const AdminProducts = lazy(() => import('./pages/admin/AdminProducts').then(m => ({ default: m.AdminProducts })));
-const AdminCombos = lazy(() => import('./pages/admin/AdminCombos').then(m => ({ default: m.AdminCombos })));
-const AdminLabels = lazy(() => import('./pages/admin/AdminLabels').then(m => ({ default: m.AdminLabels })));
-const AdminCategories = lazy(() => import('./pages/admin/AdminCategories').then(m => ({ default: m.AdminCategories })));
-const AdminBanners = lazy(() => import('./pages/admin/AdminBanners').then(m => ({ default: m.AdminBanners })));
-const AdminPopups = lazy(() => import('./pages/admin/marketing/AdminPopups').then(m => ({ default: m.AdminPopups })));
-const AdminCoupons = lazy(() => import('./pages/admin/marketing/AdminCoupons').then(m => ({ default: m.AdminCoupons })));
-const AdminPromotions = lazy(() => import('./pages/admin/marketing/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
-const AdminPostagem = lazy(() => import('./pages/admin/marketing/AdminPostagem').then(m => ({ default: m.AdminPostagem })));
-const AdminVisualHome = lazy(() => import('./pages/admin/marketing/AdminVisualHome').then(m => ({ default: m.AdminVisualHome })));
-const MovEstoque = lazy(() => import('./pages/admin/MovEstoque').then(m => ({ default: m.MovEstoque })));
-const AdminCustomers = lazy(() => import('./pages/admin/AdminCustomers').then(m => ({ default: m.AdminCustomers })));
-const AdminUsers = lazy(() => import('./pages/admin/AdminUsers').then(m => ({ default: m.AdminUsers })));
-const AdminRoles = lazy(() => import('./pages/admin/AdminRoles').then(m => ({ default: m.AdminRoles })));
-const AdminLogs = lazy(() => import('./pages/admin/AdminLogs').then(m => ({ default: m.AdminLogs })));
-const AdminConfig = lazy(() => import('./pages/admin/AdminConfig').then(m => ({ default: m.AdminConfig })));
-const AdminCustomerNotifications = lazy(() => import('./pages/admin/AdminCustomerNotifications').then(m => ({ default: m.AdminCustomerNotifications })));
-const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
-const AdminAIInsights = lazy(() => import('./pages/admin/AdminAIInsights'));
-const AdminDeliveryAreas = lazy(() => import('./pages/admin/AdminDeliveryAreas').then(m => ({ default: m.AdminDeliveryAreas })));
-const AdminCaixa = lazy(() => import('./pages/admin/AdminCaixa').then(m => ({ default: m.AdminCaixa })));
-const AdminPDV = lazy(() => import('./pages/admin/AdminPDV').then(m => ({ default: m.AdminPDV })));
-const AdminPurchases = lazy(() => import('./pages/admin/AdminPurchases').then(m => ({ default: m.AdminPurchases })));
-const AdminFinancialList = lazy(() => import('./pages/admin/financial/AdminFinancialList').then(m => ({ default: m.AdminFinancial })));
-const AdminFinancialReports = lazy(() => import('./pages/admin/financial/AdminFinancialReports').then(m => ({ default: m.AdminFinancialReports })));
-const AdminCommissions = lazy(() => import('./pages/admin/financial/AdminCommissions').then(m => ({ default: m.AdminCommissions })));
-const AdminIntegracao = lazy(() => import('./pages/admin/financial/AdminIntegracao').then(m => ({ default: m.AdminIntegracao })));
-const AdminPaymentMethods = lazy(() => import('./pages/admin/financial/AdminPaymentMethods').then(m => ({ default: m.AdminPaymentMethods })));
-const AdminOperatingHours = lazy(() => import('./pages/admin/AdminOperatingHours').then(m => ({ default: m.AdminOperatingHours })));
-const AdminWebhooks = lazy(() => import('./pages/admin/AdminWebhooks').then(m => ({ default: m.AdminWebhooks })));
-const AdminSmartStock = lazy(() => import('./pages/admin/AdminSmartStock'));
-const AdminInventoryBalanceList = lazy(() => import('./pages/admin/estoque/AdminInventoryBalanceList').then(m => ({ default: m.AdminInventoryBalanceList })));
-const AdminInventoryBalanceNew = lazy(() => import('./pages/admin/estoque/AdminInventoryBalanceNew').then(m => ({ default: m.AdminInventoryBalanceNew })));
-const AdminInventoryBalanceCount = lazy(() => import('./pages/admin/estoque/AdminInventoryBalanceCount').then(m => ({ default: m.AdminInventoryBalanceCount })));
-const AdminInventoryBalanceDivergences = lazy(() => import('./pages/admin/estoque/AdminInventoryBalanceDivergences').then(m => ({ default: m.AdminInventoryBalanceDivergences })));
-const AdminStockCard = lazy(() => import('./pages/admin/estoque/AdminStockCard').then(m => ({ default: m.AdminStockCard })));
-const AdminMarketingHub = lazy(() => import('./pages/admin/marketing/AdminMarketingHub'));
-const AdminVisitors = lazy(() => import('./pages/admin/analytics/AdminVisitors').then(m => ({ default: m.AdminVisitors })));
-const AdminThemeManager = lazy(() => import('./pages/admin/AdminThemeManager').then(m => ({ default: m.AdminThemeManager })));
-const AdminTypography = lazy(() => import('./pages/admin/AdminTypography').then(m => ({ default: m.AdminTypography })));
-const AdminPrinterConfig = lazy(() => import('./pages/admin/AdminPrinterConfig').then(m => ({ default: m.AdminPrinterConfig })));
-const AdminLiveShop = lazy(() => import('./pages/admin/marketing/AdminLiveShop').then(m => ({ default: m.AdminLiveShop })));
-const AdminStoryShopManager = lazy(() => import('./pages/admin/marketing/AdminStoryShopManager').then(m => ({ default: m.AdminStoryShopManager })));
-const AdminWifiUsers = lazy(() => import('./pages/admin/marketing/AdminWifiUsers'));
+const AdminLogin = safeLazy(() => import('./pages/admin/AdminLogin').then(m => ({ default: m.AdminLogin })), 'AdminLogin');
+const AdminOrders = safeLazy(() => import('./pages/admin/AdminOrders').then(m => ({ default: m.AdminOrders })), 'AdminOrders');
+const AdminProducts = safeLazy(() => import('./pages/admin/AdminProducts').then(m => ({ default: m.AdminProducts })), 'AdminProducts');
+const AdminCombos = safeLazy(() => import('./pages/admin/AdminCombos').then(m => ({ default: m.AdminCombos })), 'AdminCombos');
+const AdminLabels = safeLazy(() => import('./pages/admin/AdminLabels').then(m => ({ default: m.AdminLabels })), 'AdminLabels');
+const AdminCategories = safeLazy(() => import('./pages/admin/AdminCategories').then(m => ({ default: m.AdminCategories })), 'AdminCategories');
+const AdminBanners = safeLazy(() => import('./pages/admin/AdminBanners').then(m => ({ default: m.AdminBanners })), 'AdminBanners');
+const AdminPopups = safeLazy(() => import('./pages/admin/marketing/AdminPopups').then(m => ({ default: m.AdminPopups })), 'AdminPopups');
+const AdminCoupons = safeLazy(() => import('./pages/admin/marketing/AdminCoupons').then(m => ({ default: m.AdminCoupons })), 'AdminCoupons');
+const AdminPromotions = safeLazy(() => import('./pages/admin/marketing/AdminPromotions').then(m => ({ default: m.AdminPromotions })), 'AdminPromotions');
+const AdminPostagem = safeLazy(() => import('./pages/admin/marketing/AdminPostagem').then(m => ({ default: m.AdminPostagem })), 'AdminPostagem');
+const AdminVisualHome = safeLazy(() => import('./pages/admin/marketing/AdminVisualHome').then(m => ({ default: m.AdminVisualHome })), 'AdminVisualHome');
+const MovEstoque = safeLazy(() => import('./pages/admin/MovEstoque').then(m => ({ default: m.MovEstoque })), 'MovEstoque');
+const AdminCustomers = safeLazy(() => import('./pages/admin/AdminCustomers').then(m => ({ default: m.AdminCustomers })), 'AdminCustomers');
+const AdminUsers = safeLazy(() => import('./pages/admin/AdminUsers').then(m => ({ default: m.AdminUsers })), 'AdminUsers');
+const AdminRoles = safeLazy(() => import('./pages/admin/AdminRoles').then(m => ({ default: m.AdminRoles })), 'AdminRoles');
+const AdminLogs = safeLazy(() => import('./pages/admin/AdminLogs').then(m => ({ default: m.AdminLogs })), 'AdminLogs');
+const AdminConfig = safeLazy(() => import('./pages/admin/AdminConfig').then(m => ({ default: m.AdminConfig })), 'AdminConfig');
+const AdminCustomerNotifications = safeLazy(() => import('./pages/admin/AdminCustomerNotifications').then(m => ({ default: m.AdminCustomerNotifications })), 'AdminCustomerNotifications');
+const AdminDashboard = safeLazy(() => import('./pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })), 'AdminDashboard');
+const AdminAIInsights = safeLazy(() => import('./pages/admin/AdminAIInsights'), 'AdminAIInsights');
+const AdminDeliveryAreas = safeLazy(() => import('./pages/admin/AdminDeliveryAreas').then(m => ({ default: m.AdminDeliveryAreas })), 'AdminDeliveryAreas');
+const AdminCaixa = safeLazy(() => import('./pages/admin/AdminCaixa').then(m => ({ default: m.AdminCaixa })), 'AdminCaixa');
+const AdminPDV = safeLazy(() => import('./pages/admin/AdminPDV').then(m => ({ default: m.AdminPDV })), 'AdminPDV');
+const AdminPDVDiscountHistory = safeLazy(() => import('./pages/admin/AdminPDVDiscountHistory').then(m => ({ default: m.AdminPDVDiscountHistory })), 'AdminPDVDiscountHistory');
+const AdminPDVDiscountAuthorizations = safeLazy(() => import('./pages/admin/AdminPDVDiscountAuthorizations').then(m => ({ default: m.AdminPDVDiscountAuthorizations })), 'AdminPDVDiscountAuthorizations');
+const AdminPurchases = safeLazy(() => import('./pages/admin/AdminPurchases').then(m => ({ default: m.AdminPurchases })), 'AdminPurchases');
+const AdminFinancialList = safeLazy(() => import('./pages/admin/financial/AdminFinancialList').then(m => ({ default: m.AdminFinancial })), 'AdminFinancialList');
+const AdminFinancialReports = safeLazy(() => import('./pages/admin/financial/AdminFinancialReports').then(m => ({ default: m.AdminFinancialReports })), 'AdminFinancialReports');
+const AdminCommissions = safeLazy(() => import('./pages/admin/financial/AdminCommissions').then(m => ({ default: m.AdminCommissions })), 'AdminCommissions');
+const AdminIntegracao = safeLazy(() => import('./pages/admin/financial/AdminIntegracao').then(m => ({ default: m.AdminIntegracao })), 'AdminIntegracao');
+const AdminPaymentMethods = safeLazy(() => import('./pages/admin/financial/AdminPaymentMethods').then(m => ({ default: m.AdminPaymentMethods })), 'AdminPaymentMethods');
+const AdminOperatingHours = safeLazy(() => import('./pages/admin/AdminOperatingHours').then(m => ({ default: m.AdminOperatingHours })), 'AdminOperatingHours');
+const AdminWebhooks = safeLazy(() => import('./pages/admin/AdminWebhooks').then(m => ({ default: m.AdminWebhooks })), 'AdminWebhooks');
+const AdminSmartStock = safeLazy(() => import('./pages/admin/AdminSmartStock'), 'AdminSmartStock');
+const AdminInventoryBalanceList = safeLazy(() => import('./pages/admin/estoque/AdminInventoryBalanceList').then(m => ({ default: m.AdminInventoryBalanceList })), 'AdminInventoryBalanceList');
+const AdminInventoryBalanceNew = safeLazy(() => import('./pages/admin/estoque/AdminInventoryBalanceNew').then(m => ({ default: m.AdminInventoryBalanceNew })), 'AdminInventoryBalanceNew');
+const AdminInventoryBalanceCount = safeLazy(() => import('./pages/admin/estoque/AdminInventoryBalanceCount').then(m => ({ default: m.AdminInventoryBalanceCount })), 'AdminInventoryBalanceCount');
+const AdminInventoryBalanceDivergences = safeLazy(() => import('./pages/admin/estoque/AdminInventoryBalanceDivergences').then(m => ({ default: m.AdminInventoryBalanceDivergences })), 'AdminInventoryBalanceDivergences');
+const AdminStockCard = safeLazy(() => import('./pages/admin/estoque/AdminStockCard').then(m => ({ default: m.AdminStockCard })), 'AdminStockCard');
+const AdminMarketingHub = safeLazy(() => import('./pages/admin/marketing/AdminMarketingHub'), 'AdminMarketingHub');
+const AdminVisitors = safeLazy(() => import('./pages/admin/analytics/AdminVisitors').then(m => ({ default: m.AdminVisitors })), 'AdminVisitors');
+const AdminThemeManager = safeLazy(() => import('./pages/admin/AdminThemeManager').then(m => ({ default: m.AdminThemeManager })), 'AdminThemeManager');
+const AdminTypography = safeLazy(() => import('./pages/admin/AdminTypography').then(m => ({ default: m.AdminTypography })), 'AdminTypography');
+const AdminPrinterConfig = safeLazy(() => import('./pages/admin/AdminPrinterConfig').then(m => ({ default: m.AdminPrinterConfig })), 'AdminPrinterConfig');
+const AdminLiveShop = safeLazy(() => import('./pages/admin/marketing/AdminLiveShop').then(m => ({ default: m.AdminLiveShop })), 'AdminLiveShop');
+const AdminStoryShopManager = safeLazy(() => import('./pages/admin/marketing/AdminStoryShopManager').then(m => ({ default: m.AdminStoryShopManager })), 'AdminStoryShopManager');
+const AdminWifiUsers = safeLazy(() => import('./pages/admin/marketing/AdminWifiUsers'), 'AdminWifiUsers');
 
 // Public Blog Pages
-const BlogPage = lazy(() => import('./pages/store/blog/BlogPage').then(m => ({ default: m.BlogPage })));
-const BlogCategoryPage = lazy(() => import('./pages/store/blog/BlogCategoryPage').then(m => ({ default: m.BlogCategoryPage })));
-const BlogArticlePage = lazy(() => import('./pages/store/blog/BlogArticlePage').then(m => ({ default: m.BlogArticlePage })));
-const BlogClusterPage = lazy(() => import('./pages/store/blog/BlogClusterPage').then(m => ({ default: m.BlogClusterPage })));
-const WebStoriesCatalog = lazy(() => import('./pages/store/blog/WebStoriesCatalog').then(m => ({ default: m.WebStoriesCatalog })));
-const WebStoryViewer = lazy(() => import('./pages/store/blog/WebStoryViewer').then(m => ({ default: m.WebStoryViewer })));
-const NewsletterPage = lazy(() => import('./pages/store/blog/NewsletterPage').then(m => ({ default: m.NewsletterPage })));
+const BlogPage = safeLazy(() => import('./pages/store/blog/BlogPage').then(m => ({ default: m.BlogPage })), 'BlogPage');
+const BlogCategoryPage = safeLazy(() => import('./pages/store/blog/BlogCategoryPage').then(m => ({ default: m.BlogCategoryPage })), 'BlogCategoryPage');
+const BlogArticlePage = safeLazy(() => import('./pages/store/blog/BlogArticlePage').then(m => ({ default: m.BlogArticlePage })), 'BlogArticlePage');
+const BlogClusterPage = safeLazy(() => import('./pages/store/blog/BlogClusterPage').then(m => ({ default: m.BlogClusterPage })), 'BlogClusterPage');
+const WebStoriesCatalog = safeLazy(() => import('./pages/store/blog/WebStoriesCatalog').then(m => ({ default: m.WebStoriesCatalog })), 'WebStoriesCatalog');
+const WebStoryViewer = safeLazy(() => import('./pages/store/blog/WebStoryViewer').then(m => ({ default: m.WebStoryViewer })), 'WebStoryViewer');
+const NewsletterPage = safeLazy(() => import('./pages/store/blog/NewsletterPage').then(m => ({ default: m.NewsletterPage })), 'NewsletterPage');
 
 // Admin Blog Pages
-const AdminBlogHub = lazy(() => import('./pages/admin/blog/AdminBlogHub').then(m => ({ default: m.AdminBlogHub })));
-const AdminBlogNewsletter = lazy(() => import('./pages/admin/blog/AdminBlogNewsletter').then(m => ({ default: m.AdminBlogNewsletter })));
-const AdminBlogAuthority = lazy(() => import('./pages/admin/blog/AdminBlogAuthority').then(m => ({ default: m.AdminBlogAuthority })));
-const AdminBlogWebStories = lazy(() => import('./pages/admin/blog/AdminBlogWebStories').then(m => ({ default: m.AdminBlogWebStories })));
-const AdminBlogWebStoriesStats = lazy(() => import('./pages/admin/blog/AdminBlogWebStoriesStats').then(m => ({ default: m.AdminBlogWebStoriesStats })));
-const AdminBlogEditor = lazy(() => import('./pages/admin/blog/AdminBlogEditor').then(m => ({ default: m.AdminBlogEditor })));
-const AdminBlogAI = lazy(() => import('./pages/admin/blog/AdminBlogAI').then(m => ({ default: m.AdminBlogAI })));
-const AdminBlogCategories = lazy(() => import('./pages/admin/blog/AdminBlogCategories').then(m => ({ default: m.AdminBlogCategories })));
-const AdminBlogIntelligence = lazy(() => import('./pages/admin/blog/AdminBlogIntelligence').then(m => ({ default: m.AdminBlogIntelligence })));
-const AdminBlogSettings = lazy(() => import('./pages/admin/blog/AdminBlogSettings').then(m => ({ default: m.AdminBlogSettings })));
-const AdminBlogSEO = lazy(() => import('./pages/admin/blog/AdminBlogSEO').then(m => ({ default: m.AdminBlogSEO })));
-const AdminBlogComments = lazy(() => import('./pages/admin/blog/AdminBlogComments').then(m => ({ default: m.AdminBlogComments })));
-const AdminBlogStats = lazy(() => import('./pages/admin/blog/AdminBlogStats').then(m => ({ default: m.AdminBlogStats })));
-const AdminBlogClusters = lazy(() => import('./pages/admin/blog/AdminBlogClusters').then(m => ({ default: m.AdminBlogClusters })));
+const AdminBlogHub = safeLazy(() => import('./pages/admin/blog/AdminBlogHub').then(m => ({ default: m.AdminBlogHub })), 'AdminBlogHub');
+const AdminBlogNewsletter = safeLazy(() => import('./pages/admin/blog/AdminBlogNewsletter').then(m => ({ default: m.AdminBlogNewsletter })), 'AdminBlogNewsletter');
+const AdminBlogAuthority = safeLazy(() => import('./pages/admin/blog/AdminBlogAuthority').then(m => ({ default: m.AdminBlogAuthority })), 'AdminBlogAuthority');
+const AdminBlogWebStories = safeLazy(() => import('./pages/admin/blog/AdminBlogWebStories').then(m => ({ default: m.AdminBlogWebStories })), 'AdminBlogWebStories');
+const AdminBlogWebStoriesStats = safeLazy(() => import('./pages/admin/blog/AdminBlogWebStoriesStats').then(m => ({ default: m.AdminBlogWebStoriesStats })), 'AdminBlogWebStoriesStats');
+const AdminBlogEditor = safeLazy(() => import('./pages/admin/blog/AdminBlogEditor').then(m => ({ default: m.AdminBlogEditor })), 'AdminBlogEditor');
+const AdminBlogAI = safeLazy(() => import('./pages/admin/blog/AdminBlogAI').then(m => ({ default: m.AdminBlogAI })), 'AdminBlogAI');
+const AdminBlogCategories = safeLazy(() => import('./pages/admin/blog/AdminBlogCategories').then(m => ({ default: m.AdminBlogCategories })), 'AdminBlogCategories');
+const AdminBlogIntelligence = safeLazy(() => import('./pages/admin/blog/AdminBlogIntelligence').then(m => ({ default: m.AdminBlogIntelligence })), 'AdminBlogIntelligence');
+const AdminBlogSettings = safeLazy(() => import('./pages/admin/blog/AdminBlogSettings').then(m => ({ default: m.AdminBlogSettings })), 'AdminBlogSettings');
+const AdminBlogSEO = safeLazy(() => import('./pages/admin/blog/AdminBlogSEO').then(m => ({ default: m.AdminBlogSEO })), 'AdminBlogSEO');
+const AdminBlogComments = safeLazy(() => import('./pages/admin/blog/AdminBlogComments').then(m => ({ default: m.AdminBlogComments })), 'AdminBlogComments');
+const AdminBlogStats = safeLazy(() => import('./pages/admin/blog/AdminBlogStats').then(m => ({ default: m.AdminBlogStats })), 'AdminBlogStats');
+const AdminBlogClusters = safeLazy(() => import('./pages/admin/blog/AdminBlogClusters').then(m => ({ default: m.AdminBlogClusters })), 'AdminBlogClusters');
 
 // Loading Component (Splash Screen)
 function PageLoader() {
@@ -268,6 +274,7 @@ function AppContent() {
             <Route path="estoque/balancos/novo" element={<AdminInventoryBalanceNew />} />
             <Route path="estoque/balancos/:balanceId" element={<AdminInventoryBalanceCount />} />
             <Route path="estoque/balancos/:balanceId/divergencias" element={<AdminInventoryBalanceDivergences />} />
+            <Route path="estoque/ficha" element={<AdminStockCard />} />
             <Route path="estoque/ficha/:productId" element={<AdminStockCard />} />
             <Route path="usuarios" element={<AdminUsers />} />
             <Route path="perfis" element={<AdminRoles />} />
@@ -286,6 +293,8 @@ function AppContent() {
             <Route path="marketing/wifi-users" element={<AdminWifiUsers />} />
             <Route path="clientes" element={<AdminCustomers />} />
             <Route path="pdv" element={<AdminPDV />} />
+            <Route path="pdv/descontos" element={<AdminPDVDiscountHistory />} />
+            <Route path="pdv/autorizacoes-desconto" element={<AdminPDVDiscountAuthorizations />} />
             <Route path="compras" element={<AdminPurchases />} />
             <Route path="financeiro">
               <Route path="lancamentos" element={<AdminFinancialList />} />
@@ -343,9 +352,11 @@ function AppContent() {
 
 export default function App() {
   useEffect(() => {
-    // -------------------------------------------------------------------------
-    // BOOTSTRAP PROGRESS TRACKER & DEVELOPMENT STATUS INDICATORS
-    // -------------------------------------------------------------------------
+    console.log("[BOOT-TRACE] App montado");
+    // Clear recovery tracking flags on successful initialization
+    sessionStorage.removeItem('discreta_chunk_recovery_attempted');
+    sessionStorage.removeItem('discreta_version_reset_attempted');
+
     if (import.meta.env.DEV) {
       console.log("[Discreta Boot] 🚀 Starting application bootstrap sequence...");
       console.log("[Discreta Boot] 📦 Mount progress: 10% - React Shell Rendered.");
@@ -355,43 +366,22 @@ export default function App() {
       console.log("[Discreta Boot] ✅ Mount progress: 100% - Ready for final paint.");
     }
 
-    const staticSplash = document.getElementById('initial-splash');
-    
-    // Safety fallback release if splash didn't unmount yet (React lifecycle safety timeout)
-    const safetyRelease = setTimeout(() => {
-      const splashExists = document.getElementById('initial-splash');
-      if (splashExists) {
-        if (import.meta.env.DEV) {
-          console.warn("[Discreta Boot] ⚡ React-level safety timeout reached. Hiding static splash.");
-        }
-        splashExists.style.opacity = '0';
+    // Unmount static splash screen smoothly
+    const removeSplash = () => {
+      const staticSplash = document.getElementById('initial-splash');
+      if (staticSplash) {
+        staticSplash.style.opacity = '0';
         setTimeout(() => {
-          splashExists.remove();
-          document.body.style.overflow = 'auto';
-        }, 500);
+          if (staticSplash.parentNode) staticSplash.remove();
+        }, 300);
       }
-    }, 4500);
+      document.body.style.overflow = 'auto';
+    };
 
-    // Initial rapid unmount for typical flawless rendering paths
-    if (staticSplash) {
-      if (import.meta.env.DEV) {
-        console.log("[Discreta Boot] ✨ Static splash detected. Transitioning opacity...");
-      }
-      staticSplash.style.opacity = '0';
-      const cleanupTimer = setTimeout(() => {
-        staticSplash.remove();
-        document.body.style.overflow = 'auto';
-        if (import.meta.env.DEV) {
-          console.log("[Discreta Boot] Validated: Static splash successfully unmounted. Content interactive.");
-        }
-      }, 500);
-      return () => {
-        clearTimeout(cleanupTimer);
-        clearTimeout(safetyRelease);
-      };
-    } else {
-      clearTimeout(safetyRelease);
-    }
+    removeSplash();
+
+    // Signal successful initialization (Requirement 8)
+    console.log("[Discreta Boot] Aplicação inicializada com sucesso");
   }, []);
 
   return (

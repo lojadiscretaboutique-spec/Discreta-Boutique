@@ -111,7 +111,7 @@ export function AdminCoupons() {
     }
   };
   
-  const theme = localStorage.getItem('admin-theme') || 'dark';
+  const theme = (typeof window !== 'undefined' ? localStorage.getItem('admin-theme') : 'dark') || 'dark';
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">

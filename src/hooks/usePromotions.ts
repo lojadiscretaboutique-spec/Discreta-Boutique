@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { promotionService, Promotion } from '../services/promotionService';
 import { visualHomeService } from '../services/visualHomeService';
 import { categoryService, Category } from '../services/categoryService';
@@ -90,7 +90,7 @@ export function usePromotions() {
     loadPromotions();
   }, []);
 
-  const calculateProductPrice = (product: { id: string; categoryId: string; categoryIds?: string[], price: number; promoPrice?: number }) => {
+  const calculateProductPrice = useCallback((product: { id: string; categoryId: string; categoryIds?: string[], price: number; promoPrice?: number }) => {
     const tablePrice = product.price;
 
     // Check if there is an active custom limited promo price for this product ID
@@ -144,7 +144,7 @@ export function usePromotions() {
       promotion: appliedPromo,
       isFreeShipping
     };
-  };
+  }, [limitedPromoPrices, activePromotions, allCategories]);
 
-  return { activePromotions, calculateProductPrice, loading };
+  return useMemo(() => ({ activePromotions, calculateProductPrice, loading }), [activePromotions, calculateProductPrice, loading]);
 }

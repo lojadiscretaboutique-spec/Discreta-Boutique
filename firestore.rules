@@ -45,10 +45,7 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow get: if true;
-      allow read: if request.auth.uid == uid || can('users', 'visualizar');
-      allow create: if request.auth.uid == uid || can('users', 'criar');
-      allow update: if request.auth.uid == uid || can('users', 'editar') || true;
+      allow read, create, update: if true;
       allow delete: if can('users', 'excluir');
     }
 
@@ -185,8 +182,7 @@ service cloud.firestore {
     }
 
     match /auditLogs/{doc} {
-      allow read: if can('logs', 'visualizar');
-      allow create: if true;
+      allow read, create: if true;
       allow update, delete: if false;
     }
 
@@ -263,6 +259,18 @@ service cloud.firestore {
       allow read: if can('caixa', 'visualizar') || can('orders', 'editar') || can('orders', 'excluir');
       allow create: if can('caixa', 'criar') || can('orders', 'criar');
       allow update, delete: if can('caixa', 'excluir') || can('orders', 'editar') || can('orders', 'excluir');
+    }
+
+    match /pdvDiscountAuthorizations/{doc} {
+      allow read, write: if true;
+    }
+
+    match /pdvDiscountReasons/{doc} {
+      allow read, write: if true;
+    }
+
+    match /pdvDiscountAuditLogs/{doc} {
+      allow read, write: if true;
     }
 
     match /financial_transactions/{doc} {

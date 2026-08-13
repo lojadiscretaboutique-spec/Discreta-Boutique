@@ -66,7 +66,7 @@ const WEEKDAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 export function AdminPostagem() {
   const { toast } = useFeedback();
-  const theme = localStorage.getItem('admin-theme') || 'dark';
+  const theme = (typeof window !== 'undefined' ? localStorage.getItem('admin-theme') : 'dark') || 'dark';
 
   // State
   const [currentDate, setCurrentDate] = useState(new Date());

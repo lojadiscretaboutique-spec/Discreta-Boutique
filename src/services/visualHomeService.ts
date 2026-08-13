@@ -21,7 +21,7 @@ export interface VisualHomeSettings {
   emoji?: string;
   alignment: 'left' | 'center' | 'right';
   active: boolean;
-  source: 'auto' | 'custom_products' | 'categories' | 'brands' | 'promo' | 'best_seller' | 'views' | 'recent' | 'ai_recs' | 'stock' | 'random' | 'limited_promo';
+  source: 'auto' | 'custom_products' | 'categories' | 'brands' | 'promo' | 'best_seller' | 'views' | 'recent' | 'ai_recs' | 'stock' | 'random' | 'limited_promo' | 'featured_category';
   sourceDetails?: string[];
   orderByField?: 'recent' | 'sales' | 'discount' | 'price_asc' | 'price_desc' | 'random' | 'manual';
   buttonText?: string;
@@ -147,8 +147,13 @@ export const visualHomeService = {
 
       await batch.commit();
       console.log('Seeding of visual home settings succeeded!');
-    } catch (e) {
-      console.error('Error seeding visual home configurations:', e);
+    } catch (e: any) {
+      const isOffline = e?.code === 'unavailable' || (e?.message || '').toLowerCase().includes('offline');
+      if (isOffline) {
+        console.warn('⚠️ seedIfNeeded skipped due to offline mode.');
+      } else {
+        console.warn('Error seeding visual home configurations:', e);
+      }
     }
   },
 
@@ -157,96 +162,108 @@ export const visualHomeService = {
     const cached = cacheService.get('full_home_structure');
     if (cached) return cached;
 
-    await this.seedIfNeeded();
+    try {
+      await this.seedIfNeeded();
 
-    const [settingsSnap, layoutsSnap, schedulesSnap, customSnap, orderSnap, catSnap] = await Promise.all([
-      getDocs(collection(db, 'home_section_settings')),
-      getDocs(collection(db, 'home_section_layouts')),
-      getDocs(collection(db, 'home_section_schedules')),
-      getDocs(collection(db, 'home_custom_sections')),
-      getDoc(doc(db, 'home_section_order', 'main')),
-      getDocs(query(collection(db, 'categories'), where('showInHome', '==', true)))
-    ]);
+      const [settingsSnap, layoutsSnap, schedulesSnap, customSnap, orderSnap, catSnap] = await Promise.all([
+        getDocs(collection(db, 'home_section_settings')),
+        getDocs(collection(db, 'home_section_layouts')),
+        getDocs(collection(db, 'home_section_schedules')),
+        getDocs(collection(db, 'home_custom_sections')),
+        getDoc(doc(db, 'home_section_order', 'main')),
+        getDocs(query(collection(db, 'categories'), where('showInHome', '==', true)))
+      ]);
 
-    const settingsMap: Record<string, VisualHomeSettings> = {};
-    settingsSnap.docs.forEach(d => {
-      settingsMap[d.id] = { id: d.id, ...d.data() } as VisualHomeSettings;
-    });
+      const settingsMap: Record<string, VisualHomeSettings> = {};
+      settingsSnap.docs.forEach(d => {
+        settingsMap[d.id] = { id: d.id, ...d.data() } as VisualHomeSettings;
+      });
 
-    const layoutsMap: Record<string, VisualHomeLayout> = {};
-    layoutsSnap.docs.forEach(d => {
-      layoutsMap[d.id] = { id: d.id, ...d.data() } as VisualHomeLayout;
-    });
+      const layoutsMap: Record<string, VisualHomeLayout> = {};
+      layoutsSnap.docs.forEach(d => {
+        layoutsMap[d.id] = { id: d.id, ...d.data() } as VisualHomeLayout;
+      });
 
-    const schedulesMap: Record<string, VisualHomeSchedule> = {};
-    schedulesSnap.docs.forEach(d => {
-      schedulesMap[d.id] = { id: d.id, ...d.data() } as VisualHomeSchedule;
-    });
+      const schedulesMap: Record<string, VisualHomeSchedule> = {};
+      schedulesSnap.docs.forEach(d => {
+        schedulesMap[d.id] = { id: d.id, ...d.data() } as VisualHomeSchedule;
+      });
 
-    const customSections = customSnap.docs.map(d => ({ id: d.id, ...d.data() } as CustomSection));
-    
-    // Add featured categories as synthetic sections
-    catSnap.docs.forEach(d => {
-      const cat = d.data();
-      const catId = `cat_featured_${d.id}`;
-      if (!settingsMap[catId]) {
-        settingsMap[catId] = {
-          id: catId,
-          title: cat.name,
-          subtitle: '',
-          emoji: '✨',
-          alignment: 'left',
-          active: true,
-          source: 'featured_category',
-          sourceDetails: [d.id],
-          orderByField: 'manual',
-          buttonText: 'Ver Tudo',
-          buttonUrl: `/catalogo?categoria=${cat.slug || d.id}`,
-          showButton: true,
-          themeColor: '#ef4444',
-          themeBg: '#050505'
-        };
-        layoutsMap[catId] = {
-          id: catId,
-          orientation: 'horizontal',
-          colsDesktop: 4,
-          limit: 12,
-          style: 'standard',
-          mobileOrientation: 'horizontal',
-          mobileCols: 2
-        };
-        schedulesMap[catId] = {
-          id: catId,
-          hasSchedule: false
-        };
-      }
-    });
+      const customSections = customSnap.docs.map(d => ({ id: d.id, ...d.data() } as CustomSection));
+      
+      // Add featured categories as synthetic sections
+      catSnap.docs.forEach(d => {
+        const cat = d.data();
+        const catId = `cat_featured_${d.id}`;
+        if (!settingsMap[catId]) {
+          settingsMap[catId] = {
+            id: catId,
+            title: cat.name,
+            subtitle: '',
+            emoji: '✨',
+            alignment: 'left',
+            active: true,
+            source: 'featured_category',
+            sourceDetails: [d.id],
+            orderByField: 'manual',
+            buttonText: 'Ver Tudo',
+            buttonUrl: `/catalogo?categoria=${cat.slug || d.id}`,
+            showButton: true,
+            themeColor: '#ef4444',
+            themeBg: '#050505'
+          };
+          layoutsMap[catId] = {
+            id: catId,
+            orientation: 'horizontal',
+            colsDesktop: 4,
+            limit: 12,
+            style: 'standard',
+            mobileOrientation: 'horizontal',
+            mobileCols: 2
+          };
+          schedulesMap[catId] = {
+            id: catId,
+            hasSchedule: false
+          };
+        }
+      });
 
-    const orderData = orderSnap.data();
-    let order: string[] = orderData?.order || [];
+      const orderData = orderSnap.data();
+      let order: string[] = orderData?.order || [];
 
-    // Make sure all standard, custom sections and featured categories are present in order
-    const allKnownIds = [...STANDARD_SECTION_IDS, ...customSections.map(c => c.id), ...catSnap.docs.map(d => `cat_featured_${d.id}`)];
-    
-    // Add missing IDs to the bottom of the list
-    allKnownIds.forEach(id => {
-      if (!order.includes(id)) {
-        order.push(id);
-      }
-    });
+      // Make sure all standard, custom sections and featured categories are present in order
+      const allKnownIds = [...STANDARD_SECTION_IDS, ...customSections.map(c => c.id), ...catSnap.docs.map(d => `cat_featured_${d.id}`)];
+      
+      // Add missing IDs to the bottom of the list
+      allKnownIds.forEach(id => {
+        if (!order.includes(id)) {
+          order.push(id);
+        }
+      });
 
-    // Remove obsolete IDs from order list (that aren't standard or custom)
-    order = order.filter(id => allKnownIds.includes(id));
+      // Remove obsolete IDs from order list (that aren't standard or custom)
+      order = order.filter(id => allKnownIds.includes(id));
 
-    const result = {
-      settings: settingsMap,
-      layouts: layoutsMap,
-      schedules: schedulesMap,
-      customSections,
-      order
-    };
-    cacheService.set('full_home_structure', result);
-    return result;
+      const result = {
+        settings: settingsMap,
+        layouts: layoutsMap,
+        schedules: schedulesMap,
+        customSections,
+        order
+      };
+      cacheService.set('full_home_structure', result);
+      return result;
+    } catch (e: any) {
+      console.warn("⚠️ Failed to load visual home structure from Firestore, using default structure fallback:", e?.message || e);
+      const fallbackResult = {
+        settings: {},
+        layouts: {},
+        schedules: {},
+        customSections: [],
+        order: STANDARD_SECTION_IDS
+      };
+      return fallbackResult;
+    }
   },
 
   // Save the full configuration in a transaction/batch
