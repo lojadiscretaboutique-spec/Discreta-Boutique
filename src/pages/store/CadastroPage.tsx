@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
@@ -280,11 +280,6 @@ export const CadastroPage = () => {
             setError('Por favor, selecione sua data de nascimento.');
             return false;
         }
-        const cleanPhone = whatsapp.replace(/\D/g, '');
-        if (cleanPhone.length < 10 || cleanPhone.length > 11) {
-            setError('Por favor, insira um número de WhatsApp brasileiro válido.');
-            return false;
-        }
         return true;
     };
 
@@ -363,7 +358,7 @@ export const CadastroPage = () => {
                 updatedAt: new Date().toISOString()
             };
 
-            // Criar cadastro detalhado no Firestore com accountStatus: 'pending_otp'
+            // Criar cadastro detalhado no Firestore com status ativo e aprovado automaticamente
             await setDoc(doc(db, 'users', uid), {
                 uid,
                 role: 'customer',
@@ -385,8 +380,8 @@ export const CadastroPage = () => {
                 },
                 addresses: [firstAddress],
                 acceptedTerms: true,
-                emailVerified: false,
-                accountStatus: 'pending_otp',
+                emailVerified: true,
+                accountStatus: 'active',
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp()
             });
@@ -409,22 +404,11 @@ export const CadastroPage = () => {
                 console.error("Erro interno ao chamar webhook de boas-vindas:", fetchErr);
             });
 
-            // Disparar geração e envio do código OTP
-            await fetch('/api/customer-otp/generate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    uid,
-                    fullName: fullName.trim(),
-                    email: email.trim().toLowerCase(),
-                    whatsapp: whatsapp.replace(/\D/g, '')
-                })
-            });
-
-            // Mostrar mensagem de sucesso e aguardar clique antes de redirecionar
-            setSuccessMessage("Cadastro criado com sucesso! Enviamos um código de ativação por e-mail/WhatsApp para ativar sua conta.");
+            // Mostrar mensagem de sucesso e redirecionar automaticamente
+            setSuccessMessage("Cadastro aprovado e realizado com sucesso! Redirecionando...");
+            setTimeout(() => {
+                navigate(redirectTo, { replace: true });
+            }, 1200);
         } catch (err: any) {
             console.error('Erro ao efetuar cadastro:', err);
             setError(getFriendlyErrorMessage(err.code || err.message));
@@ -489,17 +473,17 @@ export const CadastroPage = () => {
                                 <Check className="h-8 w-8" />
                             </div>
                             <div className="space-y-2">
-                                <h2 className="text-2xl font-black text-white">Cadastro Realizado!</h2>
+                                <h2 className="text-2xl font-black text-white">Cadastro Aprovado!</h2>
                                 <p className="text-sm text-zinc-400 leading-relaxed max-w-sm mx-auto">
                                     {successMessage}
                                 </p>
                             </div>
                             <button
                                 type="button"
-                                onClick={() => navigate('/ativar-conta', { replace: true })}
+                                onClick={() => navigate(redirectTo, { replace: true })}
                                 className="w-full max-w-xs mt-4 py-3 px-6 bg-red-650 hover:bg-red-750 text-white font-bold rounded-2xl shadow-[0_0_15px_rgba(220,38,38,0.3)] transition-all flex items-center justify-center gap-2 group cursor-pointer"
                             >
-                                Ativar Minha Conta <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                                Acessar Minha Conta <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
                             </button>
                         </div>
                     ) : (

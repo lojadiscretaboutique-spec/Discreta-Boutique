@@ -107,59 +107,196 @@ export const financialService = {
     const payload = { ...data, updatedAt: serverTimestamp() } as any;
     delete payload.id;
     
-    if (isNew) {
-      payload.createdAt = serverTimestamp();
-      await setDoc(ref, payload);
-      await auditLogService.logAction('Criar', 'financeiro', docId, { desc: data.description, type: data.type, amount: data.amount });
-    } else {
-      await updateDoc(ref, payload);
-      await auditLogService.logAction('Editar', 'financeiro', docId, { desc: data.description, type: data.type, amount: data.amount });
-    }
-
     // SYNC INTELIGENTE COM O CAIXA
     // Se o status for 'paid', registramos/atualizamos no caixa se houver um turno aberto
     // REGRA: Somente lança no caixa se for lançamento manual ou estorno
     const isEstorno = payload.description?.toLowerCase().includes('estorno');
     const shouldSyncToCash = payload.isManual === true || isEstorno;
 
-    if (payload.status === 'paid' && shouldSyncToCash) {
-        const session = await cashService.getCurrentSession();
-        if (session) {
-            // Procurar se já existe um lançamento de caixa para este financeiro
-            const q = query(collection(db, 'cashTransactions'), where('financialId', '==', docId));
-            const snap = await getDocs(q);
-            
-            const finSnap = await getDoc(doc(db, 'financial_transactions', docId));
-            const fullData = { ...finSnap.data(), ...data } as FinancialTransaction;
+    if (isNew) {
+      payload.createdAt = serverTimestamp();
+      await setDoc(ref, payload);
 
-            const cashData = {
-                sessionId: session.id!,
-                type: fullData.type === 'income' ? 'entrada' : 'saida' as any,
-                category: fullData.category || 'FINANCEIRO',
-                amount: fullData.amount || 0,
-                description: `[FIN] ${fullData.description}`,
-                paymentMethod: fullData.paymentMethod || 'Outro',
-                userId: fullData.userId || 'system',
-                source: 'loja_fisica' as any,
-                financialId: docId,
-                orderId: fullData.orderId || undefined
+      let createdCashTxId: string | null = null;
+      let sessionTotalUpdated = false;
+      let sessionRefToRollback: any = null;
+      let amountToRollback = 0;
+      let typeToRollback = '';
+
+      try {
+        if (payload.status === 'paid' && shouldSyncToCash) {
+          const session = await cashService.getCurrentSession();
+          if (session && session.id) {
+            // Preparar dados do caixa limpando rigorosamente valores undefined
+            const cashData: any = {
+              sessionId: session.id,
+              type: payload.type === 'income' ? 'entrada' : 'saida',
+              category: payload.category || 'FINANCEIRO',
+              amount: Number(payload.amount) || 0,
+              description: `[FIN] ${payload.description || ''}`,
+              paymentMethod: payload.paymentMethod || 'Outro',
+              userId: payload.userId || 'system',
+              source: 'loja_fisica',
+              financialId: docId
             };
 
-            if (snap.empty) {
-                await cashService.addTransaction(cashData);
-            } else {
-                await cashService.updateTransaction(snap.docs[0].id, cashData);
+            if (payload.orderId) {
+              cashData.orderId = payload.orderId;
             }
+
+            // Usar ID determinístico no caixa para o lançamento manual (idempotência perfeita)
+            const cashTxId = `CXTX_FIN_${docId}`;
+            const cashTxRef = doc(db, 'cashTransactions', cashTxId);
+            const existingCashSnap = await getDoc(cashTxRef);
+
+            if (!existingCashSnap.exists()) {
+              await setDoc(cashTxRef, {
+                ...cashData,
+                createdAt: serverTimestamp()
+              });
+              createdCashTxId = cashTxId;
+
+              // Atualizar totais da sessão do caixa de forma controlada
+              const sessionRef = doc(db, 'cashSessions', session.id);
+              const sessionSnap = await getDoc(sessionRef);
+              if (sessionSnap.exists()) {
+                const sessionData = sessionSnap.data() as any;
+                if (cashData.type === 'entrada') {
+                  await updateDoc(sessionRef, { totalInputs: (sessionData.totalInputs || 0) + cashData.amount });
+                } else {
+                  await updateDoc(sessionRef, { totalOutputs: (sessionData.totalOutputs || 0) + cashData.amount });
+                }
+                sessionTotalUpdated = true;
+                sessionRefToRollback = sessionRef;
+                amountToRollback = cashData.amount;
+                typeToRollback = cashData.type;
+              }
+
+              await auditLogService.logAction('Lancamento Caixa', 'caixa', cashTxId, { tipo: cashData.type, valor: cashData.amount });
+            } else {
+              // Já existia o cash transaction com este ID, atualiza sem duplicar totais indevidamente
+              await updateDoc(cashTxRef, cashData);
+            }
+          }
         }
-    } else if (payload.status === 'pending' || !shouldSyncToCash) {
+      } catch (cashSyncError) {
+        // Se a sincronização com o caixa falhar em qualquer etapa do create, reverter tudo para evitar inconsistências
+        console.error('[Financial Save - Cash Sync Failure, rolling back financial record and cash mutations]:', cashSyncError);
+        try {
+          if (sessionTotalUpdated && sessionRefToRollback) {
+            const currentSessionSnap = await getDoc(sessionRefToRollback);
+            if (currentSessionSnap.exists()) {
+              const currentData = currentSessionSnap.data() as any;
+              if (typeToRollback === 'entrada') {
+                await updateDoc(sessionRefToRollback, { totalInputs: Math.max(0, (currentData.totalInputs || 0) - amountToRollback) });
+              } else {
+                await updateDoc(sessionRefToRollback, { totalOutputs: Math.max(0, (currentData.totalOutputs || 0) - amountToRollback) });
+              }
+            }
+          }
+        } catch (rollbackSessionErr) {
+          console.error('[Financial Save - Rollback Session Totals Failed]:', rollbackSessionErr);
+        }
+
+        try {
+          if (createdCashTxId) {
+            await deleteDoc(doc(db, 'cashTransactions', createdCashTxId));
+          }
+        } catch (rollbackCashErr) {
+          console.error('[Financial Save - Rollback Cash Transaction Failed]:', rollbackCashErr);
+        }
+
+        try {
+          await deleteDoc(ref);
+        } catch (rollbackError) {
+          console.error('[Financial Save - Rollback Failed]:', rollbackError);
+        }
+        throw cashSyncError;
+      }
+
+      await auditLogService.logAction('Criar', 'financeiro', docId, { desc: data.description, type: data.type, amount: data.amount });
+    } else {
+      // Edição de transação existente
+      await updateDoc(ref, payload);
+
+      if (payload.status === 'paid' && shouldSyncToCash) {
+        const session = await cashService.getCurrentSession();
+        if (session && session.id) {
+          const cashTxId = `CXTX_FIN_${docId}`;
+          const cashTxRef = doc(db, 'cashTransactions', cashTxId);
+          const existingCashSnap = await getDoc(cashTxRef);
+
+          // Verificar também se havia algum registro legado criado sem o id padronizado
+          let targetCashDocId = cashTxId;
+          let oldCashData: any = null;
+
+          if (existingCashSnap.exists()) {
+            oldCashData = existingCashSnap.data();
+          } else {
+            const legacyQ = query(collection(db, 'cashTransactions'), where('financialId', '==', docId));
+            const legacySnap = await getDocs(legacyQ);
+            if (!legacySnap.empty) {
+              targetCashDocId = legacySnap.docs[0].id;
+              oldCashData = legacySnap.docs[0].data();
+            }
+          }
+
+          const cashData: any = {
+            sessionId: session.id,
+            type: payload.type === 'income' ? 'entrada' : 'saida',
+            category: payload.category || 'FINANCEIRO',
+            amount: Number(payload.amount) || 0,
+            description: `[FIN] ${payload.description || ''}`,
+            paymentMethod: payload.paymentMethod || 'Outro',
+            userId: payload.userId || 'system',
+            source: 'loja_fisica',
+            financialId: docId
+          };
+
+          if (payload.orderId) {
+            cashData.orderId = payload.orderId;
+          }
+
+          if (oldCashData) {
+            await cashService.updateTransaction(targetCashDocId, cashData);
+          } else {
+            // Inserir com o id padronizado
+            await setDoc(cashTxRef, {
+              ...cashData,
+              createdAt: serverTimestamp()
+            });
+
+            const sessionRef = doc(db, 'cashSessions', session.id);
+            const sessionSnap = await getDoc(sessionRef);
+            if (sessionSnap.exists()) {
+              const sessionData = sessionSnap.data() as any;
+              if (cashData.type === 'entrada') {
+                await updateDoc(sessionRef, { totalInputs: (sessionData.totalInputs || 0) + cashData.amount });
+              } else {
+                await updateDoc(sessionRef, { totalOutputs: (sessionData.totalOutputs || 0) + cashData.amount });
+              }
+            }
+          }
+        }
+      } else if (payload.status === 'pending' || !shouldSyncToCash) {
         // Se mudou para pendente (ou não deve sincronizar), apagamos do caixa se existir
+        const cashTxId = `CXTX_FIN_${docId}`;
+        const cashTxRef = doc(db, 'cashTransactions', cashTxId);
+        const existingCashSnap = await getDoc(cashTxRef);
+        if (existingCashSnap.exists()) {
+          await cashService.deleteTransaction(cashTxId);
+        }
+
         const q = query(collection(db, 'cashTransactions'), where('financialId', '==', docId));
         const snap = await getDocs(q);
         if (!snap.empty) {
-            for (const d of snap.docs) {
-                await cashService.deleteTransaction(d.id);
-            }
+          for (const d of snap.docs) {
+            await cashService.deleteTransaction(d.id);
+          }
         }
+      }
+
+      await auditLogService.logAction('Editar', 'financeiro', docId, { desc: data.description, type: data.type, amount: data.amount });
     }
     
     return docId;

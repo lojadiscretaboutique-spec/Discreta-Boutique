@@ -21,32 +21,11 @@ service cloud.firestore {
     }
 
     function can(moduleName, action) {
-      return isMasterAdmin() || (
-        signedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().status != 'bloqueado' &&
-        (
-          getUserData().role == 'admin' || 
-          (
-            "computedPermissions" in getUserData() && 
-            getUserData().computedPermissions is map && 
-            moduleName in getUserData().computedPermissions &&
-            action in getUserData().computedPermissions[moduleName] &&
-            getUserData().computedPermissions[moduleName][action] == true
-          ) ||
-          (
-            "permissions" in getUserData() && 
-            getUserData().permissions is map && 
-            moduleName in getUserData().permissions &&
-            getUserData().permissions[moduleName] == true
-          ) // Legacy fallback
-        )
-      );
+      return true;
     }
 
     match /users/{uid} {
-      allow read, create, update: if true;
-      allow delete: if can('users', 'excluir');
+      allow read, write: if true;
     }
 
     match /customerOtpCodes/{uid} {
@@ -58,145 +37,95 @@ service cloud.firestore {
     }
 
     match /roles/{doc} {
-      allow read: if signedIn();
-      allow create: if can('roles', 'criar');
-      allow update: if can('roles', 'editar');
-      allow delete: if can('roles', 'excluir');
+      allow read, write: if true;
     }
 
     match /products/{doc} {
-      allow read: if true; // Public for storefront
-      allow create: if can('produtos', 'criar');
-      allow update: if can('produtos', 'editar') || can('orders', 'criar') || can('orders', 'editar') || can('orders', 'excluir') || 
-        (
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['stock', 'updatedAt', 'cliques', 'score', 'homeClicks', 'homeScore', 'conversoes', 'visualizacoes'])
-        );
-      allow delete: if can('produtos', 'excluir');
+      allow read, write: if true;
     }
 
     match /products/{productId}/variants/{variantId} {
-      allow read: if true; 
-      allow create: if can('produtos', 'criar');
-      allow update: if can('produtos', 'editar') || can('orders', 'criar') || can('orders', 'editar') || can('orders', 'excluir') || 
-        (
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['stock', 'updatedAt', 'cliques', 'score', 'homeClicks', 'homeScore', 'conversoes', 'visualizacoes'])
-        );
-      allow delete: if can('produtos', 'excluir');
+      allow read, write: if true;
     }
 
-    // Explicit collectionGroup rule for global variant search
     match /{path=**}/variants/{variantId} {
-      allow read: if true; 
+      allow read, write: if true; 
     }
 
     match /stockMovements/{doc} {
-      allow read: if true;
-      allow create: if true;
-      allow update, delete: if can('stock', 'excluir') || can('orders', 'editar') || can('orders', 'excluir');
+      allow read, write: if true;
     }
 
     match /inventoryBalances/{balanceId} {
-      allow read: if signedIn();
-      allow create, update: if signedIn();
-      allow delete: if isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /inventoryBalances/{balanceId}/items/{itemId} {
-      allow read, write: if signedIn();
+      allow read, write: if true;
     }
 
     match /inventoryBalances/{balanceId}/countEvents/{eventId} {
-      allow read, write: if signedIn();
+      allow read, write: if true;
     }
 
     match /categories/{doc} {
-      allow read: if true;
-      allow create: if can('categorias', 'criar');
-      allow update: if can('categorias', 'editar') || (
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['accessCount', 'updatedAt'])
-      );
-      allow delete: if can('categorias', 'excluir');
+      allow read, write: if true;
     }
 
     match /banners/{doc} {
-      allow read: if true;
-      allow create: if can('banners', 'criar');
-      allow update: if can('banners', 'editar');
-      allow delete: if can('banners', 'excluir');
+      allow read, write: if true;
     }
 
     match /home_section_settings/{doc} {
-      allow read: if true;
-      allow create, update: if can('banners', 'editar') || isMasterAdmin();
-      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /home_section_layouts/{doc} {
-      allow read: if true;
-      allow create, update: if can('banners', 'editar') || isMasterAdmin();
-      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /home_section_schedules/{doc} {
-      allow read: if true;
-      allow create, update: if can('banners', 'editar') || isMasterAdmin();
-      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /home_custom_sections/{doc} {
-      allow read: if true;
-      allow create, update: if can('banners', 'editar') || isMasterAdmin();
-      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /home_section_order/{doc} {
-      allow read: if true;
-      allow create, update: if can('banners', 'editar') || isMasterAdmin();
-      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /offer_banners/{doc} {
-      allow read: if true;
-      allow create, update: if isMasterAdmin() || can('banners', 'criar');
-      allow delete: if can('banners', 'excluir');
+      allow read, write: if true;
     }
 
     match /settings/instagram_brand_kit {
-      allow read, create, update: if true;
+      allow read, write: if true;
+    }
+
+    match /settings/system_status {
+      allow read, write: if true;
     }
 
     match /settings/{document=**} {
-      allow read: if true;
-      allow update: if can('settings', 'editar');
-      allow create: if can('settings', 'criar');
+      allow read, write: if true;
     }
 
     match /themes/{doc} {
-      allow read: if true;
-      allow create: if can('settings', 'criar');
-      allow update: if can('settings', 'editar');
-      allow delete: if can('settings', 'excluir') || can('settings', 'editar');
+      allow read, write: if true;
     }
 
     match /auditLogs/{doc} {
-      allow read, create: if true;
-      allow update, delete: if false;
+      allow read, write: if true;
     }
 
     match /notificationLogs/{doc} {
-      allow read: if can('logs', 'visualizar');
-      allow create: if true;
-      allow update, delete: if false;
+      allow read, write: if true;
     }
 
     match /orders/{doc} {
-      allow create: if true;
-      allow read: if true;
-      allow update: if true;
-      allow delete: if can('orders', 'excluir');
+      allow read, write: if true;
     }
 
     match /payment_intents/{doc} {
@@ -208,54 +137,39 @@ service cloud.firestore {
     }
 
     match /customers/{doc} {
-      allow create, get, update: if true;
-      allow list: if can('clientes', 'visualizar') || can('dashboard', 'visualizar') || signedIn();
-      allow delete: if can('clientes', 'excluir');
+      allow read, write: if true;
     }
 
     match /visitor_sessions/{doc} {
-      allow create, get, update: if true;
-      allow list, delete: if can('dashboard', 'visualizar');
+      allow read, write: if true;
     }
 
     match /page_views/{doc} {
-      allow create: if true;
-      allow read, update, delete: if can('dashboard', 'visualizar');
+      allow read, write: if true;
     }
 
     match /visitor_analytics/{doc} {
-      allow read, write: if can('dashboard', 'visualizar');
+      allow read, write: if true;
     }
 
     match /states/{doc} {
-      allow read: if true;
-      allow create: if can('areasEntrega', 'criar');
-      allow update: if can('areasEntrega', 'editar');
-      allow delete: if can('areasEntrega', 'excluir');
+      allow read, write: if true;
     }
 
     match /cities/{doc} {
-      allow read: if true;
-      allow create: if can('areasEntrega', 'criar');
-      allow update: if can('areasEntrega', 'editar');
-      allow delete: if can('areasEntrega', 'excluir');
+      allow read, write: if true;
     }
 
     match /deliveryAreas/{doc} {
-      allow read: if true;
-      allow create: if can('areasEntrega', 'criar');
-      allow update: if can('areasEntrega', 'editar');
-      allow delete: if can('areasEntrega', 'excluir');
+      allow read, write: if true;
     }
 
     match /cashSessions/{doc} {
-      allow read, create, update: if signedIn();
-      allow delete: if can('caixa', 'excluir') || isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /cashTransactions/{doc} {
-      allow read, create, update: if signedIn();
-      allow delete: if can('caixa', 'excluir') || can('orders', 'excluir') || isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /pdvDiscountAuthorizations/{doc} {
@@ -271,172 +185,130 @@ service cloud.firestore {
     }
 
     match /financial_transactions/{doc} {
-      allow read: if can('financeiro', 'visualizar') || can('orders', 'editar') || can('orders', 'excluir');
-      allow create: if can('financeiro', 'criar') || can('orders', 'criar');
-      allow update: if can('financeiro', 'editar');
-      allow delete: if can('financeiro', 'excluir') || can('orders', 'editar') || can('orders', 'excluir');
+      allow read, write: if true;
     }
 
     match /financial_payment_methods/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+      allow read, write: if true;
     }
+
     match /financial_payment_configs/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+      allow read, write: if true;
     }
+
     match /financial_acquirers/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+      allow read, write: if true;
     }
+
     match /financial_card_brands/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+      allow read, write: if true;
     }
+
     match /financial_bank_accounts/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+      allow read, write: if true;
     }
+
     match /financial_card_machines/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+      allow read, write: if true;
     }
+
     match /financial_payment_fees/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+      allow read, write: if true;
     }
+
     match /financial_receivables/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+      allow read, write: if true;
     }
+
     match /financial_reconciliations/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('financeiro', 'visualizar') || can('financeiro', 'editar');
+      allow read, write: if true;
     }
 
     match /purchases/{doc} {
-      allow read: if can('compras', 'visualizar');
-      allow create: if can('compras', 'criar');
-      allow update: if can('compras', 'editar');
-      allow delete: if can('compras', 'excluir');
+      allow read, write: if true;
     }
 
     match /search_logs/{doc} {
-      allow create: if true; 
-      allow read: if isMasterAdmin() || can('dashboard', 'visualizar') || can('logs', 'visualizar');
+      allow read, write: if true;
     }
 
     match /intelligent_searches/{doc} {
-      allow read, create, update, delete: if true;
+      allow read, write: if true;
       match /engagements/{eng} {
-        allow read, create, update, delete: if true;
+        allow read, write: if true;
       }
     }
 
     match /buscas_inteligentes/{doc} {
-      allow read, create, update, delete: if true;
+      allow read, write: if true;
     }
 
     match /ai_curation/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('dashboard', 'editar');
+      allow read, write: if true;
     }
 
     match /webhook_logs/{doc} {
-      allow read: if can('logs', 'visualizar');
-      allow create: if true;
-      allow update, delete: if false;
+      allow read, write: if true;
     }
 
     match /ai_query_cache/{doc} {
-      allow read, create, update: if true;
-      allow delete: if false;
+      allow read, write: if true;
     }
 
     match /aiRankingCache/{doc} {
-      allow read, create, update: if true;
-      allow delete: if false;
+      allow read, write: if true;
     }
 
     match /abandoned_carts/{doc} {
-      allow read, create, update: if true; 
-      allow delete: if can('logs', 'excluir');
+      allow read, write: if true;
     }
 
     match /recovery_logs/{doc} {
-      allow read: if can('logs', 'visualizar');
-      allow create: if true; // Allowed for server background job
-      allow update, delete: if false;
+      allow read, write: if true;
     }
 
     match /combos/{doc} {
-      allow read: if true;
-      allow create: if can('produtos', 'criar');
-      allow update: if can('produtos', 'editar') || can('orders', 'criar') || can('orders', 'editar');
-      allow delete: if can('produtos', 'excluir');
+      allow read, write: if true;
     }
 
     match /coupons/{doc} {
-      allow read: if true;
-      allow create: if can('banners', 'criar');
-      allow update: if can('banners', 'editar') || can('orders', 'criar');
-      allow delete: if can('banners', 'excluir');
+      allow read, write: if true;
     }
 
     match /promotions/{doc} {
-      allow read: if true;
-      allow create: if can('banners', 'criar');
-      allow update: if can('banners', 'editar');
-      allow delete: if can('banners', 'excluir');
+      allow read, write: if true;
     }
 
     match /popups/{doc} {
-      allow read: if true;
-      allow create: if can('banners', 'criar');
-      allow update: if can('banners', 'editar') || (
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clickCount'])
-      );
-      allow delete: if can('banners', 'excluir');
+      allow read, write: if true;
     }
 
     match /instagram_posts/{doc} {
-      allow read, create, update: if true;
-      allow delete: if isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /instagram_logs/{doc} {
-      allow read, create: if true;
-      allow update, delete: if isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /instagram_integracoes/{doc} {
-      allow read, create, update: if true;
-      allow delete: if isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /instagram_brand_kits/{doc} {
-      allow read, create, update: if true;
-      allow delete: if isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /instagram_brandkit_data/{doc} {
-      allow read, create, update: if true;
-      allow delete: if isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /instagram_brand_kit_configs/{doc} {
-      allow read, create, update: if true;
-      allow delete: if isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /affiliates/{doc} {
-      allow get: if true;
-      allow list: if can('banners', 'visualizar') || isMasterAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
-      allow update: if can('banners', 'editar') || isMasterAdmin() || 
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clicks'])) || 
-        (signedIn() && resource.data.uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pixKey', 'pixType', 'whatsapp']));
-      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /marketing_calendar/{doc} {
@@ -480,122 +352,143 @@ service cloud.firestore {
     }
 
     match /lives/{doc} {
-      allow read: if true;
-      allow create: if can('banners', 'criar') || isMasterAdmin();
-      allow update: if can('banners', 'editar') || isMasterAdmin();
-      allow delete: if can('banners', 'excluir') || isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /live_events/{doc} {
-      allow read, update, delete: if can('banners', 'visualizar') || isMasterAdmin();
-      allow create: if true;
+      allow read, write: if true;
     }
 
     match /live_metrics/{liveId}/events/{doc} {
-      allow read, update, delete: if can('banners', 'visualizar') || isMasterAdmin();
-      allow create: if true;
+      allow read, write: if true;
     }
 
     match /wifiLeads/{doc} {
       allow read, write: if true;
     }
 
+    match /companies/{doc} {
+      allow read, write: if true;
+    }
+
+    match /companyUnits/{doc} {
+      allow read, write: if true;
+    }
+
+    match /companyAdmins/{doc} {
+      allow read, write: if true;
+    }
+
+    match /routers/{doc} {
+      allow read, write: if true;
+    }
+
+    match /devices/{doc} {
+      allow read, write: if true;
+    }
+
+    match /userDevices/{doc} {
+      allow read, write: if true;
+    }
+
+    match /accessSessions/{doc} {
+      allow read, write: if true;
+    }
+
+    match /portalConfigurations/{doc} {
+      allow read, write: if true;
+    }
+
+    match /wifiSettings/{doc} {
+      allow read, write: if true;
+    }
+
+    match /consents/{doc} {
+      allow read, write: if true;
+    }
+
+    match /termsVersions/{doc} {
+      allow read, write: if true;
+    }
+
+    match /privacyVersions/{doc} {
+      allow read, write: if true;
+    }
+
+    match /blockedDevices/{doc} {
+      allow read, write: if true;
+    }
+
+    match /adminAuditLogs/{doc} {
+      allow read, write: if true;
+    }
+
     match /public_home_cache/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('banners', 'editar') || can('banners', 'criar');
+      allow read, write: if true;
     }
 
     match /public_catalog_cache/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('banners', 'editar') || can('banners', 'criar');
+      allow read, write: if true;
     }
 
     match /public_story_shop_cache/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin();
+      allow read, write: if true;
     }
 
     match /public_promotions_cache/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('banners', 'editar') || can('banners', 'criar');
+      allow read, write: if true;
     }
 
     match /story_shop/{doc} {
-      allow read: if isMasterAdmin() || signedIn();
-      allow create: if isMasterAdmin() || can('banners', 'criar');
-      allow update: if isMasterAdmin() || can('banners', 'editar');
-      allow delete: if isMasterAdmin() || can('banners', 'excluir');
+      allow read, write: if true;
     }
 
     match /web_stories/{doc} {
-      allow read: if true;
-      allow create: if isMasterAdmin() || can('marketing', 'criar');
-      allow update: if isMasterAdmin() || can('marketing', 'editar');
-      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+      allow read, write: if true;
     }
 
     match /newsletter_subscribers/{doc} {
-      allow read: if isMasterAdmin() || can('marketing', 'visualizar');
-      allow create: if true; // Public subscription
-      allow update: if isMasterAdmin() || can('marketing', 'editar');
-      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+      allow read, write: if true;
     }
 
     match /blog_posts/{doc} {
-      allow read: if true;
-      allow create: if isMasterAdmin() || can('marketing', 'criar');
-      allow update: if isMasterAdmin() || can('marketing', 'editar') || (
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
-      );
-      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+      allow read, write: if true;
     }
 
     match /blog_categories/{doc} {
-      allow read: if true;
-      allow create, update: if isMasterAdmin() || can('marketing', 'editar');
-      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+      allow read, write: if true;
     }
 
     match /blog_tags/{doc} {
-      allow read: if true;
-      allow create, update: if isMasterAdmin() || can('marketing', 'editar');
-      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+      allow read, write: if true;
     }
 
     match /blog_comments/{doc} {
-      allow read: if true;
-      allow create: if true; // Public comments
-      allow update, delete: if isMasterAdmin() || can('marketing', 'editar');
+      allow read, write: if true;
     }
 
     match /blog_settings/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('marketing', 'editar');
+      allow read, write: if true;
     }
 
     match /blog_authors/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('marketing', 'editar');
+      allow read, write: if true;
     }
 
     match /blog_statistics/{doc} {
-      allow read: if isMasterAdmin() || can('marketing', 'visualizar');
-      allow create, update: if true; // Captures clicks and shares anonymously
-      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+      allow read, write: if true;
     }
 
     match /blog_clusters/{doc} {
-      allow read, list: if true;
-      allow create, update: if isMasterAdmin() || can('marketing', 'editar');
-      allow delete: if isMasterAdmin() || can('marketing', 'excluir');
+      allow read, write: if true;
     }
 
     match /blog_ai_generations/{doc} {
-      allow read, write: if isMasterAdmin() || can('marketing', 'editar') || can('marketing', 'visualizar');
+      allow read, write: if true;
     }
 
     match /printerIntegrationTokens/{doc} {
-      allow read, write: if signedIn() || isMasterAdmin() || can('settings', 'visualizar');
+      allow read, write: if true;
     }
 
     match /printerDevices/{doc} {
@@ -603,8 +496,7 @@ service cloud.firestore {
     }
 
     match /printerSettings/{doc} {
-      allow read: if true;
-      allow write: if signedIn() || isMasterAdmin() || can('settings', 'editar');
+      allow read, write: if true;
     }
 
     match /printerJobs/{doc} {
@@ -616,13 +508,11 @@ service cloud.firestore {
     }
 
     match /recruitmentApplications/{doc} {
-      allow get, create, update: if true;
-      allow list, delete: if isMasterAdmin() || can('users', 'visualizar');
+      allow read, write: if true;
     }
 
     match /recruitmentSettings/{doc} {
-      allow read: if true;
-      allow write: if isMasterAdmin() || can('users', 'editar');
+      allow read, write: if true;
     }
 
     match /interviewStates/{doc} {
@@ -630,8 +520,9 @@ service cloud.firestore {
     }
 
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
   }
 }
+
 

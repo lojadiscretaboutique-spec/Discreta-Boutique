@@ -1,19 +1,22 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Package, ShoppingBag, User } from 'lucide-react';
+import { Home, Package, ShoppingBag, User, LayoutDashboard } from 'lucide-react';
 import { useCartStore } from '../../store/cartStore';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuthStore } from '../../store/authStore';
 
 export const BottomNav = () => {
   const location = useLocation();
   const cartItems = useCartStore(state => state.items);
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
   const { currentTheme } = useTheme();
+  const { isAdmin } = useAuthStore();
 
   const navItems = [
     { label: 'Início', path: '/', icon: Home },
     { label: 'Pedidos', path: '/area-cliente/pedidos', icon: Package },
     { label: 'Carrinho', path: '/carrinho', icon: ShoppingBag, badge: cartCount },
     { label: 'Perfil', path: '/area-cliente', icon: User },
+    ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: LayoutDashboard }] : [])
   ];
 
   return (

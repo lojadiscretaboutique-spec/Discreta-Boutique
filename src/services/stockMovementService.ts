@@ -159,6 +159,15 @@ export const stockMovementService = {
     }
   },
 
+  async registerMultipleMovements(movements: Array<Omit<NewStockMovement, 'id' | 'createdAt' | 'previousStock' | 'newStock' | 'createdBy' | 'createdByName'>>) {
+    const results = [];
+    for (const mov of movements) {
+      const res = await this.registerMovement(mov);
+      results.push(res);
+    }
+    return results;
+  },
+
   async deleteMovementsByOrderId(orderId: string) {
     try {
       const q = query(collection(db, 'stockMovements'), where('orderId', '==', orderId));

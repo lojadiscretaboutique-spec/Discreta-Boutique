@@ -244,14 +244,15 @@ export function CartPage() {
       const defaultAddr = savedAddresses.find((a: any) => a.isDefault) || savedAddresses[0];
       if (defaultAddr) {
         setSelectedSavedAddressId(defaultAddr.id);
-        setCep(defaultAddr.cep ? formatCEP(defaultAddr.cep) : '');
-        setRua(defaultAddr.street || '');
-        setNumero(defaultAddr.number || '');
-        setComplemento(defaultAddr.complement || '');
-        setAreaName(defaultAddr.neighborhood || '');
-        setCityName(defaultAddr.city || '');
-        setStateName(defaultAddr.state || '');
-        setReferencia(defaultAddr.reference || '');
+        const formattedCep = defaultAddr.cep ? formatCEP(defaultAddr.cep) : '';
+        setCep(prev => prev !== formattedCep ? formattedCep : prev);
+        setRua(prev => prev !== (defaultAddr.street || '') ? (defaultAddr.street || '') : prev);
+        setNumero(prev => prev !== (defaultAddr.number || '') ? (defaultAddr.number || '') : prev);
+        setComplemento(prev => prev !== (defaultAddr.complement || '') ? (defaultAddr.complement || '') : prev);
+        setAreaName(prev => prev !== (defaultAddr.neighborhood || '') ? (defaultAddr.neighborhood || '') : prev);
+        setCityName(prev => prev !== (defaultAddr.city || '') ? (defaultAddr.city || '') : prev);
+        setStateName(prev => prev !== (defaultAddr.state || '') ? (defaultAddr.state || '') : prev);
+        setReferencia(prev => prev !== (defaultAddr.reference || '') ? (defaultAddr.reference || '') : prev);
       }
     }
   }, [savedAddresses, selectedSavedAddressId]);
@@ -304,7 +305,13 @@ export function CartPage() {
       try {
         const { promotionCacheService } = await import('../../services/promotionCacheService');
         const gifts = await promotionCacheService.getActiveGifts();
-        setActiveGiftPromotions(gifts || []);
+        const list = gifts || [];
+        setActiveGiftPromotions(prev => {
+          if (prev.length === list.length && prev.every((g, idx) => g.id === list[idx].id)) {
+            return prev;
+          }
+          return list;
+        });
       } catch (err) {
         console.error("Error fetching active gifts:", err);
       }
@@ -418,7 +425,13 @@ export function CartPage() {
         }
       }
 
-      setOutOfStockItems(problems);
+      setOutOfStockItems(prev => {
+        if (prev.length === 0 && problems.length === 0) return prev;
+        if (prev.length === problems.length && prev.every((p, idx) => p.id === problems[idx].id && p.availableStock === problems[idx].availableStock && p.status === problems[idx].status)) {
+          return prev;
+        }
+        return problems;
+      });
       return problems.length === 0;
     } catch (err) {
       console.error("Erro ao verificar estoque de itens:", err);
@@ -443,7 +456,7 @@ export function CartPage() {
     if (items.length > 0) {
       checkCartStock();
     } else {
-      setOutOfStockItems([]);
+      setOutOfStockItems(prev => prev.length === 0 ? prev : []);
     }
   }, [items]);
   
@@ -646,15 +659,18 @@ export function CartPage() {
   useEffect(() => {
     const fetchActiveMethods = async () => {
       try {
+        let m: MethodConfig[] = [];
         if (receiveMethod === 'entrega') {
-          const m = await paymentFinanceService.getPaymentMethodsForSiteDelivery();
-          setActivePaymentMethods(m);
+          m = await paymentFinanceService.getPaymentMethodsForSiteDelivery();
         } else if (receiveMethod === 'retirada') {
-          const m = await paymentFinanceService.getPaymentMethodsForSitePickup();
-          setActivePaymentMethods(m);
-        } else {
-          setActivePaymentMethods([]);
+          m = await paymentFinanceService.getPaymentMethodsForSitePickup();
         }
+        setActivePaymentMethods(prev => {
+          if (prev.length === m.length && prev.every((item, idx) => item.id === m[idx].id && item.active === m[idx].active)) {
+            return prev;
+          }
+          return m;
+        });
       } catch (err) {
         console.error("Error loading active checkout methods:", err);
       }
@@ -665,10 +681,10 @@ export function CartPage() {
   useEffect(() => {
     if (paymentMethod && activePaymentMethods.length > 0) {
       if (!activePaymentMethods.some(m => m.id === paymentMethod)) {
-        setPaymentMethod('');
+        setPaymentMethod(prev => prev !== '' ? '' : prev);
       }
     }
-  }, [activePaymentMethods]);
+  }, [activePaymentMethods, paymentMethod]);
 
   const normalizeStr = (str: string) => 
     str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
@@ -705,53 +721,83 @@ export function CartPage() {
   // Preload and synchronize from authenticated user / customer session
   useEffect(() => {
     if (user && userData) {
-      setName(userData.fullName || '');
-      setWhatsapp(userData.whatsapp || '');
+      const newName = (userData.fullName || (userData as any).name || '').trim();
+      const cleanPhone = (userData.whatsapp || (userData as any).phone || (userData as any).telefone || user.phoneNumber || '').replace(/\D/g, '');
+      const newEmail = (userData.email || user.email || '').trim();
+
+      if (newName) setName(prev => prev !== newName ? newName : prev);
+      if (cleanPhone) setWhatsapp(prev => prev !== cleanPhone ? cleanPhone : prev);
       setHasLookedUp(true);
-      if (userData.email) setEmail(userData.email);
-      if (userData.address) {
-         setStateName(userData.address.state || '');
-         setCityName(userData.address.city || '');
-         setAreaName(userData.address.neighborhood || '');
-         setRua(userData.address.street || '');
-         setNumero(userData.address.number || '');
-         setComplemento(userData.address.complement || '');
-         setReferencia(userData.address.reference || '');
+      if (newEmail) setEmail(prev => prev !== newEmail ? newEmail : prev);
+      
+      const userAddr = userData.address;
+      if (userAddr) {
+        setStateName(prev => prev !== (userAddr.state || '') ? (userAddr.state || '') : prev);
+        setCityName(prev => prev !== (userAddr.city || '') ? (userAddr.city || '') : prev);
+        setAreaName(prev => prev !== (userAddr.neighborhood || '') ? (userAddr.neighborhood || '') : prev);
+        setRua(prev => prev !== (userAddr.street || '') ? (userAddr.street || '') : prev);
+        setNumero(prev => prev !== (userAddr.number || '') ? (userAddr.number || '') : prev);
+        setComplemento(prev => prev !== (userAddr.complement || '') ? (userAddr.complement || '') : prev);
+        setReferencia(prev => prev !== (userAddr.reference || '') ? (userAddr.reference || '') : prev);
       }
       
-      const cleanPhone = userData.whatsapp ? userData.whatsapp.replace(/\D/g, '') : '';
-      lastSearchedPhone.current = cleanPhone;
+      if (cleanPhone) lastSearchedPhone.current = cleanPhone;
 
       // Sync into customerAuthStore so rest of client pages share same session
-      if (!currentCustomer || currentCustomer.whatsapp !== cleanPhone || currentCustomer.nome !== userData.fullName) {
+      const current = useCustomerAuthStore.getState().currentCustomer;
+      const needsSync = !current ||
+        current.id !== user.uid ||
+        (current.whatsapp || '') !== cleanPhone ||
+        (current.nome || '') !== newName ||
+        (current.email || '') !== newEmail;
+
+      if (needsSync) {
         setCustomer({
           id: user.uid,
-          nome: userData.fullName || '',
-          email: userData.email,
+          nome: newName,
+          email: newEmail || undefined,
           whatsapp: cleanPhone,
-          enderecoObj: userData.address ? {
-            rua: userData.address.street || '',
-            numero: userData.address.number || '',
-            bairro: userData.address.neighborhood || '',
-            cidade: userData.address.city || '',
-            estado: userData.address.state || '',
-            complemento: userData.address.complement || '',
-            referencia: userData.address.reference || '',
+          enderecoObj: userAddr ? {
+            rua: userAddr.street || '',
+            numero: userAddr.number || '',
+            bairro: userAddr.neighborhood || '',
+            cidade: userAddr.city || '',
+            estado: userAddr.state || '',
+            complemento: userAddr.complement || '',
+            referencia: userAddr.reference || '',
           } : undefined,
           favorites: userData.favorites || []
         });
       }
 
-      if (checkoutStep === 'IDENTIFICACAO') {
-        setCheckoutStep('RESUMO');
+      setCheckoutStep(prev => prev === 'IDENTIFICACAO' ? 'RESUMO' : prev);
+    } else if (currentCustomer) {
+      const custName = (currentCustomer.nome || '').trim();
+      const custPhone = (currentCustomer.whatsapp || '').replace(/\D/g, '');
+      const custEmail = (currentCustomer.email || '').trim();
+
+      if (custName) setName(prev => prev !== custName ? custName : prev);
+      if (custPhone) setWhatsapp(prev => prev !== custPhone ? custPhone : prev);
+      if (custEmail) setEmail(prev => prev !== custEmail ? custEmail : prev);
+
+      const custAddr = currentCustomer.enderecoObj;
+      if (custAddr) {
+        setStateName(prev => prev !== (custAddr.estado || '') ? (custAddr.estado || '') : prev);
+        setCityName(prev => prev !== (custAddr.cidade || '') ? (custAddr.cidade || '') : prev);
+        setAreaName(prev => prev !== (custAddr.bairro || '') ? (custAddr.bairro || '') : prev);
+        setRua(prev => prev !== (custAddr.rua || '') ? (custAddr.rua || '') : prev);
+        setNumero(prev => prev !== (custAddr.numero || '') ? (custAddr.numero || '') : prev);
+        setComplemento(prev => prev !== (custAddr.complemento || '') ? (custAddr.complemento || '') : prev);
+        setReferencia(prev => prev !== (custAddr.referencia || '') ? (custAddr.referencia || '') : prev);
       }
-    } else if (!user) {
-      // If not logged in, force identification step
-      if (checkoutStep !== 'IDENTIFICACAO') {
-        setCheckoutStep('IDENTIFICACAO');
+
+      if (custPhone) {
+        setHasLookedUp(true);
+        lastSearchedPhone.current = custPhone;
+        setCheckoutStep(prev => prev === 'IDENTIFICACAO' ? 'RESUMO' : prev);
       }
     }
-  }, [user, userData, currentCustomer, checkoutStep]);
+  }, [user, userData, currentCustomer]);
 
   // Handle auto-login/identification logic
   const handleApplyCoupon = async () => {
@@ -918,7 +964,7 @@ export function CartPage() {
   // Sync selected area derived from names instead of selection-ripple
   useEffect(() => {
     if (!stateName || !cityName || !areaName) {
-      setSelectedAreaId('');
+      setSelectedAreaId(prev => prev !== '' ? '' : prev);
       return;
     }
 
@@ -932,7 +978,7 @@ export function CartPage() {
     const nome = stateObj?.nome;
     
     if (!sigla) {
-      setSelectedAreaId('');
+      setSelectedAreaId(prev => prev !== '' ? '' : prev);
       return;
     }
 
@@ -943,9 +989,10 @@ export function CartPage() {
     );
 
     if (exactMatch) {
-      setSelectedAreaId(exactMatch.id!);
+      const newId = exactMatch.id!;
+      setSelectedAreaId(prev => prev !== newId ? newId : prev);
     } else {
-      setSelectedAreaId('');
+      setSelectedAreaId(prev => prev !== '' ? '' : prev);
     }
   }, [stateName, cityName, areaName, dbAreas, dbStates]);
 
@@ -1015,37 +1062,86 @@ export function CartPage() {
     }
   }, [whatsapp, lookingUp, toast]);
 
-  const cartItemIds = useMemo(() => items.map(i => i.productId).join(','), [items]);
+  const lastFetchedAiCartKey = useRef<string>('');
+  const aiAbortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    // Fetch suggestions if has items
-    if (items.length > 0 && !loadingSuggestions) {
-      // Re-fetch if cart content changed significantly (different IDs)
-      const fetchSuggestions = async () => {
-        setLoadingSuggestions(true);
-        try {
-          const response = await fetch('/api/ia/sugerir-complementos', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              items: items.map(i => ({ id: i.productId, name: i.name })) 
-            })
+    // Se o carrinho estiver vazio, limpa sugestões e cancela requisições
+    if (items.length === 0) {
+      lastFetchedAiCartKey.current = '';
+      if (aiAbortControllerRef.current) {
+        aiAbortControllerRef.current.abort();
+        aiAbortControllerRef.current = null;
+      }
+      setAiSuggestions(prev => prev !== null ? null : prev);
+      setLoadingSuggestions(prev => prev ? false : prev);
+      return;
+    }
+
+    // Cria chave canônica baseada nos IDs e produtos no carrinho
+    const currentCartKey = items
+      .map(i => i.productId)
+      .filter(Boolean)
+      .sort()
+      .join('|');
+
+    if (!currentCartKey) {
+      return;
+    }
+
+    // Se já buscou ou está buscando exatamente o mesmo conjunto de produtos, não dispara nova requisição
+    if (lastFetchedAiCartKey.current === currentCartKey) {
+      return;
+    }
+
+    lastFetchedAiCartKey.current = currentCartKey;
+
+    // Cancela requisição anterior se ainda estiver em andamento
+    if (aiAbortControllerRef.current) {
+      aiAbortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    aiAbortControllerRef.current = controller;
+
+    const fetchSuggestions = async () => {
+      setLoadingSuggestions(true);
+      try {
+        const payloadItems = items.map(i => ({ id: i.productId, name: i.name }));
+        const response = await fetch('/api/ia/sugerir-complementos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: payloadItems }),
+          signal: controller.signal
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setAiSuggestions(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(data)) {
+              return prev;
+            }
+            return data;
           });
-          if (response.ok) {
-            const data = await response.json();
-            setAiSuggestions(data);
-          }
-        } catch (error) {
-          console.warn("Erro ao buscar sugestões:", error);
-        } finally {
+        }
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+        console.warn("Erro ao buscar sugestões:", error);
+      } finally {
+        if (aiAbortControllerRef.current === controller) {
+          aiAbortControllerRef.current = null;
           setLoadingSuggestions(false);
         }
-      };
-      fetchSuggestions();
-    } else if (items.length === 0) {
-      setAiSuggestions(null);
-    }
-  }, [cartItemIds]); // Depende da string de IDs para atualizar quando o conteúdo muda
+      }
+    };
+
+    fetchSuggestions();
+
+    return () => {
+      controller.abort();
+    };
+  }, [items]);
   if (items.length === 0) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20 text-center transition-colors duration-300" style={{ color: bgText }}>
@@ -1179,12 +1275,45 @@ export function CartPage() {
       fullAddressString = `${selectedAddress.street}, ${selectedAddress.number}${selectedAddress.complement ? ` - ${selectedAddress.complement}` : ''} - ${selectedAddress.neighborhood}, ${selectedAddress.city}/${selectedAddress.state}. Ref: ${selectedAddress.reference}`;
     }
     
+    const targetWhatsapp = (
+      whatsapp || 
+      currentCustomer?.whatsapp || 
+      userData?.whatsapp || 
+      (userData as any)?.phone || 
+      (userData as any)?.telefone || 
+      user?.phoneNumber || 
+      ''
+    ).replace(/\D/g, '');
+
+    const targetName = (
+      name || 
+      currentCustomer?.nome || 
+      userData?.fullName || 
+      (userData as any)?.name || 
+      'Cliente'
+    ).trim();
+
+    const targetEmail = (
+      email || 
+      currentCustomer?.email || 
+      userData?.email || 
+      user?.email || 
+      ''
+    ).trim();
+
+    if (!targetWhatsapp || targetWhatsapp.length < 8) {
+      toast("Por favor, informe seu WhatsApp para concluir o pedido.", "warning");
+      setCheckoutStep('IDENTIFICACAO');
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     try {
       const customerId = await customerService.registerFromCheckout({
-          nome: name,
-          whatsapp: whatsapp,
-          email: email,
+          nome: targetName,
+          whatsapp: targetWhatsapp,
+          email: targetEmail || undefined,
           endereco: addressObj,
           status: 'ativo'
       });
@@ -1207,10 +1336,10 @@ export function CartPage() {
 
       const orderData = {
         customerId,
-        customerName: name,
-        customerWhatsapp: whatsapp,
-        customerEmail: email,
-        customerCpf: (userData as any)?.cpf || '',
+        customerName: targetName,
+        customerWhatsapp: targetWhatsapp,
+        customerEmail: targetEmail,
+        customerCpf: (userData as any)?.cpf || currentCustomer?.cpf || '',
         customerAddress: fullAddressString,
         fullAddress: addressObj,
         shippingMethod: receiveMethod,
@@ -1366,7 +1495,7 @@ export function CartPage() {
             if (pixData.success) {
               clearCart();
               navigate(`/checkout-pix?orderId=${docRef.id}`, {
-                state: { orderId: docRef.id, whatsapp: whatsapp }
+                state: { orderId: docRef.id, whatsapp: targetWhatsapp }
               });
               return;
             } else {
@@ -1389,7 +1518,7 @@ export function CartPage() {
       }
 
       clearCart();
-      navigate('/sucesso', { state: { orderId: docRef.id, whatsapp: whatsapp } });
+      navigate('/sucesso', { state: { orderId: docRef.id, whatsapp: targetWhatsapp } });
     } catch (error) {
       console.error("Order error:", error);
       toast("Erro ao finalizar o pedido.", 'error');
@@ -1427,8 +1556,9 @@ export function CartPage() {
       const data = await response.json();
       
       if (data.status === 'approved' || data.status === 'in_process' || data.status === 'pending') {
+        const finalPhone = (whatsapp || currentCustomer?.whatsapp || userData?.whatsapp || (userData as any)?.phone || '').replace(/\D/g, '');
         clearCart();
-        navigate('/sucesso', { state: { orderId: createdOrderId, whatsapp: whatsapp } });
+        navigate('/sucesso', { state: { orderId: createdOrderId, whatsapp: finalPhone } });
       } else {
         toast(`Pagamento não aprovado. Status: ${data.status}`, "warning");
       }

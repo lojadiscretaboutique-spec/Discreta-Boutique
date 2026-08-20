@@ -64,7 +64,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
           const hasAdminRole = userData?.role === 'admin' 
             || userData?.role === 'owner' 
-            || (Array.isArray(userData?.roles) && (userData.roles.includes('admin') || userData.roles.includes('owner')));
+            || userData?.role === 'vendedor'
+            || userData?.role === 'gerente'
+            || userData?.role === 'manager'
+            || userData?.role === 'cashier'
+            || userData?.role === 'employee'
+            || (Array.isArray(userData?.roles) && userData.roles.some((r: string) => ['admin', 'owner', 'vendedor', 'gerente', 'manager', 'cashier', 'employee'].includes(r)))
+            || (userData?.computedPermissions && Object.keys(userData.computedPermissions).some((k) => Object.values(userData.computedPermissions?.[k] || {}).some(Boolean)));
 
           // Safe fallback for owner email/uid if user profile in firestore isn't set to admin role yet
           const isOwnerFallback = user.email === 'lojadiscretaboutique@gmail.com' || user.uid === 'VpnA7EDoSoUMF0VGOHyiCjyrOSf2';

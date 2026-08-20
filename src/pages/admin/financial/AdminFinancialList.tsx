@@ -105,6 +105,16 @@ export function AdminFinancial() {
     }
   }, [form.type]);
 
+  const handleOpenCreate = () => {
+    const newClientActionId = `FIN_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    setForm({
+      ...initialForm,
+      id: newClientActionId,
+      type: viewMode === 'expense' ? 'expense' : 'income'
+    });
+    setIsFormOpen(true);
+  };
+
   const handleEdit = (t: FinancialTransaction) => {
     setForm({ ...t });
     setIsFormOpen(true);
@@ -146,7 +156,11 @@ export function AdminFinancial() {
     
     setSubmitting(true);
     try {
-      const payload = { ...form, userId: user?.uid, isManual: true };
+      const payload: Partial<FinancialTransaction> = {
+        ...form,
+        userId: user?.uid || 'system',
+        isManual: true
+      };
       
       if (payload.status === 'paid' && !payload.paymentDate) {
         payload.paymentDate = new Date().toISOString().split('T')[0];
@@ -156,8 +170,9 @@ export function AdminFinancial() {
       toast('Lançamento salvo com sucesso!');
       setIsFormOpen(false);
       loadData();
-    } catch (e) {
-      toast('Erro ao salvar', 'error');
+    } catch (error) {
+      console.error('[Financial Save]', error);
+      toast('Erro ao salvar lançamento financeiro', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -209,7 +224,7 @@ export function AdminFinancial() {
           <h1 className="text-2xl font-bold text-white">{pageTitle}</h1>
           <p className="text-sm text-slate-400">Gestão financeira e controle de fluxo de caixa.</p>
         </div>
-        <Button onClick={() => { setForm({ ...initialForm, type: viewMode === 'expense' ? 'expense' : 'income' }); setIsFormOpen(true); }} className="bg-blue-600 hover:bg-blue-700">
+        <Button onClick={handleOpenCreate} className="bg-blue-600 hover:bg-blue-700">
           <Plus size={18} className="mr-2" /> Novo Lançamento
         </Button>
       </div>

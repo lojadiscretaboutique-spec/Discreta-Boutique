@@ -257,9 +257,14 @@ export const CustomerAreaPage = () => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     
-                    if (data.accountStatus === 'pending_otp') {
-                        navigate('/ativar-conta', { replace: true });
-                        return;
+                    if (data.accountStatus === 'pending_otp' || !data.emailVerified) {
+                        await updateDoc(userRef, {
+                            emailVerified: true,
+                            accountStatus: 'active',
+                            updatedAt: serverTimestamp()
+                        }).catch(() => {});
+                        data.emailVerified = true;
+                        data.accountStatus = 'active';
                     }
                     
                     // Se o auth tiver verificado mas o Firestore nao, atualizar e disparar webhook de ativacao
@@ -1141,42 +1146,7 @@ export const CustomerAreaPage = () => {
 
             <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-10">
 
-                {/* Alerta de Verificação do E-mail */}
-                {user && !user.emailVerified && (
-                    <div className="mb-6 p-5 rounded-3xl bg-zinc-950/90 border border-amber-500/20 shadow-[0_0_25px_rgba(245,158,11,0.04)] flex flex-col md:flex-row items-center justify-between gap-4 font-sans text-sm backdrop-blur-md">
-                        <div className="flex items-center gap-3.5">
-                            <div className="h-11 w-11 rounded-full bg-amber-950/50 border border-amber-500/35 flex items-center justify-center text-amber-500 shrink-0 shadow-[0_0_12px_rgba(245,158,11,0.15)]">
-                                <AlertCircle className="h-5 w-5" />
-                            </div>
-                            <div>
-                                <span className="font-extrabold text-white block text-sm">E-mail não verificado</span>
-                                <span className="text-xs text-zinc-400">Confirme seu e-mail para ativar todos os recursos da sua conta.</span>
-                            </div>
-                        </div>
-                        <div className="flex flex-col gap-2 w-full md:w-auto shrink-0">
-                            {sendingVerif ? (
-                                <span className="text-zinc-500 text-xs font-bold py-2 px-4">Processando...</span>
-                            ) : (
-                                <>
-                                    <button
-                                        type="button"
-                                        onClick={handleSendEmailVerification}
-                                        className="bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white font-bold px-5 py-2.5 rounded-2xl text-xs transition duration-300 shadow-[0_4px_12px_rgba(220,38,38,0.2)] cursor-pointer whitespace-nowrap font-sans"
-                                    >
-                                        Verificar E-mail
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleResendVerification}
-                                        className="bg-zinc-800 hover:bg-zinc-700 active:scale-[0.98] text-zinc-300 font-bold px-5 py-2.5 rounded-2xl text-xs transition duration-300 cursor-pointer whitespace-nowrap font-sans"
-                                    >
-                                        Reenviar código de ativação
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                )}
+                {/* Alerta de Verificação do E-mail - Removido pois o cadastro é automático */}
                 
                 {/* Visual Header do Perfil */}
                 <div className="mb-8 p-6 rounded-3xl bg-gradient-to-br from-zinc-950 to-zinc-900 border border-zinc-800/60 shadow-[0_4px_30px_rgba(220,38,38,0.03)] flex flex-col md:flex-row md:items-center justify-between gap-6">

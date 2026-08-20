@@ -195,21 +195,25 @@ export const cacheService = {
   async notifyChange() {
     try {
       this.clearAll();
-      await setDoc(doc(db, 'settings', 'system_status'), {
-        lastUpdate: serverTimestamp()
-      }, { merge: true });
+      try {
+        await setDoc(doc(db, 'settings', 'system_status'), {
+          lastUpdate: serverTimestamp()
+        }, { merge: true });
+      } catch (docErr) {
+        console.warn("[Cache] Não foi possível atualizar settings/system_status no Firestore:", docErr);
+      }
 
       // Auto-regenerate lightweight public home cache in the background
       try {
         const { homeCacheService } = await import('./homeCacheService');
         homeCacheService.regenerateHomeCache().catch(err => {
-          console.error("⚠️ Background Home Cache regeneration failed:", err);
+          console.warn("⚠️ Background Home Cache regeneration:", err);
         });
       } catch (cacheErr) {
-        console.error("⚠️ Failed to import homeCacheService in notifyChange:", cacheErr);
+        console.warn("⚠️ Failed to import homeCacheService in notifyChange:", cacheErr);
       }
     } catch (e) {
-      console.error("[Cache] Failed to notify change", e);
+      console.warn("[Cache] Notice on notifyChange:", e);
     }
   },
 

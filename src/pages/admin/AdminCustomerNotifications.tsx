@@ -4,7 +4,7 @@ import { db } from '../../lib/firebase';
 import { format } from 'date-fns';
 import { 
   CheckCircle2, XCircle, RefreshCw, 
-  Settings, Bell, Save, Check, Info, FileText
+  Settings, Bell, Save, Check, Info, FileText, Send, Loader2
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -47,7 +47,50 @@ export function AdminCustomerNotifications() {
   
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [testingType, setTestingType] = useState<string | null>(null);
   const { toast } = useFeedback();
+
+  const handleTestWebhook = async (type: 'welcome' | 'activation' | 'otp') => {
+    const url = type === 'welcome' 
+      ? config.welcomeWebhookUrl 
+      : type === 'activation' 
+      ? config.activationWebhookUrl 
+      : config.activationOtpWebhookUrl;
+
+    if (!url || !url.trim()) {
+      toast("Informe a URL do webhook antes de testar.", "warning");
+      return;
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      toast("A URL do webhook deve começar com http:// ou https://", "warning");
+      return;
+    }
+
+    setTestingType(type);
+    try {
+      const response = await fetch('/api/customer-events/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          webhookUrl: url.trim(),
+          testPhone: '11999998888',
+          testName: 'Cliente Teste'
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast(`✅ Teste disparado com sucesso! Resposta HTTP ${data.status}`);
+      } else {
+        toast(`⚠️ Resposta do webhook (${data.status || 'erro'}): ${data.error || data.responseBody || 'Não foi possível conectar'}`, "warning");
+      }
+    } catch (e: any) {
+      toast(`❌ Erro no teste: ${e.message}`, "error");
+    } finally {
+      setTestingType(null);
+    }
+  };
 
   useEffect(() => {
     async function loadConfig() {
@@ -193,7 +236,24 @@ export function AdminCustomerNotifications() {
                 </div>
 
                 <div className="space-y-2 pt-2">
-                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">Webhook URL (Boas-Vindas)</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">Webhook URL (Boas-Vindas)</label>
+                    <Button 
+                      type="button"
+                      variant="outline" 
+                      size="sm"
+                      disabled={testingType === 'welcome' || !config.welcomeWebhookUrl}
+                      onClick={() => handleTestWebhook('welcome')}
+                      className="h-7 text-xs px-2.5 bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-lg gap-1.5"
+                    >
+                      {testingType === 'welcome' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                      Testar Webhook
+                    </Button>
+                  </div>
                   <Input 
                     placeholder="https://suapi.com/webhook/welcome"
                     value={config.welcomeWebhookUrl}
@@ -202,7 +262,7 @@ export function AdminCustomerNotifications() {
                   />
                   <div className="flex items-start gap-1.5 text-[10px] text-zinc-400">
                     <Info className="h-3.5 w-3.5 text-zinc-500 shrink-0 mt-0.5" />
-                    <span>Payload enviado: event, name, email, whatsapp, cpf, uid, createdAt</span>
+                    <span>Payload enviado: event, name, email, whatsapp, cpf, uid, message, createdAt</span>
                   </div>
                 </div>
               </div>
@@ -226,7 +286,24 @@ export function AdminCustomerNotifications() {
                 </div>
 
                 <div className="space-y-2 pt-2">
-                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">Webhook URL (Ativação de Conta)</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">Webhook URL (Ativação de Conta)</label>
+                    <Button 
+                      type="button"
+                      variant="outline" 
+                      size="sm"
+                      disabled={testingType === 'activation' || !config.activationWebhookUrl}
+                      onClick={() => handleTestWebhook('activation')}
+                      className="h-7 text-xs px-2.5 bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-lg gap-1.5"
+                    >
+                      {testingType === 'activation' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                      Testar Webhook
+                    </Button>
+                  </div>
                   <Input 
                     placeholder="https://suapi.com/webhook/activation"
                     value={config.activationWebhookUrl}
@@ -235,7 +312,7 @@ export function AdminCustomerNotifications() {
                   />
                   <div className="flex items-start gap-1.5 text-[10px] text-zinc-400">
                     <Info className="h-3.5 w-3.5 text-zinc-500 shrink-0 mt-0.5" />
-                    <span>Payload enviado: event, name, email, whatsapp, uid, activatedAt</span>
+                    <span>Payload enviado: event, name, email, whatsapp, uid, message, activatedAt</span>
                   </div>
                 </div>
               </div>
@@ -285,7 +362,24 @@ export function AdminCustomerNotifications() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">Webhook URL (Ativação por OTP)</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">Webhook URL (Ativação por OTP)</label>
+                    <Button 
+                      type="button"
+                      variant="outline" 
+                      size="sm"
+                      disabled={testingType === 'otp' || !config.activationOtpWebhookUrl}
+                      onClick={() => handleTestWebhook('otp')}
+                      className="h-7 text-xs px-2.5 bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-lg gap-1.5"
+                    >
+                      {testingType === 'otp' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                      Testar Webhook
+                    </Button>
+                  </div>
                   <Input 
                     placeholder="https://suapi.com/webhook/activation-otp"
                     value={config.activationOtpWebhookUrl}

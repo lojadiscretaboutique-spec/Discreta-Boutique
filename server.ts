@@ -625,22 +625,61 @@ async function startServer() {
       const settings = settingsSnap.exists() ? settingsSnap.data() : null;
 
       const enableWelcomeWhatsapp = settings ? !(!settings.enableWelcomeWhatsapp) : false;
-      const welcomeWebhookUrl = settings ? (settings.welcomeWebhookUrl || '') : '';
+      const welcomeWebhookUrl = (settings?.welcomeWebhookUrl || '').trim();
 
       if (!enableWelcomeWhatsapp || !welcomeWebhookUrl) {
         console.log(`⚠️ [Customer Welcome webhook] Disabled or empty webhook URL. Skipped.`);
         return res.json({ success: true, message: "Welcome webhook not configured or disabled" });
       }
 
-      // 2. Prepare payload
+      // Check for placeholder or invalid URLs
+      if (!welcomeWebhookUrl.startsWith('http://') && !welcomeWebhookUrl.startsWith('https://')) {
+        console.warn(`⚠️ [Customer Welcome webhook] Invalid URL scheme for: ${welcomeWebhookUrl}`);
+        return res.json({ success: false, message: "URL do webhook inválida (deve iniciar com http:// ou https://)" });
+      }
+
+      if (welcomeWebhookUrl.includes('suapi.com') || welcomeWebhookUrl.includes('example.com') || welcomeWebhookUrl.includes('placeholder')) {
+        console.warn(`⚠️ [Customer Welcome webhook] Webhook URL is a placeholder (${welcomeWebhookUrl}). Skipped.`);
+        return res.json({ success: true, message: "URL de webhook é um exemplo fictício. Configure uma URL válida." });
+      }
+
+      // 2. Prepare standardized phone and name data
+      const rawWhatsapp = (whatsapp || '').replace(/\D/g, '');
+      const formatPhone = (num: string) => {
+        if (!num) return '';
+        if (num.length === 12 || num.length === 13) return num;
+        if (num.length === 10 || num.length === 11) return `55${num}`;
+        return num;
+      };
+      const formattedWhatsapp = formatPhone(rawWhatsapp);
+      const nameParts = (fullName || '').trim().split(/\s+/);
+      const firstName = nameParts[0] || 'Cliente';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
       const payload = {
         event: "customer_registered",
-        name: fullName,
-        email,
-        whatsapp: whatsapp.replace(/\D/g, ''),
-        cpf: cpf || "",
+        type: "customer_welcome",
+        name: fullName.trim(),
+        nome: fullName.trim(),
+        first_name: firstName,
+        last_name: lastName,
+        primeiro_nome: firstName,
+        sobrenome: lastName,
+        email: (email || '').trim().toLowerCase(),
+        phone: formattedWhatsapp,
+        telefone: formattedWhatsapp,
+        whatsapp: formattedWhatsapp,
+        whatsapp_raw: rawWhatsapp,
+        numero: formattedWhatsapp,
+        cpf: (cpf || "").replace(/\D/g, ''),
         uid,
-        createdAt: createdAt || new Date().toISOString()
+        user_id: uid,
+        customer_id: uid,
+        message: `Olá, ${firstName}! Seja muito bem-vindo(a) à nossa loja! 💖`,
+        mensagem: `Olá, ${firstName}! Seja muito bem-vindo(a) à nossa loja! 💖`,
+        source: "DiscretaBoutique_Customer_Welcome",
+        createdAt: createdAt || new Date().toISOString(),
+        timestamp: new Date().toISOString()
       };
 
       let responseStatus = 0;
@@ -650,28 +689,35 @@ async function startServer() {
 
       try {
         console.log(`🚀 [Customer Welcome webhook] Sending POST to: ${welcomeWebhookUrl}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
         const response = await fetch(welcomeWebhookUrl, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/plain, */*",
+            "User-Agent": "DiscretaBoutique-Webhook/1.0"
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
         responseStatus = response.status;
-        statusResponseText = await response.text();
+        statusResponseText = await response.text().catch(() => "");
 
         if (!response.ok) {
           status = "error";
-          errorMessage = `HTTP error ${responseStatus}: ${statusResponseText}`;
+          errorMessage = `HTTP error ${responseStatus}: ${statusResponseText.slice(0, 300)}`;
           console.warn(`⚠️ [Customer Welcome webhook] Non-200 response: ${errorMessage}`);
         } else {
           console.log(`⭐ [Customer Welcome webhook] Success: ${responseStatus}`);
         }
       } catch (err: any) {
         status = "error";
-        errorMessage = err.message || String(err);
-        console.warn(`⚠️ [Customer Welcome webhook] Exception trying to fetch:`, err);
+        errorMessage = err.name === 'AbortError' ? 'Timeout após 15 segundos' : (err.message || String(err));
+        console.warn(`⚠️ [Customer Welcome webhook] Exception trying to fetch:`, errorMessage);
       }
 
       // 3. Save logs to collection 'notificationLogs'
@@ -679,8 +725,8 @@ async function startServer() {
         type: "customer_welcome",
         channel: "whatsapp",
         uid,
-        email,
-        whatsapp,
+        email: (email || '').trim().toLowerCase(),
+        whatsapp: formattedWhatsapp || rawWhatsapp,
         webhookUrl: welcomeWebhookUrl,
         status,
         responseStatus,
@@ -710,21 +756,60 @@ async function startServer() {
       const settings = settingsSnap.exists() ? settingsSnap.data() : null;
 
       const enableActivationWhatsapp = settings ? !(!settings.enableActivationWhatsapp) : false;
-      const activationWebhookUrl = settings ? (settings.activationWebhookUrl || '') : '';
+      const activationWebhookUrl = (settings?.activationWebhookUrl || '').trim();
 
       if (!enableActivationWhatsapp || !activationWebhookUrl) {
         console.log(`⚠️ [Customer Activate webhook] Disabled or empty webhook URL. Skipped.`);
         return res.json({ success: true, message: "Activation webhook not configured or disabled" });
       }
 
-      // 2. Prepare payload
+      // Check for placeholder or invalid URLs
+      if (!activationWebhookUrl.startsWith('http://') && !activationWebhookUrl.startsWith('https://')) {
+        console.warn(`⚠️ [Customer Activate webhook] Invalid URL scheme for: ${activationWebhookUrl}`);
+        return res.json({ success: false, message: "URL do webhook inválida (deve iniciar com http:// ou https://)" });
+      }
+
+      if (activationWebhookUrl.includes('suapi.com') || activationWebhookUrl.includes('example.com') || activationWebhookUrl.includes('placeholder')) {
+        console.warn(`⚠️ [Customer Activate webhook] Webhook URL is a placeholder (${activationWebhookUrl}). Skipped.`);
+        return res.json({ success: true, message: "URL de webhook é um exemplo fictício. Configure uma URL válida." });
+      }
+
+      // 2. Prepare standardized phone and name data
+      const rawWhatsapp = (whatsapp || '').replace(/\D/g, '');
+      const formatPhone = (num: string) => {
+        if (!num) return '';
+        if (num.length === 12 || num.length === 13) return num;
+        if (num.length === 10 || num.length === 11) return `55${num}`;
+        return num;
+      };
+      const formattedWhatsapp = formatPhone(rawWhatsapp);
+      const nameParts = (fullName || '').trim().split(/\s+/);
+      const firstName = nameParts[0] || 'Cliente';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
       const payload = {
         event: "customer_account_activated",
-        name: fullName,
-        email,
-        whatsapp,
+        type: "customer_activation",
+        name: fullName.trim(),
+        nome: fullName.trim(),
+        first_name: firstName,
+        last_name: lastName,
+        primeiro_nome: firstName,
+        sobrenome: lastName,
+        email: (email || '').trim().toLowerCase(),
+        phone: formattedWhatsapp,
+        telefone: formattedWhatsapp,
+        whatsapp: formattedWhatsapp,
+        whatsapp_raw: rawWhatsapp,
+        numero: formattedWhatsapp,
         uid,
-        activatedAt: activatedAt || new Date().toISOString()
+        user_id: uid,
+        customer_id: uid,
+        message: `Parabéns ${firstName}! Sua conta foi ativada com sucesso. Boas compras! ✨`,
+        mensagem: `Parabéns ${firstName}! Sua conta foi ativada com sucesso. Boas compras! ✨`,
+        source: "DiscretaBoutique_Customer_Activation",
+        activatedAt: activatedAt || new Date().toISOString(),
+        timestamp: new Date().toISOString()
       };
 
       let responseStatus = 0;
@@ -734,28 +819,35 @@ async function startServer() {
 
       try {
         console.log(`🚀 [Customer Activate webhook] Sending POST to: ${activationWebhookUrl}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
         const response = await fetch(activationWebhookUrl, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/plain, */*",
+            "User-Agent": "DiscretaBoutique-Webhook/1.0"
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
         responseStatus = response.status;
-        statusResponseText = await response.text();
+        statusResponseText = await response.text().catch(() => "");
 
         if (!response.ok) {
           status = "error";
-          errorMessage = `HTTP error ${responseStatus}: ${statusResponseText}`;
+          errorMessage = `HTTP error ${responseStatus}: ${statusResponseText.slice(0, 300)}`;
           console.warn(`⚠️ [Customer Activate webhook] Non-200 response: ${errorMessage}`);
         } else {
           console.log(`⭐ [Customer Activate webhook] Success: ${responseStatus}`);
         }
       } catch (err: any) {
         status = "error";
-        errorMessage = err.message || String(err);
-        console.warn(`⚠️ [Customer Activate webhook] Exception trying to fetch:`, err);
+        errorMessage = err.name === 'AbortError' ? 'Timeout após 15 segundos' : (err.message || String(err));
+        console.warn(`⚠️ [Customer Activate webhook] Exception trying to fetch:`, errorMessage);
       }
 
       // 3. Save logs to collection 'notificationLogs'
@@ -763,8 +855,8 @@ async function startServer() {
         type: "customer_activation",
         channel: "whatsapp",
         uid,
-        email,
-        whatsapp,
+        email: (email || '').trim().toLowerCase(),
+        whatsapp: formattedWhatsapp || rawWhatsapp,
         webhookUrl: activationWebhookUrl,
         status,
         responseStatus,
@@ -776,6 +868,72 @@ async function startServer() {
     } catch (routeErr: any) {
       console.error("Erro interno ao disparar customer-event activate:", routeErr);
       res.status(500).json({ success: false, error: routeErr.message });
+    }
+  });
+
+  // TEST WEBHOOK ENDPOINT
+  app.post("/api/customer-events/test", async (req, res) => {
+    try {
+      const { type, webhookUrl, testPhone, testName, testEmail } = req.body;
+      if (!webhookUrl) {
+        return res.status(400).json({ success: false, error: "URL do webhook é obrigatória para o teste" });
+      }
+
+      const rawPhone = (testPhone || '11999998888').replace(/\D/g, '');
+      const formattedPhone = rawPhone.startsWith('55') ? rawPhone : `55${rawPhone}`;
+      const fullName = testName || 'Cliente Teste';
+      const firstName = fullName.split(' ')[0] || 'Cliente';
+
+      const payload = {
+        event: type === 'welcome' ? "customer_registered" : type === 'otp' ? "customer_activation_otp" : "customer_account_activated",
+        type: type === 'welcome' ? "customer_welcome" : type === 'otp' ? "customer_activation_otp" : "customer_activation",
+        name: fullName,
+        nome: fullName,
+        first_name: firstName,
+        email: testEmail || 'cliente.teste@example.com',
+        phone: formattedPhone,
+        telefone: formattedPhone,
+        whatsapp: formattedPhone,
+        whatsapp_raw: rawPhone,
+        numero: formattedPhone,
+        cpf: "12345678900",
+        uid: "test_user_id_" + Date.now(),
+        code: type === 'otp' ? "123456" : undefined,
+        message: `Teste de Notificação (${type}): Olá ${firstName}! Esta é uma mensagem de teste da sua loja virtual. ✨`,
+        mensagem: `Teste de Notificação (${type}): Olá ${firstName}! Esta é uma mensagem de teste da sua loja virtual. ✨`,
+        isTest: true,
+        timestamp: new Date().toISOString()
+      };
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json, text/plain, */*",
+          "User-Agent": "DiscretaBoutique-Webhook/1.0"
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      const responseStatus = response.status;
+      const responseBody = await response.text().catch(() => "");
+
+      res.json({
+        success: response.ok,
+        status: responseStatus,
+        responseBody: responseBody.slice(0, 500),
+        payloadSent: payload
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.name === 'AbortError' ? 'Timeout após 15 segundos' : (err.message || String(err))
+      });
     }
   });
 

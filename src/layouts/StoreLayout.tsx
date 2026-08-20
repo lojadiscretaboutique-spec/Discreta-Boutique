@@ -241,6 +241,21 @@ export function StoreLayout() {
               >
                 Produtos
               </Link>
+              {isAdmin && (
+                <Link 
+                  to="/admin" 
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold uppercase tracking-[2px] text-[10px] transition-all duration-300 border shadow-sm hover:scale-105"
+                  style={{ 
+                    backgroundColor: currentTheme.primaryColor || '#D32F2F', 
+                    color: '#ffffff',
+                    borderColor: currentTheme.primaryColor || '#D32F2F'
+                  }}
+                  title="Painel Administrativo"
+                >
+                  <LayoutDashboard size={13} />
+                  <span>Painel Admin</span>
+                </Link>
+              )}
             </nav>
           </div>
 
@@ -367,6 +382,21 @@ export function StoreLayout() {
                 >
                   Área do Cliente
                 </Link>
+                {isAdmin && (
+                  <Link 
+                    to="/admin" 
+                    onClick={() => setIsMobileMenuOpen(false)} 
+                    className="flex items-center gap-2 text-xl font-black uppercase tracking-tighter transition-colors p-3 rounded-lg border"
+                    style={{ 
+                      backgroundColor: currentTheme.primaryColor || '#D32F2F', 
+                      color: '#ffffff',
+                      borderColor: currentTheme.primaryColor || '#D32F2F'
+                    }}
+                  >
+                    <LayoutDashboard size={20} />
+                    <span>Painel Administrativo</span>
+                  </Link>
+                )}
                 <div className="pt-4 flex gap-4" style={{ color: textSecondaryColor }}>
                    <span className="text-xs font-bold uppercase tracking-widest">Sigilo absoluto</span>
                    <span className="text-xs font-bold uppercase tracking-widest">Entrega Discreta</span>

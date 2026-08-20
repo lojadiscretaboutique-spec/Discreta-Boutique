@@ -100,6 +100,7 @@ export default {
         price: { type: "number" },
         promoPrice: { type: "number" },
         stock: { type: "number" },
+        minStock: { type: "number" },
         imageUrl: { type: "string" },
         description: { type: "string" },
         active: { type: "boolean" },

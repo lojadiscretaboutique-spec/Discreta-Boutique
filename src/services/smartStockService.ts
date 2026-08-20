@@ -140,8 +140,12 @@ export const smartStockService = {
    * Recalculates and updates the minStock field for a product automatically.
    */
   async updateProductSmartMinStock(productId: string): Promise<void> {
+    if (!productId) return;
     try {
       const { minStock } = await this.calculateProductSmartStock(productId);
+      if (typeof minStock !== 'number' || isNaN(minStock) || minStock < 0) {
+        return;
+      }
       
       // Update the product document
       const productRef = doc(db, 'products', productId);
@@ -152,7 +156,7 @@ export const smartStockService = {
       
       console.log(`[SmartStock] Auto-updated minStock for ${productId} to ${minStock}`);
     } catch (error) {
-      console.error(`[SmartStock] Error auto-updating minStock for ${productId}:`, error);
+      console.warn(`[SmartStock] Notice: Could not auto-update minStock for ${productId}:`, error);
     }
   }
 };
