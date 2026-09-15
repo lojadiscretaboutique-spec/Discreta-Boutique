@@ -2,16 +2,17 @@ import { useEffect, useState, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
   Plus, Edit2, Trash2, Search, Filter, ArrowDownCircle, ArrowUpCircle, 
-  DollarSign, CheckCircle2, Clock, Check, X
+  DollarSign, CheckCircle2, Clock, Check, X, Printer, FileText, Sparkles, ShieldCheck, UserCheck
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { formatCurrency, cn } from '../../../lib/utils';
-import { financialService, FinancialTransaction, TransactionType, TransactionStatus } from '../../../services/financialService';
+import { financialService, FinancialTransaction, TransactionType, TransactionStatus, SalaryPaymentDetails } from '../../../services/financialService';
 import { cashService } from '../../../services/cashService';
 import { useFeedback } from '../../../contexts/FeedbackContext';
 import { useAuthStore } from '../../../store/authStore';
 import { paymentFinanceService, MethodConfig } from '../../../services/paymentFinanceService';
+import { PaymentReceiptModal } from '../../../components/admin/financial/PaymentReceiptModal';
 
 export function AdminFinancial() {
   const location = useLocation();
@@ -56,6 +57,15 @@ export function AdminFinancial() {
   const [submitting, setSubmitting] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   
+  // Recibo de Pagamento Modal
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [receiptTransaction, setReceiptTransaction] = useState<FinancialTransaction | null>(null);
+
+  const handleOpenReceipt = (t: FinancialTransaction) => {
+    setReceiptTransaction(t);
+    setIsReceiptOpen(true);
+  };
+  
   const initialForm: Partial<FinancialTransaction> = {
     type: viewMode === 'expense' ? 'expense' : 'income',
     description: '',
@@ -64,7 +74,20 @@ export function AdminFinancial() {
     status: 'pending',
     category: '',
     contact: '',
-    paymentMethod: ''
+    documentNumber: '',
+    paymentMethod: '',
+    salaryDetails: {
+      collaboratorName: '',
+      collaboratorCpf: '',
+      collaboratorRole: '',
+      paymentType: 'salario',
+      paymentTypeLabel: 'Salário Mensal',
+      referenceMonth: new Date().toISOString().slice(0, 7),
+      grossAmount: 0,
+      deductions: 0,
+      netAmount: 0,
+      legalNotice: ''
+    }
   };
   
   const [form, setForm] = useState<Partial<FinancialTransaction>>(initialForm);
@@ -110,13 +133,41 @@ export function AdminFinancial() {
     setForm({
       ...initialForm,
       id: newClientActionId,
-      type: viewMode === 'expense' ? 'expense' : 'income'
+      type: viewMode === 'expense' ? 'expense' : 'income',
+      dueDate: new Date().toISOString().split('T')[0],
+      salaryDetails: {
+        collaboratorName: '',
+        collaboratorCpf: '',
+        collaboratorRole: '',
+        paymentType: 'salario',
+        paymentTypeLabel: 'Salário Mensal',
+        referenceMonth: new Date().toISOString().slice(0, 7),
+        grossAmount: 0,
+        deductions: 0,
+        netAmount: 0,
+        legalNotice: ''
+      }
     });
     setIsFormOpen(true);
   };
 
   const handleEdit = (t: FinancialTransaction) => {
-    setForm({ ...t });
+    const isSalary = t.category?.toLowerCase().includes('salár') || t.category?.toLowerCase().includes('salar');
+    setForm({ 
+      ...t,
+      salaryDetails: t.salaryDetails || (isSalary ? {
+        collaboratorName: t.contact || '',
+        collaboratorCpf: t.documentNumber || '',
+        collaboratorRole: '',
+        paymentType: 'salario',
+        paymentTypeLabel: 'Salário Mensal',
+        referenceMonth: t.dueDate ? t.dueDate.slice(0, 7) : new Date().toISOString().slice(0, 7),
+        grossAmount: t.amount || 0,
+        deductions: 0,
+        netAmount: t.amount || 0,
+        legalNotice: ''
+      } : undefined)
+    });
     setIsFormOpen(true);
   };
 
@@ -149,15 +200,36 @@ export function AdminFinancial() {
       return;
     }
 
-    if (!form.description || !form.amount || !form.dueDate || !form.category) {
+    // Se for salário e a descrição estiver vazia, gera automaticamente
+    const isSalary = form.category?.toLowerCase().includes('salár') || form.category?.toLowerCase().includes('salar');
+    let finalDesc = form.description?.trim();
+    if (isSalary && !finalDesc) {
+      const colab = form.salaryDetails?.collaboratorName || form.contact || 'Colaborador';
+      const tipo = form.salaryDetails?.paymentTypeLabel || 'Salário';
+      const mes = form.salaryDetails?.referenceMonth || form.dueDate?.slice(0, 7) || '';
+      const comp = mes.includes('-') ? mes.split('-').reverse().join('/') : mes;
+      finalDesc = `${tipo} - ${colab} (Ref: ${comp})`;
+    }
+
+    if (!finalDesc || !form.amount || !form.dueDate || !form.category) {
       toast('Preencha os campos obrigatórios (*)', 'error');
       return;
     }
     
     setSubmitting(true);
     try {
+      const sanitizedSalary = isSalary && form.salaryDetails ? {
+        ...form.salaryDetails,
+        collaboratorName: form.salaryDetails.collaboratorName || form.contact || '',
+        collaboratorCpf: form.salaryDetails.collaboratorCpf || form.documentNumber || '',
+        netAmount: form.amount
+      } : form.salaryDetails;
+
       const payload: Partial<FinancialTransaction> = {
         ...form,
+        description: finalDesc,
+        documentNumber: form.documentNumber || form.salaryDetails?.collaboratorCpf || '',
+        salaryDetails: sanitizedSalary,
         userId: user?.uid || 'system',
         isManual: true
       };
@@ -364,6 +436,18 @@ export function AdminFinancial() {
                                 <Check size={16} />
                              </button>
                            )}
+                           <button 
+                             onClick={() => handleOpenReceipt(t)} 
+                             className={cn(
+                               "p-1.5 rounded-lg transition-all shadow-sm border",
+                               t.status === 'paid'
+                                 ? "bg-slate-900 border-emerald-500/50 text-emerald-400 hover:text-emerald-300 hover:border-emerald-400 hover:bg-emerald-950/40"
+                                 : "bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500"
+                             )}
+                             title={t.status === 'paid' ? "Imprimir Recibo do Pagamento Realizado" : "Visualizar Recibo de Pagamento"}
+                           >
+                             <Printer size={16} />
+                           </button>
                            <button onClick={() => handleEdit(t)} className="p-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 hover:text-blue-600 hover:border-blue-600 transition-all shadow-sm">
                              <Edit2 size={16} />
                            </button>
@@ -435,8 +519,47 @@ export function AdminFinancial() {
                     </div>
 
                     <div>
-                       <label className="block text-sm font-bold mb-1">Cliente / Fornecedor</label>
-                       <Input value={form.contact || ''} onChange={e => setForm({...form, contact: e.target.value})} placeholder="Nome da empresa/pessoa" />
+                       <label className="block text-sm font-bold mb-1">
+                         {form.category?.toLowerCase().includes('salár') || form.category?.toLowerCase().includes('salar') 
+                           ? 'Colaborador(a) / Empregado(a) *' 
+                           : 'Cliente / Fornecedor'}
+                       </label>
+                       <Input 
+                         value={form.contact || ''} 
+                         onChange={e => {
+                           const val = e.target.value;
+                           setForm(prev => ({
+                             ...prev, 
+                             contact: val,
+                             salaryDetails: prev.salaryDetails ? { ...prev.salaryDetails, collaboratorName: val } : undefined
+                           }));
+                         }} 
+                         placeholder={form.category?.toLowerCase().includes('salár') || form.category?.toLowerCase().includes('salar') 
+                           ? "Nome do empregado(a)" 
+                           : "Nome da empresa/pessoa"} 
+                       />
+                    </div>
+
+                    <div>
+                       <label className="block text-sm font-bold mb-1">
+                         {form.category?.toLowerCase().includes('salár') || form.category?.toLowerCase().includes('salar') 
+                           ? 'CPF do Colaborador *' 
+                           : 'CPF / CNPJ do Contato'}
+                       </label>
+                       <Input 
+                         value={form.documentNumber || form.salaryDetails?.collaboratorCpf || ''} 
+                         onChange={e => {
+                           const val = e.target.value;
+                           setForm(prev => ({
+                             ...prev, 
+                             documentNumber: val,
+                             salaryDetails: prev.salaryDetails ? { ...prev.salaryDetails, collaboratorCpf: val } : undefined
+                           }));
+                         }} 
+                         placeholder={form.category?.toLowerCase().includes('salár') || form.category?.toLowerCase().includes('salar') 
+                           ? "000.000.000-00" 
+                           : "000.000.000-00 ou CNPJ"} 
+                       />
                     </div>
 
                     <div>
@@ -492,6 +615,237 @@ export function AdminFinancial() {
                     </div>
                  </div>
 
+                 {/* Seção Exclusiva de Formalidade Legal para Categoria Salários (CLT Art. 464) */}
+                 {(form.category?.toLowerCase().includes('salár') || form.category?.toLowerCase().includes('salar')) && (
+                    <div className="bg-slate-950 border border-blue-600/40 rounded-xl p-4 sm:p-5 space-y-4 shadow-inner">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-800">
+                        <div className="flex items-center gap-2 text-blue-400">
+                          <ShieldCheck size={20} className="text-blue-400" />
+                          <div>
+                            <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                              Formalidade Legal e Trabalhista (Art. 464 CLT)
+                              <span className="bg-blue-600/30 text-blue-300 border border-blue-500/40 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
+                                Recibo Salarial
+                              </span>
+                            </h3>
+                            <p className="text-[11px] text-slate-400">
+                              Informações obrigatórias que comprovam formalmente o pagamento de salário ou quinzena
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const colab = form.contact || form.salaryDetails?.collaboratorName || 'Colaborador';
+                            const tipo = form.salaryDetails?.paymentTypeLabel || 'Salário Mensal';
+                            const mes = form.salaryDetails?.referenceMonth || form.dueDate?.slice(0, 7) || '';
+                            const compFormatada = mes.includes('-') ? mes.split('-').reverse().join('/') : mes;
+                            setForm(prev => ({
+                              ...prev,
+                              description: `${tipo} - ${colab} (Ref: ${compFormatada})`
+                            }));
+                            toast('Descrição formal gerada com sucesso!', 'info');
+                          }}
+                          className="flex items-center gap-1.5 text-xs text-blue-300 hover:text-blue-100 bg-blue-900/40 hover:bg-blue-800/60 px-3 py-1.5 rounded-lg border border-blue-700/50 transition-colors shadow-sm"
+                          title="Preencher campo de descrição com a nomenclatura padrão formal"
+                        >
+                          <Sparkles size={13} /> Gerar Descrição Formal
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                        {/* Tipo de Pagamento */}
+                        <div>
+                          <label className="block text-slate-300 font-bold mb-1">Tipo de Remuneração *</label>
+                          <select
+                            className="w-full h-10 px-3 rounded-md border border-slate-700 bg-slate-900 text-xs text-white outline-none focus:ring-2 focus:ring-blue-600"
+                            value={form.salaryDetails?.paymentType || 'salario'}
+                            onChange={e => {
+                              const val = e.target.value;
+                              const mapLabels: Record<string, string> = {
+                                salario: 'Salário Mensal',
+                                quinzena: 'Adiantamento Salarial (1ª Quinzena)',
+                                saldo: 'Saldo de Salário (2ª Quinzena)',
+                                pro_labore: 'Pró-Labore',
+                                comissao: 'Comissões de Vendas',
+                                decimo_terceiro: '13º Salário',
+                                ferias: 'Férias / Adicional de Férias',
+                                rescisao: 'Verbas Rescisórias',
+                                outro: 'Outro Provento'
+                              };
+                              const label = mapLabels[val] || val;
+                              setForm(prev => ({
+                                ...prev,
+                                salaryDetails: {
+                                  ...prev.salaryDetails,
+                                  paymentType: val,
+                                  paymentTypeLabel: label
+                                }
+                              }));
+                            }}
+                          >
+                            <option value="salario">Salário Mensal Integral</option>
+                            <option value="quinzena">Adiantamento Salarial (1ª Quinzena)</option>
+                            <option value="saldo">Saldo de Salário (2ª Quinzena)</option>
+                            <option value="pro_labore">Pró-Labore (Sócios)</option>
+                            <option value="comissao">Comissões de Vendas</option>
+                            <option value="decimo_terceiro">13º Salário</option>
+                            <option value="ferias">Férias / Adicional 1/3</option>
+                            <option value="rescisao">Verbas Rescisórias</option>
+                            <option value="outro">Outro Provento</option>
+                          </select>
+                        </div>
+
+                        {/* Mês/Competência de Referência */}
+                        <div>
+                          <label className="block text-slate-300 font-bold mb-1">Competência (Mês/Ano) *</label>
+                          <Input
+                            type="month"
+                            className="h-10 text-xs"
+                            value={form.salaryDetails?.referenceMonth || ''}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setForm(prev => ({
+                                ...prev,
+                                salaryDetails: {
+                                  ...prev.salaryDetails,
+                                  referenceMonth: val
+                                }
+                              }));
+                            }}
+                          />
+                        </div>
+
+                        {/* Cargo / Função */}
+                        <div>
+                          <label className="block text-slate-300 font-bold mb-1">Cargo / Função</label>
+                          <Input
+                            className="h-10 text-xs"
+                            placeholder="Ex: Vendedora, Gerente, Caixa..."
+                            value={form.salaryDetails?.collaboratorRole || ''}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setForm(prev => ({
+                                ...prev,
+                                salaryDetails: {
+                                  ...prev.salaryDetails,
+                                  collaboratorRole: val
+                                }
+                              }));
+                            }}
+                          />
+                        </div>
+
+                        {/* Salário Bruto */}
+                        <div>
+                          <label className="block text-slate-300 font-bold mb-1">Salário Bruto / Proventos (R$)</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="h-10 text-xs"
+                            placeholder="R$ 0,00"
+                            value={form.salaryDetails?.grossAmount || ''}
+                            onChange={e => {
+                              const bruto = parseFloat(e.target.value) || 0;
+                              const desc = form.salaryDetails?.deductions || 0;
+                              const liquido = Math.max(0, bruto - desc);
+                              setForm(prev => ({
+                                ...prev,
+                                amount: liquido > 0 ? liquido : prev.amount,
+                                salaryDetails: {
+                                  ...prev.salaryDetails,
+                                  grossAmount: bruto,
+                                  netAmount: liquido > 0 ? liquido : prev.amount
+                                }
+                              }));
+                            }}
+                          />
+                        </div>
+
+                        {/* Descontos Legais */}
+                        <div>
+                          <label className="block text-slate-300 font-bold mb-1">Descontos Legais / Vales (R$)</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="h-10 text-xs"
+                            placeholder="INSS, vales, faltas..."
+                            value={form.salaryDetails?.deductions || ''}
+                            onChange={e => {
+                              const desc = parseFloat(e.target.value) || 0;
+                              const bruto = form.salaryDetails?.grossAmount || form.amount || 0;
+                              const liquido = Math.max(0, bruto - desc);
+                              setForm(prev => ({
+                                ...prev,
+                                amount: liquido,
+                                salaryDetails: {
+                                  ...prev.salaryDetails,
+                                  deductions: desc,
+                                  netAmount: liquido
+                                }
+                              }));
+                            }}
+                          />
+                        </div>
+
+                        {/* Valor Líquido */}
+                        <div>
+                          <label className="block text-slate-300 font-bold mb-1">Valor Líquido a Pagar</label>
+                          <div className="h-10 px-3 bg-slate-900 border border-slate-700 rounded-md flex items-center font-bold text-emerald-400 text-sm">
+                            {formatCurrency(form.amount || 0)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Termo de Quitação Formal */}
+                      <div className="pt-2 border-t border-slate-800">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="block text-slate-300 font-bold text-xs">
+                            Declaração e Termo Formal de Quitação (Art. 464 CLT)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const colab = form.contact || form.salaryDetails?.collaboratorName || 'colaborador';
+                              const tipo = form.salaryDetails?.paymentTypeLabel || 'salário';
+                              const mes = form.salaryDetails?.referenceMonth || form.dueDate?.slice(0, 7) || '';
+                              const compFormatada = mes.includes('-') ? mes.split('-').reverse().join('/') : mes;
+                              const texto = `Declaro para os devidos fins legais, em conformidade com o Artigo 464 da Consolidação das Leis do Trabalho (CLT), ter recebido da empresa empregadora Discreta Boutique a importância líquida supra discriminada, referente à quitação de ${tipo} relativo à competência de ${compFormatada}, conferido e achado exato, pelo que firmo o presente dando plena e rasa quitação dos referidos valores.`;
+                              setForm(prev => ({
+                                ...prev,
+                                salaryDetails: {
+                                  ...prev.salaryDetails,
+                                  legalNotice: texto
+                                }
+                              }));
+                            }}
+                            className="text-[11px] text-blue-400 hover:underline"
+                          >
+                            Redefinir Texto Padrão CLT
+                          </button>
+                        </div>
+                        <textarea
+                          className="w-full min-h-[60px] p-2.5 rounded-md border border-slate-700 bg-slate-900 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-blue-600"
+                          placeholder="Texto de quitação legal gerado automaticamente para o comprovante..."
+                          value={form.salaryDetails?.legalNotice || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setForm(prev => ({
+                              ...prev,
+                              salaryDetails: {
+                                ...prev.salaryDetails,
+                                legalNotice: val
+                              }
+                            }));
+                          }}
+                        />
+                      </div>
+                    </div>
+                 )}
+
                  {form.status === 'paid' && (
                    <div>
                      <label className="block text-sm font-bold mb-1 mx-0 flex flex-col md:w-1/2">Data de Recebimento/Pagamento</label>
@@ -508,15 +862,51 @@ export function AdminFinancial() {
                     />
                  </div>
               </div>
-              <div className="p-6 border-t bg-slate-800 flex justify-end gap-3 rounded-b-2xl sticky bottom-0">
-                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-                 <Button onClick={handleSave} disabled={submitting} className="bg-blue-600 hover:bg-blue-700">
-                    {submitting ? 'Salvando...' : 'Salvar Lançamento'}
-                 </Button>
+              <div className="p-6 border-t bg-slate-800 flex justify-between items-center gap-3 rounded-b-2xl sticky bottom-0">
+                 <div>
+                   {form.id && (
+                     <Button
+                       type="button"
+                       variant="outline"
+                       onClick={() => {
+                         handleOpenReceipt({
+                           ...form,
+                           id: form.id,
+                           type: form.type || 'expense',
+                           description: form.description || '',
+                           amount: form.amount || 0,
+                           dueDate: form.dueDate || '',
+                           status: form.status || 'pending',
+                           category: form.category || ''
+                         } as FinancialTransaction);
+                       }}
+                       className="border-emerald-600/60 text-emerald-400 hover:bg-emerald-950/40 flex items-center gap-1.5"
+                       title="Imprimir Recibo de Pagamento"
+                     >
+                       <Printer size={16} /> Imprimir Recibo
+                     </Button>
+                   )}
+                 </div>
+                 <div className="flex gap-3">
+                   <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
+                   <Button onClick={handleSave} disabled={submitting} className="bg-blue-600 hover:bg-blue-700">
+                      {submitting ? 'Salvando...' : 'Salvar Lançamento'}
+                   </Button>
+                 </div>
               </div>
            </div>
         </div>
       )}
+
+      {/* Modal de Impressão de Recibo */}
+      <PaymentReceiptModal
+        isOpen={isReceiptOpen}
+        onClose={() => {
+          setIsReceiptOpen(false);
+          setReceiptTransaction(null);
+        }}
+        transaction={receiptTransaction}
+      />
     </div>
   );
 }

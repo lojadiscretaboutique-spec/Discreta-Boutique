@@ -6,6 +6,21 @@ import { cashService } from './cashService';
 export type TransactionType = 'income' | 'expense';
 export type TransactionStatus = 'pending' | 'paid';
 
+export interface SalaryPaymentDetails {
+  collaboratorName?: string;
+  collaboratorCpf?: string;
+  collaboratorRole?: string;
+  paymentType?: 'salario' | 'quinzena' | 'adiantamento' | 'saldo' | 'pro_labore' | 'comissao' | 'decimo_terceiro' | 'ferias' | 'rescisao' | string;
+  paymentTypeLabel?: string;
+  referenceMonth?: string; // YYYY-MM ou MM/AAAA
+  grossAmount?: number;
+  deductions?: number;
+  netAmount?: number;
+  legalNotice?: string;
+  companyName?: string;
+  companyCnpj?: string;
+}
+
 export interface FinancialTransaction {
   id?: string;
   type: TransactionType;
@@ -16,6 +31,9 @@ export interface FinancialTransaction {
   status: TransactionStatus;
   category: string;
   contact?: string;
+  documentNumber?: string; // CPF ou CNPJ do recebedor/pagador
+  salaryDetails?: SalaryPaymentDetails;
+  receiptNotes?: string;
   paymentMethod?: string;
   paymentMethodId?: string;
   paymentMethodNameSnapshot?: string;
