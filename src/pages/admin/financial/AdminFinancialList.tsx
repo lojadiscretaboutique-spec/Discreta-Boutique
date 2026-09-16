@@ -444,7 +444,7 @@ export function AdminFinancial() {
                                  ? "bg-slate-900 border-emerald-500/50 text-emerald-400 hover:text-emerald-300 hover:border-emerald-400 hover:bg-emerald-950/40"
                                  : "bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500"
                              )}
-                             title={t.status === 'paid' ? "Imprimir Recibo do Pagamento Realizado" : "Visualizar Recibo de Pagamento"}
+                             title={t.status === 'paid' ? "Imprimir Recibo Térmico 80mm (Pagamento Realizado)" : "Imprimir Recibo Térmico 80mm"}
                            >
                              <Printer size={16} />
                            </button>
@@ -881,9 +881,9 @@ export function AdminFinancial() {
                          } as FinancialTransaction);
                        }}
                        className="border-emerald-600/60 text-emerald-400 hover:bg-emerald-950/40 flex items-center gap-1.5"
-                       title="Imprimir Recibo de Pagamento"
+                       title="Imprimir Recibo Térmico de Pagamento (80mm)"
                      >
-                       <Printer size={16} /> Imprimir Recibo
+                       <Printer size={16} /> Recibo Térmico (80mm)
                      </Button>
                    )}
                  </div>

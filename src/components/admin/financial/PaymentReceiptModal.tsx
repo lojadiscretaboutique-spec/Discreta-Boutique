@@ -1,11 +1,24 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { X, Printer, CheckCircle, FileText, Building2, UserCheck, ShieldCheck } from 'lucide-react';
+import { 
+  X, 
+  Printer, 
+  CheckCircle, 
+  FileText, 
+  Building2, 
+  UserCheck, 
+  ShieldCheck, 
+  Copy, 
+  Check, 
+  SlidersHorizontal,
+  Scissors
+} from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { Button } from '../../ui/button';
-import { formatCurrency } from '../../../lib/utils';
+import { formatCurrency, cn } from '../../../lib/utils';
 import { formatCurrencyInWords } from '../../../utils/numberToWordsPtBr';
 import { FinancialTransaction } from '../../../services/financialService';
+import { printerSettingsService } from '../../../services/printerSettingsService';
 
 interface PaymentReceiptModalProps {
   isOpen: boolean;
@@ -28,15 +41,20 @@ export function PaymentReceiptModal({ isOpen, onClose, transaction }: PaymentRec
     whatsapp: '',
     cnpj: ''
   });
+
+  // Opções de Impressão Inteligentes
+  const [paperFormat, setPaperFormat] = useState<'80mm' | '58mm' | 'a4'>('80mm');
+  const [copiesCount, setCopiesCount] = useState<1 | 2>(1); // 1 = Via Única, 2 = Empresa + Colaborador
+  const [copied, setCopied] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
-  const receiptRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    async function loadStore() {
+    async function loadConfig() {
       try {
-        const snap = await getDoc(doc(db, 'settings', 'store'));
-        if (snap.exists()) {
-          const data = snap.data();
+        // Carrega dados da loja
+        const storeSnap = await getDoc(doc(db, 'settings', 'store'));
+        if (storeSnap.exists()) {
+          const data = storeSnap.data();
           setStoreData(prev => ({
             ...prev,
             storeName: data.storeName || 'Discreta Boutique',
@@ -45,12 +63,19 @@ export function PaymentReceiptModal({ isOpen, onClose, transaction }: PaymentRec
             cnpj: data.cnpj || ''
           }));
         }
+
+        // Carrega configuração de impressora padrão do sistema se existir
+        const printSettings = await printerSettingsService.getSettings();
+        if (printSettings && printSettings.paperWidth) {
+          setPaperFormat(printSettings.paperWidth === '58mm' ? '58mm' : '80mm');
+        }
       } catch (err) {
-        console.warn('Não foi possível carregar dados da loja para recibo:', err);
+        console.warn('Erro ao carregar configurações para o recibo:', err);
       }
     }
+
     if (isOpen) {
-      loadStore();
+      loadConfig();
     }
   }, [isOpen]);
 
@@ -114,328 +139,838 @@ export function PaymentReceiptModal({ isOpen, onClose, transaction }: PaymentRec
   // Texto legal padrão de quitação (CLT Artigo 464)
   const defaultLegalNotice = salaryDetails.legalNotice || (
     isSalary 
-      ? `Declaro para os devidos fins legais, em conformidade com o Artigo 464 da CLT (Consolidação das Leis do Trabalho), ter recebido da empresa ${storeData.storeName || 'Discreta Boutique'} a importância líquida de ${formatCurrency(netAmount)} (${amountInWords}), referente ao pagamento de ${paymentTypeLabel} relativo à competência de ${competence}, achado exato e conferido, dando plena, geral e irrevogável quitação de tais verbas para nada mais reclamar a este título.`
-      : `Recebi(emos) de ${storeData.storeName || 'Discreta Boutique'} a importância líquida de ${formatCurrency(amount)} (${amountInWords}), referente a ${transaction.description || 'quitação de obrigações/serviços'}, dando plena, rasa e geral quitação pelo valor recebido.`
+      ? `Declaro para os devidos fins legais, em conformidade com o Artigo 464 da CLT (Consolidação das Leis do Trabalho), ter recebido da empresa empregadora ${storeData.storeName || 'Discreta Boutique'} a importância líquida supra discriminada de ${formatCurrency(netAmount)} (${amountInWords}), referente ao pagamento de ${paymentTypeLabel} relativo à competência de ${competence}, conferido e achado exato, pelo que firmo o presente dando plena, geral e rasa quitação dos referidos valores.`
+      : `Recebi(emos) de ${storeData.storeName || 'Discreta Boutique'} a importância líquida supra discriminada de ${formatCurrency(amount)} (${amountInWords}), referente a ${transaction.description || 'quitação de obrigações/serviços'}, dando plena, geral e rasa quitação pelo valor recebido.`
   );
 
+  // GERAÇÃO DO DOCUMENTO HTML PARA IMPRESSÃO ISOLADA
+  const generatePrintHTML = () => {
+    const is80 = paperFormat === '80mm';
+    const is58 = paperFormat === '58mm';
+    const isA4 = paperFormat === 'a4';
+
+    // Largura útil para não cortar no cabeçote térmico
+    const printableWidth = is58 ? '48mm' : is80 ? '72mm' : '180mm';
+    const baseFontSize = is58 ? '9.5px' : is80 ? '11px' : '12.5px';
+    const titleFontSize = is58 ? '11px' : is80 ? '13px' : '16px';
+    const headerFontSize = is58 ? '12px' : is80 ? '14px' : '18px';
+
+    const renderSingleReceiptBody = (viaLabel: string) => `
+      <div class="receipt-container" style="page-break-inside: avoid; margin-bottom: 25px;">
+        <!-- Cabeçalho -->
+        <div class="text-center">
+          <div class="store-name">${storeData.storeName || 'DISCRETA BOUTIQUE'}</div>
+          ${storeData.cnpj ? `<div class="store-info">CNPJ: ${storeData.cnpj}</div>` : ''}
+          ${storeData.address ? `<div class="store-info">${storeData.address}</div>` : ''}
+          ${storeData.whatsapp ? `<div class="store-info">Contato: ${storeData.whatsapp}</div>` : ''}
+        </div>
+
+        <div class="double-line"></div>
+
+        <!-- Título do Recibo -->
+        <div class="text-center">
+          <div class="receipt-title">
+            ${isSalary ? 'RECIBO DE PAGAMENTO DE SALÁRIO' : 'COMPROVANTE DE PAGAMENTO'}
+          </div>
+          ${isSalary ? '<div class="legal-badge">ART. 464 CLT - COMPROVAÇÃO FORMAL</div>' : ''}
+          <div class="info-row" style="margin-top: 4px;">
+            <span>DOC: <strong>#${receiptNumber}</strong></span>
+            <span>DATA: <strong>${paymentDateFormatted}</strong></span>
+          </div>
+          <div class="via-tag">${viaLabel}</div>
+        </div>
+
+        <div class="dashed-line"></div>
+
+        <!-- Favorecido / Colaborador -->
+        <div class="section-title">FAVORECIDO / BENEFICIÁRIO:</div>
+        <div class="info-block">
+          <div class="strong-text">${collaboratorName}</div>
+          <div class="info-row">
+            <span>CPF:</span>
+            <span class="font-mono"><strong>${collaboratorCpf}</strong></span>
+          </div>
+          ${isSalary ? `
+            <div class="info-row">
+              <span>CARGO:</span>
+              <span>${collaboratorRole}</span>
+            </div>
+            <div class="info-row">
+              <span>COMPETÊNCIA:</span>
+              <span><strong>${competence}</strong></span>
+            </div>
+            <div class="info-row">
+              <span>TIPO:</span>
+              <span><strong>${paymentTypeLabel}</strong></span>
+            </div>
+          ` : ''}
+          <div class="info-row">
+            <span>FORMA PGTO:</span>
+            <span>${transaction.paymentMethod || 'Transferência / PIX / Dinheiro'}</span>
+          </div>
+          <div class="info-row">
+            <span>SITUAÇÃO:</span>
+            <span><strong>${transaction.status === 'paid' ? 'PAGO / QUITADO' : 'PENDENTE'}</strong></span>
+          </div>
+        </div>
+
+        <div class="dashed-line"></div>
+
+        <!-- Discriminação de Valores -->
+        ${isSalary && (grossAmount !== netAmount || deductions > 0) ? `
+          <div class="section-title">DISCRIMINAÇÃO DAS VERBAS:</div>
+          <div class="info-row">
+            <span>Salário Bruto / Proventos:</span>
+            <span>${formatCurrency(grossAmount)}</span>
+          </div>
+          ${deductions > 0 ? `
+            <div class="info-row" style="color: #000;">
+              <span>(-) Descontos Legais / Vales:</span>
+              <span>- ${formatCurrency(deductions)}</span>
+            </div>
+          ` : ''}
+          <div class="solid-line"></div>
+        ` : ''}
+
+        <!-- Total Líquido em Destaque Térmico -->
+        <div class="total-box">
+          <div class="total-label">VALOR LÍQUIDO PAGO</div>
+          <div class="total-value">${formatCurrency(netAmount)}</div>
+        </div>
+
+        <div class="amount-in-words">
+          <strong>VALOR POR EXTENSO:</strong> ${amountInWords}.
+        </div>
+
+        ${(!isSalary || transaction.description) ? `
+          <div class="dashed-line"></div>
+          <div style="font-size: 10px; margin: 3px 0;">
+            <strong>DESCRIÇÃO:</strong> ${transaction.description || ''}
+            ${transaction.notes ? `<br><em>Obs: ${transaction.notes}</em>` : ''}
+          </div>
+        ` : ''}
+
+        <div class="dashed-line"></div>
+
+        <!-- Termo de Quitação CLT Art. 464 -->
+        <div class="section-title">DECLARAÇÃO E TERMO DE QUITAÇÃO:</div>
+        <div class="legal-text">
+          ${defaultLegalNotice}
+        </div>
+
+        <div class="location-date">
+          São Paulo - SP, ${paymentDateFormatted}.
+        </div>
+
+        <div class="solid-line"></div>
+
+        <!-- Assinaturas Verticais (Específicas para Bobina Térmica 80mm/58mm) -->
+        <div class="signatures-wrapper">
+          <!-- Assinatura do Favorecido -->
+          <div class="signature-item">
+            <div class="signature-line"></div>
+            <div class="sign-name">${collaboratorName}</div>
+            <div class="sign-doc">CPF: ${collaboratorCpf}</div>
+            <div class="sign-role">${isSalary ? 'Assinatura do(a) Empregado(a)' : 'Assinatura do(a) Recebedor(a)'}</div>
+          </div>
+
+          <!-- Assinatura da Empresa -->
+          <div class="signature-item" style="margin-top: 18px;">
+            <div class="signature-line"></div>
+            <div class="sign-name">${storeData.storeName || 'DISCRETA BOUTIQUE'}</div>
+            <div class="sign-doc">${storeData.cnpj ? `CNPJ: ${storeData.cnpj}` : 'Setor Financeiro / RH'}</div>
+            <div class="sign-role">Empregador / Responsável Financeiro</div>
+          </div>
+        </div>
+
+        <div class="footer-note">
+          Autenticação: FIN-${receiptNumber}-${Date.now().toString().slice(-4)} • Sistema Discreta Boutique
+        </div>
+      </div>
+    `;
+
+    let allReceiptsHtml = renderSingleReceiptBody(
+      copiesCount === 2 ? '1ª VIA - EMPRESA / ARQUIVO CONTÁBIL' : 'VIA ÚNICA - COMPROVANTE'
+    );
+
+    if (copiesCount === 2) {
+      allReceiptsHtml += `
+        <div class="cut-indicator">
+          <span>- - - - - - - - - - - - - - - - - - - - - - - - - - - - -</span>
+          <div class="cut-text">✂ DESTAQUE AQUI (2ª VIA DO COLABORADOR) ✂</div>
+          <span>- - - - - - - - - - - - - - - - - - - - - - - - - - - - -</span>
+        </div>
+        ${renderSingleReceiptBody('2ª VIA - COLABORADOR / BENEFICIÁRIO')}
+      `;
+    }
+
+    return `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <title>Recibo de Pagamento - #${receiptNumber}</title>
+        <style>
+          @page {
+            size: ${isA4 ? 'A4 portrait' : `${paperFormat} auto`};
+            margin: ${isA4 ? '10mm' : '0mm'};
+          }
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+          }
+          body {
+            font-family: 'Courier New', Courier, Monaco, 'Lucida Console', monospace;
+            font-size: ${baseFontSize};
+            line-height: 1.28;
+            color: #000;
+            background: #fff;
+            width: ${printableWidth};
+            max-width: ${printableWidth};
+            margin: 0 auto;
+            padding: ${isA4 ? '5mm' : '3mm 2mm 18mm 2mm'}; /* Espaço no final para a guilhotina da impressora não cortar o texto */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .text-left { text-align: left; }
+          .font-mono { font-family: monospace; }
+
+          .store-name {
+            font-size: ${headerFontSize};
+            font-weight: 900;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+          }
+          .store-info {
+            font-size: ${is58 ? '8.5px' : '9.5px'};
+            line-height: 1.2;
+          }
+          .receipt-title {
+            font-size: ${titleFontSize};
+            font-weight: 900;
+            margin-top: 4px;
+            letter-spacing: 0.3px;
+          }
+          .legal-badge {
+            font-size: ${is58 ? '8px' : '9px'};
+            font-weight: bold;
+            margin-top: 2px;
+            border: 1px solid #000;
+            display: inline-block;
+            padding: 1px 4px;
+            border-radius: 2px;
+          }
+          .via-tag {
+            font-size: 8.5px;
+            font-weight: bold;
+            margin-top: 3px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+          }
+
+          .double-line {
+            border-top: 2px double #000;
+            margin: 5px 0;
+          }
+          .dashed-line {
+            border-top: 1px dashed #000;
+            margin: 5px 0;
+          }
+          .solid-line {
+            border-top: 1px solid #000;
+            margin: 6px 0;
+          }
+
+          .info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: ${baseFontSize};
+            margin-bottom: 2px;
+          }
+          .section-title {
+            font-size: ${is58 ? '9px' : '10px'};
+            font-weight: 900;
+            margin-bottom: 3px;
+            text-transform: uppercase;
+          }
+          .strong-text {
+            font-size: ${is58 ? '10px' : '11.5px'};
+            font-weight: 900;
+            margin-bottom: 2px;
+          }
+          .info-block {
+            margin-bottom: 3px;
+          }
+
+          .total-box {
+            border: 2px solid #000;
+            padding: 5px 4px;
+            text-align: center;
+            margin: 6px 0;
+            background: #fff;
+          }
+          .total-label {
+            font-size: ${is58 ? '8.5px' : '9.5px'};
+            font-weight: 900;
+            letter-spacing: 0.5px;
+          }
+          .total-value {
+            font-size: ${is58 ? '14px' : '17px'};
+            font-weight: 900;
+            letter-spacing: -0.3px;
+          }
+          .amount-in-words {
+            font-size: ${is58 ? '8.5px' : '9.5px'};
+            margin: 4px 0;
+            line-height: 1.25;
+            text-align: justify;
+          }
+
+          .legal-text {
+            font-size: ${is58 ? '8px' : '9px'};
+            line-height: 1.25;
+            text-align: justify;
+            margin: 4px 0;
+          }
+          .location-date {
+            text-align: right;
+            font-size: ${is58 ? '8.5px' : '9.5px'};
+            font-weight: bold;
+            margin-top: 5px;
+            margin-bottom: 6px;
+          }
+
+          .signatures-wrapper {
+            margin-top: 16px;
+            margin-bottom: 8px;
+          }
+          .signature-item {
+            text-align: center;
+            margin-bottom: 12px;
+          }
+          .signature-line {
+            border-top: 1.5px solid #000;
+            width: 88%;
+            margin: 0 auto 3px auto;
+          }
+          .sign-name {
+            font-size: ${is58 ? '9px' : '10.5px'};
+            font-weight: 900;
+            text-transform: uppercase;
+          }
+          .sign-doc {
+            font-size: ${is58 ? '8px' : '9px'};
+          }
+          .sign-role {
+            font-size: ${is58 ? '7.5px' : '8.5px'};
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+          }
+
+          .footer-note {
+            font-size: 7.5px;
+            text-align: center;
+            opacity: 0.85;
+            margin-top: 10px;
+            border-top: 1px dotted #666;
+            padding-top: 3px;
+          }
+
+          .cut-indicator {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 9px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+          }
+          .cut-text {
+            margin: 2px 0;
+          }
+        </style>
+      </head>
+      <body>
+        ${allReceiptsHtml}
+        <!-- Espaço em branco no final para o avanço da bobina térmica antes do corte -->
+        <div style="height: 15mm;"></div>
+      </body>
+      </html>
+    `;
+  };
+
+  // Disparo de impressão limpa e isolada via iframe oculto (padrão de PDV / ERP)
   const handlePrint = () => {
     setIsPrinting(true);
-    setTimeout(() => {
+
+    try {
+      // Remove iframe anterior se existir
+      const existingIframe = document.getElementById('receipt-thermal-print-iframe');
+      if (existingIframe) {
+        existingIframe.remove();
+      }
+
+      const iframe = document.createElement('iframe');
+      iframe.id = 'receipt-thermal-print-iframe';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+
+      const content = generatePrintHTML();
+      const iframeDoc = iframe.contentWindow?.document;
+
+      if (!iframeDoc) {
+        window.print();
+        setIsPrinting(false);
+        return;
+      }
+
+      iframeDoc.open();
+      iframeDoc.write(content);
+      iframeDoc.close();
+
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setIsPrinting(false);
+
+        // Remove após a conclusão
+        setTimeout(() => {
+          iframe.remove();
+        }, 2000);
+      }, 300);
+    } catch (err) {
+      console.error('Erro na impressão térmica isolada:', err);
       window.print();
       setIsPrinting(false);
-    }, 150);
+    }
+  };
+
+  // Copia comprovante como texto puro formatado (perfeito para WhatsApp ou e-mail)
+  const handleCopyPlainText = () => {
+    const divider = '==========================================';
+    const subDivider = '------------------------------------------';
+
+    let txt = '';
+    txt += `${storeData.storeName || 'DISCRETA BOUTIQUE'}\n`;
+    if (storeData.cnpj) txt += `CNPJ: ${storeData.cnpj}\n`;
+    if (storeData.address) txt += `${storeData.address}\n`;
+    txt += `${divider}\n`;
+    txt += `${isSalary ? 'RECIBO DE PAGAMENTO DE SALÁRIO' : 'COMPROVANTE DE PAGAMENTO'}\n`;
+    if (isSalary) txt += `(Art. 464 CLT - Quitação Trabalhista)\n`;
+    txt += `Nº: ${receiptNumber} | Data: ${paymentDateFormatted}\n`;
+    txt += `${subDivider}\n`;
+    txt += `BENEFICIÁRIO: ${collaboratorName}\n`;
+    txt += `CPF: ${collaboratorCpf}\n`;
+    if (isSalary) {
+      txt += `CARGO: ${collaboratorRole}\n`;
+      txt += `COMPETÊNCIA: ${competence}\n`;
+      txt += `TIPO: ${paymentTypeLabel}\n`;
+    }
+    txt += `FORMA PGTO: ${transaction.paymentMethod || 'PIX / Transferência'}\n`;
+    txt += `${subDivider}\n`;
+    if (isSalary && (grossAmount !== netAmount || deductions > 0)) {
+      txt += `Salário Bruto: ${formatCurrency(grossAmount)}\n`;
+      if (deductions > 0) txt += `(-) Descontos: -${formatCurrency(deductions)}\n`;
+      txt += `${subDivider}\n`;
+    }
+    txt += `VALOR LÍQUIDO PAGO: ${formatCurrency(netAmount)}\n`;
+    txt += `EXTENSO: ${amountInWords}\n`;
+    txt += `${subDivider}\n`;
+    txt += `TERMO DE QUITAÇÃO:\n${defaultLegalNotice}\n`;
+    txt += `${subDivider}\n`;
+    txt += `São Paulo - SP, ${paymentDateFormatted}\n\n`;
+    txt += `__________________________________________\n`;
+    txt += `${collaboratorName} (Assinatura)\n\n`;
+    txt += `__________________________________________\n`;
+    txt += `${storeData.storeName || 'Discreta Boutique'} (Empregador)\n`;
+    txt += `${divider}\n`;
+
+    navigator.clipboard.writeText(txt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-      {/* Estilos específicos de impressão: na hora de imprimir, exibe SOMENTE o container do recibo em fundo branco perfeito */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #printable-payment-receipt, #printable-payment-receipt * {
-            visibility: visible !important;
-          }
-          #printable-payment-receipt {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 15mm !important;
-            background: white !important;
-            color: black !important;
-            box-shadow: none !important;
-            border: 1px solid #999 !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-        }
-      `}</style>
-
-      <div className="bg-slate-900 border border-slate-700 w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Modal Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-700 bg-slate-900 flex justify-between items-center text-white sticky top-0 z-10 no-print">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
+        
+        {/* Header do Modal */}
+        <div className="p-4 border-b border-slate-700 bg-slate-900/90 backdrop-blur-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-white sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-600/20 text-blue-400 rounded-lg border border-blue-500/30">
-              <FileText size={20} />
+            <div className="p-2.5 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
+              <Printer size={22} className="text-blue-400" />
             </div>
             <div>
-              <h2 className="font-bold text-lg text-white">
-                {isSalary ? 'Recibo de Pagamento de Salário' : 'Recibo de Pagamento'}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-base sm:text-lg text-white">
+                  {isSalary ? 'Recibo Salarial Térmico (Art. 464 CLT)' : 'Recibo de Pagamento Térmico'}
+                </h2>
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  80mm Bobina
+                </span>
+              </div>
               <p className="text-xs text-slate-400">
-                Visualização formal e documento para impressão com termo legal e linha de assinatura
+                Formatado especificamente para impressora térmica de 80mm com avanço de bobina e assinaturas verticais
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Ações Rápidas */}
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <Button
-              onClick={handlePrint}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-2 px-4 shadow-sm"
+              type="button"
+              variant="outline"
               size="sm"
+              onClick={handleCopyPlainText}
+              className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs flex items-center gap-1.5"
+              title="Copiar texto puro para WhatsApp ou e-mail"
             >
-              <Printer size={16} /> Imprimir Recibo
+              {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+              {copied ? 'Copiado!' : 'Copiar Texto'}
             </Button>
+
+            <Button
+              type="button"
+              size="sm"
+              onClick={handlePrint}
+              disabled={isPrinting}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center gap-2 px-4 shadow-lg shadow-blue-600/30"
+            >
+              <Printer size={16} />
+              {isPrinting ? 'Preparando...' : `Imprimir ${paperFormat.toUpperCase()}`}
+            </Button>
+
             <button
               onClick={onClose}
               className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+              title="Fechar"
             >
               <X size={20} />
             </button>
           </div>
         </div>
 
-        {/* Modal Body: Papel do Recibo (fundo claro imitando documento real para fácil leitura) */}
-        <div className="p-4 sm:p-6 overflow-y-auto bg-slate-950 flex justify-center">
-          <div
-            id="printable-payment-receipt"
-            ref={receiptRef}
-            className="w-full bg-white text-slate-900 rounded-xl p-6 sm:p-8 shadow-md border border-slate-300 font-sans max-w-2xl text-sm leading-relaxed"
-          >
-            {/* Topo do Recibo: Cabeçalho com dados da Empresa e Identificador */}
-            <div className="border-b-2 border-slate-800 pb-4 mb-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Building2 size={20} className="text-slate-800" />
-                    <h1 className="text-xl font-black uppercase tracking-wide text-slate-900">
-                      {storeData.storeName || 'Discreta Boutique'}
-                    </h1>
-                  </div>
-                  {storeData.address && (
-                    <p className="text-xs text-slate-600 font-medium mt-0.5">{storeData.address}</p>
-                  )}
-                  {storeData.cnpj && (
-                    <p className="text-xs text-slate-600 font-medium">CNPJ: {storeData.cnpj}</p>
-                  )}
-                  {storeData.whatsapp && (
-                    <p className="text-xs text-slate-600 font-medium">Contato: {storeData.whatsapp}</p>
-                  )}
-                </div>
+        {/* Barra de Ajuste de Formato e Vias */}
+        <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-slate-400 flex items-center gap-1.5 font-semibold">
+              <SlidersHorizontal size={14} className="text-blue-400" />
+              Tipo de Impressão:
+            </span>
 
-                <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-200 w-full sm:w-auto">
-                  <div className="inline-block bg-slate-100 border border-slate-300 px-3 py-1.5 rounded-lg text-left sm:text-right">
-                    <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                      Recibo / Protocolo
-                    </span>
-                    <span className="font-mono font-bold text-slate-800 text-sm">
-                      Nº {receiptNumber}
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-600 mt-1">
-                    <span className="font-semibold">Data Pgto:</span> {paymentDateFormatted}
-                  </div>
-                </div>
-              </div>
-
-              {/* Título Centralizado do Recibo */}
-              <div className="mt-4 pt-3 border-t border-slate-200 text-center">
-                <span className="inline-block bg-slate-900 text-white font-extrabold px-4 py-1 rounded text-xs uppercase tracking-widest">
-                  {isSalary
-                    ? 'COMPROVANTE / RECIBO DE PAGAMENTO DE SALÁRIO'
-                    : 'COMPROVANTE DE PAGAMENTO REALIZADO'}
-                </span>
-                {isSalary && (
-                  <p className="text-[11px] text-slate-600 font-semibold mt-1">
-                    Em conformidade com o Artigo 464 da Consolidação das Leis do Trabalho (CLT)
-                  </p>
+            {/* Seletor de Largura da Bobina */}
+            <div className="inline-flex rounded-lg bg-slate-900 p-0.5 border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setPaperFormat('80mm')}
+                className={cn(
+                  "px-3 py-1 rounded-md font-bold transition-all text-xs",
+                  paperFormat === '80mm'
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
                 )}
-              </div>
+              >
+                Térmica 80mm (Padrão)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaperFormat('58mm')}
+                className={cn(
+                  "px-3 py-1 rounded-md font-bold transition-all text-xs",
+                  paperFormat === '58mm'
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                )}
+              >
+                Térmica 58mm
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaperFormat('a4')}
+                className={cn(
+                  "px-3 py-1 rounded-md font-bold transition-all text-xs",
+                  paperFormat === 'a4'
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                )}
+              >
+                Folha A4
+              </button>
             </div>
 
-            {/* Destaque do Valor */}
-            <div className="bg-slate-50 border-2 border-slate-300 rounded-xl p-4 mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-                  Valor Pago (Líquido)
-                </span>
-                <span className="text-2xl font-black text-slate-950">
-                  {formatCurrency(netAmount)}
-                </span>
-              </div>
-              <div className="sm:text-right max-w-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                  Valor por Extenso
-                </span>
-                <span className="text-xs font-semibold text-slate-700 italic">
-                  ({amountInWords})
-                </span>
-              </div>
+            {/* Seletor de Vias */}
+            <div className="inline-flex rounded-lg bg-slate-900 p-0.5 border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setCopiesCount(1)}
+                className={cn(
+                  "px-3 py-1 rounded-md font-semibold transition-all text-xs",
+                  copiesCount === 1
+                    ? "bg-slate-700 text-white"
+                    : "text-slate-400 hover:text-white"
+                )}
+              >
+                Via Única
+              </button>
+              <button
+                type="button"
+                onClick={() => setCopiesCount(2)}
+                className={cn(
+                  "px-3 py-1 rounded-md font-semibold transition-all text-xs flex items-center gap-1",
+                  copiesCount === 2
+                    ? "bg-slate-700 text-white"
+                    : "text-slate-400 hover:text-white"
+                )}
+                title="Imprime a 1ª Via para a Empresa e a 2ª Via para o Empregado"
+              >
+                <Scissors size={12} />
+                2 Vias (Empresa + Colab.)
+              </button>
+            </div>
+          </div>
+
+          <div className="text-slate-500 text-[11px] hidden md:block">
+            Largura útil ajustada: <span className="text-slate-300 font-mono font-bold">{paperFormat === '58mm' ? '48mm' : paperFormat === '80mm' ? '72mm' : '180mm'}</span> (anti-corte de margem)
+          </div>
+        </div>
+
+        {/* Visualização da Bobina Térmica (Preview fiel em tela) */}
+        <div className="p-4 sm:p-6 overflow-y-auto bg-slate-950 flex flex-col items-center justify-start flex-1 min-h-[400px]">
+          <div className="text-xs text-slate-500 mb-2 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Pré-visualização fiel da fita térmica de {paperFormat.toUpperCase()}
+          </div>
+
+          {/* Envelope visual da Fita de Cupom Térmico */}
+          <div 
+            className={cn(
+              "bg-white text-black shadow-2xl border border-slate-300 rounded-sm font-mono text-[11px] leading-[1.28] transition-all p-4 select-text relative",
+              paperFormat === '58mm' ? "w-[260px] text-[10px]" : paperFormat === '80mm' ? "w-[340px] text-[11px]" : "w-full max-w-xl font-sans"
+            )}
+            style={{
+              boxShadow: '0 10px 30px -5px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.05)'
+            }}
+          >
+            {/* Topo Serrilhado / Fita */}
+            <div className="border-b-2 border-dashed border-slate-300 -mt-2 pb-2 mb-3 text-center text-[9px] text-slate-400 uppercase tracking-widest">
+              --- FITA TÉRMICA DE CONTROLE ---
             </div>
 
-            {/* Informações do Favorecido / Colaborador */}
-            <div className="border border-slate-300 rounded-xl p-4 mb-4 bg-white">
-              <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider mb-2.5 flex items-center gap-1.5 pb-1 border-b border-slate-100">
-                <UserCheck size={15} className="text-slate-700" />
-                {isSalary ? 'Dados do(a) Colaborador(a) / Empregado(a)' : 'Dados do(a) Favorecido(a) / Fornecedor(a)'}
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-xs">
-                <div>
-                  <span className="text-slate-500 font-medium block">Nome Completo:</span>
-                  <span className="font-bold text-slate-900 text-sm">{collaboratorName}</span>
+            {/* 1ª Via */}
+            <div>
+              {/* Header */}
+              <div className="text-center">
+                <div className="font-black text-sm uppercase tracking-wide text-black">
+                  {storeData.storeName || 'DISCRETA BOUTIQUE'}
                 </div>
+                {storeData.cnpj && <div className="text-[10px]">CNPJ: {storeData.cnpj}</div>}
+                {storeData.address && <div className="text-[9.5px]">{storeData.address}</div>}
+                {storeData.whatsapp && <div className="text-[9.5px]">Contato: {storeData.whatsapp}</div>}
+              </div>
 
-                <div>
-                  <span className="text-slate-500 font-medium block">CPF / Documento:</span>
-                  <span className="font-bold font-mono text-slate-900">{collaboratorCpf}</span>
+              <div className="border-t-2 border-black my-2 border-double"></div>
+
+              {/* Título */}
+              <div className="text-center my-1">
+                <div className="font-black text-xs uppercase tracking-wider text-black">
+                  {isSalary ? 'RECIBO DE PAGAMENTO DE SALÁRIO' : 'COMPROVANTE DE PAGAMENTO'}
+                </div>
+                {isSalary && (
+                  <div className="text-[9px] font-bold border border-black inline-block px-1.5 py-0.5 rounded mt-0.5">
+                    ART. 464 CLT - QUITAÇÃO FORMAL
+                  </div>
+                )}
+                <div className="flex justify-between text-[10px] mt-1 font-bold">
+                  <span>DOC: #{receiptNumber}</span>
+                  <span>DATA: {paymentDateFormatted}</span>
+                </div>
+                <div className="text-[9px] font-bold uppercase tracking-wider mt-0.5 text-slate-700">
+                  {copiesCount === 2 ? '1ª VIA - EMPRESA / ARQUIVO' : 'VIA ÚNICA'}
+                </div>
+              </div>
+
+              <div className="border-t border-dashed border-black my-2"></div>
+
+              {/* Dados do Colaborador / Favorecido */}
+              <div className="space-y-0.5 text-[10.5px]">
+                <div className="text-[9px] font-black uppercase text-slate-800">
+                  {isSalary ? 'DADOS DO(A) COLABORADOR(A):' : 'BENEFICIÁRIO / CONTATO:'}
+                </div>
+                <div className="font-black text-xs text-black">{collaboratorName}</div>
+                <div className="flex justify-between">
+                  <span>CPF:</span>
+                  <span className="font-bold">{collaboratorCpf}</span>
                 </div>
 
                 {isSalary && (
                   <>
-                    <div>
-                      <span className="text-slate-500 font-medium block">Cargo / Função:</span>
-                      <span className="font-semibold text-slate-800">{collaboratorRole}</span>
+                    <div className="flex justify-between">
+                      <span>Cargo/Função:</span>
+                      <span>{collaboratorRole}</span>
                     </div>
-
-                    <div>
-                      <span className="text-slate-500 font-medium block">Competência / Mês Ref.:</span>
-                      <span className="font-semibold text-slate-800">{competence}</span>
+                    <div className="flex justify-between">
+                      <span>Competência:</span>
+                      <span className="font-bold">{competence}</span>
                     </div>
-
-                    <div>
-                      <span className="text-slate-500 font-medium block">Tipo de Pagamento:</span>
-                      <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded inline-block">
-                        {paymentTypeLabel}
-                      </span>
+                    <div className="flex justify-between">
+                      <span>Tipo Remuneração:</span>
+                      <span className="font-bold">{paymentTypeLabel}</span>
                     </div>
                   </>
                 )}
 
+                <div className="flex justify-between">
+                  <span>Forma Pgto:</span>
+                  <span>{transaction.paymentMethod || 'PIX / Transferência'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Situação:</span>
+                  <span className="font-bold">{transaction.status === 'paid' ? 'PAGO / QUITADO' : 'PENDENTE'}</span>
+                </div>
+              </div>
+
+              <div className="border-t border-dashed border-black my-2"></div>
+
+              {/* Discriminação de Verbas */}
+              {isSalary && (grossAmount !== netAmount || deductions > 0) && (
+                <div className="space-y-0.5 text-[10px] mb-2">
+                  <div className="text-[9px] font-black uppercase text-slate-800">DISCRIMINAÇÃO:</div>
+                  <div className="flex justify-between">
+                    <span>Salário Bruto:</span>
+                    <span>{formatCurrency(grossAmount)}</span>
+                  </div>
+                  {deductions > 0 && (
+                    <div className="flex justify-between font-bold">
+                      <span>(-) Descontos / Vales:</span>
+                      <span>- {formatCurrency(deductions)}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-black my-1"></div>
+                </div>
+              )}
+
+              {/* Caixa Destaque de Valor */}
+              <div className="border-2 border-black p-2 text-center my-2 bg-slate-50">
+                <div className="text-[9px] font-black uppercase tracking-wider text-slate-700">
+                  VALOR LÍQUIDO PAGO
+                </div>
+                <div className="text-base sm:text-lg font-black text-black">
+                  {formatCurrency(netAmount)}
+                </div>
+              </div>
+
+              <div className="text-[9.5px] leading-tight text-justify my-1">
+                <strong>VALOR POR EXTENSO:</strong> {amountInWords}.
+              </div>
+
+              {(!isSalary || transaction.description) && (
+                <div className="text-[9.5px] mt-1 pt-1 border-t border-dotted border-slate-400">
+                  <strong>DESCRIÇÃO:</strong> {transaction.description}
+                  {transaction.notes && <div className="italic text-[9px]">Obs: {transaction.notes}</div>}
+                </div>
+              )}
+
+              <div className="border-t border-dashed border-black my-2"></div>
+
+              {/* Termo Legal CLT Art. 464 */}
+              <div className="text-[9px] leading-relaxed text-justify my-1">
+                <div className="font-bold uppercase text-[8.5px] mb-0.5">DECLARAÇÃO E TERMO DE QUITAÇÃO:</div>
+                {defaultLegalNotice}
+              </div>
+
+              <div className="text-right font-bold text-[9.5px] my-2">
+                São Paulo - SP, {paymentDateFormatted}.
+              </div>
+
+              <div className="border-t border-black my-2"></div>
+
+              {/* Assinaturas Verticais */}
+              <div className="space-y-4 my-3 text-center">
                 <div>
-                  <span className="text-slate-500 font-medium block">Forma de Pagamento:</span>
-                  <span className="font-semibold text-slate-800">
-                    {transaction.paymentMethod || 'Transferência / PIX / Dinheiro'}
-                  </span>
+                  <div className="w-[85%] border-b border-black mx-auto mb-1"></div>
+                  <div className="font-bold text-[10px] uppercase text-black">{collaboratorName}</div>
+                  <div className="text-[9px] text-slate-700">CPF: {collaboratorCpf}</div>
+                  <div className="text-[8.5px] text-slate-600 uppercase font-semibold">
+                    {isSalary ? 'Assinatura do(a) Empregado(a)' : 'Assinatura do(a) Favorecido(a)'}
+                  </div>
                 </div>
+
+                <div>
+                  <div className="w-[85%] border-b border-black mx-auto mb-1"></div>
+                  <div className="font-bold text-[10px] uppercase text-black">
+                    {storeData.storeName || 'DISCRETA BOUTIQUE'}
+                  </div>
+                  <div className="text-[9px] text-slate-700">
+                    {storeData.cnpj ? `CNPJ: ${storeData.cnpj}` : 'Setor Financeiro'}
+                  </div>
+                  <div className="text-[8.5px] text-slate-600 uppercase font-semibold">
+                    Empregador / Responsável Pagador
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-[8px] text-center text-slate-500 pt-1 border-t border-dotted border-slate-400">
+                Autenticação: FIN-{receiptNumber} • Sistema de Gestão Discreta Boutique
               </div>
             </div>
 
-            {/* Se for Salário e tiver discriminação de proventos/descontos */}
-            {isSalary && (grossAmount !== netAmount || deductions > 0) && (
-              <div className="border border-slate-300 rounded-xl overflow-hidden mb-4 text-xs">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-100 font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-300">
-                    <tr>
-                      <th className="px-3 py-2">Discriminação das Verbas</th>
-                      <th className="px-3 py-2 text-right">Proventos (R$)</th>
-                      <th className="px-3 py-2 text-right">Descontos (R$)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    <tr>
-                      <td className="px-3 py-2 font-medium text-slate-800">
-                        {paymentTypeLabel} - Ref. {competence}
-                      </td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-900">
-                        {formatCurrency(grossAmount)}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-400">-</td>
-                    </tr>
-                    {deductions > 0 && (
-                      <tr>
-                        <td className="px-3 py-2 text-slate-700">Descontos Legais / Adiantamentos Anteriores</td>
-                        <td className="px-3 py-2 text-right text-slate-400">-</td>
-                        <td className="px-3 py-2 text-right font-semibold text-red-600">
-                          {formatCurrency(deductions)}
-                        </td>
-                      </tr>
-                    )}
-                    <tr className="bg-slate-50 font-bold">
-                      <td className="px-3 py-2 text-slate-900">LÍQUIDO A RECEBER</td>
-                      <td colSpan={2} className="px-3 py-2 text-right text-sm font-black text-slate-950">
-                        {formatCurrency(netAmount)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+            {/* 2ª Via Se selecionada */}
+            {copiesCount === 2 && (
+              <div className="mt-4 pt-3 border-t-2 border-dashed border-black">
+                <div className="text-center text-[9px] font-bold my-2 text-slate-600">
+                  ✂ CORTE AQUI - 2ª VIA DO COLABORADOR ✂
+                </div>
+                <div className="text-center text-[10px] font-bold uppercase text-slate-700">
+                  (Mesmo teor do documento original impresso para o colaborador)
+                </div>
               </div>
             )}
 
-            {/* Descrição Geral se não for salário ou notas adicionais */}
-            {(!isSalary || transaction.description) && (
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4 text-xs">
-                <span className="font-bold text-slate-700 block mb-0.5">Descrição do Lançamento:</span>
-                <p className="text-slate-800">{transaction.description}</p>
-                {transaction.notes && (
-                  <p className="text-slate-500 mt-1 italic font-sans text-[11px]">Obs: {transaction.notes}</p>
-                )}
-              </div>
-            )}
-
-            {/* Termo Jurídico de Quitação Formal (Legal Notice) */}
-            <div className="border-l-4 border-slate-800 bg-slate-50 p-3.5 rounded-r-lg mb-6 text-xs text-slate-800 text-justify leading-relaxed">
-              <div className="flex items-center gap-1.5 font-bold text-slate-900 mb-1">
-                <ShieldCheck size={14} className="text-slate-700" />
-                <span>Declaração e Termo de Quitação:</span>
-              </div>
-              <p>{defaultLegalNotice}</p>
-            </div>
-
-            {/* Data e Localidade */}
-            <div className="text-right text-xs font-semibold text-slate-700 mb-8">
-              São Paulo - SP, {paymentDateFormatted}.
-            </div>
-
-            {/* LINHAS PARA ASSINATURA (Requisito Formal) */}
-            <div className="mt-8 pt-4 border-t border-slate-300">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 text-center">
-                {/* Assinatura do Favorecido / Colaborador */}
-                <div className="flex flex-col items-center">
-                  <div className="w-4/5 border-b-2 border-slate-800 mb-1.5"></div>
-                  <span className="font-bold text-xs text-slate-900 uppercase">{collaboratorName}</span>
-                  <span className="text-[11px] text-slate-600">CPF: {collaboratorCpf}</span>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
-                    {isSalary ? 'Assinatura do(a) Empregado(a)' : 'Assinatura do(a) Recebedor(a)'}
-                  </span>
-                </div>
-
-                {/* Assinatura do Empregador / Empresa */}
-                <div className="flex flex-col items-center">
-                  <div className="w-4/5 border-b-2 border-slate-800 mb-1.5"></div>
-                  <span className="font-bold text-xs text-slate-900 uppercase">
-                    {storeData.storeName || 'Discreta Boutique'}
-                  </span>
-                  <span className="text-[11px] text-slate-600">
-                    {storeData.cnpj ? `CNPJ: ${storeData.cnpj}` : 'Setor Financeiro / RH'}
-                  </span>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
-                    Assinatura do Empregador / Empresa Pagadora
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Rodapé sutil de autenticação */}
-            <div className="mt-8 pt-3 border-t border-slate-200 flex justify-between items-center text-[9px] text-slate-400 font-mono">
-              <span>Recibo gerado eletronicamente pelo Sistema de Gestão Discreta Boutique</span>
-              <span>Doc: {receiptNumber} • {new Date().toLocaleDateString('pt-BR')}</span>
+            {/* Margem inferior de corte visual */}
+            <div className="border-b-2 border-dashed border-slate-300 mt-4 pt-2 text-center text-[9px] text-slate-400 uppercase tracking-widest">
+              --- AVANÇO DE BOBINA / CORTE ---
             </div>
           </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900 flex justify-between items-center text-xs text-slate-400 no-print">
-          <span className="flex items-center gap-1.5 text-slate-400">
-            <CheckCircle size={14} className="text-green-500" />
-            Recibo apto para arquivo contábil, comprovação de pagamento e compliance trabalhista.
-          </span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose} className="border-slate-700 text-slate-300">
+        {/* Footer do Modal */}
+        <div className="p-4 border-t border-slate-800 bg-slate-900 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-slate-400">
+          <div className="flex items-center gap-2 text-slate-400">
+            <CheckCircle size={15} className="text-emerald-400" />
+            <span>
+              Imprime sem margens externas e sem cabeçalhos do navegador, calibrado para papel contínuo.
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+            >
               Fechar
             </Button>
             <Button
+              type="button"
               size="sm"
               onClick={handlePrint}
-              className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5"
+              disabled={isPrinting}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center gap-1.5 px-4 shadow-lg shadow-blue-600/30"
             >
-              <Printer size={15} /> Imprimir Recibo
+              <Printer size={15} />
+              {isPrinting ? 'Imprimindo...' : 'Imprimir Recibo (80mm)'}
             </Button>
           </div>
         </div>
+
       </div>
     </div>
   );
