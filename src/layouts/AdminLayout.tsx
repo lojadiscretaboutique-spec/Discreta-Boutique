@@ -48,6 +48,7 @@ export function AdminLayout() {
     ]},
     { name: 'Marketing', path: '/admin/marketing', icon: Megaphone, permission: 'banners', submenu: [
         { name: 'Hub Estratégico Pro ⭐️', path: '/admin/marketing', permission: 'banners' },
+        { name: 'Campanhas de Sorteio 🎁', path: '/admin/marketing/sorteios', permission: 'banners' },
         { name: 'Insights IA 🧠', path: '/admin/ia-insights', permission: 'dashboard' },
         { name: 'Visitantes', path: '/admin/analytics/visitors', permission: 'dashboard' },
         { name: 'Live Shop 🎥', path: '/admin/marketing/live-shop', permission: 'banners' },

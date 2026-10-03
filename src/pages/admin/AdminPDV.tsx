@@ -19,6 +19,9 @@ import {
   FileText,
   Loader2,
   Printer,
+  Gift,
+  Eye,
+  Sparkles,
 } from "lucide-react";
 import {
   collection,
@@ -57,6 +60,10 @@ import { classifyPdvDiscount } from "../../services/pdvAuthorizationClassifier";
 import { generateCartFingerprint } from "../../services/pdvCartFingerprint";
 import { DEFAULT_COMPANY_ID } from "../../constants/company";
 import { PDVDiscountAuthModal } from "../../components/admin/PDVDiscountAuthModal";
+import { raffleService } from "../../services/raffleService";
+import { RaffleTicket } from "../../types/raffle";
+import { RaffleTicketModal } from "../../components/admin/RaffleTicketModal";
+import { printRaffleThermalTickets } from "../../utils/rafflePrintUtils";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -598,6 +605,8 @@ export function AdminPDV() {
   } | null>(null);
 
   const [showDiscountAuthModal, setShowDiscountAuthModal] = useState(false);
+  const [raffleTickets, setRaffleTickets] = useState<RaffleTicket[]>([]);
+  const [showRaffleModal, setShowRaffleModal] = useState(false);
   const [availableAuthorizers, setAvailableAuthorizers] = useState<any[]>([]);
   const [cartFingerprint, setCartFingerprint] = useState<string>("");
   const [clientActionId, setClientActionId] = useState<string>(() => {
@@ -1860,6 +1869,34 @@ export function AdminPDV() {
         notes: notes,
       });
 
+      // ==========================================
+      // PROCESSAMENTO DE CUPONS DE SORTEIO (80MM TÉRMICA)
+      // ==========================================
+      try {
+        const raffleResult = await raffleService.processSaleRaffle({
+          orderId: currentOrderId!,
+          total: total,
+          customerName: orderData.customerName,
+          customerWhatsapp: orderData.customerWhatsapp,
+          createdAt: new Date(),
+        });
+
+        if (raffleResult.tickets && raffleResult.tickets.length > 0) {
+          setRaffleTickets(raffleResult.tickets);
+
+          // Impressão automática se a campanha ativa configurou autoPrint = true
+          if (raffleResult.shouldAutoPrint) {
+            setTimeout(() => {
+              printRaffleThermalTickets(raffleResult.tickets);
+            }, 600);
+          }
+        } else {
+          setRaffleTickets([]);
+        }
+      } catch (raffleErr) {
+        console.error("Erro ao processar sorteio no PDV:", raffleErr);
+      }
+
       setLastOrderId(currentOrderId!);
       resetPDV("success");
     } catch (error) {
@@ -1925,6 +1962,8 @@ export function AdminPDV() {
 
   const handleNewSale = () => {
     setLastFinishedOrder(null);
+    setRaffleTickets([]);
+    setShowRaffleModal(false);
     resetPDV("cart");
   };
 
@@ -2132,9 +2171,51 @@ export function AdminPDV() {
           <p className="text-sm text-slate-600 dark:text-slate-300 font-bold tracking-wide mb-2">
             Pedido finalizado com sucesso.
           </p>
-          <p className="inline-block bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-red-500 text-xl font-mono px-6 py-2 rounded-2xl mb-8 font-black tracking-widest">
+          <p className="inline-block bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-red-500 text-xl font-mono px-6 py-2 rounded-2xl mb-6 font-black tracking-widest">
             #{lastOrderId.slice(-6).toUpperCase()}
           </p>
+
+          {/* Cupons de Sorteio Conquistados na Venda */}
+          {raffleTickets.length > 0 && (
+            <div className="bg-gradient-to-br from-red-600/10 via-rose-500/10 to-amber-500/10 border border-red-500/30 rounded-2xl p-4 mb-6 text-left shadow-lg">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <Gift className="w-5 h-5 text-red-500 animate-bounce" />
+                  <span className="text-[11px] font-black uppercase text-red-500 tracking-wider">
+                    Sorteio Promocional!
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono font-black bg-red-600 text-white px-2 py-0.5 rounded-full">
+                  {raffleTickets.length} {raffleTickets.length === 1 ? 'Bilhete' : 'Bilhetes'}
+                </span>
+              </div>
+              <p className="text-xs font-bold text-slate-900 dark:text-white line-clamp-1">
+                {raffleTickets[0]?.campaignTitle}
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-zinc-400 mt-0.5 line-clamp-1">
+                🏆 {raffleTickets[0]?.prize}
+              </p>
+              <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-red-500/20">
+                <button
+                  type="button"
+                  onClick={() => printRaffleThermalTickets(raffleTickets)}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-[11px] uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-red-600/30 transition cursor-pointer"
+                >
+                  <Printer size={14} />
+                  Imprimir Cupons (80mm)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRaffleModal(true)}
+                  className="px-3 py-2.5 bg-white dark:bg-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-700 border border-slate-300 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1 transition cursor-pointer"
+                  title="Prévia do Cupom Térmico"
+                >
+                  <Eye size={14} />
+                  Ver
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-3">
             <button
@@ -2163,6 +2244,14 @@ export function AdminPDV() {
             </button>
           </div>
         </motion.div>
+
+        {/* Modal de Prévia e Reimpresão de Cupons Térmicos 80mm */}
+        <RaffleTicketModal
+          isOpen={showRaffleModal}
+          onClose={() => setShowRaffleModal(false)}
+          tickets={raffleTickets}
+          campaignTitle={raffleTickets[0]?.campaignTitle}
+        />
       </div>
     );
   }

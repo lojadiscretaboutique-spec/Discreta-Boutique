@@ -26,6 +26,7 @@ import { MktCalendar } from './components/MktCalendar';
 import { MktInfluencers } from './components/MktInfluencers';
 import { MktContentLibrary } from './components/MktContentLibrary';
 import { MktAffiliatesPanel } from './components/MktAffiliatesPanel';
+import AdminRaffleCampaigns from './AdminRaffleCampaigns';
 
 export default function AdminMarketingHub() {
   const { subpage } = useParams();
@@ -92,7 +93,7 @@ export default function AdminMarketingHub() {
     { id: 'calendar', label: 'Calendário Integrado', icon: Calendar },
     { id: 'content', label: 'Central de Conteúdos', icon: BookOpen },
     { id: 'influencers', label: 'Influenciadores CRM', icon: Users },
-    { id: 'giveaways', label: 'Sorteios & Countdown', icon: Gift },
+    { id: 'giveaways', label: 'Campanhas de Sorteio 🎁', icon: Gift },
     { id: 'whats', label: 'Recorrências WhatsApp', icon: MessageSquare },
     { id: 'affiliates', label: 'Afiliados Ranking', icon: Share2 },
     { id: 'promotions', label: 'Promoções & Cupons', icon: Percent },
@@ -315,8 +316,13 @@ export default function AdminMarketingHub() {
               />
             )}
 
+            {/* 5.5 Campanhas de Sorteio com Impressão Térmica 80mm */}
+            {(activeTab === 'giveaways' || activeTab === 'sorteios') && (
+              <AdminRaffleCampaigns />
+            )}
+
             {/* 6. Composite views */}
-            {(activeTab === 'giveaways' || activeTab === 'whats' || activeTab === 'affiliates' || activeTab === 'promotions' || activeTab === 'reports') && (
+            {(activeTab === 'whats' || activeTab === 'affiliates' || activeTab === 'promotions' || activeTab === 'reports') && (
               <MktAffiliatesPanel 
                 subView={activeTab as any}
                 affiliates={affiliates}
