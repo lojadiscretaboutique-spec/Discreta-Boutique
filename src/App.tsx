@@ -94,6 +94,7 @@ const AdminInventoryBalanceDivergences = safeLazy(() => import('./pages/admin/es
 const AdminStockCard = safeLazy(() => import('./pages/admin/estoque/AdminStockCard').then(m => ({ default: m.AdminStockCard })), 'AdminStockCard');
 const AdminMarketingHub = safeLazy(() => import('./pages/admin/marketing/AdminMarketingHub'), 'AdminMarketingHub');
 const AdminRaffleCampaigns = safeLazy(() => import('./pages/admin/marketing/AdminRaffleCampaigns'), 'AdminRaffleCampaigns');
+const AdminRoulette = safeLazy(() => import('./pages/admin/marketing/AdminRoulette'), 'AdminRoulette');
 const AdminVisitors = safeLazy(() => import('./pages/admin/analytics/AdminVisitors').then(m => ({ default: m.AdminVisitors })), 'AdminVisitors');
 const AdminThemeManager = safeLazy(() => import('./pages/admin/AdminThemeManager').then(m => ({ default: m.AdminThemeManager })), 'AdminThemeManager');
 const AdminTypography = safeLazy(() => import('./pages/admin/AdminTypography').then(m => ({ default: m.AdminTypography })), 'AdminTypography');
@@ -315,6 +316,7 @@ function AppContent() {
             <Route path="estoque-inteligente" element={<AdminSmartStock />} />
             <Route path="marketing" element={<AdminMarketingHub />} />
             <Route path="marketing/sorteios" element={<AdminRaffleCampaigns />} />
+            <Route path="marketing/roleta" element={<AdminRoulette />} />
             <Route path="marketing/:subpage" element={<AdminMarketingHub />} />
             <Route path="marketing/recuperador-carrinho" element={<AdminWebhooks />} />
             <Route path="marketing/recovery-logs" element={<AdminWebhooks />} />

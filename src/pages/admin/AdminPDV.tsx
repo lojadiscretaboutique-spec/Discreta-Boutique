@@ -64,6 +64,8 @@ import { raffleService } from "../../services/raffleService";
 import { RaffleTicket } from "../../types/raffle";
 import { RaffleTicketModal } from "../../components/admin/RaffleTicketModal";
 import { printRaffleThermalTickets } from "../../utils/rafflePrintUtils";
+import { rouletteService } from "../../services/rouletteService";
+import { RouletteWheelModal } from "../../components/admin/RouletteWheelModal";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -607,6 +609,8 @@ export function AdminPDV() {
   const [showDiscountAuthModal, setShowDiscountAuthModal] = useState(false);
   const [raffleTickets, setRaffleTickets] = useState<RaffleTicket[]>([]);
   const [showRaffleModal, setShowRaffleModal] = useState(false);
+  const [showRouletteModal, setShowRouletteModal] = useState(false);
+  const [rouletteWonPrize, setRouletteWonPrize] = useState<string | null>(null);
   const [availableAuthorizers, setAvailableAuthorizers] = useState<any[]>([]);
   const [cartFingerprint, setCartFingerprint] = useState<string>("");
   const [clientActionId, setClientActionId] = useState<string>(() => {
@@ -1897,6 +1901,21 @@ export function AdminPDV() {
         console.error("Erro ao processar sorteio no PDV:", raffleErr);
       }
 
+      // ==========================================
+      // AVALIAR ROLETA PREMIADA DE MARKETING
+      // ==========================================
+      try {
+        const rouletteConfig = await rouletteService.getConfig();
+        if (rouletteConfig.active && total >= (rouletteConfig.minPurchaseValue || 50)) {
+          // Cliente elegível para girar a roleta com fanfarra comemorativa!
+          setTimeout(() => {
+            setShowRouletteModal(true);
+          }, 350);
+        }
+      } catch (rouletteErr) {
+        console.error("Erro ao verificar roleta no PDV:", rouletteErr);
+      }
+
       setLastOrderId(currentOrderId!);
       resetPDV("success");
     } catch (error) {
@@ -1964,6 +1983,8 @@ export function AdminPDV() {
     setLastFinishedOrder(null);
     setRaffleTickets([]);
     setShowRaffleModal(false);
+    setShowRouletteModal(false);
+    setRouletteWonPrize(null);
     resetPDV("cart");
   };
 
@@ -2217,7 +2238,35 @@ export function AdminPDV() {
             </div>
           )}
 
+          {/* Badge de Prêmio Conquistado na Roleta */}
+          {rouletteWonPrize && (
+            <div className="bg-gradient-to-r from-amber-500/20 via-rose-500/20 to-red-600/20 border-2 border-amber-400/60 rounded-2xl p-4 mb-4 text-left shadow-xl">
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="w-5 h-5 text-amber-400 animate-bounce" />
+                <span className="text-[11px] font-black uppercase text-amber-400 tracking-wider">
+                  🏆 Prêmio Ganho na Roleta!
+                </span>
+              </div>
+              <p className="text-sm font-black text-white">
+                {rouletteWonPrize}
+              </p>
+              <p className="text-[10px] text-zinc-300 mt-0.5">
+                Entregar brinde para a cliente!
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3">
+            {/* Botão de Roleta Premiada */}
+            <button
+              type="button"
+              onClick={() => setShowRouletteModal(true)}
+              className="w-full h-14 bg-gradient-to-r from-amber-500 via-rose-600 to-red-600 hover:from-amber-600 hover:to-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.01]"
+            >
+              <Sparkles size={18} />
+              {rouletteWonPrize ? 'Ver Roleta Novamente' : 'Girar Roleta Premiada 🎰'}
+            </button>
+
             <button
               onClick={handlePrintReceipt}
               className="w-full h-14 bg-white dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-900 dark:text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700 transition-all hover:scale-[1.01]"
@@ -2251,6 +2300,21 @@ export function AdminPDV() {
           onClose={() => setShowRaffleModal(false)}
           tickets={raffleTickets}
           campaignTitle={raffleTickets[0]?.campaignTitle}
+        />
+
+        {/* Modal da Roleta Premiada em Tela Cheia */}
+        <RouletteWheelModal
+          isOpen={showRouletteModal}
+          onClose={() => setShowRouletteModal(false)}
+          orderId={lastOrderId}
+          orderTotal={lastFinishedOrder?.total || total}
+          customerName={lastFinishedOrder?.customerName}
+          customerWhatsapp={lastFinishedOrder?.customerWhatsapp}
+          onSpinCompleted={(res) => {
+            if (res.isWin && res.prizeName) {
+              setRouletteWonPrize(res.prizeName);
+            }
+          }}
         />
       </div>
     );
