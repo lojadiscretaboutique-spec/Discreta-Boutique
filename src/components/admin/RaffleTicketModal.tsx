@@ -97,106 +97,74 @@ export function RaffleTicketModal({
           </div>
         )}
 
-        {/* Modal Body: Thermal 80mm Preview */}
+        {/* Modal Body: Thermal 70mm Preview */}
         <div className="p-6 overflow-y-auto flex-1 bg-zinc-900/30 space-y-4">
           <div className="text-center text-xs text-zinc-400">
-            Pré-visualização fiel na fita térmica contínua de <strong className="text-white">80mm (72mm útil)</strong>:
+            Pré-visualização simplificada no padrão térmico <strong className="text-white">70mm</strong>:
           </div>
 
           {/* Thermal Ticket Simulation */}
-          <div className="max-w-[340px] mx-auto bg-white text-black p-5 rounded-2xl shadow-2xl font-mono text-[11px] leading-tight select-none border border-zinc-300">
+          <div className="max-w-[310px] mx-auto bg-white text-black p-4 rounded-2xl shadow-2xl font-mono text-[11px] leading-tight select-none border border-zinc-300">
             {tickets.map((t, idx) => (
-              <div key={t.id || idx} className={idx > 0 ? "mt-6 pt-6 border-t-2 border-dashed border-zinc-400" : ""}>
-                {idx > 0 && (
-                  <div className="text-center text-[9px] font-bold text-zinc-600 mb-4">
-                    ✂ - - - - - - DESTAQUE AQUI - - - - - - ✂
-                  </div>
-                )}
-                
+              <div key={t.id || idx} className={idx > 0 ? "mt-4 pt-4 border-t border-dashed border-black" : ""}>
                 <div className="text-center">
-                  <div className="text-[14px] font-black tracking-wide">DISCRETA BOUTIQUE</div>
-                  <div className="text-[8px] font-bold text-zinc-600">MODA ÍNTIMA & BEM-ESTAR</div>
-                  <div className="border-t-2 border-black my-2"></div>
-                  <div className="text-[12px] font-black uppercase">*** BILHETE DE SORTEIO ***</div>
-                  <div className="text-[10.5px] font-extrabold mt-0.5 uppercase">{t.campaignTitle}</div>
+                  <div className="text-[13px] font-black tracking-wide">DISCRETA BOUTIQUE</div>
+                  <div className="text-[11px] font-extrabold uppercase mt-0.5">*** CUPOM DE SORTEIO ***</div>
+                  {t.campaignTitle && (
+                    <div className="text-[9.5px] font-bold text-zinc-800 uppercase mt-0.5">{t.campaignTitle}</div>
+                  )}
                   
                   {tickets.length > 1 && (
-                    <div className="mt-1 bg-black text-white text-[9px] font-bold px-2 py-0.5 inline-block">
+                    <div className="mt-1 bg-black text-white text-[8.5px] font-bold px-2 py-0.5 inline-block">
                       CUPOM {t.ticketIndexInSale} DE {t.ticketsTotalInSale}
                     </div>
                   )}
 
-                  <div className="border border-black p-2 my-2 w-[85%] mx-auto text-center">
-                    <div className="text-[8px] font-bold tracking-wider">CÓDIGO DO BILHETE</div>
-                    <div className="text-[15px] font-black tracking-wider">#{t.ticketCode}</div>
+                  <div className="border-2 border-black p-2 my-2 w-[92%] mx-auto text-center">
+                    <div className="text-[8.5px] font-bold tracking-wider">NÚMERO DO CUPOM</div>
+                    <div className="text-[16px] font-black tracking-wider leading-none mt-1">#{t.ticketCode}</div>
                   </div>
                 </div>
 
                 <div className="border-t border-dashed border-black my-2"></div>
 
-                <div>
-                  <div className="text-[8.5px] font-black uppercase text-zinc-700">CONCORRA A:</div>
-                  <div className="text-[11.5px] font-black leading-snug">🏆 {t.prize}</div>
-                  {t.drawDate && (
-                    <div className="text-[9px] mt-1 text-zinc-700">
-                      Data do sorteio: <strong>{t.drawDate.split('-').reverse().join('/')}</strong>
-                    </div>
-                  )}
+                <div className="flex justify-between items-center text-[10px] py-0.5">
+                  <span className="font-bold">DATA DA COMPRA:</span>
+                  <span className="font-black">{t.orderDate}</span>
                 </div>
 
                 <div className="border-t border-dashed border-black my-2"></div>
 
-                <div className="space-y-0.5 text-[9.5px]">
-                  <div className="flex justify-between">
-                    <span>PEDIDO PDV:</span>
-                    <span className="font-bold">#{t.orderId ? t.orderId.slice(-6).toUpperCase() : 'BALCAO'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>DATA COMPRA:</span>
-                    <span>{t.orderDate}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-[10px] pt-1 border-t border-dotted border-zinc-400">
-                    <span>VALOR:</span>
-                    <span>R$ {Number(t.orderTotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                </div>
-
-                <div className="border-t border-dashed border-black my-2"></div>
-
-                <div className="space-y-1.5">
-                  <div className="text-[9px] font-black text-center uppercase">PREENCHA PARA A URNA:</div>
+                <div className="space-y-2 py-1">
                   <div>
-                    <span className="text-[8px] font-bold block">NOME:</span>
-                    <div className="border-b border-black text-[10px] font-bold h-4">
-                      {t.customerName ? t.customerName.toUpperCase() : ''}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-[8px] font-bold block">WHATSAPP:</span>
-                    <div className="border-b border-black text-[10px] font-bold h-4">
-                      {t.customerWhatsapp || ''}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-[8px] font-bold block">ASSINATURA:</span>
-                    <div className="border-b border-black h-4 mt-2"></div>
-                  </div>
-                </div>
-
-                {t.rules && (
-                  <>
-                    <div className="border-t border-dashed border-black my-2"></div>
-                    <div>
-                      <div className="text-[8.5px] font-black uppercase text-zinc-700">REGRAS:</div>
-                      <div className="text-[8px] leading-tight text-zinc-800 whitespace-pre-line">
-                        {t.rules}
+                    <span className="text-[9px] font-bold block">NOME:</span>
+                    {t.customerName ? (
+                      <div className="border-b border-black text-[11px] font-black py-0.5">
+                        {t.customerName.toUpperCase()}
                       </div>
-                    </div>
-                  </>
-                )}
+                    ) : (
+                      <div className="text-[10px] text-zinc-500 font-normal tracking-tighter">
+                        __________________________________
+                      </div>
+                    )}
+                  </div>
 
-                <div className="mt-3 text-center text-[8px] font-bold text-zinc-600">
-                  ✂ DESTAQUE E DEPOSITE NA URNA ✂
+                  <div>
+                    <span className="text-[9px] font-bold block">WHATSAPP:</span>
+                    {t.customerWhatsapp ? (
+                      <div className="border-b border-black text-[11px] font-black py-0.5">
+                        {t.customerWhatsapp}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-zinc-500 font-normal tracking-tighter">
+                        __________________________________
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 text-center text-[8.5px] font-bold text-zinc-700">
+                  ✂ - - - - - - - - - - - - - - - ✂
                 </div>
               </div>
             ))}
@@ -227,7 +195,7 @@ export function RaffleTicketModal({
               className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-xs font-black rounded-xl text-white shadow-lg shadow-red-600/30 transition cursor-pointer disabled:opacity-50"
             >
               <Printer className="w-4 h-4" />
-              {isPrinting ? 'Enviando...' : `Imprimir ${tickets.length} Bilhete(s) (80mm)`}
+              {isPrinting ? 'Enviando...' : `Imprimir ${tickets.length} Cupom(ns) (70mm)`}
             </button>
           </div>
         </div>
