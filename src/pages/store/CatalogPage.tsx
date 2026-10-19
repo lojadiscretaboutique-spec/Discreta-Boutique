@@ -7,8 +7,7 @@ import { formatCurrency, cn } from '../../lib/utils';
 import { Search, X, Minus, Plus, Frown, Loader2, Truck, Heart } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
-import { getRankingProfissional, getRankingHybrid, hasDirectTextMatch } from '../../lib/ranking';
-import { aiFrontendService } from '../../services/aiFrontendService';
+import { getRankingProfissional, hasDirectTextMatch } from '../../lib/ranking';
 import { Category, categoryService } from '../../services/categoryService';
 import { customerService } from '../../services/customerService';
 import { motion, AnimatePresence } from 'motion/react';
@@ -80,14 +79,14 @@ export function CatalogPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 40;
 
-  // Estados para Inteligência Artificial da OpenAI na Busca
-  const [aiSuggestion, setAiSuggestion] = useState<any>(null);
-  const [queryEmbedding, setQueryEmbedding] = useState<number[] | null>(null);
-  const [isAiLoading, setIsAiLoading] = useState(false);
-
   const [fullHomeStructure, setFullHomeStructure] = useState<any | null>(null);
   const [activeSectionSettings, setActiveSectionSettings] = useState<VisualHomeSettings | null>(null);
   const [sectionLoadError, setSectionLoadError] = useState<string | null>(null);
+
+  // Sincroniza o campo de busca com o parâmetro 'q' da URL
+  useEffect(() => {
+    setSearch(qSearch || '');
+  }, [qSearch]);
 
   const updateCategoryParam = (catValue: string | 'all', clearSearch = true) => {
     const newParams = new URLSearchParams(searchParams);
@@ -101,9 +100,6 @@ export function CatalogPage() {
     if (catValue === 'all') {
       newParams.delete('categoria');
     } else {
-      // Find the slug for this ID if we're passing an ID, or vice versa
-      // But here we receive from the buttons which use IDs (mostly)
-      // Actually, it's safer to check what we have
       const cat = categories.find(c => c.id === catValue || c.slug === catValue);
       if (cat) {
         newParams.set('categoria', cat.slug || cat.id);
@@ -113,7 +109,6 @@ export function CatalogPage() {
     }
     setSearchParams(newParams);
     
-    // Also update local state for immediate feedback
     if (catValue === 'all') {
       setSelectedCat('all');
     } else {
@@ -146,68 +141,12 @@ export function CatalogPage() {
     }
     
     setSearching(true);
-    // Standard local ranking is used in the filter effect
     setSearching(false);
   };
 
   const trackProductClick = async (productId: string) => {
-    // Register for overall ranking
     productService.trackInteraction(productId, 'click');
   };
-
-  // Carrega interpretação e embeddings inteligentes via OpenAI ao pesquisar
-  useEffect(() => {
-    let active = true;
-    const queryStr = (qSearch || search || '').trim();
-    if (!queryStr) {
-      setAiSuggestion(null);
-      setQueryEmbedding(null);
-      return;
-    }
-
-    async function fetchAiSearchData() {
-      setIsAiLoading(true);
-      try {
-        console.log(`[CATALOG][OPENAI_SEARCH] Fetching semantic data and embedding for: "${queryStr}"`);
-        const [interpretRes, embeddingRes] = await Promise.allSettled([
-          aiFrontendService.interpretSearch(queryStr),
-          aiFrontendService.generateEmbedding(queryStr)
-        ]);
-
-        if (!active) return;
-
-        if (interpretRes.status === 'fulfilled') {
-          console.log(`[CATALOG][OPENAI_SEARCH] Interpretation loaded:`, interpretRes.value);
-          setAiSuggestion(interpretRes.value.interpretacao || interpretRes.value);
-        } else {
-          console.warn('[CATALOG][OPENAI_SEARCH] Failed to interpret search:', interpretRes.reason);
-        }
-
-        if (embeddingRes.status === 'fulfilled') {
-          console.log(`[CATALOG][OPENAI_SEARCH] 1536-dim embedding vector loaded successfully`);
-          setQueryEmbedding(embeddingRes.value);
-        } else {
-          console.warn('[CATALOG][OPENAI_SEARCH] Failed to generate embedding:', embeddingRes.reason);
-        }
-      } catch (err) {
-        console.error("Erro geral na busca inteligente OpenAI:", err);
-      } finally {
-        if (active) {
-          setIsAiLoading(false);
-        }
-      }
-    }
-
-    // Debounce leve de 150ms para evitar chamadas duplicadas
-    const timer = setTimeout(() => {
-      fetchAiSearchData();
-    }, 150);
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [qSearch, search]);
 
   const isCategoriesEmpty = categories.length === 0;
   useEffect(() => {
@@ -349,21 +288,37 @@ export function CatalogPage() {
               const minimizedProds = prods.map(p => ({
                 id: p.id,
                 name: p.name,
+                subtitle: p.subtitle,
+                shortDescription: p.shortDescription || (p as any).description,
+                fullDescription: p.fullDescription,
+                description: (p as any).description || p.shortDescription,
                 price: p.price,
                 promoPrice: p.promoPrice,
                 images: p.images?.slice(0, 1), // Only first image for cache
                 categoryId: p.categoryId,
+                subcategory: p.subcategory || (p as any).subcategoria,
+                brand: p.brand,
                 stock: p.stock,
                 controlStock: p.controlStock,
                 allowBackorder: p.allowBackorder,
                 extras: p.extras,
-                seo: { keywords: p.seo?.keywords, slug: p.seo?.slug },
+                seo: { 
+                  title: p.seo?.title || p.seo?.metaTitle,
+                  description: p.seo?.description || p.seo?.metaDescription,
+                  keywords: p.seo?.keywords, 
+                  slug: p.seo?.slug,
+                  googleCategory: p.seo?.googleCategory
+                },
+                palavras_chave: (p as any).palavras_chave,
                 ai_keywords: p.ai_keywords,
                 ai_synonyms: p.ai_synonyms,
+                tags: p.tags,
                 searchTerms: p.searchTerms,
                 newRelease: p.newRelease,
                 hasVariants: p.hasVariants,
                 sku: p.sku,
+                internalCode: p.internalCode,
+                gtin: p.gtin || (p as any).barcode,
                 isCombo: (p as any).isCombo
               }));
               
@@ -758,26 +713,26 @@ export function CatalogPage() {
       result = result.filter(p => p.categoryId && allCategoryIds.includes(p.categoryId));
     }
 
-    // 5. Filtro de Busca
+    // 5. Filtro de Busca (Estrito, Simples, Eficiente, Objetivo e Sem IA)
     if (search.trim()) {
-      const exactMatched = result.filter(p => hasDirectTextMatch(p, search, categories));
-      if (aiSuggestion || queryEmbedding) {
-        result = getRankingHybrid(exactMatched, aiSuggestion, queryEmbedding || undefined);
-      } else {
-        result = getRankingProfissional(exactMatched, search, categories);
-      }
+      // Quando há busca, pesquisa em todo o catálogo de produtos ativos e com estoque
+      const matched = products.filter(p => hasDirectTextMatch(p, search, categories));
+      // Ordena estritamente de acordo com o que o cliente digitou
+      return getRankingProfissional(matched, search, categories);
     }
 
-    // 6. Inteligência IA
-    const hasAnyFilter = !!selectedSection || !!selectedCollection || !!selectedSubcat || selectedCat !== 'all' || !!search.trim();
+    // 6. Ordenação Padrão do Catálogo (Sem IA)
+    const hasAnyFilter = !!selectedSection || !!selectedCollection || !!selectedSubcat || selectedCat !== 'all';
     if (!hasAnyFilter) {
-      const aiProducts = result.filter(p => (p.score || 0) > 0);
-      if (aiProducts.length > 0) result = aiProducts;
-      result = [...result].sort((a, b) => (b.score || 0) - (a.score || 0));
+      result = [...result].sort((a, b) => {
+        if (a.featured && !b.featured) return -1;
+        if (!a.featured && b.featured) return 1;
+        return (b.conversoes || 0) - (a.conversoes || 0);
+      });
     }
 
     return result;
-  }, [search, selectedCat, selectedSection, selectedSubcat, selectedCollection, products, categories, fullHomeStructure, aiSuggestion, queryEmbedding]);
+  }, [search, selectedCat, selectedSection, selectedSubcat, selectedCollection, products, categories, fullHomeStructure]);
 
   useEffect(() => {
     setFiltered(filteredProducts);
@@ -840,9 +795,74 @@ export function CatalogPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-black text-white min-h-screen">
-      {/* Category Navigation - More Compact */}
-      <section className="bg-zinc-950 border-b border-zinc-900 pt-6 pb-4 px-4 sticky top-14 md:top-16 z-30 backdrop-blur-md bg-black/95">
+      {/* Category Navigation & Product Search - Prominent & Simple */}
+      <section className="bg-zinc-950 border-b border-zinc-900 pt-5 pb-4 px-4 sticky top-14 md:top-16 z-30 backdrop-blur-md bg-black/95">
         <div className="max-w-7xl mx-auto space-y-4">
+          
+          {/* Prominent Product Search Bar */}
+          <div className="relative w-full max-w-3xl mx-auto">
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleRealSearch(search);
+              }}
+              className="relative flex items-center"
+            >
+              <Search 
+                size={18} 
+                className="absolute left-4 text-zinc-400 pointer-events-none" 
+              />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearch(val);
+                  const newParams = new URLSearchParams(searchParams);
+                  if (val.trim()) {
+                    newParams.set('q', val);
+                    newParams.delete('categoria');
+                    newParams.delete('secao');
+                    newParams.delete('subcategoria');
+                    newParams.delete('colecao');
+                  } else {
+                    newParams.delete('q');
+                  }
+                  setSearchParams(newParams, { replace: true });
+                }}
+                placeholder="Buscar produtos por nome, descrição, referência, palavras-chave..."
+                className="w-full bg-zinc-900/90 hover:bg-zinc-900 focus:bg-zinc-900 text-white placeholder-zinc-500 text-sm md:text-base rounded-2xl pl-11 pr-24 py-2.5 md:py-3 border border-zinc-800 focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all outline-none"
+              />
+              <div className="absolute right-2.5 flex items-center gap-1.5">
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch('');
+                      const newParams = new URLSearchParams(searchParams);
+                      newParams.delete('q');
+                      setSearchParams(newParams);
+                    }}
+                    className="p-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                    title="Limpar busca"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider bg-red-600 hover:bg-red-500 text-white transition-all shadow-md"
+                  style={{
+                    backgroundColor: currentTheme.primaryColor || '#D32F2F',
+                    color: currentTheme.primaryTextColor === 'light' ? '#ffffff' : (currentTheme.primaryTextColor === 'dark' ? '#000000' : '#ffffff')
+                  }}
+                >
+                  Buscar
+                </button>
+              </div>
+            </form>
+          </div>
+
           <div className="space-y-2">
             {/* Root Categories Horizontal Scroll */}
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-0.5">
@@ -968,20 +988,12 @@ export function CatalogPage() {
             <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[2px]">
               {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}
             </p>
-            {isAiLoading ? (
-              <span className="bg-purple-600/10 border border-purple-500/30 text-purple-400 text-[8px] md:text-[9.5px] font-black uppercase tracking-[2.5px] px-3.5 py-1.5 rounded-full flex items-center gap-1.5 animate-pulse">
-                <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-ping" />
-                IA OpenAI Analisando...
+            {search.trim() && (
+              <span className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-[8px] md:text-[9.5px] font-bold uppercase tracking-[2px] px-3.5 py-1.5 rounded-full flex items-center gap-1.5">
+                <Search size={12} className="text-red-500" />
+                Busca: "{search}"
               </span>
-            ) : (aiSuggestion || queryEmbedding) ? (
-              <span className="bg-purple-650/20 border border-purple-500/55 text-purple-300 text-[8px] md:text-[9.5px] font-black uppercase tracking-[2.5px] px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-[0_0_12px_rgba(168,85,247,0.15)]">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
-                </span>
-                Busca Otimizada com IA OpenAI
-              </span>
-            ) : null}
+            )}
             {activeSectionSettings && (
               <span className="bg-red-600/10 border border-red-650/25 text-red-500 text-[8px] md:text-[9.5px] font-black uppercase tracking-[2.5px] px-3.5 py-1.5 rounded-full">
                 Exibindo Seção: {activeSectionSettings.title}
@@ -1015,35 +1027,7 @@ export function CatalogPage() {
 
         {/* Product Grid - Optimized Columns */}
         <main className="w-full">
-          {searching ? (
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center"
-            >
-              <motion.div 
-                animate={{ 
-                  scale: [1, 1.05, 1],
-                }}
-                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                className="relative mb-12"
-              >
-                <div className="absolute inset-0 bg-red-600/10 blur-[60px] rounded-full animate-pulse"></div>
-                <div className="w-24 h-24 bg-zinc-900 border-2 border-zinc-800 rounded-full flex items-center justify-center text-red-500 relative z-10">
-                  <Search size={40} className="animate-pulse" />
-                </div>
-              </motion.div>
-              
-              <h3 className="text-white font-black text-2xl md:text-3xl mb-4 tracking-tighter uppercase">
-                Buscando no Catálogo...
-              </h3>
-              <div className="flex items-center gap-3 text-red-500 font-black uppercase tracking-[0.2em] text-[10px]">
-                <Loader2 className="animate-spin" size={14} />
-                Localizando produtos reais
-              </div>
-            </motion.div>
-          ) : loading ? (
+          {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6 mt-6">
               {[1,2,3,4,5,6,7,8,9,10].map(i => (
                 <div key={i} className="aspect-[4/5] bg-zinc-900 rounded-3xl border border-zinc-800 animate-pulse"></div>

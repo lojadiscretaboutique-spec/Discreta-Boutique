@@ -239,63 +239,89 @@ export const getRankingHybrid = (products: Product[], aiSuggestion?: AISuggestio
 
 export const hasDirectTextMatch = (p: Product, queryText: string, categories: CategorySimple[] = []): boolean => {
   if (!p) return false;
+
+  // 1. Regra Estrita: Somente produtos ativos
+  if (p.active === false || (p as any).status === 'inactive') {
+    return false;
+  }
+
+  // 2. Regra Estrita: Somente produtos que contenham estoque
+  const stockNum = typeof p.stock === 'number' ? p.stock : (Number(p.stock) || 0);
+  const variantsStock = p.variants && Array.isArray(p.variants)
+    ? p.variants.reduce((sum, v) => sum + (Number(v.stock) || Number(v.variantStock) || 0), 0)
+    : 0;
+  const totalStock = Math.max(stockNum, variantsStock);
+
+  if (!p.isCombo && totalStock <= 0) {
+    return false;
+  }
+
   if (!queryText || !queryText.trim()) return true;
 
   const extP = p as ExtendedProduct;
   const normalizedQuery = normalizeSearchText(queryText);
-  const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
+  if (!normalizedQuery) return true;
 
-  const term = normalizedQuery.trim();
-  if (!term) return false;
+  const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 0);
+  const queryVariations = queryWords.flatMap(w => getWordVariations(w));
+  const allSearchTerms = Array.from(new Set([normalizedQuery, ...queryWords, ...queryVariations]));
 
-  // 1. Nome do Produto (ou todas as palavras dele se for busca multi-termo)
+  // Nome e Subtítulo
   const name = normalizeSearchText(p.name || "");
-  if (name.includes(term)) return true;
-  if (queryWords.length > 0 && queryWords.every(word => name.includes(word))) return true;
+  const subtitle = normalizeSearchText(p.subtitle || "");
 
-  // 2. SKU, Código Interno / GTIN
+  // Descrições
+  const shortDesc = normalizeSearchText(p.shortDescription || "");
+  const fullDesc = normalizeSearchText(p.fullDescription || "");
+  const genericDesc = normalizeSearchText((p as any).description || "");
+  const allDesc = `${shortDesc} ${fullDesc} ${genericDesc} ${subtitle}`;
+
+  // Todos os campos do cadastro SEO
+  const seoTitle = normalizeSearchText(p.seo?.title || p.seo?.metaTitle || "");
+  const seoDesc = normalizeSearchText(p.seo?.description || p.seo?.metaDescription || "");
+  const seoSlug = normalizeSearchText(p.seo?.slug || p.slug || "");
+  const seoKeywordsRaw = Array.isArray(p.seo?.keywords) 
+    ? p.seo.keywords.join(' ') 
+    : String(p.seo?.keywords || '');
+  const seoKeywords = normalizeSearchText(seoKeywordsRaw);
+  const palavrasChave = Array.isArray(extP.palavras_chave)
+    ? extP.palavras_chave.join(' ')
+    : String(extP.palavras_chave || '');
+  const aiKeywords = Array.isArray(p.ai_keywords) ? p.ai_keywords.join(' ') : '';
+  const aiSynonyms = Array.isArray(p.ai_synonyms) ? p.ai_synonyms.join(' ') : '';
+  const allSeo = `${seoTitle} ${seoDesc} ${seoSlug} ${seoKeywords} ${normalizeSearchText(palavrasChave)} ${normalizeSearchText(aiKeywords)} ${normalizeSearchText(aiSynonyms)}`;
+
+  // Tags e Termos de Busca
+  const tagsRaw = [
+    ...(p.tags || []),
+    ...(p.searchTerms || []),
+  ].map(t => normalizeSearchText(String(t))).join(' ');
+
+  // Categoria, Subcategoria e Marca
+  let catName = normalizeSearchText(extP.categoryName || "");
+  if (!catName && p.categoryId && Array.isArray(categories)) {
+    const cat = categories.find(c => c && c.id === p.categoryId);
+    if (cat) catName = normalizeSearchText(cat.name || "");
+  }
+  const subcat = normalizeSearchText(p.subcategory || (p as any).subcategoria || "");
+  const brand = normalizeSearchText(p.brand || "");
+  const allCat = `${catName} ${subcat} ${brand}`;
+
+  // Códigos, SKU, GTIN, Barcode
   const sku = normalizeSearchText(p.sku || "");
   const iCode = normalizeSearchText(p.internalCode || "");
-  const gtin = normalizeSearchText(p.gtin || "");
-  if (sku.includes(term) || iCode.includes(term) || gtin.includes(term)) return true;
+  const gtin = normalizeSearchText(p.gtin || (p as any).barcode || (p as any).ean || (p as any).codigoBarras || "");
+  const variantTokens = p.variants && Array.isArray(p.variants)
+    ? p.variants.map(v => `${v.name || ''} ${v.sku || ''} ${v.barcode || ''}`).join(' ')
+    : '';
+  const allCodes = `${sku} ${iCode} ${gtin} ${normalizeSearchText(variantTokens)}`;
 
-  // 3. Subcategoria
-  const subcat = normalizeSearchText(p.subcategory || "");
-  if (subcat.includes(term)) return true;
+  // Corpus unificado de pesquisa
+  const fullCorpus = `${name} ${allDesc} ${allSeo} ${tagsRaw} ${allCat} ${allCodes}`;
 
-  // 4. Tags / Palavras-chave / Sinônimos / Buscas
-  const tags = [
-    ...(p.tags || []),
-    ...(p.seo?.keywords || []),
-    ...(p.ai_keywords || []),
-    ...(p.ai_synonyms || []),
-    ...(p.searchTerms || []),
-    ...(extP.palavras_chave || [])
-  ].map(t => normalizeSearchText(String(t)));
-
-  if (tags.some(tag => tag.includes(term) || term.includes(tag))) return true;
-  if (queryWords.length > 0 && queryWords.some(word => tags.some(tag => tag.includes(word)))) return true;
-
-  // 5. Categoria
-  if (p.categoryId) {
-    const catNameDirect = normalizeSearchText(extP.categoryName || "");
-    if (catNameDirect.includes(term)) return true;
-
-    if (Array.isArray(categories)) {
-      const cat = categories.find(c => c && c.id === p.categoryId);
-      if (cat) {
-        const catName = normalizeSearchText(cat.name || "");
-        if (catName.includes(term)) return true;
-      }
-    }
-  }
-
-  // 6. Descrição (Se as palavras da busca constam na descrição)
-  const desc = normalizeSearchText(`${p.shortDescription || ""} ${p.fullDescription || ""} ${p.subtitle || ""}`);
-  if (desc.includes(term)) return true;
-  if (queryWords.length > 0 && queryWords.every(word => desc.includes(word))) return true;
-
-  return false;
+  // Match direto na frase ou em qualquer palavra digitada ou variação
+  if (fullCorpus.includes(normalizedQuery)) return true;
+  return allSearchTerms.some(term => fullCorpus.includes(term));
 };
 
 // Ranking Sections
@@ -350,160 +376,181 @@ export const getRankingBusca = (products: Product[], aiSuggestion?: AISuggestion
 
 export const getRankingProfissional = (products: Product[], queryText: string, categories: CategorySimple[] = []): Product[] => {
   if (!Array.isArray(products) || products.length === 0) return [];
-  if (!queryText || !queryText.trim()) return products;
 
-  const normalizedQuery = normalizeSearchText(queryText);
-  const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
-  const queryVariations = queryWords.flatMap(w => getWordVariations(w));
-  const allSearchTerms = Array.from(new Set([...queryWords, ...queryVariations, normalizedQuery]));
-
-  console.log(`[SEARCH][RANKING] Query: "${queryText}" | Terms:`, allSearchTerms);
-
-  const startTime = Date.now();
-
-  const exactMatchedProducts = products.filter(p => hasDirectTextMatch(p, queryText, categories));
-
-  const categoryMap = new Map<string, CategorySimple>();
-  if (Array.isArray(categories)) {
-    categories.forEach(c => {
-      if (c && c.id) categoryMap.set(c.id, c);
+  // Se não houver texto de busca, retorna apenas produtos ativos e com estoque
+  if (!queryText || !queryText.trim()) {
+    return products.filter(p => {
+      if (p.active === false || (p as any).status === 'inactive') return false;
+      const stockNum = typeof p.stock === 'number' ? p.stock : (Number(p.stock) || 0);
+      const variantsStock = p.variants && Array.isArray(p.variants)
+        ? p.variants.reduce((sum, v) => sum + (Number(v.stock) || Number(v.variantStock) || 0), 0)
+        : 0;
+      return p.isCombo || Math.max(stockNum, variantsStock) > 0;
     });
   }
 
-  const getAncestors = (catId: string): CategorySimple[] => {
-    const ancestors: CategorySimple[] = [];
-    let currentId = catId;
-    const visited = new Set<string>();
+  const normalizedQuery = normalizeSearchText(queryText);
+  const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 0);
 
-    while (currentId && categoryMap.has(currentId) && !visited.has(currentId)) {
-      visited.add(currentId);
-      const cat = categoryMap.get(currentId);
-      if (cat) {
-        ancestors.push(cat);
-        currentId = cat.parentId || "";
-      } else {
-        break;
-      }
-    }
-    return ancestors;
-  };
+  // Filtra produtos que atendem os critérios: ativos, com estoque e que contêm o termo
+  const matchedProducts = products.filter(p => hasDirectTextMatch(p, queryText, categories));
 
-  const ranked = exactMatchedProducts.map(p => {
+  const ranked = matchedProducts.map(p => {
     const extP = p as ExtendedProduct;
     let score = 0;
-    const name = normalizeSearchText(p.name || "");
-    const desc = normalizeSearchText(`${p.shortDescription || ""} ${p.fullDescription || ""} ${p.subtitle || ""}`);
-    const subcat = normalizeSearchText(p.subcategory || "");
 
-    const ancestors = p.categoryId ? getAncestors(p.categoryId) : [];
-    const catNames = ancestors.map(a => normalizeSearchText(a.name || ""));
+    const name = normalizeSearchText(p.name || "");
+    const subtitle = normalizeSearchText(p.subtitle || "");
+
+    const shortDesc = normalizeSearchText(p.shortDescription || "");
+    const fullDesc = normalizeSearchText(p.fullDescription || "");
+    const genericDesc = normalizeSearchText((p as any).description || "");
+    const allDesc = `${shortDesc} ${fullDesc} ${genericDesc} ${subtitle}`;
+
+    const seoTitle = normalizeSearchText(p.seo?.title || p.seo?.metaTitle || "");
+    const seoDesc = normalizeSearchText(p.seo?.description || p.seo?.metaDescription || "");
+    const seoSlug = normalizeSearchText(p.seo?.slug || p.slug || "");
+    const seoKeywords = normalizeSearchText(
+      Array.isArray(p.seo?.keywords) ? p.seo.keywords.join(' ') : String(p.seo?.keywords || '')
+    );
+    const palavrasChave = normalizeSearchText(
+      Array.isArray(extP.palavras_chave) ? extP.palavras_chave.join(' ') : String(extP.palavras_chave || '')
+    );
+    const seoGoogleCategory = normalizeSearchText(p.seo?.googleCategory || "");
+    const aiKeywords = Array.isArray(p.ai_keywords) ? p.ai_keywords.join(' ') : '';
+    const aiSynonyms = Array.isArray(p.ai_synonyms) ? p.ai_synonyms.join(' ') : '';
+    const allSeo = `${seoTitle} ${seoDesc} ${seoSlug} ${seoKeywords} ${seoGoogleCategory} ${palavrasChave} ${normalizeSearchText(aiKeywords)} ${normalizeSearchText(aiSynonyms)}`;
 
     const tags = [
       ...(p.tags || []),
-      ...(p.seo?.keywords || []),
-      ...(p.ai_keywords || []),
-      ...(p.ai_synonyms || []),
       ...(p.searchTerms || []),
-      ...(extP.palavras_chave || [])
-    ].map(t => normalizeSearchText(String(t)));
+      ...(p.ai_keywords || []),
+      ...(p.ai_synonyms || [])
+    ].map(t => normalizeSearchText(String(t))).join(' ');
 
-    const allWordsInName = queryWords.length > 0 && queryWords.every(word => name.includes(word));
-    const exactPhraseMatch = name.includes(normalizedQuery);
-    const startsWithPhrase = name.startsWith(normalizedQuery);
-
-    if (name === normalizedQuery) {
-      score += 5000;
-    } else if (startsWithPhrase) {
-      score += 2000;
-    } else if (exactPhraseMatch) {
-      score += 1500;
-
-      const queryLength = normalizedQuery.split(' ').length;
-      const nameLength = name.split(' ').length;
-      if (nameLength <= queryLength + 2) score += 500;
-    } else if (allWordsInName) {
-      score += 1000;
-
-      let lastIndex = -1;
-      let sequential = true;
-      for (const word of queryWords) {
-        const currentIndex = name.indexOf(word);
-        if (currentIndex < lastIndex) {
-          sequential = false;
-          break;
-        }
-        lastIndex = currentIndex;
-      }
-      if (sequential) score += 300;
+    let catName = normalizeSearchText(extP.categoryName || "");
+    if (!catName && p.categoryId && Array.isArray(categories)) {
+      const cat = categories.find(c => c && c.id === p.categoryId);
+      if (cat) catName = normalizeSearchText(cat.name || "");
     }
-
-    let wordsMatched = 0;
-    queryWords.forEach(word => {
-      if (name === word) {
-        score += 300;
-        wordsMatched++;
-      } else if (name.includes(word)) {
-        score += 100;
-        wordsMatched++;
-      }
-    });
-
-    if (queryWords.length >= 3 && wordsMatched < Math.ceil(queryWords.length / 2)) {
-      score -= 500;
-    }
-
-    if (exactPhraseMatch && name.length > normalizedQuery.length + 30) {
-      score -= 150;
-    }
-
-    if (subcat && (subcat === normalizedQuery || allSearchTerms.some(t => subcat.includes(t) || t.includes(subcat)))) {
-      score += 120;
-    }
-
-    tags.forEach(tag => {
-      if (tag === normalizedQuery) score += 400;
-      if (allSearchTerms.some(t => tag.includes(t) || t.includes(tag))) {
-        score += 150;
-      }
-    });
-
-    catNames.forEach(cName => {
-      if (cName === normalizedQuery) score += 400;
-      else if (allSearchTerms.some(t => cName.includes(t) || t.includes(cName))) {
-        score += 100;
-      }
-    });
-
-    const allWordsInDesc = queryWords.length > 0 && queryWords.every(word => desc.includes(word));
-    if (allWordsInDesc) {
-      score += 100;
-    } else if (queryWords.some(word => desc.includes(word))) {
-      score += 30;
-    }
+    const subcat = normalizeSearchText(p.subcategory || (p as any).subcategoria || "");
+    const brand = normalizeSearchText(p.brand || "");
+    const allCat = `${catName} ${subcat} ${brand}`;
 
     const sku = normalizeSearchText(p.sku || "");
     const iCode = normalizeSearchText(p.internalCode || "");
-    if (normalizedQuery === sku || normalizedQuery === iCode) score += 500;
-    else if (sku.includes(normalizedQuery) || (iCode && iCode.includes(normalizedQuery))) score += 200;
+    const gtin = normalizeSearchText(p.gtin || (p as any).barcode || (p as any).ean || (p as any).codigoBarras || "");
+    const variantTokens = p.variants && Array.isArray(p.variants)
+      ? p.variants.map(v => `${v.name || ''} ${v.sku || ''} ${v.barcode || ''}`).join(' ')
+      : '';
+    const allCodes = `${sku} ${iCode} ${gtin} ${normalizeSearchText(variantTokens)}`;
 
-    const base = getBaseScore(p) * 0.1;
+    // 1. MATCH NA FRASE COMPLETA DIGITADA
+    if (name === normalizedQuery) {
+      score += 10000; // Nome exato
+    } else if (name.startsWith(normalizedQuery)) {
+      score += 6000; // Começa com a frase
+    } else if (name.includes(normalizedQuery)) {
+      score += 4000; // Contém a frase no nome
+      score += Math.max(0, 500 - (name.length - normalizedQuery.length) * 5);
+    }
 
-    const safeFinalScore = isFinite(score + base) ? score + base : 0;
+    if (seoTitle.includes(normalizedQuery)) {
+      score += 2500;
+    }
+    if (allCodes.includes(normalizedQuery)) {
+      score += 2000;
+    }
+    if (seoKeywords.includes(normalizedQuery) || tags.includes(normalizedQuery)) {
+      score += 1800;
+    }
+    if (allCat.includes(normalizedQuery)) {
+      score += 1400;
+    }
+    if (allDesc.includes(normalizedQuery) || seoDesc.includes(normalizedQuery)) {
+      score += 1000;
+    }
 
-    const rankedExtProduct: ExtendedProduct = {
-      ...p,
-      _searchScore: safeFinalScore
-    };
-    return rankedExtProduct;
-  });
+    // 2. TODAS AS PALAVRAS PRESENTES NO NOME
+    const allWordsInName = queryWords.length > 1 && queryWords.every(word => {
+      const vars = getWordVariations(word);
+      return vars.some(v => name.includes(v));
+    });
+    if (allWordsInName) {
+      score += 3000;
+    }
 
-  const results = ranked
-    .sort((a, b) => (b._searchScore ?? 0) - (a._searchScore ?? 0))
-    .map(p => {
-      const { _searchScore, ...clean } = p;
-      return clean as Product;
+    // 3. PONTUAÇÃO POR CADA PALAVRA INDIVIDUAL DIGITADA
+    let matchedWordsCount = 0;
+    queryWords.forEach(word => {
+      const variations = getWordVariations(word);
+      let wordFound = false;
+
+      // Nome
+      if (variations.some(v => name.includes(v))) {
+        score += 400;
+        wordFound = true;
+        if (variations.some(v => name.startsWith(v))) score += 150;
+      }
+
+      // SEO Title
+      if (variations.some(v => seoTitle.includes(v))) {
+        score += 300;
+        wordFound = true;
+      }
+
+      // SEO Keywords & Tags
+      if (variations.some(v => seoKeywords.includes(v) || tags.includes(v))) {
+        score += 200;
+        wordFound = true;
+      }
+
+      // Códigos (SKU, GTIN)
+      if (variations.some(v => allCodes.includes(v))) {
+        score += 200;
+        wordFound = true;
+      }
+
+      // Categoria / Subcategoria / Marca
+      if (variations.some(v => allCat.includes(v))) {
+        score += 150;
+        wordFound = true;
+      }
+
+      // Descrição & SEO Description
+      if (variations.some(v => allDesc.includes(v) || seoDesc.includes(v))) {
+        score += 100;
+        wordFound = true;
+      }
+
+      if (wordFound) {
+        matchedWordsCount++;
+      }
     });
 
-  console.log(`[SEARCH][RANKING] Found ${results.length} results in ${Date.now() - startTime}ms`);
-  return results;
+    // 4. MULTIPLICADOR DE COBERTURA DE TERMOS
+    if (queryWords.length > 1) {
+      const coverage = matchedWordsCount / queryWords.length;
+      if (coverage === 1) {
+        score = Math.round(score * 1.8);
+      } else if (coverage >= 0.5) {
+        score = Math.round(score * 1.2);
+      }
+    }
+
+    return {
+      product: p,
+      score: score
+    };
+  });
+
+  // Ordena estritamente de acordo com o que o cliente digitou (maior pontuação primeiro)
+  ranked.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return (a.product.name || '').localeCompare(b.product.name || '');
+  });
+
+  return ranked.map(r => r.product);
 };
