@@ -4,12 +4,15 @@ import { getComboReservedStocks, adjustProductsWithReservations } from '../utils
 import { Product } from './productService';
 import { Category } from './categoryService';
 import { Combo } from './comboService';
+import { isVisibleInCustomerCatalog } from '../lib/customerCatalogSearch';
 
 export interface CachedCatalog {
   products: any[];
   categories: any[];
   metadata: {
     updatedAt: string;
+    formatVersion?: number;
+    chunks?: string[];
     totalProducts: number;
     totalCategories: number;
     status?: string;
@@ -97,29 +100,33 @@ export const catalogCacheService = {
     try {
       const start = performance.now();
       
-      const [productsSnap, categoriesSnap, metadataSnap] = await Promise.all([
-        getDoc(doc(db, 'public_catalog_cache', 'products')),
-        getDoc(doc(db, 'public_catalog_cache', 'categories')),
-        getDoc(doc(db, 'public_catalog_cache', 'metadata'))
-      ]);
-
-      if (!productsSnap.exists() || !categoriesSnap.exists() || !metadataSnap.exists()) {
-        if (import.meta.env.DEV) {
-          console.log('[PDV CATALOG_CACHE] Cache documents do not exist yet.');
-        }
-        return null;
+      // The manifest is always read first; version 2 references immutable small chunks.
+      const metadataSnap = await getDoc(doc(db, 'public_catalog_cache', 'metadata'));
+      if (!metadataSnap.exists()) return null;
+      const metadataDoc = metadataSnap.data();
+      const categoriesSnap = await getDoc(doc(db, 'public_catalog_cache', 'categories'));
+      if (!categoriesSnap.exists()) return null;
+      let products: any[];
+      if (metadataDoc?.formatVersion === 2 && Array.isArray(metadataDoc?.chunks)) {
+        const chunkSnaps = await Promise.all(metadataDoc.chunks.map((id: string) =>
+          getDoc(doc(db, 'public_catalog_cache_chunks', id))
+        ));
+        if (chunkSnaps.some(s => !s.exists())) return null;
+        products = chunkSnaps.flatMap(s => s.data()?.products || []);
+        if (products.length !== Number(metadataDoc.totalProducts)) return null;
+      } else {
+        const legacySnap = await getDoc(doc(db, 'public_catalog_cache', 'products'));
+        if (!legacySnap.exists()) return null;
+        products = legacySnap.data()?.products || [];
       }
 
-      const productsData = productsSnap.data();
-      const categoriesData = categoriesSnap.data();
-      const metadataDoc = metadataSnap.data();
-
-      // Return compiled dataset
       const result: CachedCatalog = {
-        products: productsData?.products || [],
-        categories: categoriesData?.categories || [],
+        products,
+        categories: categoriesSnap.data()?.categories || [],
         metadata: {
-          updatedAt: metadataDoc?.updatedAt || new Date().toISOString(),
+          updatedAt: metadataDoc?.updatedAt || '',
+          formatVersion: metadataDoc?.formatVersion,
+          chunks: metadataDoc?.chunks,
           totalProducts: Number(metadataDoc?.totalProducts) || 0,
           totalCategories: Number(metadataDoc?.totalCategories) || 0
         }
@@ -171,7 +178,7 @@ export const catalogCacheService = {
           name: combo.name || '',
           description: combo.description || '',
           price: combo.price || 0,
-          images: combo.images || (combo.imageUrl ? [{ url: combo.imageUrl, isMain: true }] : []),
+          images: combo.images?.length ? combo.images : (combo.imageUrl ? [{ url: combo.imageUrl, isMain: true }] : []),
           categoryId: 'combos',
           active: combo.active,
           isCombo: true,
@@ -196,16 +203,14 @@ export const catalogCacheService = {
       }, {} as Record<string, string>);
 
       // 3. Keep strictly active items with photos that are meant for catalog
-      const visibleProductsRaw = mergedProducts.filter(p => 
-        p.active !== false &&
-        (p.images && p.images.length > 0) &&
-        (p.extras?.showInCatalog !== false) &&
-        (p.isCombo || (Number(p.stock) || 0) > 0)
-      );
+      const visibleProductsRaw = mergedProducts.filter(isVisibleInCustomerCatalog);
 
       // Build lightweight products (excl: long description, absolute bulk specs, heavy images, raw admin, costs, purchase history, logs)
       const summarizedProducts = visibleProductsRaw.map(p => {
-        const imageThumb = p.imageThumb || p.imageUrl || (p.images && p.images[0]?.url) || '';
+        const valid = (url?: string) => typeof url === 'string' && /^https?:\/\//i.test(url);
+        const imageThumb = (p.images || []).find(i => i?.isMain && valid(i?.url))?.url ||
+          (p.images || []).find(i => valid(i?.url))?.url ||
+          [p.imageThumb, p.imageUrl].find(valid) || '';
         const inStock = p.isCombo || (Number(p.stock) || 0) > 0;
         
         return {
@@ -238,9 +243,10 @@ export const catalogCacheService = {
           controlStock: p.controlStock ?? true,
           allowBackorder: p.allowBackorder ?? false,
           extras: p.extras || {},
-          seo: p.seo || {},
+          seo: { slug: p.seo?.slug || p.slug || '', title: p.seo?.title || p.seo?.metaTitle || '', keywords: p.seo?.keywords || [] },
           shortDescription: p.shortDescription || (p as any).description || '',
-          fullDescription: p.fullDescription || '',
+          // Full HTML descriptions belong to the product detail, not the public search index.
+          fullDescription: '',
           description: (p as any).description || p.shortDescription || '',
           subtitle: p.subtitle || '',
           brand: p.brand || '',
@@ -252,6 +258,8 @@ export const catalogCacheService = {
           ai_synonyms: p.ai_synonyms || [],
           hasVariants: !!p.hasVariants,
           isCombo: !!p.isCombo,
+          variantIdentifiers: p.variantIdentifiers || [],
+          cosmetics: p.cosmetics?.type ? { type: p.cosmetics.type } : undefined,
           cliques: (p as any).cliques || 0,
           score: (p as any).score || 0
         };
@@ -281,25 +289,44 @@ export const catalogCacheService = {
 
       const timestampISO = new Date().toISOString();
 
-      // Write documents to Firestore public_catalog_cache
-      await Promise.all([
-        setDoc(doc(db, 'public_catalog_cache', 'products'), {
-          products: summarizedProducts,
-          updatedAt: timestampISO,
-          lastRegeneration: serverTimestamp()
-        }),
-        setDoc(doc(db, 'public_catalog_cache', 'categories'), {
-          categories: summarizedCategories,
-          updatedAt: timestampISO,
-          lastRegeneration: serverTimestamp()
-        }),
-        setDoc(doc(db, 'public_catalog_cache', 'metadata'), {
-          updatedAt: timestampISO,
-          totalProducts: summarizedProducts.length,
-          totalCategories: summarizedCategories.length,
-          lastRegeneration: serverTimestamp()
-        })
-      ]);
+      // Publish immutable chunks, then swap a small manifest LAST. Firestore documents
+      // have a 1 MiB hard limit; the old single `products` document silently hit that limit.
+      const version = `v2_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+      const chunks: any[][] = [];
+      let current: any[] = [];
+      let currentSize = 0;
+      for (const p of summarizedProducts) {
+        const size = JSON.stringify(p).length;
+        if (current.length > 0 && currentSize + size > 180_000) {
+          chunks.push(current);
+          current = [];
+          currentSize = 0;
+        }
+        current.push(p);
+        currentSize += size;
+      }
+      if (current.length) chunks.push(current);
+      const chunkIds = chunks.map((_, i) => `${version}_${i}`);
+      // Save first so customers never receive a manifest pointing to missing chunks.
+      for (let i = 0; i < chunks.length; i++) {
+        await setDoc(doc(db, 'public_catalog_cache_chunks', chunkIds[i]), {
+          products: chunks[i], version, updatedAt: timestampISO
+        });
+      }
+      await setDoc(doc(db, 'public_catalog_cache', 'categories'), {
+        categories: summarizedCategories,
+        updatedAt: timestampISO,
+        lastRegeneration: serverTimestamp()
+      });
+      await setDoc(doc(db, 'public_catalog_cache', 'metadata'), {
+        formatVersion: 2,
+        chunks: chunkIds,
+        updatedAt: timestampISO,
+        totalProducts: summarizedProducts.length,
+        totalCategories: summarizedCategories.length,
+        status: 'updated',
+        lastRegeneration: serverTimestamp()
+      }, { merge: true });
 
       console.log('✅ Public Catalog Cache successfully regenerated!');
     } catch (error) {

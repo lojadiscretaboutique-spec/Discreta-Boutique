@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { collection, query, where, getDocs, limit, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthStore } from '../../store/authStore';
 import { Link, useSearchParams, useNavigate, useParams } from 'react-router-dom';
@@ -7,7 +7,8 @@ import { formatCurrency, cn } from '../../lib/utils';
 import { Search, X, Minus, Plus, Frown, Loader2, Truck, Heart } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Product, productService } from '../../services/productService';
-import { getRankingProfissional, hasDirectTextMatch } from '../../lib/ranking';
+import { searchCustomerCatalog } from '../../lib/customerCatalogSearch';
+import { customerCatalogDataService } from '../../services/customerCatalogDataService';
 import { Category, categoryService } from '../../services/categoryService';
 import { customerService } from '../../services/customerService';
 import { motion, AnimatePresence } from 'motion/react';
@@ -16,11 +17,9 @@ import { useCustomerAuthStore } from '../../store/customerAuthStore';
 import { catalogSectionsService, SECTION_METADATA, CatalogSection } from '../../services/catalogSectionsService';
 import { usePromotion } from '../../contexts/PromotionContext';
 import { visualHomeService, VisualHomeSettings } from '../../services/visualHomeService';
-import { cacheService } from '../../services/cacheService';
-import { catalogCacheService } from '../../services/catalogCacheService';
-import { Combo } from '../../services/comboService';
+
 import { useTheme } from '../../contexts/ThemeContext';
-import { getComboReservedStocks, adjustProductsWithReservations } from '../../utils/comboStockHelper';
+
 
 function hexToRgb(hexColor: string) {
   let hex = hexColor.replace('#', '');
@@ -69,6 +68,7 @@ export function CatalogPage() {
   const [filtered, setFiltered] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState(qSearch || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(qSearch || '');
   const [selectedCat, setSelectedCat] = useState<string>(qCat || 'all');
   const [selectedSection, setSelectedSection] = useState<string | null>(qSection);
   const [selectedSubcat, setSelectedSubcat] = useState<string | null>(qSubcat);
@@ -82,6 +82,11 @@ export function CatalogPage() {
   const [fullHomeStructure, setFullHomeStructure] = useState<any | null>(null);
   const [activeSectionSettings, setActiveSectionSettings] = useState<VisualHomeSettings | null>(null);
   const [sectionLoadError, setSectionLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 160);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Sincroniza o campo de busca com o parâmetro 'q' da URL
   useEffect(() => {
@@ -148,12 +153,6 @@ export function CatalogPage() {
     productService.trackInteraction(productId, 'click');
   };
 
-  const isCategoriesEmpty = categories.length === 0;
-  useEffect(() => {
-    if (qSearch) {
-      handleRealSearch(qSearch);
-    }
-  }, [qSearch]);
 
   // Track customer category accesses to rank categories
   useEffect(() => {
@@ -162,293 +161,64 @@ export function CatalogPage() {
     }
   }, [selectedCat]);
 
+  // One catalog fetch per mount, NOT on each keystroke/URL parameter change.
   useEffect(() => {
+    let disposed = false;
     async function loadData() {
+      setLoading(true);
       try {
-        const CACHE_VERSION = 'v3'; // To force clear old incorrect stock sums and ensure SEO data
-        const now = Date.now();
-        const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
-
-        let catsData: Category[] = [];
-        let prods: Product[] = [];
-        let usedCache = false;
-
+        const data = await customerCatalogDataService.load();
+        if (disposed) return;
+        setProducts(data.products);
+        setCategories([...data.categories].sort((a, b) =>
+          (b.accessCount || 0) - (a.accessCount || 0) ||
+          (a.sortOrder || 0) - (b.sortOrder || 0) ||
+          a.name.localeCompare(b.name, 'pt-BR')
+        ));
         try {
-          const cachedData = await catalogCacheService.getCachedCatalog();
-          if (cachedData && cachedData.products.length > 0) {
-            prods = cachedData.products as Product[];
-            catsData = cachedData.categories as Category[];
-            usedCache = true;
-          }
-        } catch (cacheErr) {
-          if (import.meta.env.DEV) {
-            console.warn('%c[CATALOG_FALLBACK_USED] Failed to load catalog cache. Using Firestore queries as fallback.', 'color: #EF4444; font-weight: bold;', cacheErr);
-          }
+          const structure = await visualHomeService.getFullHomeStructure();
+          if (!disposed) setFullHomeStructure(structure);
+        } catch (error) {
+          console.warn('[CATALOG] Home layout unavailable:', error);
         }
-
-        if (!usedCache) {
-          if (import.meta.env.DEV) {
-            console.log('%c[CATALOG_FALLBACK_USED] Cache missing or invalid. Triggering Firestore queries fallback...', 'color: #F59E0B; font-weight: bold;');
-          }
-
-          const CACHE_VERSION = 'v3'; // To force clear old incorrect stock sums and ensure SEO data
-          const now = Date.now();
-          const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
-
-          catsData = cacheService.get('catalog_categories') || [];
-          const cachedCats = sessionStorage.getItem(`catalog_cats_${CACHE_VERSION}`);
-          const catTime = sessionStorage.getItem(`catalog_cats_time_${CACHE_VERSION}`);
-          
-          if (catsData.length === 0) {
-            if (cachedCats && catTime && now - parseInt(catTime) < CACHE_TTL) {
-              catsData = JSON.parse(cachedCats);
-              cacheService.set('catalog_categories', catsData);
-            } else {
-              const cSnap = await getDocs(query(collection(db, 'categories')));
-              catsData = cSnap.docs.map(d => ({id: d.id, ...d.data()} as Category));
-              try {
-                // Save minimized version to avoid quota issues
-                const minimizedCats = catsData.map(c => ({
-                  id: c.id,
-                  name: c.name,
-                  slug: c.slug,
-                  parentId: c.parentId,
-                  level: c.level,
-                  accessCount: c.accessCount || 0,
-                  sortOrder: c.sortOrder || 0
-                }));
-                cacheService.set('catalog_categories', catsData);
-                sessionStorage.setItem(`catalog_cats_${CACHE_VERSION}`, JSON.stringify(minimizedCats));
-                sessionStorage.setItem(`catalog_cats_time_${CACHE_VERSION}`, now.toString());
-              } catch (e) {
-                // Silently fail if quota exceeded
-              }
-            }
-          }
-          
-          const initialSortedCats = [...catsData].sort((a, b) => {
-            const scoreB = b.accessCount || 0;
-            const scoreA = a.accessCount || 0;
-            if (scoreB !== scoreA) return scoreB - scoreA;
-            if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
-            return a.name.localeCompare(b.name);
-          });
-          setCategories(initialSortedCats);
-          
-          prods = cacheService.get('catalog_products') || [];
-          const cachedProducts = sessionStorage.getItem(`catalog_products_${CACHE_VERSION}`);
-          const prodTime = sessionStorage.getItem(`catalog_products_time_${CACHE_VERSION}`);
-
-          if (prods.length === 0) {
-            if (cachedProducts && prodTime && now - parseInt(prodTime) < CACHE_TTL) {
-              try {
-                prods = JSON.parse(cachedProducts);
-                cacheService.set('catalog_products', prods);
-              } catch (e) {
-                console.warn('Failed to parse cached products', e);
-              }
-            }
-          }
-
-          if (prods.length === 0) {
-            const [pSnap, cSnap, reservedStocks] = await Promise.all([
-              getDocs(query(collection(db, 'products'), where('active', '==', true), limit(300))),
-              // TODO: Paginate combos too if they become massive
-              getDocs(query(collection(db, 'combos'), where('active', '==', true), where('showInCatalog', '==', true))),
-              getComboReservedStocks()
-            ]);
-
-            const rawRegularProds = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-            const regularProds = adjustProductsWithReservations(rawRegularProds, reservedStocks);
-            const combosAsProducts = cSnap.docs.map(d => {
-              const combo = d.data() as Combo;
-              return {
-                id: d.id,
-                name: combo.name,
-                description: combo.description,
-                price: combo.price,
-                images: combo.images || (combo.imageUrl ? [{ url: combo.imageUrl, isMain: true }] : []),
-                categoryId: 'combos', // Treat as a special category or use the first one from combo.categories
-                active: combo.active,
-                isCombo: true,
-                showInCatalog: combo.showInCatalog,
-                featured: combo.isFeatured,
-                seo: {
-                  title: combo.seoTitle,
-                  description: combo.seoDescription
-                }
-              } as any;
-            });
-
-            prods = [...regularProds, ...combosAsProducts];
-            cacheService.set('catalog_products', prods);
-            
-            try {
-              // Minimize product data for session storage more aggressively
-              const minimizedProds = prods.map(p => ({
-                id: p.id,
-                name: p.name,
-                subtitle: p.subtitle,
-                shortDescription: p.shortDescription || (p as any).description,
-                fullDescription: p.fullDescription,
-                description: (p as any).description || p.shortDescription,
-                price: p.price,
-                promoPrice: p.promoPrice,
-                images: p.images?.slice(0, 1), // Only first image for cache
-                categoryId: p.categoryId,
-                subcategory: p.subcategory || (p as any).subcategoria,
-                brand: p.brand,
-                stock: p.stock,
-                controlStock: p.controlStock,
-                allowBackorder: p.allowBackorder,
-                extras: p.extras,
-                seo: { 
-                  title: p.seo?.title || p.seo?.metaTitle,
-                  description: p.seo?.description || p.seo?.metaDescription,
-                  keywords: p.seo?.keywords, 
-                  slug: p.seo?.slug,
-                  googleCategory: p.seo?.googleCategory
-                },
-                palavras_chave: (p as any).palavras_chave,
-                ai_keywords: p.ai_keywords,
-                ai_synonyms: p.ai_synonyms,
-                tags: p.tags,
-                searchTerms: p.searchTerms,
-                newRelease: p.newRelease,
-                hasVariants: p.hasVariants,
-                sku: p.sku,
-                internalCode: p.internalCode,
-                gtin: p.gtin || (p as any).barcode,
-                isCombo: (p as any).isCombo
-              }));
-              
-              const serialized = JSON.stringify(minimizedProds);
-              // Only save if under a reasonable limit for sessionStorage (usually 5MB total, but let's be safe per item)
-              if (serialized.length < 4 * 1024 * 1024) { 
-                 sessionStorage.setItem(`catalog_products_${CACHE_VERSION}`, serialized);
-                 sessionStorage.setItem(`catalog_products_time_${CACHE_VERSION}`, now.toString());
-              }
-            } catch (e) {
-              console.warn('[CATALOG][CACHE] Quota exceeded or failure. Reverting to memory-only for this session.');
-            }
-          }
-        }
-
-        // Filter products: Strictly active, with at least one image and showInCatalog marked, and positive stock (non-combos must have stock > 0)
-        const visibleProds = prods.filter(p => 
-          p.active !== false &&
-          (p.images && p.images.length > 0) &&
-          (p.extras?.showInCatalog !== false) &&
-          (p.isCombo || (Number(p.stock) || 0) > 0)
-        );
-
-        console.log(`[CATALOG][LOAD] Total Loaded: ${prods.length} | Visible: ${visibleProds.length}`);
-
-        // Identify which categories have at least one visible product
-        const categoryIdsWithProducts = new Set<string>();
-        visibleProds.forEach(p => {
-          if (p.categoryId) {
-            categoryIdsWithProducts.add(p.categoryId);
-            // Also add all parents
-            let parent = catsData.find(c => c.id === p.categoryId);
-            while (parent && parent.parentId) {
-              categoryIdsWithProducts.add(parent.parentId);
-              parent = catsData.find(c => c.id === parent?.parentId);
-            }
-          }
-        });
-
-        // Filter categories: Only those that have products (directly or in subcats)
-        const visibleCats = catsData.filter(c => categoryIdsWithProducts.has(c.id));
-
-        // Sort categories by accessCount descending, custom sortOrder, then name localeCompare
-        const sortedCats = [...visibleCats].sort((a, b) => {
-          const scoreB = b.accessCount || 0;
-          const scoreA = a.accessCount || 0;
-          if (scoreB !== scoreA) return scoreB - scoreA;
-          if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
-          return a.name.localeCompare(b.name);
-        });
-
-        setCategories(sortedCats);
-
-        // Load Full Home Structure
-        let fStructure = null;
-        try {
-          fStructure = await visualHomeService.getFullHomeStructure();
-          setFullHomeStructure(fStructure);
-        } catch (err) {
-          console.error("Error loading home layout structure in catalog:", err);
-        }
-
-        // Resolve params from URL
-        const resolveParams = () => {
-          const s = searchParams.get('secao');
-          const cat = searchParams.get('categoria') || routeSlug;
-          const sub = searchParams.get('subcategoria');
-          const col = searchParams.get('colecao');
-          const q = searchParams.get('q');
-
-          setSelectedSection(s);
-          setSelectedSubcat(sub);
-          setSelectedCollection(col);
-          if (q !== null) setSearch(q);
-
-          if (cat && cat !== 'all') {
-            const decodedCat = decodeURIComponent(cat);
-            const found = catsData.find(c => {
-              if (c.id === cat || c.slug === cat) return true;
-              
-              // Fallback normalization match
-              let rawSlug = c.slug || c.name || c.id;
-              if (rawSlug) {
-                let clean = rawSlug.toLowerCase()
-                  .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
-                  .replace(/[+&%?\/!,()]/g, "")
-                  .trim()
-                  .replace(/\s+/g, '-')
-                  .replace(/-+/g, '-')
-                  .replace(/^-+|-+$/g, '');
-                
-                if (clean === cat || encodeURIComponent(clean) === cat || clean === decodedCat) {
-                  return true;
-                }
-              }
-              return false;
-            });
-            if (found) setSelectedCat(found.id);
-            else setSelectedCat('all');
-          } else {
-            setSelectedCat('all');
-          }
-
-          if (s) {
-            const normalizedId = normalizeSectionId(s);
-            const settings = fStructure?.settings?.[normalizedId];
-            if (!settings || !settings.active) {
-              setSectionLoadError("Esta coleção ou seção não está ativa no momento. Confira nossos outros produtos incríveis abaixo!");
-              setActiveSectionSettings(null);
-            } else {
-              setSectionLoadError(null);
-              setActiveSectionSettings(settings);
-            }
-          } else {
-            setSectionLoadError(null);
-            setActiveSectionSettings(null);
-          }
-        };
-
-        resolveParams();
-        setProducts(visibleProds);
-        setFiltered(visibleProds);
       } catch (error) {
-        console.error("Error loading catalog:", error);
+        if (!disposed) console.error('[CATALOG] Error loading products:', error);
       } finally {
-        setLoading(false);
+        if (!disposed) setLoading(false);
       }
     }
     loadData();
-  }, [searchParams, isCategoriesEmpty]); // Categories dependency is handled inside loadData but we need to re-run if params change
+    return () => { disposed = true; };
+  }, []);
+
+  // URL state only changes filters; it must not re-download the entire catalog.
+  useEffect(() => {
+    const section = searchParams.get('secao');
+    const slug = searchParams.get('categoria') || routeSlug;
+    setSelectedSection(section);
+    setSelectedSubcat(searchParams.get('subcategoria'));
+    setSelectedCollection(searchParams.get('colecao'));
+    if (!slug || slug === 'all') {
+      setSelectedCat('all');
+    } else {
+      const clean = decodeURIComponent(slug);
+      const found = categories.find(c => c.id === clean || c.slug === clean);
+      setSelectedCat(found?.id || 'all');
+    }
+    if (section) {
+      const settings = fullHomeStructure?.settings?.[normalizeSectionId(section)];
+      if (fullHomeStructure && (!settings || !settings.active)) {
+        setSectionLoadError('Esta coleção ou seção não está ativa no momento. Confira nossos outros produtos abaixo!');
+        setActiveSectionSettings(null);
+      } else {
+        setSectionLoadError(null);
+        setActiveSectionSettings(settings || null);
+      }
+    } else {
+      setSectionLoadError(null);
+      setActiveSectionSettings(null);
+    }
+  }, [searchParams, routeSlug, categories, fullHomeStructure]);
 
   useEffect(() => {
     async function rankSpecialSections() {
@@ -714,11 +484,11 @@ export function CatalogPage() {
     }
 
     // 5. Filtro de Busca (Estrito, Simples, Eficiente, Objetivo e Sem IA)
-    if (search.trim()) {
-      // Quando há busca, pesquisa em todo o catálogo de produtos ativos e com estoque
-      const matched = products.filter(p => hasDirectTextMatch(p, search, categories));
-      // Ordena estritamente de acordo com o que o cliente digitou
-      return getRankingProfissional(matched, search, categories);
+    if (debouncedSearch.trim()) {
+      // The same deterministic relevance engine powers the header autocomplete.
+      // It searches every eligible item, not just the current page or category.
+      const names = Object.fromEntries(categories.map(c => [c.id, c.name]));
+      return searchCustomerCatalog(products, debouncedSearch, names);
     }
 
     // 6. Ordenação Padrão do Catálogo (Sem IA)
@@ -732,7 +502,7 @@ export function CatalogPage() {
     }
 
     return result;
-  }, [search, selectedCat, selectedSection, selectedSubcat, selectedCollection, products, categories, fullHomeStructure]);
+  }, [debouncedSearch, selectedCat, selectedSection, selectedSubcat, selectedCollection, products, categories, fullHomeStructure]);
 
   useEffect(() => {
     setFiltered(filteredProducts);
@@ -795,74 +565,9 @@ export function CatalogPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-black text-white min-h-screen">
-      {/* Category Navigation & Product Search - Prominent & Simple */}
-      <section className="bg-zinc-950 border-b border-zinc-900 pt-5 pb-4 px-4 sticky top-14 md:top-16 z-30 backdrop-blur-md bg-black/95">
-        <div className="max-w-7xl mx-auto space-y-4">
-          
-          {/* Prominent Product Search Bar */}
-          <div className="relative w-full max-w-3xl mx-auto">
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleRealSearch(search);
-              }}
-              className="relative flex items-center"
-            >
-              <Search 
-                size={18} 
-                className="absolute left-4 text-zinc-400 pointer-events-none" 
-              />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSearch(val);
-                  const newParams = new URLSearchParams(searchParams);
-                  if (val.trim()) {
-                    newParams.set('q', val);
-                    newParams.delete('categoria');
-                    newParams.delete('secao');
-                    newParams.delete('subcategoria');
-                    newParams.delete('colecao');
-                  } else {
-                    newParams.delete('q');
-                  }
-                  setSearchParams(newParams, { replace: true });
-                }}
-                placeholder="Buscar produtos por nome, descrição, referência, palavras-chave..."
-                className="w-full bg-zinc-900/90 hover:bg-zinc-900 focus:bg-zinc-900 text-white placeholder-zinc-500 text-sm md:text-base rounded-2xl pl-11 pr-24 py-2.5 md:py-3 border border-zinc-800 focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all outline-none"
-              />
-              <div className="absolute right-2.5 flex items-center gap-1.5">
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearch('');
-                      const newParams = new URLSearchParams(searchParams);
-                      newParams.delete('q');
-                      setSearchParams(newParams);
-                    }}
-                    className="p-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-                    title="Limpar busca"
-                  >
-                    <X size={16} />
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider bg-red-600 hover:bg-red-500 text-white transition-all shadow-md"
-                  style={{
-                    backgroundColor: currentTheme.primaryColor || '#D32F2F',
-                    color: currentTheme.primaryTextColor === 'light' ? '#ffffff' : (currentTheme.primaryTextColor === 'dark' ? '#000000' : '#ffffff')
-                  }}
-                >
-                  Buscar
-                </button>
-              </div>
-            </form>
-          </div>
-
+      {/* Category Navigation - Compact & Clean */}
+      <section className="bg-zinc-950 border-b border-zinc-900 pt-3 pb-3 px-4 sticky top-14 md:top-16 z-30 backdrop-blur-md bg-black/95">
+        <div className="max-w-7xl mx-auto space-y-3">
           <div className="space-y-2">
             {/* Root Categories Horizontal Scroll */}
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-0.5">

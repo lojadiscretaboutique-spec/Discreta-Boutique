@@ -151,6 +151,11 @@ export const stockMovementService = {
           orderId: data.orderId || null 
         });
 
+        // Stock-only movements must refresh the public index too.
+        import('./catalogCacheService').then(({ catalogCacheService }) => {
+          catalogCacheService.scheduleCatalogCacheRegeneration('stock_movement').catch(console.error);
+        });
+
         return true;
       });
     } catch (error: any) {
@@ -204,6 +209,9 @@ export const stockMovementService = {
         }
 
         await deleteDoc(movementDoc.ref);
+        import('./catalogCacheService').then(({ catalogCacheService }) => {
+          catalogCacheService.scheduleCatalogCacheRegeneration('stock_movement_reverted').catch(console.error);
+        });
       }
       return true;
     } catch (error) {

@@ -923,7 +923,16 @@ export function AdminProducts() {
         });
       }
       
-      setForm({ ...form, images: newImages });
+      // Products initially saved without pictures are auto-hidden. Restore their
+      // visibility when the first picture is uploaded; the admin can still
+      // uncheck "Exibir Catálogo" afterward if they intentionally want to hide it.
+      setForm({
+        ...form,
+        images: newImages,
+        extras: form.images.length === 0 && newImages.length > 0
+          ? { ...form.extras, showInCatalog: true }
+          : form.extras
+      });
     } catch {
       alert("Erro no upload de imagem.");
     } finally {
@@ -1851,11 +1860,11 @@ export function AdminProducts() {
                 if (!ok) return;
                 try {
                   const m = await import('../../services/catalogCacheService');
-                  await m.catalogCacheService.scheduleCatalogCacheRegeneration('manual_trigger');
-                  toast("Reconstrução de cache agendada com sucesso!", 'success');
+                  await m.catalogCacheService.regenerateCatalogCache();
+                  toast("Catálogo público reconstruído com sucesso!", 'success');
                 } catch (e: any) {
                   console.error(e);
-                  toast("Erro ao agendar cache.", 'error');
+                  toast("Falha ao reconstruir o catálogo público.", 'error');
                 }
               }}
               disabled={cacheMeta?.status === 'regenerating'}

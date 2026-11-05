@@ -1,12 +1,11 @@
 import { Search, Loader2, ArrowRight, X, Sparkles } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn, formatCurrency } from '../../lib/utils';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Product } from '../../services/productService';
-import { categoryService } from '../../services/categoryService';
-import { collection, query, where, limit, getDocs } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { customerCatalogDataService } from '../../services/customerCatalogDataService';
+import { searchCustomerCatalog, normalizeCatalogQuery } from '../../lib/customerCatalogSearch';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SearchBarProps {
@@ -16,69 +15,51 @@ interface SearchBarProps {
 
 export function SearchBar({ className, placeholder = "O que você busca hoje?" }: SearchBarProps) {
   const { currentTheme } = useTheme();
-  const [search, setSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const qParam = searchParams.get('q') || '';
+  const [search, setSearch] = useState(qParam);
   const [isFocused, setIsFocused] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // Sync input value whenever URL ?q= changes
+  useEffect(() => {
+    setSearch(qParam);
+  }, [qParam]);
   
   // Dynamic autocomplete states
   const [categoriesMap, setCategoriesMap] = useState<Record<string, string>>({});
   const [suggestions, setSuggestions] = useState<Product[]>([]);
+  const [catalog, setCatalog] = useState<Product[]>([]);
 
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load categories mapping dictionary once on mount
+  // Fetch the same lightweight public index used by the customer catalog ONCE,
+  // never one Firestore query per keystroke.
   useEffect(() => {
-    async function loadCategoriesMap() {
-      try {
-        const cats = await categoryService.listCategories();
-        // Translate categories to lightweight mapping dictionary
-        const catMap: Record<string, string> = {};
-        cats.forEach(c => {
-          catMap[c.id] = c.name;
-        });
-        setCategoriesMap(catMap);
-      } catch (e) {
-        console.warn("Failed loading categories mapping inside SearchBar:", e);
-      }
-    }
-    loadCategoriesMap();
+    let disposed = false;
+    customerCatalogDataService.load().then(data => {
+      if (disposed) return;
+      setCatalog(data.products);
+      setCategoriesMap(Object.fromEntries(data.categories.map(c => [c.id, c.name])));
+    }).catch(err => console.warn('[SEARCH] Public catalog unavailable:', err));
+    return () => { disposed = true; };
   }, []);
 
-  // Debounced effect to query Firestore for autocomplete suggestions
   useEffect(() => {
-    const term = search.trim().toLowerCase();
-    if (term.length < 3) {
+    const normalized = normalizeCatalogQuery(search);
+    if (normalized.length < 2) {
       setSuggestions([]);
+      setLoading(false);
       return;
     }
-
-    const timer = setTimeout(async () => {
-      setLoading(true);
-      try {
-        // Query active products from Firestore limited to 8 items using searchTerms array
-        const q = query(
-          collection(db, 'products'),
-          where('searchTerms', 'array-contains', term),
-          limit(8)
-        );
-        const snap = await getDocs(q);
-        const activeProds = snap.docs
-          .map(doc => ({ id: doc.id, ...doc.data() } as Product))
-          .filter(p => p.active !== false);
-
-        setSuggestions(activeProds.slice(0, 5));
-      } catch (e) {
-        console.warn("Firestore search suggestions index warning or missing index, falling back to simple redirection:", e);
-        setSuggestions([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 400);
-
+    const timer = setTimeout(() => {
+      setSuggestions(searchCustomerCatalog(catalog, normalized, categoriesMap, 6));
+      setLoading(false);
+    }, 120);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, catalog, categoriesMap]);
 
   // Handle outside layout clicks to blur/close autocomplete dropdown
   useEffect(() => {
@@ -116,11 +97,8 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
     // Navigate immediately to Catalog search route
     navigate(`/catalogo?q=${encodeURIComponent(term.trim())}`);
     
-    setTimeout(() => {
-      setLoading(false);
-      setSearch(term);
-      setIsFocused(false);
-    }, 450);
+    setLoading(false);
+    setIsFocused(false);
   };
 
   const handleSelectProduct = (p: Product) => {
@@ -163,7 +141,14 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
             type="text"
             value={search}
             onChange={handleInputChange}
-            onFocus={() => setIsFocused(true)}
+            onFocus={() => {
+              setIsFocused(true);
+              // Refresh at most once per shared data TTL, not for each typed letter.
+              customerCatalogDataService.load().then(data => {
+                setCatalog(data.products);
+                setCategoriesMap(Object.fromEntries(data.categories.map(c => [c.id, c.name])));
+              }).catch(console.warn);
+            }}
             placeholder={placeholder}
             className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:border-none focus:ring-0 focus:ring-offset-0 py-3 pr-10 font-light text-base md:text-lg h-full placeholder:text-current placeholder:opacity-50 appearance-none"
             style={{ 
@@ -236,7 +221,7 @@ export function SearchBar({ className, placeholder = "O que você busca hoje?" }
               <div className="max-h-[360px] overflow-y-auto divide-y" style={{ borderColor }}>
                 {suggestions.map((p) => {
                   const mainImage = p.images?.find(img => img.isMain)?.url || p.images?.[0]?.url;
-                  const catName = categoriesMap[p.categoryId] || 'Estilo';
+                  const catName = categoriesMap[p.categoryId] || 'Produto';
                   const finalPrice = p.promoPrice || p.price;
                   const hasPromo = !!p.promoPrice;
 
