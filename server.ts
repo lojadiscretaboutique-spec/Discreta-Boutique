@@ -3523,15 +3523,24 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
 
   let vite: import('vite').ViteDevServer | undefined;
   if (process.env.NODE_ENV !== "production") {
-    // In DEV mode, serve a no-op Service Worker to avoid MIME/HTML errors
+    // In DEV mode, serve a dev Service Worker that ensures stale caches from prod are purged
     app.get('/sw.js', (_req, res) => {
       res.setHeader('Content-Type', 'application/javascript');
-      res.send('self.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", () => self.clients.claim());');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.send(
+        'self.addEventListener("install", () => self.skipWaiting());\n' +
+        'self.addEventListener("activate", (event) => {\n' +
+        '  event.waitUntil(\n' +
+        '    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))\n' +
+        '      .then(() => self.clients.claim())\n' +
+        '  );\n' +
+        '});'
+      );
     });
 
     vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: "custom",
     });
     app.use(vite.middlewares);
   } else {
@@ -3541,20 +3550,34 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
 
   // Open Graph dynamic injection for product pages
   app.get('*all', async (req, res, next) => {
+    // 1. Never intercept API routes
+    if (req.path.startsWith('/api/')) return next();
+
+    // 2. In DEV mode, ensure Vite internal routes and source files are not intercepted by the HTML renderer
+    if (process.env.NODE_ENV !== "production") {
+      if (
+        req.path.startsWith('/@') ||
+        req.path.startsWith('/src/') ||
+        req.path.includes('/node_modules/') ||
+        req.path.startsWith('/__vite')
+      ) {
+        return next();
+      }
+    } else {
+      if (req.path.startsWith('/@') || req.path.includes('/node_modules/')) return next();
+    }
+
+    // 3. Asset check for non-existent static files (prevent returning 200 HTML for missing assets)
     const isAsset = /\.(js|ts|jsx|tsx|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|otf|eot|txt|map|webp|avif|json)$/.test(req.path);
     if (isAsset && !req.path.includes('manifest')) {
       if (req.path.endsWith('.css')) {
         return res.status(404).type('text/css').send('/* Asset CSS not found */');
       }
-      if (req.path.endsWith('.js')) {
+      if (req.path.endsWith('.js') || req.path.endsWith('.ts') || req.path.endsWith('.tsx')) {
         return res.status(404).type('application/javascript').send('// Asset JS not found');
       }
       return res.status(404).send('Asset not found');
     }
-
-    if (req.path.startsWith('/api/')) return next();
-    if (req.path.startsWith('/@')) return next();
-    if (req.path.includes('/node_modules/')) return next();
 
     let title = "Discreta Boutique | Sex Shop e Boutique Íntima em Icó - CE";
     let description = "Discreta Boutique é uma boutique íntima em Icó-CE com lingeries, cosméticos sensuais, kits românticos e produtos para casais. Compre online com discrição.";

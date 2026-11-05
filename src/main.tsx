@@ -17,10 +17,54 @@ async function bootstrap() {
   try {
     console.log("[BOOT-TRACE] Carregando App.tsx dinamicamente...");
     // Dynamic import to prevent hoisting and catch any evaluation-level crashes
-    const module = await import('./App.tsx');
+    let module;
+    try {
+      module = await import('./App.tsx');
+    } catch (importErr: any) {
+      console.warn("[BOOT-WARN] Falha inicial ao importar App.tsx:", importErr?.message || importErr);
+      const isFetchOrChunkError =
+        importErr?.message?.includes('Failed to fetch dynamically imported module') ||
+        importErr?.message?.includes('dynamically imported module') ||
+        importErr?.name === 'ChunkLoadError' ||
+        importErr?.name === 'TypeError';
+
+      const RECOVERY_KEY = 'discreta_boot_recovery_attempted';
+      const alreadyAttempted = sessionStorage.getItem(RECOVERY_KEY);
+
+      if (isFetchOrChunkError && !alreadyAttempted) {
+        sessionStorage.setItem(RECOVERY_KEY, 'true');
+        console.info("[BOOT-RECOVERY] Limpando caches e service worker para recuperação automática...");
+        try {
+          if ('caches' in window) {
+            const cacheKeys = await caches.keys();
+            await Promise.all(cacheKeys.map((k) => caches.delete(k)));
+          }
+          if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister()));
+          }
+        } catch (cleanErr) {
+          console.warn("[BOOT-RECOVERY] Erro na limpeza preventiva:", cleanErr);
+        }
+
+        // Tentar novamente com cache-busting
+        try {
+          module = await import(/* @vite-ignore */ `./App.tsx?t=${Date.now()}`);
+          console.info("[BOOT-RECOVERY] App.tsx carregado com sucesso na recuperação!");
+        } catch (retryErr) {
+          console.warn("[BOOT-RECOVERY] Segunda tentativa falhou, recarregando a página...", retryErr);
+          window.location.reload();
+          return;
+        }
+      } else {
+        throw importErr;
+      }
+    }
+
     const App = module.default;
     
     console.log("[BOOT-TRACE] App.tsx carregado. Montando React...");
+    sessionStorage.removeItem('discreta_boot_recovery_attempted');
     
     createRoot(rootElement).render(
       <StrictMode>
