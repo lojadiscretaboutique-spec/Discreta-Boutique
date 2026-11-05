@@ -1,0 +1,33 @@
+steps:
+  # Step 0: Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/discreta-boutique/discreta-boutique:$COMMIT_SHA'
+      - '-t'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/discreta-boutique/discreta-boutique:latest'
+      - '.'
+
+  # Step 1: Push Docker image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/discreta-boutique/discreta-boutique:$COMMIT_SHA'
+
+  # Step 2: Deploy container to Cloud Run clearing legacy base-image and source annotations
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'discreta-boutique'
+      - '--image=us-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/discreta-boutique/discreta-boutique:$COMMIT_SHA'
+      - '--region=us-east1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--clear-base-image-annotations'
+
+images:
+  - 'us-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/discreta-boutique/discreta-boutique:$COMMIT_SHA'
+  - 'us-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/discreta-boutique/discreta-boutique:latest'

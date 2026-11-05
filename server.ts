@@ -48,6 +48,22 @@ async function startServer() {
     ? (process.env.PORT ? parseInt(process.env.PORT) : 8080)
     : (process.env.DEFAULT_APP_PORT ? parseInt(process.env.DEFAULT_APP_PORT) : 3000);
 
+  // Protection against malformed URI parameters (URIError: Failed to decode param '%C0')
+  app.use((req, res, next) => {
+    try {
+      if (req.path) {
+        decodeURIComponent(req.path);
+      }
+      if (req.url) {
+        decodeURI(req.url);
+        decodeURIComponent(req.url);
+      }
+      next();
+    } catch (err: any) {
+      console.warn(`[Express] Intercepted malformed URI: ${req.originalUrl || req.url} - ${err?.message || err}`);
+      return res.status(400).type('text/plain').send('Bad Request: Invalid or malformed URI encoding');
+    }
+  });
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -4403,6 +4419,16 @@ Sitemap: https://discretaboutique.com.br/sitemap.xml`);
       const errorMessage = e instanceof Error ? e.message : "Erro interno";
       res.status(500).end(errorMessage);
     }
+  });
+
+  // Global Express Error Handler for catching malformed URI parameters and body parse errors
+  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (err instanceof URIError || (err && (err.name === 'URIError' || err.status === 400))) {
+      console.warn(`[Express] Intercepted 400/URIError on ${req.method} ${req.url}:`, err.message || err);
+      return res.status(400).type('text/plain').send('Bad Request: Invalid or malformed URI parameter');
+    }
+    console.error('[Express] Unhandled server error:', err);
+    return res.status(500).type('text/plain').send('Internal Server Error');
   });
 
   app.listen(PORT, "0.0.0.0", () => {
